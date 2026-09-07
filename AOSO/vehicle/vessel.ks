@@ -2,9 +2,13 @@
 // Vessel identification. Scans the active vessel's parts once (on boot and
 // whenever the caller detects a vessel change, e.g. staging/docking/undocking)
 // and records a summary in AOSO_VESSEL. Every capability flag here is derived
-// from stock kOS list types (PARTS/ENGINES/DECOUPLERS/DOCKINGPORTS/PARACHUTES)
-// and PART:HASMODULE, never invented suffixes. Persisted to VESSEL_FILE so a
-// reload/scene-change can skip a redundant scan until the caller asks for one.
+// from stock kOS list types (PARTS/ENGINES/DECOUPLERS/DOCKINGPORTS) and
+// PART:HASMODULE, never invented suffixes -- kOS has no "LIST PARACHUTES";
+// parachute presence/count is instead detected the same PART:HASMODULE way
+// as RCS/solar/antenna/legs below (deployment itself is handled by
+// landing/parachute.ks via the documented CHUTES/CHUTESSAFE bindings).
+// Persisted to VESSEL_FILE so a reload/scene-change can skip a redundant
+// scan until the caller asks for one.
 
 GLOBAL AOSO_VESSEL IS LEXICON().
 
@@ -17,18 +21,18 @@ FUNCTION aoso_vessel_scan {
     LIST DECOUPLERS IN declist.
     LOCAL doclist IS LIST().
     LIST DOCKINGPORTS IN doclist.
-    LOCAL chutelist IS LIST().
-    LIST PARACHUTES IN chutelist.
 
     LOCAL has_rcs IS FALSE.
     LOCAL has_solar IS FALSE.
     LOCAL has_antenna IS FALSE.
     LOCAL has_legs IS FALSE.
+    LOCAL parachute_count IS 0.
     FOR p IN plist {
         IF p:HASMODULE("ModuleRCS") OR p:HASMODULE("ModuleRCSFX") { SET has_rcs TO TRUE. }
         IF p:HASMODULE("ModuleDeployableSolarPanel") { SET has_solar TO TRUE. }
         IF p:HASMODULE("ModuleDataTransmitter") { SET has_antenna TO TRUE. }
         IF p:HASMODULE("ModuleLandingLeg") { SET has_legs TO TRUE. }
+        IF p:HASMODULE("ModuleParachute") { SET parachute_count TO parachute_count + 1. }
     }
 
     LOCAL res_snapshot IS LIST().
@@ -46,7 +50,7 @@ FUNCTION aoso_vessel_scan {
         "engine_count", elist:LENGTH,
         "decoupler_count", declist:LENGTH,
         "docking_port_count", doclist:LENGTH,
-        "parachute_count", chutelist:LENGTH,
+        "parachute_count", parachute_count,
         "crew_count", SHIP:CREW:LENGTH,
         "has_rcs", has_rcs,
         "has_solar_panels", has_solar,

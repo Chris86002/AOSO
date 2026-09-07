@@ -23,6 +23,21 @@ FUNCTION aoso_steer_retrograde {
     LOCK STEERING TO SHIP:RETROGRADE.
 }
 
+// Surface-relative counterparts, used by landing/descent.ks: orbital
+// PROGRADE/RETROGRADE point along the body-centered velocity vector, which
+// is wrong for a landing burn that needs to cancel velocity relative to the
+// ground (and, near the surface, the two converge anyway).
+FUNCTION aoso_steer_srf_retrograde {
+    LOCK STEERING TO SHIP:SRFRETROGRADE.
+}
+
+// Radial-out ("straight up" from the local surface), used for the final
+// vertical hold just before touchdown so the vessel settles upright rather
+// than tipping toward whatever direction the last velocity vector pointed.
+FUNCTION aoso_steer_up {
+    LOCK STEERING TO SHIP:UP.
+}
+
 // Actively damps angular velocity toward zero without commanding a facing,
 // mirroring the stock "Kill Rotation" SAS mode.
 FUNCTION aoso_steer_kill_rotation {
