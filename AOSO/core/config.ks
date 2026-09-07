@@ -16,6 +16,7 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "SAFE_MODE", FALSE,
     "AUTO_CHECKPOINT_INTERVAL", 30,     // s between automatic checkpoint saves
     "WATCHDOG_TIMEOUT", 120,            // s of no-progress before watchdog intervenes
+    "WATCHDOG_EC_CRITICAL_PCT", 5,       // % ElectricCharge at/below which hardening/watchdog.ks treats power as critical
     "ASCENT_TURN_START_ALT", 500,       // m, altitude gravity turn begins
     "ASCENT_TURN_END_ALT", 45000,       // m, altitude gravity turn should be done by
     "ASCENT_TARGET_APO", 80000,         // m, default target apoapsis for ascent AP
