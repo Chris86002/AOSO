@@ -149,6 +149,13 @@ FUNCTION aoso_mission_step_precision_return {
     RETURN aoso_mission_step("PRECISION_RETURN", aoso_kscreturn_start@, aoso_kscreturn_update@, aoso_kscreturn_is_done@, aoso_kscreturn_is_aborted@).
 }
 
+// Phase 11 (Advanced): final-approach/docking, assuming a prior step (e.g.
+// aoso_mission_step_rendezvous_phasing) has already set TARGET to the
+// docking port to dock with.
+FUNCTION aoso_mission_step_dock {
+    RETURN aoso_mission_step("DOCK", aoso_docking_start@, aoso_docking_update@, aoso_docking_is_done@, aoso_docking_is_aborted@).
+}
+
 // --- Runner ---------------------------------------------------------------
 
 // (Re)starts whichever step is at plan_index: logs it, invokes its start

@@ -30,5 +30,5 @@ Built across 12 ordered phases:
 - [x] Phase 8 — Return
 - [x] Phase 9 — Precision KSC return
 - [x] Phase 10 — Mission layer
-- [ ] Phase 11 — Advanced
+- [x] Phase 11 — Advanced
 - [ ] Phase 12 — Hardening & UX
