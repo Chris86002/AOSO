@@ -9,8 +9,8 @@
 // solves the burn *geometry* for the ejection itself; picking *which*
 // orbital pass to eject on (matching the heliocentric transfer window from
 // transfer.ks) is left to the caller, consistent with rendezvous.ks's
-// stance that precision timing/final-approach refinement belongs to a
-// later phase.
+// stance that precision timing/final-approach refinement (see
+// advanced/docking.ks, Phase 11) belongs to a later phase.
 
 // Eccentricity of the departure hyperbola with periapsis r_peri (m) and
 // hyperbolic excess speed v_inf (m/s) around a body of gravitational

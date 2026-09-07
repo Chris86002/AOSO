@@ -5,8 +5,9 @@
 // orbits for the target-radius/transfer-time estimates, consistent with the
 // same simplification vehicle/capabilities.ks makes for single-stage dV
 // (a full arbitrary-eccentricity solver is out of scope here). Precision
-// final-approach/docking burns are left to a later phase; this covers the
-// "get into the same orbit, near the target" nav problem.
+// final-approach/docking burns are handled by advanced/docking.ks (Phase
+// 11) once this has closed the gap; this file only covers the "get into
+// the same orbit, near the target" nav problem.
 
 FUNCTION aoso_rendezvous_available {
     RETURN HASTARGET.

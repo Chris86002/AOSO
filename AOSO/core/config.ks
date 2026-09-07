@@ -33,7 +33,14 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "KSC_LAT", -0.0972,                 // deg, precision/kscreturn.ks default target site latitude (stock KSC)
     "KSC_LNG", -74.5577,                // deg, precision/kscreturn.ks default target site longitude (stock KSC)
     "PRECISION_INCLINATION_TOLERANCE_DEG", 1,   // deg from equatorial before precision/kscreturn.ks plane-aligns first
-    "PRECISION_MAX_DEORBIT_DELAY_ORBITS", 3     // extra orbits precision/kscreturn.ks may wait to line up the ground track
+    "PRECISION_MAX_DEORBIT_DELAY_ORBITS", 3,    // extra orbits precision/kscreturn.ks may wait to line up the ground track
+    "DOCKING_STANDOFF_DIST", 30,         // m, advanced/docking.ks stand-off waypoint distance out along the target port's facing
+    "DOCKING_WAYPOINT_TOLERANCE_M", 2,   // m, distance to the stand-off waypoint before switching to final closing
+    "DOCKING_MAX_APPROACH_SPEED", 2,     // m/s, closing speed cap while inbound to the stand-off waypoint
+    "DOCKING_MAX_FINAL_SPEED", 0.3,      // m/s, closing speed cap during the direct final approach onto the port
+    "DOCKING_ALIGN_TOLERANCE_DEG", 5,    // deg, facing error allowed before advanced/docking.ks starts translating
+    "DOCKING_CLOSING_GAIN", 0.3,         // unitless, distance(m) * gain = desired closing speed (m/s), capped above
+    "DOCKING_RCS_GAIN", 0.5              // unitless, velocity error(m/s) * gain = RCS translation command (-1..1, clamped)
 ).
 
 FUNCTION aoso_config_get {
