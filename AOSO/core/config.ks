@@ -19,7 +19,11 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "ASCENT_TURN_START_ALT", 500,       // m, altitude gravity turn begins
     "ASCENT_TURN_END_ALT", 45000,       // m, altitude gravity turn should be done by
     "ASCENT_TARGET_APO", 80000,         // m, default target apoapsis for ascent AP
-    "MAX_Q_LIMIT_MULT", 1.0             // throttle back factor near max-Q (1.0=off)
+    "MAX_Q_LIMIT_MULT", 1.0,            // throttle back factor near max-Q (1.0=off)
+    "DESCENT_BURN_MARGIN_S", 3,         // s of reaction time added to the suicide-burn trigger altitude
+    "DESCENT_FINAL_APPROACH_ALT", 150,  // m, radar altitude where descent switches to a slow vertical hold
+    "DESCENT_FINAL_SPEED", -3,          // m/s, target vertical speed held during final approach
+    "DESCENT_TOUCHDOWN_ALT", 0.5        // m, radar altitude below which touchdown is declared
 ).
 
 FUNCTION aoso_config_get {
