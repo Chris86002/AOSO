@@ -105,6 +105,13 @@ FUNCTION aoso_refuel_is_done {
     RETURN AOSO_REFUEL["current"] = "DONE".
 }
 
+// Mirrors flight/ascent.ks's/return/return.ks's own aoso_*_is_aborted() so
+// mission/mission.ks's generic step wrapper can check every subsystem's
+// abort state the same way.
+FUNCTION aoso_refuel_is_aborted {
+    RETURN AOSO_REFUEL["current"] = "ABORTED".
+}
+
 // Wires all states into AOSO_REFUEL and starts the machine in DEPLOY.
 // target_names is the list of resources (e.g. LIST("LiquidFuel",
 // "Oxidizer")) that must reach REFUEL_TARGET_PCT before the sequence stows

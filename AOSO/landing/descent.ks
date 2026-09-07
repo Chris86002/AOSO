@@ -176,6 +176,13 @@ FUNCTION aoso_descent_is_landed {
     RETURN AOSO_DESCENT["current"] = "TOUCHDOWN".
 }
 
+// Mirrors flight/ascent.ks's/return/return.ks's own aoso_*_is_aborted() so
+// mission/mission.ks's generic step wrapper can check every subsystem's
+// abort state the same way.
+FUNCTION aoso_descent_is_aborted {
+    RETURN AOSO_DESCENT["current"] = "ABORTED".
+}
+
 // Wires all states into AOSO_DESCENT and starts the machine in FREEFALL.
 // Call once (e.g. after a deorbit burn completes) before scheduling
 // aoso_descent_tick(). No timeout is set on BURN/FINAL_APPROACH: an
