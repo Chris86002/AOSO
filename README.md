@@ -27,7 +27,7 @@ Built across 12 ordered phases:
 - [x] Phase 5 — Interplanetary
 - [x] Phase 6 — Landing
 - [x] Phase 7 — Refuel & power
-- [ ] Phase 8 — Return
+- [x] Phase 8 — Return
 - [ ] Phase 9 — Precision KSC return
 - [ ] Phase 10 — Mission layer
 - [ ] Phase 11 — Advanced
