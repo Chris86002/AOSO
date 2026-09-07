@@ -9,6 +9,15 @@
 // landing/parachute.ks via the documented CHUTES/CHUTESSAFE bindings).
 // Persisted to VESSEL_FILE so a reload/scene-change can skip a redundant
 // scan until the caller asks for one.
+//
+// Phase 7 (Refuel & power) adds has_harvesters/has_converters/has_radiators
+// the same HASMODULE way: ModuleResourceHarvester and ModuleResourceConverter
+// back both stock ISRU drills/converters *and* stock fuel cells (they are
+// the same underlying part modules), so this scan deliberately does not try
+// to tell them apart -- power/power.ks and refuel/isru.ks instead defer that
+// distinction to kOS's own FUELCELLS/ISRU/DRILLS bindings (core/addons.ks's
+// "no invented suffixes" stance), which already know how to target the
+// right modules at runtime.
 
 GLOBAL AOSO_VESSEL IS LEXICON().
 
@@ -26,6 +35,9 @@ FUNCTION aoso_vessel_scan {
     LOCAL has_solar IS FALSE.
     LOCAL has_antenna IS FALSE.
     LOCAL has_legs IS FALSE.
+    LOCAL has_harvesters IS FALSE.
+    LOCAL has_converters IS FALSE.
+    LOCAL has_radiators IS FALSE.
     LOCAL parachute_count IS 0.
     FOR p IN plist {
         IF p:HASMODULE("ModuleRCS") OR p:HASMODULE("ModuleRCSFX") { SET has_rcs TO TRUE. }
@@ -33,6 +45,9 @@ FUNCTION aoso_vessel_scan {
         IF p:HASMODULE("ModuleDataTransmitter") { SET has_antenna TO TRUE. }
         IF p:HASMODULE("ModuleLandingLeg") { SET has_legs TO TRUE. }
         IF p:HASMODULE("ModuleParachute") { SET parachute_count TO parachute_count + 1. }
+        IF p:HASMODULE("ModuleResourceHarvester") { SET has_harvesters TO TRUE. }
+        IF p:HASMODULE("ModuleResourceConverter") { SET has_converters TO TRUE. }
+        IF p:HASMODULE("ModuleDeployableRadiator") { SET has_radiators TO TRUE. }
     }
 
     LOCAL res_snapshot IS LIST().
@@ -56,6 +71,9 @@ FUNCTION aoso_vessel_scan {
         "has_solar_panels", has_solar,
         "has_antenna", has_antenna,
         "has_landing_legs", has_legs,
+        "has_harvesters", has_harvesters,
+        "has_converters", has_converters,
+        "has_radiators", has_radiators,
         "resources", res_snapshot,
         "scanned_at", TIME:SECONDS
     ).

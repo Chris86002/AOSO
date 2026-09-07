@@ -19,4 +19,16 @@ A modular, autonomous spacecraft operating system for Kerbal Space Program, writ
 No addon is a hard dependency — the system degrades gracefully if any are absent.
 
 ## Status
-Initial scaffold. Full architecture and implementation incoming via pull request.
+Built across 12 ordered phases:
+- [x] Phase 1 — Core
+- [x] Phase 2 — Vehicle
+- [x] Phase 3 — Basic flight
+- [x] Phase 4 — Orbital nav
+- [x] Phase 5 — Interplanetary
+- [x] Phase 6 — Landing
+- [x] Phase 7 — Refuel & power
+- [ ] Phase 8 — Return
+- [ ] Phase 9 — Precision KSC return
+- [ ] Phase 10 — Mission layer
+- [ ] Phase 11 — Advanced
+- [ ] Phase 12 — Hardening & UX
