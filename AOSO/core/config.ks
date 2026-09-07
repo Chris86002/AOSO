@@ -23,7 +23,12 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "DESCENT_BURN_MARGIN_S", 3,         // s of reaction time added to the suicide-burn trigger altitude
     "DESCENT_FINAL_APPROACH_ALT", 150,  // m, radar altitude where descent switches to a slow vertical hold
     "DESCENT_FINAL_SPEED", -3,          // m/s, target vertical speed held during final approach
-    "DESCENT_TOUCHDOWN_ALT", 0.5        // m, radar altitude below which touchdown is declared
+    "DESCENT_TOUCHDOWN_ALT", 0.5,       // m, radar altitude below which touchdown is declared
+    "LOW_EC_PCT", 20,                   // % ElectricCharge at/below which fuel cells are enabled
+    "FUEL_CELL_DISABLE_PCT", 90,        // % ElectricCharge at/above which fuel cells are disabled
+    "PANEL_MAX_AIRSPEED", 50,           // m/s, airspeed inside atmosphere above which panels retract
+    "REFUEL_TARGET_PCT", 95,            // % capacity of a harvested resource considered "full enough"
+    "REFUEL_ORE_MIN_AMOUNT", 0.01       // Ore units at/below which harvesting is considered depleted
 ).
 
 FUNCTION aoso_config_get {
