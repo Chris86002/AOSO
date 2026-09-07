@@ -29,7 +29,11 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "PANEL_MAX_AIRSPEED", 50,           // m/s, airspeed inside atmosphere above which panels retract
     "REFUEL_TARGET_PCT", 95,            // % capacity of a harvested resource considered "full enough"
     "REFUEL_ORE_MIN_AMOUNT", 0.01,      // Ore units at/below which harvesting is considered depleted
-    "HOME_BODY", "Kerbin"               // body return/return.ks treats as the final destination
+    "HOME_BODY", "Kerbin",              // body return/return.ks treats as the final destination
+    "KSC_LAT", -0.0972,                 // deg, precision/kscreturn.ks default target site latitude (stock KSC)
+    "KSC_LNG", -74.5577,                // deg, precision/kscreturn.ks default target site longitude (stock KSC)
+    "PRECISION_INCLINATION_TOLERANCE_DEG", 1,   // deg from equatorial before precision/kscreturn.ks plane-aligns first
+    "PRECISION_MAX_DEORBIT_DELAY_ORBITS", 3     // extra orbits precision/kscreturn.ks may wait to line up the ground track
 ).
 
 FUNCTION aoso_config_get {
