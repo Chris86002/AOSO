@@ -55,9 +55,9 @@ FUNCTION aoso_mission_plan_clear {
 }
 
 FUNCTION aoso_mission_plan_add {
-    PARAMETER step.
-    AOSO_MISSION_PLAN:ADD(step).
-    RETURN step.
+    PARAMETER mission_step.
+    AOSO_MISSION_PLAN:ADD(mission_step).
+    RETURN mission_step.
 }
 
 // --- Generic "add a node, burn it" step (see file header) ---------------
@@ -172,12 +172,12 @@ FUNCTION aoso_mission_start_step_at {
         RETURN.
     }
 
-    LOCAL step IS AOSO_MISSION_PLAN[plan_index].
+    LOCAL mission_step IS AOSO_MISSION_PLAN[plan_index].
     IF DEFINED aoso_log_info {
-        aoso_log_info("MISSION", "Step " + (plan_index + 1) + "/" + AOSO_MISSION_PLAN:LENGTH + ": " + step["name"]).
+        aoso_log_info("MISSION", "Step " + (plan_index + 1) + "/" + AOSO_MISSION_PLAN:LENGTH + ": " + mission_step["name"]).
     }
-    IF step["start"]:ISTYPE("KOSDelegate") { step["start"]:CALL(). }
-    IF DEFINED aoso_checkpoints_save { aoso_checkpoints_save(plan_index, step["name"]). }
+    IF mission_step["start"]:ISTYPE("KOSDelegate") { mission_step["start"]:CALL(). }
+    IF DEFINED aoso_checkpoints_save { aoso_checkpoints_save(plan_index, mission_step["name"]). }
 }
 
 FUNCTION aoso_mission_on_abort {
@@ -198,18 +198,18 @@ FUNCTION aoso_mission_running_execute {
         aoso_state_transition(AOSO_MISSION, "DONE").
         RETURN.
     }
-    LOCAL step IS AOSO_MISSION_PLAN[data["index"]].
+    LOCAL mission_step IS AOSO_MISSION_PLAN[data["index"]].
 
-    step["update"]:CALL().
+    mission_step["update"]:CALL().
 
-    IF step["is_aborted"]:ISTYPE("KOSDelegate") AND step["is_aborted"]:CALL() {
-        IF DEFINED aoso_log_error { aoso_log_error("MISSION", "Step aborted: " + step["name"]). }
+    IF mission_step["is_aborted"]:ISTYPE("KOSDelegate") AND mission_step["is_aborted"]:CALL() {
+        IF DEFINED aoso_log_error { aoso_log_error("MISSION", "Step aborted: " + mission_step["name"]). }
         aoso_state_abort(AOSO_MISSION).
         RETURN.
     }
 
-    IF step["is_done"]:CALL() {
-        IF DEFINED aoso_log_info { aoso_log_info("MISSION", "Step complete: " + step["name"]). }
+    IF mission_step["is_done"]:CALL() {
+        IF DEFINED aoso_log_info { aoso_log_info("MISSION", "Step complete: " + mission_step["name"]). }
         aoso_mission_start_step_at(data["index"] + 1, data).
     }
 }

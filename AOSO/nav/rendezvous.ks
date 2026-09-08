@@ -71,11 +71,11 @@ FUNCTION aoso_rendezvous_wait_time_to_transfer_s {
     LOCAL relative_rate IS ship_rate - target_rate.
     IF relative_rate = 0 { RETURN -1. }
 
-    LOCAL wait IS -(current_phase - required_phase) / relative_rate.
-    UNTIL wait >= 0 {
-        SET wait TO wait + (360 / ABS(relative_rate)).
+    LOCAL wait_s IS -(current_phase - required_phase) / relative_rate.
+    UNTIL wait_s >= 0 {
+        SET wait_s TO wait_s + (360 / ABS(relative_rate)).
     }
-    RETURN wait.
+    RETURN wait_s.
 }
 
 // Adds a prograde transfer node timed to the next transfer window, sized to
@@ -85,8 +85,8 @@ FUNCTION aoso_rendezvous_wait_time_to_transfer_s {
 FUNCTION aoso_rendezvous_add_phasing_transfer_node {
     PARAMETER target_orbitable IS TARGET.
 
-    LOCAL wait IS aoso_rendezvous_wait_time_to_transfer_s(target_orbitable).
-    IF wait < 0 {
+    LOCAL wait_s IS aoso_rendezvous_wait_time_to_transfer_s(target_orbitable).
+    IF wait_s < 0 {
         IF DEFINED aoso_log_warn {
             aoso_log_warn("RENDEZVOUS", "Ship and target periods match; no transfer window exists.").
         }
@@ -102,11 +102,11 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
     LOCAL v_transfer IS SQRT(MAX(0, mu * (2 / r1 - 1 / sma_t))).
     LOCAL dv IS v_transfer - v_now.
 
-    LOCAL nd IS NODE(TIME:SECONDS + wait, 0, 0, dv).
+    LOCAL nd IS NODE(TIME:SECONDS + wait_s, 0, 0, dv).
     ADD nd.
     IF DEFINED aoso_log_info {
         aoso_log_info("RENDEZVOUS", "Phasing transfer node added: dv=" + ROUND(dv, 1) +
-            " m/s in " + ROUND(wait, 0) + "s.").
+            " m/s in " + ROUND(wait_s, 0) + "s.").
     }
     RETURN nd.
 }
