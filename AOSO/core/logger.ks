@@ -44,7 +44,16 @@ FUNCTION aoso_log_flush {
         SET AOSO_LOG_LAST_FLUSH TO TIME:SECONDS.
         RETURN.
     }
-    LOCAL f IS OPEN(AOSO_CONST["LOG_FILE"]).
+    // OPEN() returns a plain BooleanValue(false) instead of a file handle
+    // when the path doesn't exist yet, so CREATE it the first time and
+    // OPEN it (for append) on every call after that.
+    LOCAL log_path IS AOSO_CONST["LOG_FILE"].
+    LOCAL f IS 0.
+    IF EXISTS(log_path) {
+        SET f TO OPEN(log_path).
+    } ELSE {
+        SET f TO CREATE(log_path).
+    }
     UNTIL AOSO_LOG_BUFFER:LENGTH = 0 {
         LOCAL line IS AOSO_LOG_BUFFER[0].
         AOSO_LOG_BUFFER:REMOVE(0).

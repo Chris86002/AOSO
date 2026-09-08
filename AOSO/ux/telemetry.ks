@@ -36,12 +36,17 @@ FUNCTION aoso_telemetry_tick {
 
     IF NOT AOSO_TELEMETRY_HEADER_WRITTEN {
         IF NOT EXISTS(file_path) {
-            LOCAL header_file IS OPEN(file_path).
+            // The file doesn't exist yet, so it must be CREATEd rather than
+            // OPENed: OPEN() returns a plain BooleanValue(false) (not a file
+            // handle) for a path that doesn't exist, which has no WRITELN.
+            LOCAL header_file IS CREATE(file_path).
             header_file:WRITELN(aoso_telemetry_header()).
         }
         SET AOSO_TELEMETRY_HEADER_WRITTEN TO TRUE.
     }
 
+    // By this point the file is guaranteed to exist (either it already did,
+    // or the block above just created it), so OPEN() is safe here.
     LOCAL f IS OPEN(file_path).
     f:WRITELN(aoso_telemetry_row()).
 }
