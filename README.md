@@ -8,7 +8,7 @@ A modular, autonomous spacecraft operating system for Kerbal Space Program, writ
 ## Install (once populated)
 1. Copy the `AOSO/` folder into `.../Kerbal Space Program/GameData/`.
 2. Mount it as a kOS volume (or copy to your archive).
-3. From the kOS terminal: `run AOSO/main.`
+3. From the kOS terminal: `run "AOSO/main".`
 
 ## Optional addons (all with pure-kOS fallbacks)
 - kOS.MechJeb2.Addon (MechJeb)

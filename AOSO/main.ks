@@ -1,5 +1,5 @@
 // AOSO/main.ks
-// Top-level entry point (see README.md's "run AOSO/main." install step).
+// Top-level entry point (see README.md's "run \"AOSO/main\"." install step).
 // Loads every AOSO module in dependency order (core first, per
 // core/boot.ks's own header comment: constants -> logger -> addons ->
 // config -> json -> everything else; every other file only calls into
@@ -17,68 +17,68 @@
 // manual control.
 
 // --- Core (order matters; see core/boot.ks) --------------------------------
-RUN ONCE AOSO/core/constants.
-RUN ONCE AOSO/core/json.
-RUN ONCE AOSO/core/logger.
-RUN ONCE AOSO/core/addons.
-RUN ONCE AOSO/core/config.
-RUN ONCE AOSO/core/state.
-RUN ONCE AOSO/core/scheduler.
-RUN ONCE AOSO/core/boot.
+RUN ONCE "AOSO/core/constants".
+RUN ONCE "AOSO/core/json".
+RUN ONCE "AOSO/core/logger".
+RUN ONCE "AOSO/core/addons".
+RUN ONCE "AOSO/core/config".
+RUN ONCE "AOSO/core/state".
+RUN ONCE "AOSO/core/scheduler".
+RUN ONCE "AOSO/core/boot".
 
 // --- Vehicle ----------------------------------------------------------------
-RUN ONCE AOSO/vehicle/vessel.
-RUN ONCE AOSO/vehicle/capabilities.
-RUN ONCE AOSO/vehicle/performance.
-RUN ONCE AOSO/vehicle/resources.
-RUN ONCE AOSO/vehicle/staging.
+RUN ONCE "AOSO/vehicle/vessel".
+RUN ONCE "AOSO/vehicle/capabilities".
+RUN ONCE "AOSO/vehicle/performance".
+RUN ONCE "AOSO/vehicle/resources".
+RUN ONCE "AOSO/vehicle/staging".
 
 // --- Basic flight -----------------------------------------------------------
-RUN ONCE AOSO/flight/steering.
-RUN ONCE AOSO/flight/maneuver.
-RUN ONCE AOSO/flight/ascent.
-RUN ONCE AOSO/flight/launch.
+RUN ONCE "AOSO/flight/steering".
+RUN ONCE "AOSO/flight/maneuver".
+RUN ONCE "AOSO/flight/ascent".
+RUN ONCE "AOSO/flight/launch".
 
 // --- Orbital nav --------------------------------------------------------
-RUN ONCE AOSO/nav/orbit.
-RUN ONCE AOSO/nav/hohmann.
-RUN ONCE AOSO/nav/planechange.
-RUN ONCE AOSO/nav/rendezvous.
+RUN ONCE "AOSO/nav/orbit".
+RUN ONCE "AOSO/nav/hohmann".
+RUN ONCE "AOSO/nav/planechange".
+RUN ONCE "AOSO/nav/rendezvous".
 
 // --- Interplanetary -----------------------------------------------------
-RUN ONCE AOSO/interplanetary/bodydb.
-RUN ONCE AOSO/interplanetary/transfer.
-RUN ONCE AOSO/interplanetary/ejection.
+RUN ONCE "AOSO/interplanetary/bodydb".
+RUN ONCE "AOSO/interplanetary/transfer".
+RUN ONCE "AOSO/interplanetary/ejection".
 
 // --- Landing -------------------------------------------------------------
-RUN ONCE AOSO/landing/site.
-RUN ONCE AOSO/landing/deorbit.
-RUN ONCE AOSO/landing/descent.
-RUN ONCE AOSO/landing/parachute.
+RUN ONCE "AOSO/landing/site".
+RUN ONCE "AOSO/landing/deorbit".
+RUN ONCE "AOSO/landing/descent".
+RUN ONCE "AOSO/landing/parachute".
 
 // --- Refuel & power -------------------------------------------------------
-RUN ONCE AOSO/power/power.
-RUN ONCE AOSO/refuel/isru.
+RUN ONCE "AOSO/power/power".
+RUN ONCE "AOSO/refuel/isru".
 
 // --- Return ----------------------------------------------------------------
-RUN ONCE AOSO/return/moonescape.
-RUN ONCE AOSO/return/return.
+RUN ONCE "AOSO/return/moonescape".
+RUN ONCE "AOSO/return/return".
 
 // --- Precision KSC return -------------------------------------------------
-RUN ONCE AOSO/precision/targeting.
-RUN ONCE AOSO/precision/kscreturn.
+RUN ONCE "AOSO/precision/targeting".
+RUN ONCE "AOSO/precision/kscreturn".
 
 // --- Mission layer -----------------------------------------------------
-RUN ONCE AOSO/mission/checkpoints.
-RUN ONCE AOSO/mission/mission.
+RUN ONCE "AOSO/mission/checkpoints".
+RUN ONCE "AOSO/mission/mission".
 
 // --- Advanced --------------------------------------------------------------
-RUN ONCE AOSO/advanced/docking.
+RUN ONCE "AOSO/advanced/docking".
 
 // --- Hardening & UX (Phase 12) ---------------------------------------------
-RUN ONCE AOSO/hardening/watchdog.
-RUN ONCE AOSO/ux/hud.
-RUN ONCE AOSO/ux/telemetry.
+RUN ONCE "AOSO/hardening/watchdog".
+RUN ONCE "AOSO/ux/hud".
+RUN ONCE "AOSO/ux/telemetry".
 
 // Registers every subsystem's own automation task (auto-staging, power
 // management, checkpoint autosave) plus this phase's hardening/UX tasks.
@@ -99,7 +99,7 @@ FUNCTION aoso_main {
     aoso_main_register_tasks().
 
     IF EXISTS("AOSO/mission_plan.ks") {
-        RUN ONCE AOSO/mission_plan.
+        RUN ONCE "AOSO/mission_plan".
     }
 
     IF DEFINED aoso_log_info { aoso_log_info("MAIN", "Entering main loop."). }
