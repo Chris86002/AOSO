@@ -84,13 +84,17 @@ FUNCTION aoso_checkpoints_clear {
 // unless mission/mission.ks's AOSO_MISSION is actually running, so this can
 // be registered unconditionally without assuming a mission is active.
 FUNCTION aoso_checkpoints_autosave_tick {
-    IF NOT DEFINED AOSO_MISSION { RETURN. }
-    IF AOSO_MISSION["current"] <> "RUNNING" { RETURN. }
+    // kOS's grammar only allows a single unary prefix (NOT *or* DEFINED, not
+    // both), so "IF NOT DEFINED x" is a parse error -- nest the DEFINED
+    // check instead.
+    IF DEFINED AOSO_MISSION {
+        IF AOSO_MISSION["current"] <> "RUNNING" { RETURN. }
 
-    LOCAL idx IS AOSO_MISSION["data"]["index"].
-    LOCAL name IS "".
-    IF idx >= 0 AND idx < AOSO_MISSION_PLAN:LENGTH { SET name TO AOSO_MISSION_PLAN[idx]["name"]. }
-    aoso_checkpoints_save(idx, name).
+        LOCAL idx IS AOSO_MISSION["data"]["index"].
+        LOCAL name IS "".
+        IF idx >= 0 AND idx < AOSO_MISSION_PLAN:LENGTH { SET name TO AOSO_MISSION_PLAN[idx]["name"]. }
+        aoso_checkpoints_save(idx, name).
+    }
 }
 
 FUNCTION aoso_checkpoints_register_task {

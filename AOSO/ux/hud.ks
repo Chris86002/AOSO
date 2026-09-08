@@ -28,10 +28,17 @@ FUNCTION aoso_hud_line {
 }
 
 FUNCTION aoso_hud_mission_status {
-    IF NOT DEFINED AOSO_MISSION OR AOSO_MISSION["current"] = "" { RETURN "N/A". }
-    LOCAL step_name IS "".
-    IF DEFINED aoso_mission_current_step_name { SET step_name TO aoso_mission_current_step_name(). }
-    RETURN AOSO_MISSION["current"] + " / " + step_name.
+    // kOS's grammar only allows a single unary prefix (NOT *or* DEFINED, not
+    // both), so "IF NOT DEFINED x OR ..." is a parse error -- nest the
+    // DEFINED check instead.
+    IF DEFINED AOSO_MISSION {
+        IF AOSO_MISSION["current"] <> "" {
+            LOCAL step_name IS "".
+            IF DEFINED aoso_mission_current_step_name { SET step_name TO aoso_mission_current_step_name(). }
+            RETURN AOSO_MISSION["current"] + " / " + step_name.
+        }
+    }
+    RETURN "N/A".
 }
 
 FUNCTION aoso_hud_draw {
