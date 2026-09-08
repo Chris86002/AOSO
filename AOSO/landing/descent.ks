@@ -110,7 +110,7 @@ FUNCTION aoso_descent_freefall_entry {
 
 FUNCTION aoso_descent_freefall_execute {
     PARAMETER data.
-    IF DEFINED aoso_parachute_auto_check { aoso_parachute_auto_check(). }
+    aoso_parachute_auto_check().
 
     IF VERTICALSPEED >= 0 { RETURN. } // still climbing/coasting outward, nothing to do yet
 
@@ -128,18 +128,16 @@ FUNCTION aoso_descent_burn_entry {
 
 FUNCTION aoso_descent_burn_execute {
     PARAMETER data.
-    IF DEFINED aoso_parachute_auto_check { aoso_parachute_auto_check(). }
+    aoso_parachute_auto_check().
 
     aoso_steer_srf_retrograde().
 
     LOCK THROTTLE TO aoso_descent_required_throttle().
 
-    IF DEFINED aoso_staging_auto_check { aoso_staging_auto_check(). }
-    IF DEFINED aoso_fuel_abort_check {
-        IF aoso_fuel_abort_check() {
-            aoso_state_abort(AOSO_DESCENT).
-            RETURN.
-        }
+    aoso_staging_auto_check().
+    IF aoso_fuel_abort_check() {
+        aoso_state_abort(AOSO_DESCENT).
+        RETURN.
     }
 
     IF ALT:RADAR <= aoso_config_get("DESCENT_FINAL_APPROACH_ALT", 150) {
@@ -158,7 +156,7 @@ FUNCTION aoso_descent_final_approach_execute {
     aoso_steer_up().
     LOCK THROTTLE TO aoso_descent_final_approach_throttle().
 
-    IF DEFINED aoso_staging_auto_check { aoso_staging_auto_check(). }
+    aoso_staging_auto_check().
 
     IF ALT:RADAR <= aoso_config_get("DESCENT_TOUCHDOWN_ALT", 0.5) OR SHIP:STATUS = "LANDED" {
         aoso_state_transition(AOSO_DESCENT, "TOUCHDOWN").
@@ -169,7 +167,7 @@ FUNCTION aoso_descent_touchdown_entry {
     PARAMETER data.
     LOCK THROTTLE TO 0.
     aoso_steer_release().
-    IF DEFINED aoso_log_info { aoso_log_info("DESCENT", "Touchdown, throttle cut."). }
+    aoso_log_info("DESCENT", "Touchdown, throttle cut.").
 }
 
 FUNCTION aoso_descent_is_landed {
@@ -197,7 +195,7 @@ FUNCTION aoso_descent_start {
     aoso_state_define(AOSO_DESCENT, "ABORTED", 0, 0, 0).
 
     aoso_state_transition(AOSO_DESCENT, "FREEFALL").
-    IF DEFINED aoso_log_info { aoso_log_info("DESCENT", "Descent guidance started in FREEFALL."). }
+    aoso_log_info("DESCENT", "Descent guidance started in FREEFALL.").
 }
 
 FUNCTION aoso_descent_tick {
@@ -208,7 +206,5 @@ FUNCTION aoso_descent_tick {
 // vehicle/staging.ks's aoso_staging_register_task().
 FUNCTION aoso_descent_register_task {
     PARAMETER interval_s IS 0.1.
-    IF DEFINED aoso_sched_add {
-        aoso_sched_add("descent_guidance", interval_s, aoso_descent_tick@).
-    }
+    aoso_sched_add("descent_guidance", interval_s, aoso_descent_tick@).
 }

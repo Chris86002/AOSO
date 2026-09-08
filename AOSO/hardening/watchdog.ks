@@ -41,8 +41,8 @@ FUNCTION aoso_watchdog_progress_marker {
 }
 
 FUNCTION aoso_watchdog_critical_condition {
-    IF DEFINED aoso_fuel_abort_check AND aoso_fuel_abort_check() { RETURN TRUE. }
-    IF DEFINED aoso_power_ec_pct AND aoso_power_ec_pct() <= aoso_config_get("WATCHDOG_EC_CRITICAL_PCT", 5) { RETURN TRUE. }
+    IF aoso_fuel_abort_check() { RETURN TRUE. }
+    IF aoso_power_ec_pct() <= aoso_config_get("WATCHDOG_EC_CRITICAL_PCT", 5) { RETURN TRUE. }
     RETURN FALSE.
 }
 
@@ -52,12 +52,10 @@ FUNCTION aoso_watchdog_trip {
     IF AOSO_WATCHDOG["tripped"] { RETURN. }
     SET AOSO_WATCHDOG["tripped"] TO TRUE.
 
-    IF DEFINED aoso_log_fatal {
-        aoso_log_fatal("WATCHDOG", "No mission progress for " + aoso_config_get("WATCHDOG_TIMEOUT", 120) +
-            "s with a critical condition active; forcing safe abort.").
-    }
+    aoso_log_fatal("WATCHDOG", "No mission progress for " + aoso_config_get("WATCHDOG_TIMEOUT", 120) +
+        "s with a critical condition active; forcing safe abort.").
     LOCK THROTTLE TO 0.
-    IF DEFINED aoso_steer_release { aoso_steer_release(). }
+    aoso_steer_release().
     IF DEFINED AOSO_MISSION AND AOSO_MISSION["current"] <> "" {
         aoso_state_abort(AOSO_MISSION).
     }
@@ -97,7 +95,5 @@ FUNCTION aoso_watchdog_is_tripped {
 FUNCTION aoso_watchdog_register_task {
     PARAMETER interval_s IS 1.
     aoso_watchdog_reset().
-    IF DEFINED aoso_sched_add {
-        aoso_sched_add("watchdog", interval_s, aoso_watchdog_tick@).
-    }
+    aoso_sched_add("watchdog", interval_s, aoso_watchdog_tick@).
 }

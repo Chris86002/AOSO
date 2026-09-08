@@ -57,7 +57,7 @@ FUNCTION aoso_ascent_liftoff_entry {
 FUNCTION aoso_ascent_liftoff_execute {
     PARAMETER data.
     aoso_steer_heading_pitch(data["heading"], 90).
-    IF DEFINED aoso_staging_auto_check { aoso_staging_auto_check(). }
+    aoso_staging_auto_check().
     IF ALTITUDE > aoso_config_get("ASCENT_TURN_START_ALT", 500) {
         aoso_state_transition(AOSO_ASCENT, "GRAVITY_TURN").
     }
@@ -68,12 +68,10 @@ FUNCTION aoso_ascent_turn_execute {
     aoso_steer_heading_pitch(data["heading"], aoso_ascent_pitch_for_altitude(ALTITUDE)).
     LOCK THROTTLE TO aoso_ascent_throttle_for_q().
 
-    IF DEFINED aoso_staging_auto_check { aoso_staging_auto_check(). }
-    IF DEFINED aoso_fuel_abort_check {
-        IF aoso_fuel_abort_check() {
-            aoso_state_abort(AOSO_ASCENT).
-            RETURN.
-        }
+    aoso_staging_auto_check().
+    IF aoso_fuel_abort_check() {
+        aoso_state_abort(AOSO_ASCENT).
+        RETURN.
     }
 
     IF APOAPSIS >= data["target_apo"] {
@@ -100,17 +98,13 @@ FUNCTION aoso_ascent_coast_execute {
         LOCK THROTTLE TO 0.
     }
 
-    IF DEFINED aoso_fuel_abort_check {
-        IF aoso_fuel_abort_check() {
-            aoso_state_abort(AOSO_ASCENT).
-            RETURN.
-        }
+    IF aoso_fuel_abort_check() {
+        aoso_state_abort(AOSO_ASCENT).
+        RETURN.
     }
 
     LOCAL burn_time IS 0.
-    IF DEFINED aoso_perf_burn_time_for_dv {
-        SET burn_time TO aoso_perf_burn_time_for_dv(ABS(aoso_maneuver_circularize_dv_at_apoapsis())).
-    }
+    SET burn_time TO aoso_perf_burn_time_for_dv(ABS(aoso_maneuver_circularize_dv_at_apoapsis())).
 
     IF ETA:APOAPSIS <= (burn_time / 2 + 5) {
         LOCK THROTTLE TO 0.
@@ -135,15 +129,13 @@ FUNCTION aoso_ascent_done_entry {
     PARAMETER data.
     LOCK THROTTLE TO 0.
     aoso_steer_release().
-    IF DEFINED aoso_log_info {
-        aoso_log_info("ASCENT", "Ascent complete. Apo=" + ROUND(APOAPSIS, 0) + " Peri=" + ROUND(PERIAPSIS, 0)).
-    }
+    aoso_log_info("ASCENT", "Ascent complete. Apo=" + ROUND(APOAPSIS, 0) + " Peri=" + ROUND(PERIAPSIS, 0)).
 }
 
 FUNCTION aoso_ascent_aborted_entry {
     PARAMETER data.
     LOCK THROTTLE TO 0.
-    IF DEFINED aoso_log_error { aoso_log_error("ASCENT", "Ascent aborted."). }
+    aoso_log_error("ASCENT", "Ascent aborted.").
 }
 
 FUNCTION aoso_ascent_define_states {
@@ -175,9 +167,7 @@ FUNCTION aoso_ascent_update {
 
 FUNCTION aoso_ascent_register_task {
     PARAMETER interval_s IS 0.1.
-    IF DEFINED aoso_sched_add {
-        aoso_sched_add("ascent_guidance", interval_s, aoso_ascent_update@).
-    }
+    aoso_sched_add("ascent_guidance", interval_s, aoso_ascent_update@).
 }
 
 FUNCTION aoso_ascent_is_done {

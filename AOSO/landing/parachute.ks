@@ -37,17 +37,13 @@ FUNCTION aoso_parachute_auto_check {
     IF CHUTESSAFE { RETURN. } // already armed
 
     SET CHUTESSAFE TO TRUE.
-    IF DEFINED aoso_log_info {
-        aoso_log_info("PARACHUTE", "CHUTESSAFE armed at altitude=" + ROUND(ALTITUDE, 0) +
-            "m, airspeed=" + ROUND(SHIP:AIRSPEED, 1) + " m/s.").
-    }
+    aoso_log_info("PARACHUTE", "CHUTESSAFE armed at altitude=" + ROUND(ALTITUDE, 0) +
+        "m, airspeed=" + ROUND(SHIP:AIRSPEED, 1) + " m/s.").
 }
 
 // Wires the parachute check into core/scheduler.ks, mirroring
 // vehicle/staging.ks's aoso_staging_register_task().
 FUNCTION aoso_parachute_register_task {
     PARAMETER interval_s IS 0.5.
-    IF DEFINED aoso_sched_add {
-        aoso_sched_add("auto_parachute", interval_s, aoso_parachute_auto_check@).
-    }
+    aoso_sched_add("auto_parachute", interval_s, aoso_parachute_auto_check@).
 }

@@ -14,13 +14,13 @@ FUNCTION aoso_telemetry_header {
 
 FUNCTION aoso_telemetry_row {
     LOCAL ec_pct IS 0.
-    IF DEFINED aoso_power_ec_pct { SET ec_pct TO aoso_power_ec_pct(). }
+    SET ec_pct TO aoso_power_ec_pct().
     LOCAL fuel_pct IS 0.
-    IF DEFINED aoso_stage_propellant_pct { SET fuel_pct TO aoso_stage_propellant_pct(). }
+    SET fuel_pct TO aoso_stage_propellant_pct().
     LOCAL mission_state IS "".
     IF DEFINED AOSO_MISSION { SET mission_state TO AOSO_MISSION["current"]. }
     LOCAL mission_step IS "".
-    IF DEFINED aoso_mission_current_step_name { SET mission_step TO aoso_mission_current_step_name(). }
+    SET mission_step TO aoso_mission_current_step_name().
 
     RETURN ROUND(MISSIONTIME, 1) + "," + SHIP:BODY:NAME + "," + ROUND(ALTITUDE, 1) + "," +
         ROUND(SHIP:APOAPSIS, 1) + "," + ROUND(SHIP:PERIAPSIS, 1) + "," +
@@ -50,7 +50,5 @@ FUNCTION aoso_telemetry_tick {
 // vehicle/staging.ks's aoso_staging_register_task().
 FUNCTION aoso_telemetry_register_task {
     PARAMETER interval_s IS 5.
-    IF DEFINED aoso_sched_add {
-        aoso_sched_add("telemetry", interval_s, aoso_telemetry_tick@).
-    }
+    aoso_sched_add("telemetry", interval_s, aoso_telemetry_tick@).
 }

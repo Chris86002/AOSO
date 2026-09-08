@@ -107,17 +107,13 @@ FUNCTION aoso_kscreturn_add_plane_align_node {
 
     LOCAL offset IS aoso_kscreturn_equatorial_offset_deg().
     IF offset <= tolerance_deg {
-        IF DEFINED aoso_log_info {
-            aoso_log_info("KSCRETURN", "Already within " + tolerance_deg + " deg of equatorial; no plane-align node added.").
-        }
+        aoso_log_info("KSCRETURN", "Already within " + tolerance_deg + " deg of equatorial; no plane-align node added.").
         RETURN 0.
     }
 
     LOCAL etas IS aoso_kscreturn_equatorial_node_etas().
     IF etas:LENGTH = 0 OR node_index >= etas:LENGTH {
-        IF DEFINED aoso_log_warn {
-            aoso_log_warn("KSCRETURN", "No equatorial crossing found within one orbit.").
-        }
+        aoso_log_warn("KSCRETURN", "No equatorial crossing found within one orbit.").
         RETURN 0.
     }
 
@@ -137,10 +133,8 @@ FUNCTION aoso_kscreturn_add_plane_align_node {
 
     LOCAL nd IS NODE(t, 0, sign * dv_mag, 0).
     ADD nd.
-    IF DEFINED aoso_log_info {
-        aoso_log_info("KSCRETURN", "Plane-align node added: dv=" + ROUND(sign * dv_mag, 1) +
-            " m/s normal, closing " + ROUND(offset, 2) + " deg to equatorial.").
-    }
+    aoso_log_info("KSCRETURN", "Plane-align node added: dv=" + ROUND(sign * dv_mag, 1) +
+        " m/s normal, closing " + ROUND(offset, 2) + " deg to equatorial.").
     RETURN nd.
 }
 
@@ -178,9 +172,7 @@ FUNCTION aoso_kscreturn_add_best_deorbit_node {
     LOCAL target_pe_alt IS aoso_deorbit_target_periapsis_alt().
 
     IF PERIAPSIS <= target_pe_alt {
-        IF DEFINED aoso_log_info {
-            aoso_log_info("KSCRETURN", "Periapsis already at/below target; delegating to landing/deorbit.ks.").
-        }
+        aoso_log_info("KSCRETURN", "Periapsis already at/below target; delegating to landing/deorbit.ks.").
         RETURN aoso_deorbit_add_node(target_pe_alt, TRUE).
     }
 
@@ -204,13 +196,11 @@ FUNCTION aoso_kscreturn_add_best_deorbit_node {
     LOCAL nd IS NODE(burn_t, 0, 0, dv).
     ADD nd.
 
-    IF DEFINED aoso_log_info {
-        IF best_miss >= 0 {
-            aoso_log_info("KSCRETURN", "Deorbit node added: delay=" + best_delay + " orbit(s), predicted entry-interface miss=" +
-                ROUND(best_miss, 0) + "m.").
-        } ELSE {
-            aoso_log_warn("KSCRETURN", "No ballistic entry-interface crossing found for any candidate; deorbiting immediately without a distance prediction.").
-        }
+    IF best_miss >= 0 {
+        aoso_log_info("KSCRETURN", "Deorbit node added: delay=" + best_delay + " orbit(s), predicted entry-interface miss=" +
+            ROUND(best_miss, 0) + "m.").
+    } ELSE {
+        aoso_log_warn("KSCRETURN", "No ballistic entry-interface crossing found for any candidate; deorbiting immediately without a distance prediction.").
     }
     RETURN nd.
 }
@@ -227,9 +217,7 @@ FUNCTION aoso_kscreturn_plan_entry {
     LOCK THROTTLE TO 0.
 
     IF SHIP:STATUS <> "ORBITING" {
-        IF DEFINED aoso_log_error {
-            aoso_log_error("KSCRETURN", "Ship must be in a stable orbit around " + SHIP:BODY:NAME + " before precision return can plan.").
-        }
+        aoso_log_error("KSCRETURN", "Ship must be in a stable orbit around " + SHIP:BODY:NAME + " before precision return can plan.").
         aoso_state_abort(AOSO_PRECISION).
         RETURN.
     }
@@ -278,11 +266,9 @@ FUNCTION aoso_kscreturn_deorbit_entry {
 
 FUNCTION aoso_kscreturn_deorbit_execute {
     PARAMETER data.
-    IF DEFINED aoso_fuel_abort_check {
-        IF aoso_fuel_abort_check() {
-            aoso_state_abort(AOSO_PRECISION).
-            RETURN.
-        }
+    IF aoso_fuel_abort_check() {
+        aoso_state_abort(AOSO_PRECISION).
+        RETURN.
     }
     IF aoso_maneuver_execute_next() {
         aoso_state_transition(AOSO_PRECISION, "HANDOFF").
@@ -301,31 +287,27 @@ FUNCTION aoso_kscreturn_deorbit_execute {
 // there (see that file's header).
 FUNCTION aoso_kscreturn_handoff_entry {
     PARAMETER data.
-    IF DEFINED aoso_log_info {
-        LOCAL miss IS aoso_targeting_predicted_miss_m(aoso_targeting_interface_alt(), 0, aoso_targeting_site()).
-        IF miss < 0 {
-            IF DEFINED aoso_log_warn { aoso_log_warn("KSCRETURN", "Could not predict an entry-interface miss distance for this trajectory."). }
-        } ELSE IF miss <= aoso_config_get("PRECISION_LANDING_RADIUS", 150) {
-            aoso_log_info("KSCRETURN", "Predicted entry-interface miss=" + ROUND(miss, 0) + "m -- within PRECISION_LANDING_RADIUS.").
-        } ELSE {
-            IF DEFINED aoso_log_warn { aoso_log_warn("KSCRETURN", "Predicted entry-interface miss=" + ROUND(miss, 0) + "m -- outside PRECISION_LANDING_RADIUS."). }
-        }
+    LOCAL miss IS aoso_targeting_predicted_miss_m(aoso_targeting_interface_alt(), 0, aoso_targeting_site()).
+    IF miss < 0 {
+        aoso_log_warn("KSCRETURN", "Could not predict an entry-interface miss distance for this trajectory.").
+    } ELSE IF miss <= aoso_config_get("PRECISION_LANDING_RADIUS", 150) {
+        aoso_log_info("KSCRETURN", "Predicted entry-interface miss=" + ROUND(miss, 0) + "m -- within PRECISION_LANDING_RADIUS.").
+    } ELSE {
+        aoso_log_warn("KSCRETURN", "Predicted entry-interface miss=" + ROUND(miss, 0) + "m -- outside PRECISION_LANDING_RADIUS.").
     }
-    IF DEFINED aoso_descent_start { aoso_descent_start(). }
+    aoso_descent_start().
     aoso_state_transition(AOSO_PRECISION, "DONE").
 }
 
 FUNCTION aoso_kscreturn_done_entry {
     PARAMETER data.
-    IF DEFINED aoso_log_info {
-        aoso_log_info("KSCRETURN", "Precision return handed off to landing/descent.ks.").
-    }
+    aoso_log_info("KSCRETURN", "Precision return handed off to landing/descent.ks.").
 }
 
 FUNCTION aoso_kscreturn_aborted_entry {
     PARAMETER data.
     LOCK THROTTLE TO 0.
-    IF DEFINED aoso_log_error { aoso_log_error("KSCRETURN", "Precision KSC return aborted."). }
+    aoso_log_error("KSCRETURN", "Precision KSC return aborted.").
 }
 
 FUNCTION aoso_kscreturn_define_states {
@@ -353,9 +335,7 @@ FUNCTION aoso_kscreturn_update {
 
 FUNCTION aoso_kscreturn_register_task {
     PARAMETER interval_s IS 0.1.
-    IF DEFINED aoso_sched_add {
-        aoso_sched_add("precision_return", interval_s, aoso_kscreturn_update@).
-    }
+    aoso_sched_add("precision_return", interval_s, aoso_kscreturn_update@).
 }
 
 FUNCTION aoso_kscreturn_is_done {

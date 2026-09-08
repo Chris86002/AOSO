@@ -35,16 +35,12 @@ FUNCTION aoso_deorbit_add_node {
     IF NOT has_target { SET target_pe_alt TO aoso_deorbit_target_periapsis_alt(). }
 
     IF PERIAPSIS <= target_pe_alt {
-        IF DEFINED aoso_log_info {
-            aoso_log_info("DEORBIT", "Periapsis already at/below target; no deorbit burn needed.").
-        }
+        aoso_log_info("DEORBIT", "Periapsis already at/below target; no deorbit burn needed.").
         RETURN 0.
     }
 
     LOCAL nd IS aoso_hohmann_add_periapsis_change(target_pe_alt).
-    IF DEFINED aoso_log_info {
-        aoso_log_info("DEORBIT", "Deorbit node added: target periapsis=" + ROUND(target_pe_alt, 0) + "m.").
-    }
+    aoso_log_info("DEORBIT", "Deorbit node added: target periapsis=" + ROUND(target_pe_alt, 0) + "m.").
     RETURN nd.
 }
 

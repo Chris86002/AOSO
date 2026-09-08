@@ -87,9 +87,7 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
 
     LOCAL wait_s IS aoso_rendezvous_wait_time_to_transfer_s(target_orbitable).
     IF wait_s < 0 {
-        IF DEFINED aoso_log_warn {
-            aoso_log_warn("RENDEZVOUS", "Ship and target periods match; no transfer window exists.").
-        }
+        aoso_log_warn("RENDEZVOUS", "Ship and target periods match; no transfer window exists.").
         RETURN 0.
     }
 
@@ -104,9 +102,7 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
 
     LOCAL nd IS NODE(TIME:SECONDS + wait_s, 0, 0, dv).
     ADD nd.
-    IF DEFINED aoso_log_info {
-        aoso_log_info("RENDEZVOUS", "Phasing transfer node added: dv=" + ROUND(dv, 1) +
-            " m/s in " + ROUND(wait_s, 0) + "s.").
-    }
+    aoso_log_info("RENDEZVOUS", "Phasing transfer node added: dv=" + ROUND(dv, 1) +
+        " m/s in " + ROUND(wait_s, 0) + "s.").
     RETURN nd.
 }

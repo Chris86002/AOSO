@@ -34,7 +34,7 @@ FUNCTION aoso_hud_mission_status {
     IF DEFINED AOSO_MISSION {
         IF AOSO_MISSION["current"] <> "" {
             LOCAL step_name IS "".
-            IF DEFINED aoso_mission_current_step_name { SET step_name TO aoso_mission_current_step_name(). }
+            SET step_name TO aoso_mission_current_step_name().
             RETURN AOSO_MISSION["current"] + " / " + step_name.
         }
     }
@@ -43,11 +43,11 @@ FUNCTION aoso_hud_mission_status {
 
 FUNCTION aoso_hud_draw {
     LOCAL ec_pct IS 0.
-    IF DEFINED aoso_power_ec_pct { SET ec_pct TO aoso_power_ec_pct(). }
+    SET ec_pct TO aoso_power_ec_pct().
     LOCAL fuel_pct IS 0.
-    IF DEFINED aoso_stage_propellant_pct { SET fuel_pct TO aoso_stage_propellant_pct(). }
+    SET fuel_pct TO aoso_stage_propellant_pct().
     LOCAL watchdog_status IS "OK".
-    IF DEFINED aoso_watchdog_is_tripped AND aoso_watchdog_is_tripped() { SET watchdog_status TO "TRIPPED". }
+    IF aoso_watchdog_is_tripped() { SET watchdog_status TO "TRIPPED". }
     LOCAL mode IS "AUTO".
     IF aoso_config_get("SAFE_MODE", FALSE) { SET mode TO "SAFE". }
 
@@ -66,7 +66,5 @@ FUNCTION aoso_hud_draw {
 // vehicle/staging.ks's aoso_staging_register_task().
 FUNCTION aoso_hud_register_task {
     PARAMETER interval_s IS 1.
-    IF DEFINED aoso_sched_add {
-        aoso_sched_add("hud", interval_s, aoso_hud_draw@).
-    }
+    aoso_sched_add("hud", interval_s, aoso_hud_draw@).
 }

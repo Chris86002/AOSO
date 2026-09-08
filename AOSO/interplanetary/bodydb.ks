@@ -48,9 +48,7 @@ FUNCTION aoso_body_database_build {
     FOR b IN all_bodies {
         SET AOSO_BODY_DB[b:NAME] TO aoso_body_database_entry(b).
     }
-    IF DEFINED aoso_log_info {
-        aoso_log_info("BODYDB", "Body database built: " + AOSO_BODY_DB:LENGTH + " bodies.").
-    }
+    aoso_log_info("BODYDB", "Body database built: " + AOSO_BODY_DB:LENGTH + " bodies.").
     RETURN AOSO_BODY_DB.
 }
 

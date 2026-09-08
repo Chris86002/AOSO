@@ -69,7 +69,7 @@ FUNCTION aoso_return_home_arrival_periapsis_alt {
 // or if the underlying burn helper couldn't find a valid solution.
 FUNCTION aoso_return_add_departure_node {
     IF aoso_return_is_home() {
-        IF DEFINED aoso_log_info { aoso_log_info("RETURN", "Already at home body; nothing to depart."). }
+        aoso_log_info("RETURN", "Already at home body; nothing to depart.").
         RETURN 0.
     }
 
@@ -78,9 +78,7 @@ FUNCTION aoso_return_add_departure_node {
     }
 
     IF NOT aoso_moonescape_available() {
-        IF DEFINED aoso_log_error {
-            aoso_log_error("RETURN", SHIP:BODY:NAME + " has no route toward " + aoso_return_home_body():NAME + ".").
-        }
+        aoso_log_error("RETURN", SHIP:BODY:NAME + " has no route toward " + aoso_return_home_body():NAME + ".").
         RETURN 0.
     }
 
@@ -120,11 +118,9 @@ FUNCTION aoso_return_plan_entry {
 
 FUNCTION aoso_return_burn_execute {
     PARAMETER data.
-    IF DEFINED aoso_fuel_abort_check {
-        IF aoso_fuel_abort_check() {
-            aoso_state_abort(AOSO_RETURN).
-            RETURN.
-        }
+    IF aoso_fuel_abort_check() {
+        aoso_state_abort(AOSO_RETURN).
+        RETURN.
     }
     IF aoso_maneuver_execute_next() {
         aoso_state_transition(AOSO_RETURN, "COAST").
@@ -157,15 +153,13 @@ FUNCTION aoso_return_done_entry {
     PARAMETER data.
     LOCK THROTTLE TO 0.
     aoso_steer_release().
-    IF DEFINED aoso_log_info {
-        aoso_log_info("RETURN", "Home body " + aoso_return_home_body():NAME + " reached.").
-    }
+    aoso_log_info("RETURN", "Home body " + aoso_return_home_body():NAME + " reached.").
 }
 
 FUNCTION aoso_return_aborted_entry {
     PARAMETER data.
     LOCK THROTTLE TO 0.
-    IF DEFINED aoso_log_error { aoso_log_error("RETURN", "Return sequence aborted."). }
+    aoso_log_error("RETURN", "Return sequence aborted.").
 }
 
 FUNCTION aoso_return_define_states {
@@ -194,9 +188,7 @@ FUNCTION aoso_return_update {
 
 FUNCTION aoso_return_register_task {
     PARAMETER interval_s IS 0.1.
-    IF DEFINED aoso_sched_add {
-        aoso_sched_add("return_guidance", interval_s, aoso_return_update@).
-    }
+    aoso_sched_add("return_guidance", interval_s, aoso_return_update@).
 }
 
 FUNCTION aoso_return_is_done {

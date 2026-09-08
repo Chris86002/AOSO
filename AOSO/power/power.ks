@@ -37,10 +37,10 @@ FUNCTION aoso_power_panels_auto_check {
     LOCAL should_retract IS aoso_power_panels_should_retract().
     IF should_retract AND PANELS {
         SET PANELS TO FALSE.
-        IF DEFINED aoso_log_info { aoso_log_info("POWER", "Retracting solar panels: airspeed=" + ROUND(SHIP:AIRSPEED, 1) + " m/s."). }
+        aoso_log_info("POWER", "Retracting solar panels: airspeed=" + ROUND(SHIP:AIRSPEED, 1) + " m/s.").
     } ELSE IF NOT should_retract AND NOT PANELS {
         SET PANELS TO TRUE.
-        IF DEFINED aoso_log_info { aoso_log_info("POWER", "Deploying solar panels."). }
+        aoso_log_info("POWER", "Deploying solar panels.").
     }
 }
 
@@ -53,10 +53,10 @@ FUNCTION aoso_power_fuelcells_auto_check {
     LOCAL pct IS aoso_power_ec_pct().
     IF pct <= aoso_config_get("LOW_EC_PCT", 20) AND NOT FUELCELLS {
         SET FUELCELLS TO TRUE.
-        IF DEFINED aoso_log_info { aoso_log_info("POWER", "Fuel cells ON: EC=" + ROUND(pct, 1) + "%."). }
+        aoso_log_info("POWER", "Fuel cells ON: EC=" + ROUND(pct, 1) + "%.").
     } ELSE IF pct >= aoso_config_get("FUEL_CELL_DISABLE_PCT", 90) AND FUELCELLS {
         SET FUELCELLS TO FALSE.
-        IF DEFINED aoso_log_info { aoso_log_info("POWER", "Fuel cells OFF: EC=" + ROUND(pct, 1) + "%."). }
+        aoso_log_info("POWER", "Fuel cells OFF: EC=" + ROUND(pct, 1) + "%.").
     }
 }
 
@@ -71,7 +71,5 @@ FUNCTION aoso_power_auto_manage {
 // vehicle/staging.ks's aoso_staging_register_task().
 FUNCTION aoso_power_register_task {
     PARAMETER interval_s IS 1.
-    IF DEFINED aoso_sched_add {
-        aoso_sched_add("auto_power", interval_s, aoso_power_auto_manage@).
-    }
+    aoso_sched_add("auto_power", interval_s, aoso_power_auto_manage@).
 }

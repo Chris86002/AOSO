@@ -56,9 +56,7 @@ FUNCTION aoso_moonescape_add_escape_node {
     PARAMETER target_periapsis_alt.
 
     IF NOT aoso_moonescape_available() {
-        IF DEFINED aoso_log_error {
-            aoso_log_error("MOONESCAPE", SHIP:BODY:NAME + " has no distinct parent body to escape toward.").
-        }
+        aoso_log_error("MOONESCAPE", SHIP:BODY:NAME + " has no distinct parent body to escape toward.").
         RETURN 0.
     }
 
@@ -78,9 +76,7 @@ FUNCTION aoso_moonescape_add_escape_node {
 
     LOCAL burn_eta IS aoso_ejection_burn_eta_for_direction(periapsis_dir).
     IF burn_eta < 0 {
-        IF DEFINED aoso_log_warn {
-            aoso_log_warn("MOONESCAPE", "No valid escape burn point found within one orbit.").
-        }
+        aoso_log_warn("MOONESCAPE", "No valid escape burn point found within one orbit.").
         RETURN 0.
     }
 
@@ -90,9 +86,7 @@ FUNCTION aoso_moonescape_add_escape_node {
 
     LOCAL nd IS NODE(TIME:SECONDS + burn_eta, 0, 0, dv).
     ADD nd.
-    IF DEFINED aoso_log_info {
-        aoso_log_info("MOONESCAPE", "Escape node added: dv=" + ROUND(dv, 1) + " m/s, leaving " +
-            moon:NAME + " for " + moon:BODY:NAME + " in " + ROUND(burn_eta, 0) + "s.").
-    }
+    aoso_log_info("MOONESCAPE", "Escape node added: dv=" + ROUND(dv, 1) + " m/s, leaving " +
+        moon:NAME + " for " + moon:BODY:NAME + " in " + ROUND(burn_eta, 0) + "s.").
     RETURN nd.
 }

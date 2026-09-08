@@ -124,9 +124,7 @@ FUNCTION aoso_interplanetary_add_ejection_node {
     LOCAL v_inf_mag IS ABS(v_inf_signed).
 
     IF v_inf_mag < 0.01 {
-        IF DEFINED aoso_log_info {
-            aoso_log_info("EJECTION", "Departure/arrival bodies already orbit-matched; no ejection burn needed.").
-        }
+        aoso_log_info("EJECTION", "Departure/arrival bodies already orbit-matched; no ejection burn needed.").
         RETURN 0.
     }
 
@@ -143,9 +141,7 @@ FUNCTION aoso_interplanetary_add_ejection_node {
 
     LOCAL burn_eta IS aoso_ejection_burn_eta_for_direction(periapsis_dir).
     IF burn_eta < 0 {
-        IF DEFINED aoso_log_warn {
-            aoso_log_warn("EJECTION", "No valid ejection burn point found within one orbit.").
-        }
+        aoso_log_warn("EJECTION", "No valid ejection burn point found within one orbit.").
         RETURN 0.
     }
 
@@ -155,10 +151,8 @@ FUNCTION aoso_interplanetary_add_ejection_node {
 
     LOCAL nd IS NODE(TIME:SECONDS + burn_eta, 0, 0, dv).
     ADD nd.
-    IF DEFINED aoso_log_info {
-        aoso_log_info("EJECTION", "Ejection node added: dv=" + ROUND(dv, 1) + " m/s, v_inf=" +
-            ROUND(v_inf_mag, 1) + " m/s, in " + ROUND(burn_eta, 0) + "s.").
-    }
+    aoso_log_info("EJECTION", "Ejection node added: dv=" + ROUND(dv, 1) + " m/s, v_inf=" +
+        ROUND(v_inf_mag, 1) + " m/s, in " + ROUND(burn_eta, 0) + "s.").
     RETURN nd.
 }
 
@@ -171,9 +165,7 @@ FUNCTION aoso_interplanetary_add_ejection_node {
 FUNCTION aoso_interplanetary_add_capture_node {
     PARAMETER target_apo_alt.
     LOCAL nd IS aoso_hohmann_add_apoapsis_change(target_apo_alt).
-    IF DEFINED aoso_log_info {
-        aoso_log_info("EJECTION", "Capture node added at " + SHIP:BODY:NAME + ", target apo=" +
-            ROUND(target_apo_alt, 0) + "m.").
-    }
+    aoso_log_info("EJECTION", "Capture node added at " + SHIP:BODY:NAME + ", target apo=" +
+        ROUND(target_apo_alt, 0) + "m.").
     RETURN nd.
 }

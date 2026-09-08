@@ -23,9 +23,7 @@ FUNCTION aoso_maneuver_add_circularize_at_apoapsis {
     LOCAL dv IS aoso_maneuver_circularize_dv_at_apoapsis().
     LOCAL nd IS NODE(TIME:SECONDS + ETA:APOAPSIS, 0, 0, dv).
     ADD nd.
-    IF DEFINED aoso_log_info {
-        aoso_log_info("MANEUVER", "Circularization node added: dv=" + ROUND(dv, 1) + " m/s at apoapsis.").
-    }
+    aoso_log_info("MANEUVER", "Circularization node added: dv=" + ROUND(dv, 1) + " m/s at apoapsis.").
     RETURN nd.
 }
 
@@ -60,7 +58,7 @@ FUNCTION aoso_maneuver_execute_next {
         LOCK THROTTLE TO 0.
         aoso_steer_release().
         REMOVE nd.
-        IF DEFINED aoso_log_info { aoso_log_info("MANEUVER", "Node executed."). }
+        aoso_log_info("MANEUVER", "Node executed.").
         RETURN TRUE.
     }
 
@@ -70,7 +68,7 @@ FUNCTION aoso_maneuver_execute_next {
     }
 
     LOCAL burn_time IS 0.
-    IF DEFINED aoso_perf_burn_time_for_dv { SET burn_time TO aoso_perf_burn_time_for_dv(burn_dv). }
+    SET burn_time TO aoso_perf_burn_time_for_dv(burn_dv).
 
     IF nd:ETA > (burn_time / 2 + 1) {
         LOCK THROTTLE TO 0.
@@ -78,7 +76,7 @@ FUNCTION aoso_maneuver_execute_next {
     }
 
     LOCK THROTTLE TO aoso_maneuver_throttle_for_dv(burn_dv).
-    IF DEFINED aoso_staging_auto_check { aoso_staging_auto_check(). }
+    aoso_staging_auto_check().
     RETURN FALSE.
 }
 
