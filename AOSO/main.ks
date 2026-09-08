@@ -86,12 +86,12 @@ RUN ONCE "AOSO/ux/telemetry".
 // responsibility of whatever builds AOSO_MISSION_PLAN (or drives that FSM
 // directly), same as every prior phase.
 FUNCTION aoso_main_register_tasks {
-    IF DEFINED aoso_staging_register_task { aoso_staging_register_task(). }
-    IF DEFINED aoso_power_register_task { aoso_power_register_task(). }
-    IF DEFINED aoso_checkpoints_register_task { aoso_checkpoints_register_task(). }
-    IF DEFINED aoso_watchdog_register_task { aoso_watchdog_register_task(). }
-    IF DEFINED aoso_hud_register_task { aoso_hud_register_task(). }
-    IF DEFINED aoso_telemetry_register_task { aoso_telemetry_register_task(). }
+    aoso_staging_register_task().
+    aoso_power_register_task().
+    aoso_checkpoints_register_task().
+    aoso_watchdog_register_task().
+    aoso_hud_register_task().
+    aoso_telemetry_register_task().
 }
 
 FUNCTION aoso_main {
@@ -102,7 +102,7 @@ FUNCTION aoso_main {
         RUN ONCE "AOSO/mission_plan".
     }
 
-    IF DEFINED aoso_log_info { aoso_log_info("MAIN", "Entering main loop."). }
+    aoso_log_info("MAIN", "Entering main loop.").
 
     UNTIL FALSE {
         aoso_sched_run().

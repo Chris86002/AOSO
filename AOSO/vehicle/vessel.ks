@@ -78,10 +78,8 @@ FUNCTION aoso_vessel_scan {
         "scanned_at", TIME:SECONDS
     ).
 
-    IF DEFINED aoso_log_info {
-        aoso_log_info("VESSEL", "Scanned " + SHIP:NAME + ": " + plist:LENGTH + " parts, " +
-            elist:LENGTH + " engines, " + (STAGE:NUMBER + 1) + " stages.").
-    }
+    aoso_log_info("VESSEL", "Scanned " + SHIP:NAME + ": " + plist:LENGTH + " parts, " +
+        elist:LENGTH + " engines, " + (STAGE:NUMBER + 1) + " stages.").
 
     aoso_vessel_save().
     RETURN AOSO_VESSEL.

@@ -173,11 +173,9 @@ FUNCTION aoso_mission_start_step_at {
     }
 
     LOCAL mission_step IS AOSO_MISSION_PLAN[plan_index].
-    IF DEFINED aoso_log_info {
-        aoso_log_info("MISSION", "Step " + (plan_index + 1) + "/" + AOSO_MISSION_PLAN:LENGTH + ": " + mission_step["name"]).
-    }
+    aoso_log_info("MISSION", "Step " + (plan_index + 1) + "/" + AOSO_MISSION_PLAN:LENGTH + ": " + mission_step["name"]).
     IF mission_step["start"]:ISTYPE("KOSDelegate") { mission_step["start"]:CALL(). }
-    IF DEFINED aoso_checkpoints_save { aoso_checkpoints_save(plan_index, mission_step["name"]). }
+    aoso_checkpoints_save(plan_index, mission_step["name"]).
 }
 
 FUNCTION aoso_mission_on_abort {
@@ -203,13 +201,13 @@ FUNCTION aoso_mission_running_execute {
     mission_step["update"]:CALL().
 
     IF mission_step["is_aborted"]:ISTYPE("KOSDelegate") AND mission_step["is_aborted"]:CALL() {
-        IF DEFINED aoso_log_error { aoso_log_error("MISSION", "Step aborted: " + mission_step["name"]). }
+        aoso_log_error("MISSION", "Step aborted: " + mission_step["name"]).
         aoso_state_abort(AOSO_MISSION).
         RETURN.
     }
 
     IF mission_step["is_done"]:CALL() {
-        IF DEFINED aoso_log_info { aoso_log_info("MISSION", "Step complete: " + mission_step["name"]). }
+        aoso_log_info("MISSION", "Step complete: " + mission_step["name"]).
         aoso_mission_start_step_at(data["index"] + 1, data).
     }
 }
@@ -218,18 +216,14 @@ FUNCTION aoso_mission_done_entry {
     PARAMETER data.
     LOCK THROTTLE TO 0.
     aoso_steer_release().
-    IF DEFINED aoso_log_info {
-        aoso_log_info("MISSION", "Mission plan complete (" + AOSO_MISSION_PLAN:LENGTH + " step(s)).").
-    }
-    IF DEFINED aoso_checkpoints_clear { aoso_checkpoints_clear(). }
+    aoso_log_info("MISSION", "Mission plan complete (" + AOSO_MISSION_PLAN:LENGTH + " step(s)).").
+    aoso_checkpoints_clear().
 }
 
 FUNCTION aoso_mission_aborted_entry {
     PARAMETER data.
     LOCK THROTTLE TO 0.
-    IF DEFINED aoso_log_error {
-        aoso_log_error("MISSION", "Mission aborted at step " + (data["index"] + 1) + "/" + AOSO_MISSION_PLAN:LENGTH + ".").
-    }
+    aoso_log_error("MISSION", "Mission aborted at step " + (data["index"] + 1) + "/" + AOSO_MISSION_PLAN:LENGTH + ".").
 }
 
 FUNCTION aoso_mission_define_states {
@@ -274,9 +268,7 @@ FUNCTION aoso_mission_update {
 
 FUNCTION aoso_mission_register_task {
     PARAMETER interval_s IS 0.05.
-    IF DEFINED aoso_sched_add {
-        aoso_sched_add("mission", interval_s, aoso_mission_update@).
-    }
+    aoso_sched_add("mission", interval_s, aoso_mission_update@).
 }
 
 FUNCTION aoso_mission_is_done {

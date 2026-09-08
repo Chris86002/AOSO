@@ -36,19 +36,15 @@ FUNCTION aoso_checkpoints_save {
         "saved_at", TIME:SECONDS
     ).
     aoso_json_write(AOSO_CONST["CHECKPOINT_FILE"], AOSO_CHECKPOINT).
-    IF DEFINED aoso_log_info {
-        aoso_log_info("CHECKPOINT", "Saved at step " + (step_index + 1) + ": " + step_name).
-    }
+    aoso_log_info("CHECKPOINT", "Saved at step " + (step_index + 1) + ": " + step_name).
 }
 
 FUNCTION aoso_checkpoints_load {
     LOCAL loaded IS aoso_json_read(AOSO_CONST["CHECKPOINT_FILE"], 0).
     IF loaded:ISTYPE("Lexicon") AND loaded:HASKEY("step_index") {
         SET AOSO_CHECKPOINT TO loaded.
-        IF DEFINED aoso_log_info {
-            aoso_log_info("CHECKPOINT", "Loaded checkpoint: step " + (AOSO_CHECKPOINT["step_index"] + 1) +
-                " (" + AOSO_CHECKPOINT["step_name"] + ").").
-        }
+        aoso_log_info("CHECKPOINT", "Loaded checkpoint: step " + (AOSO_CHECKPOINT["step_index"] + 1) +
+            " (" + AOSO_CHECKPOINT["step_name"] + ").").
         RETURN TRUE.
     }
     RETURN FALSE.
@@ -98,7 +94,5 @@ FUNCTION aoso_checkpoints_autosave_tick {
 }
 
 FUNCTION aoso_checkpoints_register_task {
-    IF DEFINED aoso_sched_add {
-        aoso_sched_add("checkpoint_autosave", aoso_config_get("AUTO_CHECKPOINT_INTERVAL", 30), aoso_checkpoints_autosave_tick@).
-    }
+    aoso_sched_add("checkpoint_autosave", aoso_config_get("AUTO_CHECKPOINT_INTERVAL", 30), aoso_checkpoints_autosave_tick@).
 }

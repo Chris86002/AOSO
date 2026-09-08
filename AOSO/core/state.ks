@@ -56,7 +56,7 @@ FUNCTION aoso_state_transition {
     }
 
     IF NOT machine["states"]:HASKEY(new_state) {
-        IF DEFINED aoso_log_error { aoso_log_error("STATE", "Unknown state requested: " + new_state). }
+        aoso_log_error("STATE", "Unknown state requested: " + new_state).
         RETURN FALSE.
     }
 
@@ -69,7 +69,7 @@ FUNCTION aoso_state_transition {
 
     LOCAL st IS machine["states"][new_state].
     IF st["entry"]:ISTYPE("KOSDelegate") { st["entry"]:CALL(machine["data"]). }
-    IF DEFINED aoso_log_info { aoso_log_info("STATE", "-> " + new_state). }
+    aoso_log_info("STATE", "-> " + new_state).
     RETURN TRUE.
 }
 
@@ -81,7 +81,7 @@ FUNCTION aoso_state_update {
     LOCAL st IS machine["states"][machine["current"]].
 
     IF st["timeout"] > 0 AND (TIME:SECONDS - machine["entered_at"]) > st["timeout"] {
-        IF DEFINED aoso_log_warn { aoso_log_warn("STATE", "Timeout in " + machine["current"]). }
+        aoso_log_warn("STATE", "Timeout in " + machine["current"]).
         IF st["on_timeout"]:ISTYPE("KOSDelegate") {
             LOCAL retry IS st["on_timeout"]:CALL(machine["data"]).
             IF retry = TRUE {
@@ -103,7 +103,7 @@ FUNCTION aoso_state_abort {
         LOCAL st IS machine["states"][machine["current"]].
         IF st["on_abort"]:ISTYPE("KOSDelegate") { st["on_abort"]:CALL(machine["data"]). }
     }
-    IF DEFINED aoso_log_warn { aoso_log_warn("STATE", "Abort requested in " + machine["current"]). }
+    aoso_log_warn("STATE", "Abort requested in " + machine["current"]).
 }
 
 // --- Persistence: survive a reload/scene-change/resume ------------------

@@ -28,17 +28,13 @@ FUNCTION aoso_planechange_add_node_for_target {
 
     LOCAL rel_incl IS aoso_orbit_relative_inclination_deg(SHIP, target_orbitable).
     IF rel_incl < tolerance_deg {
-        IF DEFINED aoso_log_info {
-            aoso_log_info("PLANECHANGE", "Already co-planar within " + tolerance_deg + " deg; no node added.").
-        }
+        aoso_log_info("PLANECHANGE", "Already co-planar within " + tolerance_deg + " deg; no node added.").
         RETURN 0.
     }
 
     LOCAL etas IS aoso_orbit_relative_node_etas(SHIP, target_orbitable).
     IF etas:LENGTH = 0 OR node_index >= etas:LENGTH {
-        IF DEFINED aoso_log_warn {
-            aoso_log_warn("PLANECHANGE", "No relative node found within one orbit.").
-        }
+        aoso_log_warn("PLANECHANGE", "No relative node found within one orbit.").
         RETURN 0.
     }
 
@@ -60,9 +56,7 @@ FUNCTION aoso_planechange_add_node_for_target {
 
     LOCAL nd IS NODE(t, 0, sign * dv_mag, 0).
     ADD nd.
-    IF DEFINED aoso_log_info {
-        aoso_log_info("PLANECHANGE", "Plane-change node added: dv=" + ROUND(sign * dv_mag, 1) +
-            " m/s normal, closing " + ROUND(rel_incl, 2) + " deg relative inclination.").
-    }
+    aoso_log_info("PLANECHANGE", "Plane-change node added: dv=" + ROUND(sign * dv_mag, 1) +
+        " m/s normal, closing " + ROUND(rel_incl, 2) + " deg relative inclination.").
     RETURN nd.
 }

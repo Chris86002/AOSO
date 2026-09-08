@@ -31,13 +31,11 @@ FUNCTION aoso_staging_should_stage {
 
 FUNCTION aoso_staging_auto_check {
     IF aoso_staging_should_stage() {
-        IF DEFINED aoso_log_info {
-            aoso_log_info("STAGING", "Auto-staging: flameout detected, stage " + STAGE:NUMBER + " -> " + (STAGE:NUMBER - 1)).
-        }
+        aoso_log_info("STAGING", "Auto-staging: flameout detected, stage " + STAGE:NUMBER + " -> " + (STAGE:NUMBER - 1)).
         STAGE.
         WAIT UNTIL STAGE:READY.
-        IF DEFINED aoso_vessel_scan { aoso_vessel_scan(). }
-        IF DEFINED aoso_capabilities_refresh { aoso_capabilities_refresh(). }
+        aoso_vessel_scan().
+        aoso_capabilities_refresh().
     }
 }
 
@@ -46,7 +44,5 @@ FUNCTION aoso_staging_auto_check {
 // (e.g. a single manual check) without registering a recurring task.
 FUNCTION aoso_staging_register_task {
     PARAMETER interval_s IS 0.5.
-    IF DEFINED aoso_sched_add {
-        aoso_sched_add("auto_staging", interval_s, aoso_staging_auto_check@).
-    }
+    aoso_sched_add("auto_staging", interval_s, aoso_staging_auto_check@).
 }

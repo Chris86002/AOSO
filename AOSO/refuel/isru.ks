@@ -52,7 +52,7 @@ FUNCTION aoso_refuel_deploy_entry {
     PARAMETER data.
     SET DEPLOYDRILLS TO TRUE.
     IF aoso_vessel_get("has_radiators", FALSE) { SET RADIATORS TO TRUE. }
-    IF DEFINED aoso_log_info { aoso_log_info("REFUEL", "Deploying drills/radiators."). }
+    aoso_log_info("REFUEL", "Deploying drills/radiators.").
 }
 
 // DEPLOYDRILLS reflects the harvester's actual deploy animation state, so
@@ -68,7 +68,7 @@ FUNCTION aoso_refuel_deploy_execute {
 
 FUNCTION aoso_refuel_deploy_on_timeout {
     PARAMETER data.
-    IF DEFINED aoso_log_warn { aoso_log_warn("REFUEL", "Drill deploy timed out; starting harvest anyway."). }
+    aoso_log_warn("REFUEL", "Drill deploy timed out; starting harvest anyway.").
     aoso_state_transition(AOSO_REFUEL, "HARVEST").
 }
 
@@ -76,13 +76,13 @@ FUNCTION aoso_refuel_harvest_entry {
     PARAMETER data.
     SET DRILLS TO TRUE.
     SET ISRU TO TRUE.
-    IF DEFINED aoso_log_info { aoso_log_info("REFUEL", "Harvesting/converting started."). }
+    aoso_log_info("REFUEL", "Harvesting/converting started.").
 }
 
 FUNCTION aoso_refuel_harvest_execute {
     PARAMETER data.
     IF aoso_refuel_ore_depleted() {
-        IF DEFINED aoso_log_warn { aoso_log_warn("REFUEL", "Ore depleted before targets were full."). }
+        aoso_log_warn("REFUEL", "Ore depleted before targets were full.").
         aoso_state_transition(AOSO_REFUEL, "STOW").
         RETURN.
     }
@@ -97,7 +97,7 @@ FUNCTION aoso_refuel_stow_entry {
     SET ISRU TO FALSE.
     IF aoso_vessel_get("has_radiators", FALSE) { SET RADIATORS TO FALSE. }
     SET DEPLOYDRILLS TO FALSE.
-    IF DEFINED aoso_log_info { aoso_log_info("REFUEL", "Harvest complete; drills/converters stowed."). }
+    aoso_log_info("REFUEL", "Harvest complete; drills/converters stowed.").
     aoso_state_transition(AOSO_REFUEL, "DONE").
 }
 
@@ -122,7 +122,7 @@ FUNCTION aoso_refuel_start {
     PARAMETER target_names IS LIST("LiquidFuel", "Oxidizer").
 
     IF NOT aoso_refuel_available() {
-        IF DEFINED aoso_log_warn { aoso_log_warn("REFUEL", "No harvester/converter aboard; refuel not started."). }
+        aoso_log_warn("REFUEL", "No harvester/converter aboard; refuel not started.").
         RETURN FALSE.
     }
 
@@ -134,7 +134,7 @@ FUNCTION aoso_refuel_start {
 
     SET AOSO_REFUEL["data"] TO LEXICON("targets", target_names).
     aoso_state_transition(AOSO_REFUEL, "DEPLOY").
-    IF DEFINED aoso_log_info { aoso_log_info("REFUEL", "Refuel sequence started."). }
+    aoso_log_info("REFUEL", "Refuel sequence started.").
     RETURN TRUE.
 }
 
@@ -146,7 +146,5 @@ FUNCTION aoso_refuel_tick {
 // landing/descent.ks's aoso_descent_register_task().
 FUNCTION aoso_refuel_register_task {
     PARAMETER interval_s IS 1.
-    IF DEFINED aoso_sched_add {
-        aoso_sched_add("refuel_isru", interval_s, aoso_refuel_tick@).
-    }
+    aoso_sched_add("refuel_isru", interval_s, aoso_refuel_tick@).
 }

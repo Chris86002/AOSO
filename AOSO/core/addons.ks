@@ -22,12 +22,10 @@ FUNCTION aoso_addons_detect {
     SET AOSO_ADDON_STATUS["SIMPLEJSON"] TO ADDONS:AVAILABLE("simpleJson").
     SET AOSO_ADDON_STATUS["CHECKED"] TO TRUE.
 
-    IF DEFINED aoso_log {
-        aoso_log("INFO", "ADDONS", "MechJeb=" + AOSO_ADDON_STATUS["MECHJEB"] +
-            " Astrogator=" + AOSO_ADDON_STATUS["ASTROGATOR"] +
-            " KER=" + AOSO_ADDON_STATUS["KER"] +
-            " simpleJson=" + AOSO_ADDON_STATUS["SIMPLEJSON"]).
-    }
+    aoso_log("INFO", "ADDONS", "MechJeb=" + AOSO_ADDON_STATUS["MECHJEB"] +
+        " Astrogator=" + AOSO_ADDON_STATUS["ASTROGATOR"] +
+        " KER=" + AOSO_ADDON_STATUS["KER"] +
+        " simpleJson=" + AOSO_ADDON_STATUS["SIMPLEJSON"]).
     RETURN AOSO_ADDON_STATUS.
 }
 

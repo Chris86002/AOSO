@@ -66,10 +66,8 @@ FUNCTION aoso_capabilities_refresh {
         "refreshed_at", TIME:SECONDS
     ).
 
-    IF DEFINED aoso_log_debug {
-        aoso_log_debug("CAPS", "TWR=" + ROUND(twr, 2) + " dV(stage)=" + ROUND(dv_now, 0) +
-            " dV(stage,vac)=" + ROUND(dv_vac, 0)).
-    }
+    aoso_log_debug("CAPS", "TWR=" + ROUND(twr, 2) + " dV(stage)=" + ROUND(dv_now, 0) +
+        " dV(stage,vac)=" + ROUND(dv_vac, 0)).
 
     RETURN AOSO_CAPS.
 }

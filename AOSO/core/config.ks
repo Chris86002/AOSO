@@ -64,7 +64,7 @@ FUNCTION aoso_config_load {
             SET AOSO_CONFIG[k] TO loaded[k].
         }
     }
-    IF DEFINED aoso_log_set_level { aoso_log_set_level(aoso_config_get("LOG_LEVEL", "DEBUG")). }
+    aoso_log_set_level(aoso_config_get("LOG_LEVEL", "DEBUG")).
     RETURN AOSO_CONFIG.
 }
 

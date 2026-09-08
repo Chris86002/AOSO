@@ -37,9 +37,7 @@ FUNCTION aoso_hohmann_add_apoapsis_change {
     LOCAL dv IS aoso_hohmann_dv_at_periapsis_for_apoapsis(target_apo_alt).
     LOCAL nd IS NODE(TIME:SECONDS + ETA:PERIAPSIS, 0, 0, dv).
     ADD nd.
-    IF DEFINED aoso_log_info {
-        aoso_log_info("HOHMANN", "Apoapsis-change node added: dv=" + ROUND(dv, 1) + " m/s at periapsis, target apo=" + ROUND(target_apo_alt, 0) + "m.").
-    }
+    aoso_log_info("HOHMANN", "Apoapsis-change node added: dv=" + ROUND(dv, 1) + " m/s at periapsis, target apo=" + ROUND(target_apo_alt, 0) + "m.").
     RETURN nd.
 }
 
@@ -48,9 +46,7 @@ FUNCTION aoso_hohmann_add_periapsis_change {
     LOCAL dv IS aoso_hohmann_dv_at_apoapsis_for_periapsis(target_peri_alt).
     LOCAL nd IS NODE(TIME:SECONDS + ETA:APOAPSIS, 0, 0, dv).
     ADD nd.
-    IF DEFINED aoso_log_info {
-        aoso_log_info("HOHMANN", "Periapsis-change node added: dv=" + ROUND(dv, 1) + " m/s at apoapsis, target peri=" + ROUND(target_peri_alt, 0) + "m.").
-    }
+    aoso_log_info("HOHMANN", "Periapsis-change node added: dv=" + ROUND(dv, 1) + " m/s at apoapsis, target peri=" + ROUND(target_peri_alt, 0) + "m.").
     RETURN nd.
 }
 
@@ -84,9 +80,7 @@ FUNCTION aoso_hohmann_add_circularize_at_periapsis {
     LOCAL dv IS aoso_hohmann_circularize_dv_at_periapsis().
     LOCAL nd IS NODE(TIME:SECONDS + ETA:PERIAPSIS, 0, 0, dv).
     ADD nd.
-    IF DEFINED aoso_log_info {
-        aoso_log_info("HOHMANN", "Circularization node added: dv=" + ROUND(dv, 1) + " m/s at periapsis.").
-    }
+    aoso_log_info("HOHMANN", "Circularization node added: dv=" + ROUND(dv, 1) + " m/s at periapsis.").
     RETURN nd.
 }
 

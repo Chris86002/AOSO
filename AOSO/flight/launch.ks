@@ -5,7 +5,7 @@
 
 FUNCTION aoso_launch_countdown {
     PARAMETER seconds IS 5.
-    IF DEFINED aoso_log_info { aoso_log_info("LAUNCH", "T-minus " + seconds + "s"). }
+    aoso_log_info("LAUNCH", "T-minus " + seconds + "s").
     FROM { LOCAL t IS seconds. } UNTIL t <= 0 STEP { SET t TO t - 1. } DO {
         PRINT "T-" + t + "  ".
         WAIT 1.
@@ -26,10 +26,8 @@ FUNCTION aoso_launch_ignite {
         SET attempts TO attempts + 1.
     }
 
-    IF DEFINED aoso_log_info {
-        aoso_log_info("LAUNCH", "Ignition: AvailableThrust=" + ROUND(SHIP:AVAILABLETHRUST, 1) +
-            " after " + attempts + " stage event(s).").
-    }
+    aoso_log_info("LAUNCH", "Ignition: AvailableThrust=" + ROUND(SHIP:AVAILABLETHRUST, 1) +
+        " after " + attempts + " stage event(s).").
 
     RETURN SHIP:AVAILABLETHRUST > 0.
 }
@@ -49,11 +47,11 @@ FUNCTION aoso_launch_sequence {
     aoso_launch_countdown(countdown_s).
     LOCAL ignited IS aoso_launch_ignite().
     IF NOT ignited {
-        IF DEFINED aoso_log_error { aoso_log_error("LAUNCH", "No thrust after ignition attempts - aborting sequence."). }
+        aoso_log_error("LAUNCH", "No thrust after ignition attempts - aborting sequence.").
         RETURN FALSE.
     }
 
     aoso_launch_wait_for_liftoff().
-    IF DEFINED aoso_log_info { aoso_log_info("LAUNCH", "Liftoff."). }
+    aoso_log_info("LAUNCH", "Liftoff.").
     RETURN TRUE.
 }

@@ -147,12 +147,12 @@ FUNCTION aoso_docking_on_abort {
 // TRUE if the caller should stop (an abort was triggered).
 FUNCTION aoso_docking_check_abort {
     IF NOT aoso_docking_target_ok() {
-        IF DEFINED aoso_log_error { aoso_log_error("DOCKING", "Target docking port lost."). }
+        aoso_log_error("DOCKING", "Target docking port lost.").
         aoso_state_abort(AOSO_DOCKING).
         RETURN TRUE.
     }
     IF aoso_docking_monoprop_pct() <= aoso_config_get("ABORT_FUEL_PCT", 3) {
-        IF DEFINED aoso_log_warn { aoso_log_warn("DOCKING", "MonoPropellant at/below abort threshold."). }
+        aoso_log_warn("DOCKING", "MonoPropellant at/below abort threshold.").
         aoso_state_abort(AOSO_DOCKING).
         RETURN TRUE.
     }
@@ -163,7 +163,7 @@ FUNCTION aoso_docking_approach_entry {
     PARAMETER data.
     RCS ON.
     data["own_port"]:CONTROLFROM().
-    IF DEFINED aoso_log_info { aoso_log_info("DOCKING", "Approach started toward " + TARGET:NAME + "."). }
+    aoso_log_info("DOCKING", "Approach started toward " + TARGET:NAME + ".").
 }
 
 FUNCTION aoso_docking_approach_execute {
@@ -206,14 +206,14 @@ FUNCTION aoso_docking_done_entry {
     PARAMETER data.
     aoso_docking_zero_translation().
     aoso_steer_release().
-    IF DEFINED aoso_log_info { aoso_log_info("DOCKING", "Docked."). }
+    aoso_log_info("DOCKING", "Docked.").
 }
 
 FUNCTION aoso_docking_aborted_entry {
     PARAMETER data.
     aoso_docking_zero_translation().
     aoso_steer_release().
-    IF DEFINED aoso_log_error { aoso_log_error("DOCKING", "Docking aborted."). }
+    aoso_log_error("DOCKING", "Docking aborted.").
 }
 
 FUNCTION aoso_docking_define_states {
@@ -232,7 +232,7 @@ FUNCTION aoso_docking_start {
 
     LOCAL own_port IS aoso_docking_own_port().
     IF own_port = 0 OR NOT aoso_docking_target_ok() {
-        IF DEFINED aoso_log_error { aoso_log_error("DOCKING", "No free own docking port or no target docking port set."). }
+        aoso_log_error("DOCKING", "No free own docking port or no target docking port set.").
         SET AOSO_DOCKING["data"] TO LEXICON("own_port", 0).
         aoso_state_transition(AOSO_DOCKING, "ABORTED").
         RETURN.
@@ -248,9 +248,7 @@ FUNCTION aoso_docking_update {
 
 FUNCTION aoso_docking_register_task {
     PARAMETER interval_s IS 0.05.
-    IF DEFINED aoso_sched_add {
-        aoso_sched_add("docking", interval_s, aoso_docking_update@).
-    }
+    aoso_sched_add("docking", interval_s, aoso_docking_update@).
 }
 
 FUNCTION aoso_docking_is_done {
