@@ -97,24 +97,24 @@ FUNCTION aoso_addon_simplejson_available {
 }
 
 FUNCTION aoso_addon_simplejson_write {
-    PARAMETER path.
+    PARAMETER file_path.
     PARAMETER value.
     // simpleJson exposes BUILTIN:JSONSTRINGIFY in some builds; that suffix is
     // not consistently documented across kOS versions, so to guarantee
     // correctness we always use the pure-kOS encoder for file writes and
     // simply record that simpleJson was detected.
     LOCAL text IS aoso_json_encode(value).
-    LOCAL f IS OPEN(path).
+    LOCAL f IS OPEN(file_path).
     f:CLEAR().
     f:WRITELN(text).
     RETURN TRUE.
 }
 
 FUNCTION aoso_addon_simplejson_read {
-    PARAMETER path.
+    PARAMETER file_path.
     PARAMETER default_value.
-    IF NOT EXISTS(path) { RETURN default_value. }
-    LOCAL f IS OPEN(path).
+    IF NOT EXISTS(file_path) { RETURN default_value. }
+    LOCAL f IS OPEN(file_path).
     LOCAL lines IS f:READALL().
     LOCAL text IS "".
     UNTIL lines:LENGTH = 0 {

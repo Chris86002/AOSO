@@ -11,11 +11,11 @@
 FUNCTION aoso_hohmann_dv_at_periapsis_for_apoapsis {
     PARAMETER target_apo_alt.
     LOCAL mu IS SHIP:BODY:MU.
-    LOCAL r IS SHIP:BODY:RADIUS + PERIAPSIS.
+    LOCAL radius IS SHIP:BODY:RADIUS + PERIAPSIS.
     LOCAL r_target_apo IS SHIP:BODY:RADIUS + target_apo_alt.
-    LOCAL sma_new IS (r + r_target_apo) / 2.
-    LOCAL v_new IS SQRT(MAX(0, mu * (2 / r - 1 / sma_new))).
-    LOCAL v_now IS aoso_orbit_speed_at_radius(SHIP, r).
+    LOCAL sma_new IS (radius + r_target_apo) / 2.
+    LOCAL v_new IS SQRT(MAX(0, mu * (2 / radius - 1 / sma_new))).
+    LOCAL v_now IS aoso_orbit_speed_at_radius(SHIP, radius).
     RETURN v_new - v_now.
 }
 
@@ -24,11 +24,11 @@ FUNCTION aoso_hohmann_dv_at_periapsis_for_apoapsis {
 FUNCTION aoso_hohmann_dv_at_apoapsis_for_periapsis {
     PARAMETER target_peri_alt.
     LOCAL mu IS SHIP:BODY:MU.
-    LOCAL r IS SHIP:BODY:RADIUS + APOAPSIS.
+    LOCAL radius IS SHIP:BODY:RADIUS + APOAPSIS.
     LOCAL r_target_peri IS SHIP:BODY:RADIUS + target_peri_alt.
-    LOCAL sma_new IS (r + r_target_peri) / 2.
-    LOCAL v_new IS SQRT(MAX(0, mu * (2 / r - 1 / sma_new))).
-    LOCAL v_now IS aoso_orbit_speed_at_radius(SHIP, r).
+    LOCAL sma_new IS (radius + r_target_peri) / 2.
+    LOCAL v_new IS SQRT(MAX(0, mu * (2 / radius - 1 / sma_new))).
+    LOCAL v_now IS aoso_orbit_speed_at_radius(SHIP, radius).
     RETURN v_new - v_now.
 }
 
@@ -74,9 +74,9 @@ FUNCTION aoso_hohmann_transfer_to_altitude {
 // flight/maneuver.ks's aoso_maneuver_circularize_dv_at_apoapsis().
 FUNCTION aoso_hohmann_circularize_dv_at_periapsis {
     LOCAL mu IS SHIP:BODY:MU.
-    LOCAL r IS SHIP:BODY:RADIUS + PERIAPSIS.
-    LOCAL v_circ IS SQRT(mu / r).
-    LOCAL v_now IS aoso_orbit_speed_at_radius(SHIP, r).
+    LOCAL radius IS SHIP:BODY:RADIUS + PERIAPSIS.
+    LOCAL v_circ IS SQRT(mu / radius).
+    LOCAL v_now IS aoso_orbit_speed_at_radius(SHIP, radius).
     RETURN v_circ - v_now.
 }
 

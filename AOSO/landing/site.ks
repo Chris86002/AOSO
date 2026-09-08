@@ -22,9 +22,9 @@ FUNCTION aoso_landing_site_offset_geo {
 FUNCTION aoso_landing_site_sample_delta_deg {
     PARAMETER geo.
     PARAMETER sample_dist_m.
-    LOCAL r IS SHIP:BODY:RADIUS + geo:TERRAINHEIGHT.
-    IF r <= 0 { RETURN 0. }
-    RETURN (sample_dist_m / r) * AOSO_CONST["RAD2DEG"].
+    LOCAL radius IS SHIP:BODY:RADIUS + geo:TERRAINHEIGHT.
+    IF radius <= 0 { RETURN 0. }
+    RETURN (sample_dist_m / radius) * AOSO_CONST["RAD2DEG"].
 }
 
 // Local terrain slope (deg, 0-90) at geo, estimated by sampling terrain

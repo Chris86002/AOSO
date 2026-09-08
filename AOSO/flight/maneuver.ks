@@ -10,11 +10,11 @@
 // the current orbit's semi-major axis via vis-viva.
 FUNCTION aoso_maneuver_circularize_dv_at_apoapsis {
     LOCAL mu IS SHIP:BODY:MU.
-    LOCAL r IS SHIP:BODY:RADIUS + APOAPSIS.
+    LOCAL radius IS SHIP:BODY:RADIUS + APOAPSIS.
     LOCAL sma IS SHIP:ORBIT:SEMIMAJORAXIS.
 
-    LOCAL v_circ IS SQRT(mu / r).
-    LOCAL v_now IS SQRT(MAX(0, mu * (2 / r - 1 / sma))).
+    LOCAL v_circ IS SQRT(mu / radius).
+    LOCAL v_now IS SQRT(MAX(0, mu * (2 / radius - 1 / sma))).
 
     RETURN v_circ - v_now.
 }
