@@ -172,17 +172,17 @@ FUNCTION aoso_docking_approach_execute {
 
     LOCAL tport IS TARGET.
     LOCAL standoff IS tport:PORTFACING:VECTOR * aoso_config_get("DOCKING_STANDOFF_DIST", 30).
-    LOCAL waypoint IS tport:POSITION + standoff.
+    LOCAL hold_point IS tport:POSITION + standoff.
     LOCAL face_target IS -tport:PORTFACING:VECTOR.
 
     aoso_steer_to_vector(face_target).
     IF aoso_steer_is_aligned(face_target, aoso_config_get("DOCKING_ALIGN_TOLERANCE_DEG", 5)) {
-        aoso_docking_translate_toward(waypoint, tport, aoso_config_get("DOCKING_MAX_APPROACH_SPEED", 2)).
+        aoso_docking_translate_toward(hold_point, tport, aoso_config_get("DOCKING_MAX_APPROACH_SPEED", 2)).
     } ELSE {
         aoso_docking_zero_translation().
     }
 
-    IF waypoint:MAG <= aoso_config_get("DOCKING_WAYPOINT_TOLERANCE_M", 2) {
+    IF hold_point:MAG <= aoso_config_get("DOCKING_WAYPOINT_TOLERANCE_M", 2) {
         aoso_state_transition(AOSO_DOCKING, "FINAL").
     }
 }
