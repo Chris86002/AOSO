@@ -19,11 +19,20 @@ GLOBAL AOSO_BODY_DB IS LEXICON().
 FUNCTION aoso_body_database_entry {
     PARAMETER body_ref.
 
+    // The root body (the Sun) has no SOI boundary, so kOS reports its
+    // SOIRADIUS as Infinity -- a value kOS's own stack cannot hold
+    // ("Tried to push Infinity into the stack"). Substitute a large
+    // sentinel instead of ever evaluating body_ref:SOIRADIUS for it.
+    LOCAL soi_radius IS aoso_const_get("SOI_RADIUS_INFINITE").
+    IF body_ref:NAME <> SUN:NAME {
+        SET soi_radius TO body_ref:SOIRADIUS.
+    }
+
     LOCAL entry IS LEXICON(
         "NAME", body_ref:NAME,
         "MU", body_ref:MU,
         "RADIUS", body_ref:RADIUS,
-        "SOI_RADIUS", body_ref:SOIRADIUS,
+        "SOI_RADIUS", soi_radius,
         "PARENT", "",
         "SMA", 0,
         "PERIOD", 0,
