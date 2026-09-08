@@ -51,11 +51,35 @@ FUNCTION aoso_ascent_on_abort {
 
 FUNCTION aoso_ascent_liftoff_entry {
     PARAMETER data.
+    SET data["ignite_attempts"] TO 0.
     LOCK THROTTLE TO 1.0.
 }
 
+// Ignites the vehicle's engines a stage at a time. vehicle/staging.ks's
+// aoso_staging_auto_check() deliberately never does this itself (it only
+// advances *past* an already-lit stage that has flamed out), so without
+// this, nothing ever calls the first STAGE and the vehicle sits on the pad
+// forever with the throttle locked open but no thrust. Non-blocking (one
+// STAGE attempt per tick, gated on STAGE:READY) per core/scheduler.ks's
+// task contract, unlike flight/launch.ks's aoso_launch_ignite() which is
+// meant for a pre-loop blocking countdown instead.
 FUNCTION aoso_ascent_liftoff_execute {
     PARAMETER data.
+
+    IF SHIP:AVAILABLETHRUST <= 0 {
+        IF STAGE:NUMBER <= 0 OR data["ignite_attempts"] >= 4 {
+            aoso_log_error("ASCENT", "No thrust after ignition attempts - aborting ascent.").
+            aoso_state_abort(AOSO_ASCENT).
+            RETURN.
+        }
+        IF STAGE:READY {
+            aoso_log_info("ASCENT", "Liftoff ignition: staging (" + STAGE:NUMBER + ").").
+            STAGE.
+            SET data["ignite_attempts"] TO data["ignite_attempts"] + 1.
+        }
+        RETURN.
+    }
+
     aoso_steer_heading_pitch(data["heading"], 90).
     aoso_staging_auto_check().
     IF ALTITUDE > aoso_config_get("ASCENT_TURN_START_ALT", 500) {
@@ -147,9 +171,11 @@ FUNCTION aoso_ascent_define_states {
     aoso_state_define(AOSO_ASCENT, "ABORTED", aoso_ascent_aborted_entry@, 0, 0).
 }
 
-// Entry point: call once (after aoso_launch_sequence() confirms liftoff) to
-// arm the gravity turn / circularization FSM, then drive it every tick with
-// aoso_ascent_update() (directly, or via aoso_ascent_register_task()).
+// Entry point: call once to arm the full ascent FSM (ignition, gravity
+// turn, coast, circularization), then drive it every tick with
+// aoso_ascent_update() (directly, or via aoso_ascent_register_task()). Safe
+// to call whether or not the engines are already lit -- the LIFTOFF state
+// stages until thrust is flowing before doing anything else.
 FUNCTION aoso_ascent_start {
     PARAMETER launch_heading IS 90.
     PARAMETER target_apo IS 0.

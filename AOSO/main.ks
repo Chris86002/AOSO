@@ -7,14 +7,18 @@
 // rest of the load order does not matter), runs the boot sequence, arms
 // every subsystem/hardening/UX scheduler task, then drives the main loop.
 //
-// This file intentionally never touches mission/mission.ks's
-// AOSO_MISSION_PLAN -- building a plan (which body, which orbit, whether to
-// dock/refuel/return) is mission-specific and left to the operator. Create
-// an "AOSO/mission_plan.ks" alongside this file with your own
+// This file avoids hard-coding mission/mission.ks's AOSO_MISSION_PLAN --
+// building a plan (which body, which orbit, whether to dock/refuel/return)
+// is mission-specific and left to the operator. Create an
+// "AOSO/mission_plan.ks" alongside this file with your own
 // aoso_mission_plan_add()/aoso_mission_step_*() calls followed by
-// aoso_mission_start(); main.ks RUNs it automatically if present, otherwise
-// AOSO simply boots, arms hardening/UX/vehicle automation, and idles under
-// manual control.
+// aoso_mission_start(); main.ks RUNs it automatically if present. Without
+// one, AOSO still boots and arms hardening/UX/vehicle automation, and, only
+// if the vessel is still on the ground (SHIP:STATUS PRELAUNCH/LANDED), also
+// falls back to a minimal default plan (aoso_mission_step_ascend() alone --
+// launch heading 90, target apoapsis AOSO_CONFIG["ASCENT_TARGET_APO"]) so a
+// vessel sitting on the pad actually launches to a parking orbit instead of
+// idling forever, matching this project's "autonomous" goal out of the box.
 
 // --- Core (order matters; see core/boot.ks) --------------------------------
 RUN ONCE "AOSO/core/constants".
@@ -100,6 +104,16 @@ FUNCTION aoso_main {
 
     IF EXISTS("AOSO/mission_plan.ks") {
         RUN ONCE "AOSO/mission_plan".
+    } ELSE IF SHIP:STATUS = "PRELAUNCH" OR SHIP:STATUS = "LANDED" {
+        // Only auto-launch when still on the ground -- never seize control of
+        // an already-flying/orbiting vessel just because it lacks a custom
+        // mission_plan.ks (e.g. main.ks re-run mid-flight after a reload).
+        aoso_log_info("MAIN", "No AOSO/mission_plan.ks found - defaulting to an autonomous launch to a parking orbit.").
+        aoso_mission_plan_add(aoso_mission_step_ascend()).
+        aoso_mission_register_task().
+        aoso_mission_start().
+    } ELSE {
+        aoso_log_info("MAIN", "No AOSO/mission_plan.ks found and vessel already " + SHIP:STATUS + " - idling under manual control.").
     }
 
     aoso_log_info("MAIN", "Entering main loop.").
