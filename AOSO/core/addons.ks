@@ -4,6 +4,16 @@
 // this file. Each function first checks addon availability and falls back
 // to a pure-kOS implementation (or a safe default) when the addon is not
 // installed. No other module may reference ADDONS:* directly.
+//
+// kOS's ADDONS:AVAILABLE(name) looks up the identifier each bridge mod
+// registers itself under via [kOSAddon("...")], which is almost never the
+// full mod name -- e.g. belpyro/kOS.MechJeb2.Addon registers "MJ" (not
+// "MechJeb"), markjfisher/kOS-KerbalEngineer registers "KE" (not
+// "KerbalEngineer"), and Thr0in/kOS-simpleJson registers "JSON" (not
+// "simpleJson"). Only kOS-Astrogator happens to register "ASTROGATOR",
+// matching the mod name. Every check below therefore tries every known
+// identifier for that integration so detection works regardless of which
+// compatible bridge mod is installed.
 
 GLOBAL AOSO_ADDON_STATUS IS LEXICON(
     "MECHJEB", FALSE,
@@ -13,13 +23,23 @@ GLOBAL AOSO_ADDON_STATUS IS LEXICON(
     "CHECKED", FALSE
 ).
 
+// Returns TRUE if any of the given kOS addon identifiers is registered and
+// reports itself available.
+FUNCTION aoso_addons_any_available {
+    PARAMETER names.
+    FOR n IN names {
+        IF ADDONS:HASADDON(n) AND ADDONS:AVAILABLE(n) { RETURN TRUE. }
+    }
+    RETURN FALSE.
+}
+
 FUNCTION aoso_addons_detect {
     IF AOSO_ADDON_STATUS["CHECKED"] { RETURN AOSO_ADDON_STATUS. }
 
-    SET AOSO_ADDON_STATUS["MECHJEB"] TO ADDONS:AVAILABLE("MechJeb").
-    SET AOSO_ADDON_STATUS["ASTROGATOR"] TO ADDONS:AVAILABLE("Astrogator").
-    SET AOSO_ADDON_STATUS["KER"] TO ADDONS:AVAILABLE("KerbalEngineer").
-    SET AOSO_ADDON_STATUS["SIMPLEJSON"] TO ADDONS:AVAILABLE("simpleJson").
+    SET AOSO_ADDON_STATUS["MECHJEB"] TO aoso_addons_any_available(LIST("MJ", "MechJeb")).
+    SET AOSO_ADDON_STATUS["ASTROGATOR"] TO aoso_addons_any_available(LIST("ASTROGATOR")).
+    SET AOSO_ADDON_STATUS["KER"] TO aoso_addons_any_available(LIST("KE", "KerbalEngineer")).
+    SET AOSO_ADDON_STATUS["SIMPLEJSON"] TO aoso_addons_any_available(LIST("JSON", "simpleJson")).
     SET AOSO_ADDON_STATUS["CHECKED"] TO TRUE.
 
     aoso_log("INFO", "ADDONS", "MechJeb=" + AOSO_ADDON_STATUS["MECHJEB"] +

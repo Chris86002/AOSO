@@ -2,11 +2,16 @@
 // Vessel identification. Scans the active vessel's parts once (on boot and
 // whenever the caller detects a vessel change, e.g. staging/docking/undocking)
 // and records a summary in AOSO_VESSEL. Every capability flag here is derived
-// from stock kOS list types (PARTS/ENGINES/DECOUPLERS/DOCKINGPORTS) and
-// PART:HASMODULE, never invented suffixes -- kOS has no "LIST PARACHUTES";
-// parachute presence/count is instead detected the same PART:HASMODULE way
-// as RCS/solar/antenna/legs below (deployment itself is handled by
+// from stock kOS list types (PARTS/ENGINES/DOCKINGPORTS) and PART:HASMODULE,
+// never invented suffixes -- kOS has no "LIST PARACHUTES"; parachute
+// presence/count is instead detected the same PART:HASMODULE way as
+// RCS/solar/antenna/legs below (deployment itself is handled by
 // landing/parachute.ks via the documented CHUTES/CHUTESSAFE bindings).
+// Decouplers are counted the same PART:HASMODULE way too rather than via
+// kOS's "LIST DECOUPLERS": on some installs (mixed decoupler/separator mods)
+// that built-in throws "Specified argument was out of the range of valid
+// values" (a kOS/KSP-side ArgumentOutOfRangeException) while walking the
+// vessel's stage-separator parts, which would otherwise abort aoso_boot().
 // Persisted to VESSEL_FILE so a reload/scene-change can skip a redundant
 // scan until the caller asks for one.
 //
@@ -26,8 +31,6 @@ FUNCTION aoso_vessel_scan {
     LIST PARTS IN plist.
     LOCAL elist IS LIST().
     LIST ENGINES IN elist.
-    LOCAL declist IS LIST().
-    LIST DECOUPLERS IN declist.
     LOCAL doclist IS LIST().
     LIST DOCKINGPORTS IN doclist.
 
@@ -39,6 +42,7 @@ FUNCTION aoso_vessel_scan {
     LOCAL has_converters IS FALSE.
     LOCAL has_radiators IS FALSE.
     LOCAL parachute_count IS 0.
+    LOCAL decoupler_count IS 0.
     FOR p IN plist {
         IF p:HASMODULE("ModuleRCS") OR p:HASMODULE("ModuleRCSFX") { SET has_rcs TO TRUE. }
         IF p:HASMODULE("ModuleDeployableSolarPanel") { SET has_solar TO TRUE. }
@@ -48,6 +52,9 @@ FUNCTION aoso_vessel_scan {
         IF p:HASMODULE("ModuleResourceHarvester") { SET has_harvesters TO TRUE. }
         IF p:HASMODULE("ModuleResourceConverter") { SET has_converters TO TRUE. }
         IF p:HASMODULE("ModuleDeployableRadiator") { SET has_radiators TO TRUE. }
+        IF p:HASMODULE("ModuleDecouple") OR p:HASMODULE("ModuleAnchoredDecoupler") OR p:HASMODULE("LaunchClamp") {
+            SET decoupler_count TO decoupler_count + 1.
+        }
     }
 
     LOCAL res_snapshot IS LIST().
@@ -63,7 +70,7 @@ FUNCTION aoso_vessel_scan {
         "part_count", plist:LENGTH,
         "stage_count", STAGE:NUMBER + 1,
         "engine_count", elist:LENGTH,
-        "decoupler_count", declist:LENGTH,
+        "decoupler_count", decoupler_count,
         "docking_port_count", doclist:LENGTH,
         "parachute_count", parachute_count,
         "crew_count", SHIP:CREW:LENGTH,
