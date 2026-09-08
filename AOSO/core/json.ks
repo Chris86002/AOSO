@@ -211,8 +211,16 @@ FUNCTION aoso_json_write {
         RETURN TRUE.
     }
     LOCAL text IS aoso_json_encode(value).
-    LOCAL f IS OPEN(file_path).
-    f:CLEAR().
+    // OPEN() returns a plain BooleanValue(false) instead of a file handle
+    // when the path doesn't exist yet, so CREATE it the first time and
+    // OPEN+CLEAR it (to overwrite) on every call after that.
+    LOCAL f IS 0.
+    IF EXISTS(file_path) {
+        SET f TO OPEN(file_path).
+        f:CLEAR().
+    } ELSE {
+        SET f TO CREATE(file_path).
+    }
     f:WRITELN(text).
     RETURN TRUE.
 }
