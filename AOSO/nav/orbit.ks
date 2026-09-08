@@ -61,10 +61,10 @@ FUNCTION aoso_orbit_relative_inclination_deg {
 // instead of duplicating the vis-viva formula per call site.
 FUNCTION aoso_orbit_speed_at_radius {
     PARAMETER orbitable IS SHIP.
-    PARAMETER r.
+    PARAMETER radius.
     LOCAL mu IS orbitable:BODY:MU.
     LOCAL sma IS orbitable:ORBIT:SEMIMAJORAXIS.
-    RETURN SQRT(MAX(0, mu * (2 / r - 1 / sma))).
+    RETURN SQRT(MAX(0, mu * (2 / radius - 1 / sma))).
 }
 
 FUNCTION aoso_orbit_is_hyperbolic {

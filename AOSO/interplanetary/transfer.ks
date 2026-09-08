@@ -15,8 +15,8 @@
 // when both orbit the same star directly (checked by callers via
 // aoso_interplanetary_share_parent).
 FUNCTION aoso_interplanetary_heliocentric_position {
-    PARAMETER body.
-    RETURN aoso_orbit_position_now(body).
+    PARAMETER body_ref.
+    RETURN aoso_orbit_position_now(body_ref).
 }
 
 FUNCTION aoso_interplanetary_share_parent {

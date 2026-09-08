@@ -32,17 +32,17 @@ FUNCTION aoso_telemetry_row {
 // resumed session appends to the same file rather than starting a new
 // header partway through), then appends one row every call.
 FUNCTION aoso_telemetry_tick {
-    LOCAL path IS AOSO_CONST["TELEMETRY_FILE"].
+    LOCAL file_path IS AOSO_CONST["TELEMETRY_FILE"].
 
     IF NOT AOSO_TELEMETRY_HEADER_WRITTEN {
-        IF NOT EXISTS(path) {
-            LOCAL header_file IS OPEN(path).
+        IF NOT EXISTS(file_path) {
+            LOCAL header_file IS OPEN(file_path).
             header_file:WRITELN(aoso_telemetry_header()).
         }
         SET AOSO_TELEMETRY_HEADER_WRITTEN TO TRUE.
     }
 
-    LOCAL f IS OPEN(path).
+    LOCAL f IS OPEN(file_path).
     f:WRITELN(aoso_telemetry_row()).
 }
 

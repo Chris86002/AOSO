@@ -110,21 +110,21 @@ FUNCTION aoso_state_abort {
 
 FUNCTION aoso_state_save {
     PARAMETER machine.
-    PARAMETER path IS "".
-    IF path = "" { SET path TO AOSO_CONST["STATE_FILE"]. }
+    PARAMETER file_path IS "".
+    IF file_path = "" { SET file_path TO AOSO_CONST["STATE_FILE"]. }
     LOCAL snapshot IS LEXICON(
         "current", machine["current"],
         "previous", machine["previous"],
         "data", machine["data"]
     ).
-    aoso_json_write(path, snapshot).
+    aoso_json_write(file_path, snapshot).
 }
 
 FUNCTION aoso_state_load {
     PARAMETER machine.
-    PARAMETER path IS "".
-    IF path = "" { SET path TO AOSO_CONST["STATE_FILE"]. }
-    LOCAL snapshot IS aoso_json_read(path, LEXICON()).
+    PARAMETER file_path IS "".
+    IF file_path = "" { SET file_path TO AOSO_CONST["STATE_FILE"]. }
+    LOCAL snapshot IS aoso_json_read(file_path, LEXICON()).
     IF snapshot:ISTYPE("Lexicon") AND snapshot:HASKEY("current") {
         IF machine["states"]:HASKEY(snapshot["current"]) {
             IF snapshot:HASKEY("data") { SET machine["data"] TO snapshot["data"]. }

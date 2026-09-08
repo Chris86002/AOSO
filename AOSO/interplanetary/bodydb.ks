@@ -17,24 +17,24 @@ GLOBAL AOSO_BODY_DB IS LEXICON().
 // recorded with SMA/PERIOD/ECCENTRICITY/PARENT left at safe defaults instead
 // of guessing at a suffix that may not exist for the root body.
 FUNCTION aoso_body_database_entry {
-    PARAMETER body.
+    PARAMETER body_ref.
 
     LOCAL entry IS LEXICON(
-        "NAME", body:NAME,
-        "MU", body:MU,
-        "RADIUS", body:RADIUS,
-        "SOI_RADIUS", body:SOIRADIUS,
+        "NAME", body_ref:NAME,
+        "MU", body_ref:MU,
+        "RADIUS", body_ref:RADIUS,
+        "SOI_RADIUS", body_ref:SOIRADIUS,
         "PARENT", "",
         "SMA", 0,
         "PERIOD", 0,
         "ECCENTRICITY", 0
     ).
 
-    IF body:NAME <> SUN:NAME {
-        SET entry["PARENT"] TO body:ORBIT:BODY:NAME.
-        SET entry["SMA"] TO body:ORBIT:SEMIMAJORAXIS.
-        SET entry["PERIOD"] TO body:ORBIT:PERIOD.
-        SET entry["ECCENTRICITY"] TO body:ORBIT:ECCENTRICITY.
+    IF body_ref:NAME <> SUN:NAME {
+        SET entry["PARENT"] TO body_ref:ORBIT:BODY:NAME.
+        SET entry["SMA"] TO body_ref:ORBIT:SEMIMAJORAXIS.
+        SET entry["PERIOD"] TO body_ref:ORBIT:PERIOD.
+        SET entry["ECCENTRICITY"] TO body_ref:ORBIT:ECCENTRICITY.
     }
 
     RETURN entry.

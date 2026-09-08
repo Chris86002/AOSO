@@ -204,27 +204,27 @@ FUNCTION aoso_json_parse_number {
 // --- File persistence -------------------------------------------------
 
 FUNCTION aoso_json_write {
-    PARAMETER path.
+    PARAMETER file_path.
     PARAMETER value.
     IF aoso_addon_simplejson_available() {
-        aoso_addon_simplejson_write(path, value).
+        aoso_addon_simplejson_write(file_path, value).
         RETURN TRUE.
     }
     LOCAL text IS aoso_json_encode(value).
-    LOCAL f IS OPEN(path).
+    LOCAL f IS OPEN(file_path).
     f:CLEAR().
     f:WRITELN(text).
     RETURN TRUE.
 }
 
 FUNCTION aoso_json_read {
-    PARAMETER path.
+    PARAMETER file_path.
     PARAMETER default_value IS LEXICON().
-    IF NOT EXISTS(path) { RETURN default_value. }
+    IF NOT EXISTS(file_path) { RETURN default_value. }
     IF aoso_addon_simplejson_available() {
-        RETURN aoso_addon_simplejson_read(path, default_value).
+        RETURN aoso_addon_simplejson_read(file_path, default_value).
     }
-    LOCAL f IS OPEN(path).
+    LOCAL f IS OPEN(file_path).
     LOCAL text IS "".
     LOCAL lines IS f:READALL().
     UNTIL lines:LENGTH = 0 {
