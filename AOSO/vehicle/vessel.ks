@@ -26,9 +26,16 @@
 //
 // has_bays flags a "canopy" -- a service bay/cargo bay (ModuleCargoBay) that
 // may be enclosing other hardware (e.g. solar panels) -- controlled the same
-// documented-global way via kOS's own BAYS binding. Procedural fairings are
-// deliberately not included here: they have no equivalent documented global
-// (they're jettisoned via staging, already vehicle/staging.ks's job).
+// documented-global way via kOS's own BAYS binding.
+//
+// has_fairings flags the other common "canopy": a stock procedural fairing
+// (e.g. the AE-FF1/2/3 "Airstream Protective Shell" parts), backed by
+// ModuleProceduralFairing. Unlike ModuleCargoBay, kOS has no documented
+// global for fairings -- they're one-shot deployed (jettisoned) via that
+// PartModule's own "Deploy" KSPEvent (PartModule:DOEVENT("Deploy")), which
+// power/power.ks calls directly rather than assuming a fairing always sits
+// on a stage vehicle/staging.ks's flameout-driven auto-stager would ever
+// separate on its own.
 
 GLOBAL AOSO_VESSEL IS LEXICON().
 
@@ -48,6 +55,7 @@ FUNCTION aoso_vessel_scan {
     LOCAL has_converters IS FALSE.
     LOCAL has_radiators IS FALSE.
     LOCAL has_bays IS FALSE.
+    LOCAL has_fairings IS FALSE.
     LOCAL parachute_count IS 0.
     LOCAL decoupler_count IS 0.
     FOR p IN plist {
@@ -60,6 +68,7 @@ FUNCTION aoso_vessel_scan {
         IF p:HASMODULE("ModuleResourceConverter") { SET has_converters TO TRUE. }
         IF p:HASMODULE("ModuleDeployableRadiator") { SET has_radiators TO TRUE. }
         IF p:HASMODULE("ModuleCargoBay") { SET has_bays TO TRUE. }
+        IF p:HASMODULE("ModuleProceduralFairing") { SET has_fairings TO TRUE. }
         IF p:HASMODULE("ModuleDecouple") OR p:HASMODULE("ModuleAnchoredDecoupler") OR p:HASMODULE("LaunchClamp") {
             SET decoupler_count TO decoupler_count + 1.
         }
@@ -90,6 +99,7 @@ FUNCTION aoso_vessel_scan {
         "has_converters", has_converters,
         "has_radiators", has_radiators,
         "has_bays", has_bays,
+        "has_fairings", has_fairings,
         "resources", res_snapshot,
         "scanned_at", TIME:SECONDS
     ).

@@ -52,9 +52,40 @@ FUNCTION aoso_power_panels_bay_closed {
     RETURN aoso_vessel_get("has_bays", FALSE) AND NOT BAYS.
 }
 
-// Idempotent: only touches the PANELS/BAYS bindings when their current
-// state disagrees with what's wanted, so this can run every scheduler tick
-// without spamming SetGroup calls or log lines.
+// TRUE while a procedural fairing/canopy (e.g. an AE-FF1/2/3 "Airstream
+// Protective Shell") enclosing other hardware still hasn't been jettisoned.
+// kOS has no documented global for fairings the way BAYS covers service
+// bays, so this checks each ModuleProceduralFairing PartModule's own
+// one-shot "Deploy" KSPEvent directly: HASEVENT("Deploy") is only TRUE
+// while the fairing hasn't been deployed/jettisoned yet, so this
+// automatically stops matching (and this function starts returning FALSE)
+// the moment aoso_power_deploy_fairings() below has done its job -- no
+// separate "already deployed" bookkeeping flag needed.
+FUNCTION aoso_power_fairings_pending {
+    IF NOT aoso_vessel_get("has_fairings", FALSE) { RETURN FALSE. }
+    FOR fairing_module IN SHIP:MODULESNAMED("ModuleProceduralFairing") {
+        IF fairing_module:HASEVENT("Deploy") { RETURN TRUE. }
+    }
+    RETURN FALSE.
+}
+
+// Jettisons every not-yet-deployed procedural fairing/canopy so whatever it
+// was enclosing (e.g. solar panels) can subsequently deploy. Safe to call
+// repeatedly -- HASEVENT("Deploy") guards each module so an already-fired
+// fairing is simply skipped.
+FUNCTION aoso_power_deploy_fairings {
+    FOR fairing_module IN SHIP:MODULESNAMED("ModuleProceduralFairing") {
+        IF fairing_module:HASEVENT("Deploy") {
+            fairing_module:DOEVENT("Deploy").
+            aoso_log_info("POWER", "Deploying fairing/canopy: " + fairing_module:PART:TITLE + ".").
+        }
+    }
+}
+
+// Idempotent: only touches the PANELS/BAYS bindings (and fairing modules)
+// when their current state disagrees with what's wanted, so this can run
+// every scheduler tick without spamming SetGroup/DOEVENT calls or log
+// lines.
 FUNCTION aoso_power_panels_auto_check {
     IF NOT aoso_vessel_get("has_solar_panels", FALSE) { RETURN. }
 
@@ -69,6 +100,11 @@ FUNCTION aoso_power_panels_auto_check {
 
     IF PANELS { RETURN. } // already deployed, nothing to do
     IF aoso_power_panels_prelaunch() { RETURN. } // still on the pad -- wait for liftoff
+
+    IF aoso_power_fairings_pending() {
+        aoso_power_deploy_fairings().
+        RETURN. // give the fairing a tick to separate before attempting the bay/panels
+    }
 
     IF aoso_power_panels_bay_closed() {
         SET BAYS TO TRUE.
