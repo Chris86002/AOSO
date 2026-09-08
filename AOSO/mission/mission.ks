@@ -94,9 +94,9 @@ FUNCTION aoso_mission_step_burn {
 // --- Presets over existing subsystems ------------------------------------
 
 FUNCTION aoso_mission_step_ascend {
-    PARAMETER heading IS 90.
+    PARAMETER launch_heading IS 90.
     PARAMETER target_apo IS 0.
-    RETURN aoso_mission_step("ASCEND", aoso_ascent_start@:BIND(heading, target_apo), aoso_ascent_update@, aoso_ascent_is_done@, aoso_ascent_is_aborted@).
+    RETURN aoso_mission_step("ASCEND", aoso_ascent_start@:BIND(launch_heading, target_apo), aoso_ascent_update@, aoso_ascent_is_done@, aoso_ascent_is_aborted@).
 }
 
 FUNCTION aoso_mission_step_transfer_to_altitude {

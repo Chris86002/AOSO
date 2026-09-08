@@ -42,10 +42,10 @@ FUNCTION aoso_launch_wait_for_liftoff {
 // confirm liftoff. Does not itself fly the gravity turn -- hand off to
 // flight/ascent.ks (aoso_ascent_start) once this returns TRUE.
 FUNCTION aoso_launch_sequence {
-    PARAMETER heading IS 90.
+    PARAMETER launch_heading IS 90.
     PARAMETER countdown_s IS 5.
 
-    aoso_steer_heading_pitch(heading, 90).
+    aoso_steer_heading_pitch(launch_heading, 90).
     aoso_launch_countdown(countdown_s).
     LOCAL ignited IS aoso_launch_ignite().
     IF NOT ignited {

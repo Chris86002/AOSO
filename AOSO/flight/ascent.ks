@@ -13,15 +13,15 @@ GLOBAL AOSO_ASCENT_MAX_Q_SEEN IS 0.
 // eased between with a cosine so the turn starts gently and flattens out
 // near the top rather than pitching over sharply at either boundary.
 FUNCTION aoso_ascent_pitch_for_altitude {
-    PARAMETER alt.
+    PARAMETER altitude_m.
 
     LOCAL start_alt IS aoso_config_get("ASCENT_TURN_START_ALT", 500).
     LOCAL end_alt IS aoso_config_get("ASCENT_TURN_END_ALT", 45000).
 
-    IF alt <= start_alt { RETURN 90. }
-    IF alt >= end_alt { RETURN 0. }
+    IF altitude_m <= start_alt { RETURN 90. }
+    IF altitude_m >= end_alt { RETURN 0. }
 
-    LOCAL frac IS (alt - start_alt) / (end_alt - start_alt).
+    LOCAL frac IS (altitude_m - start_alt) / (end_alt - start_alt).
     RETURN MAX(0, MIN(90, 90 * COS(frac * 90))).
 }
 
@@ -159,13 +159,13 @@ FUNCTION aoso_ascent_define_states {
 // arm the gravity turn / circularization FSM, then drive it every tick with
 // aoso_ascent_update() (directly, or via aoso_ascent_register_task()).
 FUNCTION aoso_ascent_start {
-    PARAMETER heading IS 90.
+    PARAMETER launch_heading IS 90.
     PARAMETER target_apo IS 0.
     IF target_apo <= 0 { SET target_apo TO aoso_config_get("ASCENT_TARGET_APO", 80000). }
 
     SET AOSO_ASCENT_MAX_Q_SEEN TO 0.
     aoso_ascent_define_states().
-    SET AOSO_ASCENT["data"] TO LEXICON("heading", heading, "target_apo", target_apo).
+    SET AOSO_ASCENT["data"] TO LEXICON("heading", launch_heading, "target_apo", target_apo).
     aoso_state_transition(AOSO_ASCENT, "LIFTOFF").
 }
 
