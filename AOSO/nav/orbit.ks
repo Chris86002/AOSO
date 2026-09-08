@@ -51,7 +51,7 @@ FUNCTION aoso_orbit_normal_at {
 // ORBIT:INCLINATION values directly (only valid when both orbits share the
 // same longitude of ascending node), this is correct for any two orbits.
 FUNCTION aoso_orbit_relative_inclination_deg {
-    PARAMETER orbitable_a IS SHIP.
+    PARAMETER orbitable_a.
     PARAMETER orbitable_b.
     RETURN VANG(aoso_orbit_normal_now(orbitable_a), aoso_orbit_normal_now(orbitable_b)).
 }
@@ -60,7 +60,7 @@ FUNCTION aoso_orbit_relative_inclination_deg {
 // it kept its current semi-major axis. Used by hohmann.ks/rendezvous.ks
 // instead of duplicating the vis-viva formula per call site.
 FUNCTION aoso_orbit_speed_at_radius {
-    PARAMETER orbitable IS SHIP.
+    PARAMETER orbitable.
     PARAMETER radius.
     LOCAL mu IS orbitable:BODY:MU.
     LOCAL sma IS orbitable:ORBIT:SEMIMAJORAXIS.
@@ -87,7 +87,7 @@ FUNCTION aoso_orbit_time_to_soi_change {
 // position against the target plane's normal and bisects any sign change,
 // which is robust for any (including highly eccentric) orbit shape.
 FUNCTION aoso_orbit_relative_node_etas {
-    PARAMETER orbitable_a IS SHIP.
+    PARAMETER orbitable_a.
     PARAMETER orbitable_b.
     PARAMETER samples IS 360.
 

@@ -36,7 +36,7 @@ GLOBAL AOSO_MISSION_BURN_STATE IS LEXICON("ok", TRUE, "done", FALSE).
 
 FUNCTION aoso_mission_step {
     PARAMETER name.
-    PARAMETER start_fn IS 0.
+    PARAMETER start_fn.
     PARAMETER update_fn.
     PARAMETER is_done_fn.
     PARAMETER is_aborted_fn IS 0.
