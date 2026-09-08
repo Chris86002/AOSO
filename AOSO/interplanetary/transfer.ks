@@ -99,9 +99,9 @@ FUNCTION aoso_interplanetary_wait_time_to_window_s {
     LOCAL relative_rate IS dep_rate - arr_rate.
     IF relative_rate = 0 { RETURN -1. }
 
-    LOCAL wait IS -(current_phase - required_phase) / relative_rate.
-    UNTIL wait >= 0 {
-        SET wait TO wait + (360 / ABS(relative_rate)).
+    LOCAL wait_s IS -(current_phase - required_phase) / relative_rate.
+    UNTIL wait_s >= 0 {
+        SET wait_s TO wait_s + (360 / ABS(relative_rate)).
     }
-    RETURN wait.
+    RETURN wait_s.
 }

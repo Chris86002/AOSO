@@ -140,9 +140,9 @@ FUNCTION aoso_targeting_predicted_miss_m {
 
     IF NOT target_geo:ISTYPE("GeoCoordinates") { SET target_geo TO aoso_targeting_site(). }
 
-    LOCAL eta IS aoso_targeting_time_to_altitude(target_alt, search_horizon_s, orbitable).
-    IF eta < 0 { RETURN -1. }
+    LOCAL eta_s IS aoso_targeting_time_to_altitude(target_alt, search_horizon_s, orbitable).
+    IF eta_s < 0 { RETURN -1. }
 
-    LOCAL track IS aoso_targeting_ground_track_at(TIME:SECONDS + eta, orbitable).
+    LOCAL track IS aoso_targeting_ground_track_at(TIME:SECONDS + eta_s, orbitable).
     RETURN aoso_targeting_ground_distance(track, target_geo).
 }
