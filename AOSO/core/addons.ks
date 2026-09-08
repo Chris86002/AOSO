@@ -141,11 +141,9 @@ FUNCTION aoso_addon_simplejson_read {
     PARAMETER default_value.
     IF NOT EXISTS(file_path) { RETURN default_value. }
     LOCAL f IS OPEN(file_path).
-    LOCAL lines IS f:READALL().
-    LOCAL text IS "".
-    UNTIL lines:LENGTH = 0 {
-        SET text TO text + lines:POP().
-    }
+    // READALL() returns a FileContent, which only supports :STRING/:BINARY/
+    // :ITERATOR - it has no :LENGTH-as-line-count or :POP suffix like a List.
+    LOCAL text IS f:READALL():STRING.
     IF text:LENGTH = 0 { RETURN default_value. }
     RETURN aoso_json_decode(text).
 }
