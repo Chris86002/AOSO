@@ -42,17 +42,17 @@ FUNCTION aoso_ejection_asymptote_true_anomaly_deg {
     RETURN ARCCOS(-1 / e).
 }
 
-// Rodrigues' rotation formula: rotates vector v by angle_deg around unit
+// Rodrigues' rotation formula: rotates vector vec by angle_deg around unit
 // axis, right-handed (matching nav/orbit.ks's VCRS(position, velocity)
 // normal convention used throughout this repo).
 FUNCTION aoso_ejection_rotate_vector {
-    PARAMETER v.
+    PARAMETER vec.
     PARAMETER axis.
     PARAMETER angle_deg.
     LOCAL k IS axis:NORMALIZED.
     LOCAL c IS COS(angle_deg).
     LOCAL s IS SIN(angle_deg).
-    RETURN v * c + VCRS(k, v) * s + k * VDOT(k, v) * (1 - c).
+    RETURN vec * c + VCRS(k, vec) * s + k * VDOT(k, vec) * (1 - c).
 }
 
 // Finds the soonest time (seconds from now, within one orbit of SHIP) at

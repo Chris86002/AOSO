@@ -49,11 +49,11 @@ FUNCTION aoso_descent_stopping_distance {
 // scheduler's tick cadence and steering-alignment time don't eat into the
 // stopping distance itself.
 FUNCTION aoso_descent_burn_trigger_alt {
-    LOCAL v IS ABS(VERTICALSPEED).
+    LOCAL v_speed IS ABS(VERTICALSPEED).
     LOCAL decel IS aoso_descent_max_deceleration().
-    LOCAL stop_dist IS aoso_descent_stopping_distance(v, decel).
+    LOCAL stop_dist IS aoso_descent_stopping_distance(v_speed, decel).
     IF stop_dist < 0 { RETURN 9E+9. } // never "safe" to wait -- burn now
-    LOCAL margin_alt IS v * aoso_config_get("DESCENT_BURN_MARGIN_S", 3).
+    LOCAL margin_alt IS v_speed * aoso_config_get("DESCENT_BURN_MARGIN_S", 3).
     RETURN stop_dist + margin_alt.
 }
 
@@ -64,10 +64,10 @@ FUNCTION aoso_descent_burn_trigger_alt {
 // scales by the vessel's current max acceleration.
 FUNCTION aoso_descent_required_throttle {
     LOCAL h IS MAX(1, ALT:RADAR).
-    LOCAL v IS ABS(VERTICALSPEED).
+    LOCAL v_speed IS ABS(VERTICALSPEED).
     LOCAL g IS aoso_descent_local_gravity().
 
-    LOCAL a_net_needed IS (v ^ 2) / (2 * h).
+    LOCAL a_net_needed IS (v_speed ^ 2) / (2 * h).
     LOCAL thrust_accel_needed IS a_net_needed + g.
 
     LOCAL max_accel IS 0.
