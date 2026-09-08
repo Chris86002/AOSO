@@ -26,7 +26,7 @@ FUNCTION aoso_planechange_add_node_for_target {
     PARAMETER node_index IS 0.
     PARAMETER tolerance_deg IS 0.05.
 
-    LOCAL rel_incl IS aoso_orbit_relative_inclination_deg(SHIP, target_orbitable).
+    LOCAL rel_incl IS aoso_orbit_relative_inclination_deg(target_orbitable, SHIP).
     IF rel_incl < tolerance_deg {
         IF DEFINED aoso_log_info {
             aoso_log_info("PLANECHANGE", "Already co-planar within " + tolerance_deg + " deg; no node added.").
@@ -34,7 +34,7 @@ FUNCTION aoso_planechange_add_node_for_target {
         RETURN 0.
     }
 
-    LOCAL etas IS aoso_orbit_relative_node_etas(SHIP, target_orbitable).
+    LOCAL etas IS aoso_orbit_relative_node_etas(target_orbitable, SHIP).
     IF etas:LENGTH = 0 OR node_index >= etas:LENGTH {
         IF DEFINED aoso_log_warn {
             aoso_log_warn("PLANECHANGE", "No relative node found within one orbit.").

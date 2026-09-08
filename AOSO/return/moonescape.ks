@@ -85,7 +85,7 @@ FUNCTION aoso_moonescape_add_escape_node {
     }
 
     LOCAL v_peri IS aoso_ejection_dv_for_v_infinity(v_inf_mag, r_peri, mu).
-    LOCAL v_now IS aoso_orbit_speed_at_radius(SHIP, r_peri).
+    LOCAL v_now IS aoso_orbit_speed_at_radius(r_peri, SHIP).
     LOCAL dv IS v_peri - v_now.
 
     LOCAL nd IS NODE(TIME:SECONDS + burn_eta, 0, 0, dv).

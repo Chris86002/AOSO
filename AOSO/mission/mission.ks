@@ -36,9 +36,9 @@ GLOBAL AOSO_MISSION_BURN_STATE IS LEXICON("ok", TRUE, "done", FALSE).
 
 FUNCTION aoso_mission_step {
     PARAMETER name.
-    PARAMETER start_fn IS 0.
     PARAMETER update_fn.
     PARAMETER is_done_fn.
+    PARAMETER start_fn IS 0.
     PARAMETER is_aborted_fn IS 0.
 
     RETURN LEXICON(
@@ -88,7 +88,7 @@ FUNCTION aoso_mission_burn_is_aborted {
 FUNCTION aoso_mission_step_burn {
     PARAMETER name.
     PARAMETER add_node_fn.
-    RETURN aoso_mission_step(name, aoso_mission_burn_start@:BIND(add_node_fn), aoso_mission_burn_update@, aoso_mission_burn_is_done@, aoso_mission_burn_is_aborted@).
+    RETURN aoso_mission_step(name, aoso_mission_burn_update@, aoso_mission_burn_is_done@, aoso_mission_burn_start@:BIND(add_node_fn), aoso_mission_burn_is_aborted@).
 }
 
 // --- Presets over existing subsystems ------------------------------------
@@ -96,7 +96,7 @@ FUNCTION aoso_mission_step_burn {
 FUNCTION aoso_mission_step_ascend {
     PARAMETER launch_heading IS 90.
     PARAMETER target_apo IS 0.
-    RETURN aoso_mission_step("ASCEND", aoso_ascent_start@:BIND(launch_heading, target_apo), aoso_ascent_update@, aoso_ascent_is_done@, aoso_ascent_is_aborted@).
+    RETURN aoso_mission_step("ASCEND", aoso_ascent_update@, aoso_ascent_is_done@, aoso_ascent_start@:BIND(launch_heading, target_apo), aoso_ascent_is_aborted@).
 }
 
 FUNCTION aoso_mission_step_transfer_to_altitude {
@@ -133,27 +133,27 @@ FUNCTION aoso_mission_step_deorbit {
 }
 
 FUNCTION aoso_mission_step_descend {
-    RETURN aoso_mission_step("DESCEND", aoso_descent_start@, aoso_descent_tick@, aoso_descent_is_landed@, aoso_descent_is_aborted@).
+    RETURN aoso_mission_step("DESCEND", aoso_descent_tick@, aoso_descent_is_landed@, aoso_descent_start@, aoso_descent_is_aborted@).
 }
 
 FUNCTION aoso_mission_step_refuel {
     PARAMETER target_names IS LIST("LiquidFuel", "Oxidizer").
-    RETURN aoso_mission_step("REFUEL", aoso_refuel_start@:BIND(target_names), aoso_refuel_tick@, aoso_refuel_is_done@, aoso_refuel_is_aborted@).
+    RETURN aoso_mission_step("REFUEL", aoso_refuel_tick@, aoso_refuel_is_done@, aoso_refuel_start@:BIND(target_names), aoso_refuel_is_aborted@).
 }
 
 FUNCTION aoso_mission_step_return {
-    RETURN aoso_mission_step("RETURN", aoso_return_start@, aoso_return_update@, aoso_return_is_done@, aoso_return_is_aborted@).
+    RETURN aoso_mission_step("RETURN", aoso_return_update@, aoso_return_is_done@, aoso_return_start@, aoso_return_is_aborted@).
 }
 
 FUNCTION aoso_mission_step_precision_return {
-    RETURN aoso_mission_step("PRECISION_RETURN", aoso_kscreturn_start@, aoso_kscreturn_update@, aoso_kscreturn_is_done@, aoso_kscreturn_is_aborted@).
+    RETURN aoso_mission_step("PRECISION_RETURN", aoso_kscreturn_update@, aoso_kscreturn_is_done@, aoso_kscreturn_start@, aoso_kscreturn_is_aborted@).
 }
 
 // Phase 11 (Advanced): final-approach/docking, assuming a prior step (e.g.
 // aoso_mission_step_rendezvous_phasing) has already set TARGET to the
 // docking port to dock with.
 FUNCTION aoso_mission_step_dock {
-    RETURN aoso_mission_step("DOCK", aoso_docking_start@, aoso_docking_update@, aoso_docking_is_done@, aoso_docking_is_aborted@).
+    RETURN aoso_mission_step("DOCK", aoso_docking_update@, aoso_docking_is_done@, aoso_docking_start@, aoso_docking_is_aborted@).
 }
 
 // --- Runner ---------------------------------------------------------------

@@ -98,7 +98,7 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
     LOCAL r2 IS target_orbitable:ORBIT:SEMIMAJORAXIS.
     LOCAL sma_t IS (r1 + r2) / 2.
 
-    LOCAL v_now IS aoso_orbit_speed_at_radius(SHIP, r1).
+    LOCAL v_now IS aoso_orbit_speed_at_radius(r1, SHIP).
     LOCAL v_transfer IS SQRT(MAX(0, mu * (2 / r1 - 1 / sma_t))).
     LOCAL dv IS v_transfer - v_now.
 
