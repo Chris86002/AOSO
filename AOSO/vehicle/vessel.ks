@@ -23,6 +23,12 @@
 // distinction to kOS's own FUELCELLS/ISRU/DRILLS bindings (core/addons.ks's
 // "no invented suffixes" stance), which already know how to target the
 // right modules at runtime.
+//
+// has_bays flags a "canopy" -- a service bay/cargo bay (ModuleCargoBay) that
+// may be enclosing other hardware (e.g. solar panels) -- controlled the same
+// documented-global way via kOS's own BAYS binding. Procedural fairings are
+// deliberately not included here: they have no equivalent documented global
+// (they're jettisoned via staging, already vehicle/staging.ks's job).
 
 GLOBAL AOSO_VESSEL IS LEXICON().
 
@@ -41,6 +47,7 @@ FUNCTION aoso_vessel_scan {
     LOCAL has_harvesters IS FALSE.
     LOCAL has_converters IS FALSE.
     LOCAL has_radiators IS FALSE.
+    LOCAL has_bays IS FALSE.
     LOCAL parachute_count IS 0.
     LOCAL decoupler_count IS 0.
     FOR p IN plist {
@@ -52,6 +59,7 @@ FUNCTION aoso_vessel_scan {
         IF p:HASMODULE("ModuleResourceHarvester") { SET has_harvesters TO TRUE. }
         IF p:HASMODULE("ModuleResourceConverter") { SET has_converters TO TRUE. }
         IF p:HASMODULE("ModuleDeployableRadiator") { SET has_radiators TO TRUE. }
+        IF p:HASMODULE("ModuleCargoBay") { SET has_bays TO TRUE. }
         IF p:HASMODULE("ModuleDecouple") OR p:HASMODULE("ModuleAnchoredDecoupler") OR p:HASMODULE("LaunchClamp") {
             SET decoupler_count TO decoupler_count + 1.
         }
@@ -81,6 +89,7 @@ FUNCTION aoso_vessel_scan {
         "has_harvesters", has_harvesters,
         "has_converters", has_converters,
         "has_radiators", has_radiators,
+        "has_bays", has_bays,
         "resources", res_snapshot,
         "scanned_at", TIME:SECONDS
     ).
