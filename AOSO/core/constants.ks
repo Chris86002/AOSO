@@ -36,7 +36,11 @@ GLOBAL AOSO_LOG_LEVELS IS LEXICON(
 ).
 
 // Convenience accessor so other modules don't need to know this is a lexicon.
-FUNCTION aoso_const {
+// NOTE: kOS identifiers are case-insensitive, so this function must NOT be
+// named "aoso_const" (it would collide with the GLOBAL AOSO_CONST lexicon
+// above and cause "not enough arguments" errors whenever AOSO_CONST is
+// referenced as a variable).
+FUNCTION aoso_const_get {
     PARAMETER key.
     IF AOSO_CONST:HASKEY(key) {
         RETURN AOSO_CONST[key].
