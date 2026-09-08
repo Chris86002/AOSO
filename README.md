@@ -10,6 +10,8 @@ A modular, autonomous spacecraft operating system for Kerbal Space Program, writ
 2. Mount it as a kOS volume (or copy to your archive).
 3. From the kOS terminal: `run "AOSO/main".`
 
+By default (no `AOSO/mission_plan.ks`), a vessel still on the ground (`PRELAUNCH`/`LANDED`) will automatically launch and ascend to the default parking orbit (`AOSO_CONFIG["ASCENT_TARGET_APO"]`, 80km). Add an `AOSO/mission_plan.ks` alongside `main.ks` (using `aoso_mission_plan_add()`/`aoso_mission_step_*()` followed by `aoso_mission_start()`) to run a custom mission instead.
+
 ## Optional addons (all with pure-kOS fallbacks)
 - kOS.MechJeb2.Addon (MechJeb)
 - kOS-Astrogator (transfer planning)
