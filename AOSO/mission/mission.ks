@@ -7,7 +7,7 @@
 // transitions without touching every call site.
 //
 // A mission is just an ordered LIST of "steps" (AOSO_MISSION_PLAN), each a
-// small lexicon of callbacks: start(optional)/update/is_done/is_aborted.
+// small lexicon of callbacks: start/update/is_done/is_aborted(optional).
 // This mirrors the start/update/is_done/is_aborted interface every FSM
 // module in this repo already exposes (flight/ascent.ks, landing/descent.ks,
 // refuel/isru.ks, return/return.ks, precision/kscreturn.ks) -- a step just
@@ -159,9 +159,20 @@ FUNCTION aoso_mission_step_dock {
 // --- Runner ---------------------------------------------------------------
 
 // (Re)starts whichever step is at plan_index: logs it, invokes its start
-// callback (if any), and checkpoints the new position. Shared by both the
-// RUNNING state's entry (first step) and its execute (every later step),
-// so advancing the plan never needs a same-named re-transition hack.
+// callback, and checkpoints the new position. Shared by both the RUNNING
+// state's entry (first step) and its execute (every later step), so
+// advancing the plan never needs a same-named re-transition hack.
+//
+// Unlike "is_aborted" (aoso_mission_step's is_aborted_fn IS 0 default makes
+// it genuinely optional), "start" is a required PARAMETER for every step --
+// every aoso_mission_step_*() preset in this file always supplies a real
+// delegate for it. Calling it unconditionally (rather than gating on an
+// ISTYPE("KOSDelegate") check that can only ever silently swallow a
+// legitimate call) guarantees a step's start callback -- e.g.
+// flight/ascent.ks's aoso_ascent_start, which is what actually locks the
+// throttle and ignites the engines for an ASCEND step -- always runs when
+// its step begins, instead of the mission FSM silently sitting in a step
+// whose subsystem was never armed.
 FUNCTION aoso_mission_start_step_at {
     PARAMETER plan_index.
     PARAMETER data.
@@ -174,7 +185,7 @@ FUNCTION aoso_mission_start_step_at {
 
     LOCAL mission_step IS AOSO_MISSION_PLAN[plan_index].
     aoso_log_info("MISSION", "Step " + (plan_index + 1) + "/" + AOSO_MISSION_PLAN:LENGTH + ": " + mission_step["name"]).
-    IF mission_step["start"]:ISTYPE("KOSDelegate") { mission_step["start"]:CALL(). }
+    mission_step["start"]:CALL().
     aoso_checkpoints_save(plan_index, mission_step["name"]).
 }
 
