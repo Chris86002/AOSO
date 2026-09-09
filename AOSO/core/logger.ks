@@ -15,6 +15,23 @@ FUNCTION aoso_log_set_level {
     }
 }
 
+// Starts a brand-new on-disk log for this boot instead of letting
+// core/logger.ks's own aoso_log_flush() append to whatever core/boot.ks's
+// previous run (or a previous game session) already left on disk --
+// otherwise AOSO_CONST["LOG_FILE"] grows forever and a fresh attempt's
+// messages get buried after every earlier try's. Unlike
+// mission/checkpoints.ks's AOSO_CHECKPOINT (deliberately kept so a run can
+// resume) or core/config.ks's AOSO_CONFIG (deliberately kept as operator
+// settings), the log is purely a per-attempt debugging aid, so it is safe
+// -- and clearer for the operator -- to discard on every boot.
+FUNCTION aoso_log_reset {
+    SET AOSO_LOG_BUFFER TO LIST().
+    SET AOSO_LOG_LAST_FLUSH TO 0.
+    IF EXISTS(AOSO_CONST["LOG_FILE"]) {
+        DELETEPATH(AOSO_CONST["LOG_FILE"]).
+    }
+}
+
 FUNCTION aoso_log {
     PARAMETER level_name.
     PARAMETER tag.

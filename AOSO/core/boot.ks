@@ -9,6 +9,9 @@ FUNCTION aoso_boot {
     PRINT " AOSO - Autonomous KSP Flight Computer".
     PRINT "=================================================".
 
+    // Start this attempt's on-disk log clean (see core/logger.ks's own
+    // aoso_log_reset() header) before the very first aoso_log_* call below.
+    aoso_log_reset().
     aoso_config_load().
     aoso_log_set_level(aoso_config_get("LOG_LEVEL", "DEBUG")).
     aoso_log_info("BOOT", "Vessel: " + SHIP:NAME).

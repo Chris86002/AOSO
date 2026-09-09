@@ -252,6 +252,11 @@ FUNCTION aoso_mission_define_states {
 // of always restarting the whole plan from step 0 -- the caller is
 // responsible for re-adding the *same* plan first, since a KOSDelegate
 // can't itself survive a JSON round trip (see checkpoints.ks's header).
+// resume_from_checkpoint FALSE (the default, and what main.ks's own
+// no-mission-plan.ks fallback uses) instead discards any checkpoint left
+// over from an earlier attempt, since this run isn't going to honor it and
+// leaving it on disk would just have it reported as "loaded" again on the
+// next fresh boot too.
 FUNCTION aoso_mission_start {
     PARAMETER resume_from_checkpoint IS FALSE.
 
@@ -263,6 +268,13 @@ FUNCTION aoso_mission_start {
             LOCAL idx IS aoso_checkpoints_step_index().
             IF idx >= 0 AND idx < AOSO_MISSION_PLAN:LENGTH { SET start_index TO idx. }
         }
+    } ELSE {
+        // Starting a brand-new run rather than resuming one: a checkpoint
+        // saved by an earlier attempt no longer corresponds to this run, so
+        // drop it now instead of leaving it on disk to be reloaded and
+        // reported as "available" by core/boot.ks's own aoso_checkpoints_load()
+        // on a later boot that also isn't resuming.
+        aoso_checkpoints_clear().
     }
 
     SET AOSO_MISSION["data"] TO LEXICON("index", start_index).
