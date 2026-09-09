@@ -7,14 +7,14 @@
 //      nose-heavy or long "payload on a stick" stack (Acacius: Convert-O-Tron
 //      root, ISRU up top) needs 100-120 m/s, not 50, or cooked steering
 //      flops it before dynamic pressure can damp the rotation.
-//   2. A small pitchover (4-14 deg off vertical), ramped at ~0.5-0.8 deg/s
+//   2. A small pitchover (5-14 deg off vertical), ramped at ~0.5-0.8 deg/s
 //      like MechJeb PVG, never an instant step.
-//   3. Loft: hold ~75 deg pitch until apoapsis is ~75 km so we punch out
-//      of the atmosphere instead of cruising through it at low AoA.
-//   4. Then zero AoA on surface prograde; throttle holds time-to-apoapsis
-//      near ASCENT_HOLD_AP_S.
-//   5. Once dynamic pressure drops, follow orbital prograde.
-//   6. Cut when apoapsis is at target, hold it against drag until out of
+//   3. Zero angle-of-attack: lock to surface prograde and let gravity
+//      rotate the velocity vector toward the horizon. Throttle holds
+//      time-to-apoapsis near ASCENT_HOLD_AP_S so high-TWR stacks flatten
+//      instead of going vertical, and low-TWR stacks keep AP from collapsing.
+//   4. Once dynamic pressure drops, follow orbital prograde.
+//   5. Cut when apoapsis is at target, hold it against drag until out of
 //      the atmosphere, coast to AP, circularize.
 //
 // kOS exposes CoM for free: PART:POSITION is in SHIP-RAW, origin at the
@@ -133,11 +133,11 @@ FUNCTION aoso_ascent_pitchover_deg {
     PARAMETER com_frac IS 0.5.
     PARAMETER stack_len IS 0.
     LOCAL twr IS aoso_perf_twr().
-    LOCAL base IS aoso_config_get("ASCENT_PITCHOVER_DEG", 8).
+    LOCAL base IS aoso_config_get("ASCENT_PITCHOVER_DEG", 10).
     LOCAL deg IS base.
     IF twr < 1.2 { SET deg TO MAX(5, base - 3). }
     ELSE {
-        IF twr < 1.55 { SET deg TO base. }
+        IF twr < 1.55 { SET deg TO MAX(base, 10). }
         ELSE {
             IF twr < 2.1 { SET deg TO base + 2. }
             ELSE { SET deg TO base + 6. }
@@ -149,7 +149,8 @@ FUNCTION aoso_ascent_pitchover_deg {
     IF stack_len > 16 {
         IF com_frac > 0.5 { SET deg TO deg - 1. }
     }
-    IF deg < 4 { SET deg TO 4. }
+    IF deg < 5 { SET deg TO 5. }
+    IF deg > 14 { SET deg TO 14. }
     RETURN deg.
 }
 
@@ -271,7 +272,7 @@ FUNCTION aoso_ascent_liftoff_entry {
     SET data["thrust_since"] TO 0.
     SET data["com_frac"] TO -1.
     SET data["stack_length"] TO 0.
-    SET data["pitchover_deg"] TO aoso_config_get("ASCENT_PITCHOVER_DEG", 8).
+    SET data["pitchover_deg"] TO aoso_config_get("ASCENT_PITCHOVER_DEG", 10).
     SET data["pitchover_speed"] TO aoso_config_get("ASCENT_PITCHOVER_SPEED", 80).
     SET data["pitchover_min_alt"] TO aoso_config_get("ASCENT_PITCHOVER_MIN_ALT", 200).
     SET data["pitchover_rate"] TO aoso_config_get("ASCENT_PITCHOVER_RATE", 0.75).
@@ -394,43 +395,8 @@ FUNCTION aoso_ascent_pitchover_execute {
 
 FUNCTION aoso_ascent_turn_execute {
     PARAMETER data.
-    LOCAL loft_ap IS aoso_config_get("ASCENT_LOFT_APO", 75000).
-    LOCAL loft_pitch IS aoso_config_get("ASCENT_LOFT_PITCH", 75).
-    IF loft_ap > data["target_apo"] - 5000 {
-        SET loft_ap TO data["target_apo"] - 5000.
-    }
-    LOCAL loft_ceiling IS 50000.
-    IF SHIP:BODY:ATM:EXISTS {
-        SET loft_ceiling TO SHIP:BODY:ATM:HEIGHT * 0.72.
-    }
-
-    LOCAL still_lofting IS FALSE.
-    IF APOAPSIS < loft_ap {
-        IF ALTITUDE < loft_ceiling { SET still_lofting TO TRUE. }
-    }
-
-    IF still_lofting {
-        // Ride prograde down to loft_pitch, then hold that pitch so AP
-        // punches out of the atmosphere instead of flattening in the soup.
-        LOCAL cmd IS loft_pitch.
-        LOCAL fpa IS aoso_ascent_flight_path_pitch().
-        IF fpa > cmd { SET cmd TO fpa. }
-        IF NOT data:HASKEY("loft_logged") {
-            SET data["loft_logged"] TO TRUE.
-            aoso_log_info("ASCENT", "Lofting (hold " + ROUND(loft_pitch, 0) + " deg until AP=" + ROUND(loft_ap, 0) + " m).").
-        }
-        aoso_steer_heading_pitch(data["heading"], cmd).
-        LOCK THROTTLE TO aoso_ascent_throttle_for_q().
-    } ELSE {
-        IF data:HASKEY("loft_logged") {
-            IF data["loft_logged"] {
-                SET data["loft_logged"] TO FALSE.
-                aoso_log_info("ASCENT", "Loft done AP=" + ROUND(APOAPSIS, 0) + " alt=" + ROUND(ALTITUDE, 0) + " - zero-AoA from here.").
-            }
-        }
-        aoso_ascent_follow_prograde(data).
-        LOCK THROTTLE TO aoso_ascent_turn_throttle().
-    }
+    aoso_ascent_follow_prograde(data).
+    LOCK THROTTLE TO aoso_ascent_turn_throttle().
 
     aoso_staging_auto_check().
     IF aoso_fuel_abort_check() {
@@ -587,7 +553,7 @@ FUNCTION aoso_ascent_start {
     SET AOSO_ASCENT["data"] TO LEXICON(
         "heading", launch_heading,
         "target_apo", target_apo,
-        "pitchover_deg", 8,
+        "pitchover_deg", 10,
         "pitchover_speed", 80,
         "pitchover_min_alt", 200,
         "pitchover_rate", 0.75,
@@ -596,7 +562,7 @@ FUNCTION aoso_ascent_start {
         "pitchover_t0", 0,
         "circ_now", FALSE
     ).
-    aoso_log_info("ASCENT", "Profile=LOFT+PITCHOVER+ZERO_AOA loftAP=" + ROUND(aoso_config_get("ASCENT_LOFT_APO", 75000), 0) + "m holdAP=" + ROUND(aoso_config_get("ASCENT_HOLD_AP_S", 45), 0) + "s target=" + ROUND(target_apo, 0) + "m. If this line is missing, GameData still has the old ascent.").
+    aoso_log_info("ASCENT", "Profile=PITCHOVER+ZERO_AOA CoM-aware ramp holdAP=" + ROUND(aoso_config_get("ASCENT_HOLD_AP_S", 45), 0) + "s target=" + ROUND(target_apo, 0) + "m. If this line is missing, GameData still has the old ascent.").
     aoso_state_transition(AOSO_ASCENT, "LIFTOFF").
 }
 
