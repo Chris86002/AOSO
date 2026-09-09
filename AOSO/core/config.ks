@@ -18,13 +18,11 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "WATCHDOG_TIMEOUT", 120,            // s of no-progress before watchdog intervenes
     "WATCHDOG_EC_CRITICAL_PCT", 5,       // % ElectricCharge at/below which hardening/watchdog.ks treats power as critical
     "ASCENT_PITCHOVER_SPEED", 80,       // m/s, vertical rise until pitchover (raised for low TWR / nose-heavy, lowered for high TWR)
-    "ASCENT_PITCHOVER_DEG", 8,          // deg from vertical at pitchover; TWR- and CoM-scaled at runtime (~4-14)
+    "ASCENT_PITCHOVER_DEG", 10,         // deg from vertical at pitchover; TWR- and CoM-scaled at runtime (~6-14)
     "ASCENT_PITCHOVER_RATE", 0.75,      // deg/s, pitch ramp during pitchover (MechJeb PVG; slower if nose-heavy)
     "ASCENT_PITCHOVER_MIN_ALT", 200,    // m, extra floor besides speed (raised if nose-heavy / long stack)
     "ASCENT_HOLD_AP_S", 45,             // s, time-to-apoapsis the gravity-turn throttle holds (GravityTurn / kOS GT)
     "ASCENT_TARGET_APO", 80000,         // m, default target apoapsis for ascent AP
-    "ASCENT_LOFT_APO", 75000,           // m, hold a steep pitch until apoapsis reaches this (punch out of atmosphere before flattening)
-    "ASCENT_LOFT_PITCH", 75,            // deg above horizon held during the loft
     "MANEUVER_FEATHER_S", 2,            // s, remaining burn-time window over which maneuver throttle fades to cut
     "MANEUVER_ALIGN_S", 45,             // s of physics time after warp, before ignition, to point the ship at the burn
     "TOUR_REFUEL_BELOW_PCT", 60,        // % LiquidFuel at/below which the grand tour will land and ISRU-refuel
