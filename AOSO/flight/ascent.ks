@@ -344,6 +344,7 @@ FUNCTION aoso_ascent_start {
     SET AOSO_ASCENT_MAX_Q_SEEN TO 0.
     aoso_ascent_define_states().
     SET AOSO_ASCENT["data"] TO LEXICON("heading", launch_heading, "target_apo", target_apo, "pitchover_deg", 8, "pitchover_speed", 50).
+    aoso_log_info("ASCENT", "Profile=PITCHOVER+ZERO_AOA holdAP=" + ROUND(aoso_config_get("ASCENT_HOLD_AP_S", 45), 0) + "s target=" + ROUND(target_apo, 0) + "m. If this line is missing, GameData still has the old cosine ascent.").
     aoso_state_transition(AOSO_ASCENT, "LIFTOFF").
 }
 
