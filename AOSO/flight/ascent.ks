@@ -52,6 +52,7 @@ FUNCTION aoso_ascent_on_abort {
 FUNCTION aoso_ascent_liftoff_entry {
     PARAMETER data.
     SET data["ignite_attempts"] TO 0.
+    SET data["thrust_since"] TO 0.
     LOCK THROTTLE TO 1.0.
 }
 
@@ -63,17 +64,40 @@ FUNCTION aoso_ascent_liftoff_entry {
 // STAGE attempt per tick, gated on STAGE:READY) per core/scheduler.ks's
 // task contract, unlike flight/launch.ks's aoso_launch_ignite() which is
 // meant for a pre-loop blocking countdown instead.
+//
+// Some vehicles release launch clamps/holds in a stage *after* engine
+// ignition, so thrust alone isn't proof the vehicle is free to fly. Once
+// engines are lit, this allows a few more STAGE attempts if SHIP:STATUS is
+// still "PRELAUNCH" after a short grace period, instead of leaving a
+// fully-throttled vehicle clamped to the pad forever. The grace period
+// matters: SHIP:STATUS only flips away from "PRELAUNCH" once the vessel
+// physically starts moving, which can lag ignition by a tick or two even
+// on vehicles with no clamps at all, and staging early could jettison an
+// unrelated stage.
 FUNCTION aoso_ascent_liftoff_execute {
     PARAMETER data.
 
+    LOCAL attempts_left IS STAGE:NUMBER > 0 AND data["ignite_attempts"] < 6.
+
     IF SHIP:AVAILABLETHRUST <= 0 {
-        IF STAGE:NUMBER <= 0 OR data["ignite_attempts"] >= 4 {
+        IF NOT attempts_left {
             aoso_log_error("ASCENT", "No thrust after ignition attempts - aborting ascent.").
             aoso_state_abort(AOSO_ASCENT).
             RETURN.
         }
         IF STAGE:READY {
             aoso_log_info("ASCENT", "Liftoff ignition: staging (" + STAGE:NUMBER + ").").
+            STAGE.
+            SET data["ignite_attempts"] TO data["ignite_attempts"] + 1.
+        }
+        RETURN.
+    }
+
+    IF data["thrust_since"] = 0 { SET data["thrust_since"] TO TIME:SECONDS. }
+
+    IF SHIP:STATUS = "PRELAUNCH" AND TIME:SECONDS - data["thrust_since"] > 3 AND attempts_left {
+        IF STAGE:READY {
+            aoso_log_warn("ASCENT", "Still PRELAUNCH " + ROUND(TIME:SECONDS - data["thrust_since"], 1) + "s after ignition - staging (" + STAGE:NUMBER + ") to clear holds.").
             STAGE.
             SET data["ignite_attempts"] TO data["ignite_attempts"] + 1.
         }
