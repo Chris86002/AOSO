@@ -24,9 +24,11 @@
 // "no invented suffixes" stance), which already know how to target the
 // right modules at runtime.
 //
-// has_bays flags a "canopy" -- a service bay/cargo bay (ModuleCargoBay) that
-// may be enclosing other hardware (e.g. solar panels) -- controlled the same
-// documented-global way via kOS's own BAYS binding.
+// has_bays flags a service bay/cargo bay (ModuleCargoBay). It is recorded
+// purely as an informational capability flag: power/power.ks deliberately
+// never commands bays open (operator preference) -- solar panels are extended
+// directly via their own ModuleDeployableSolarPanel actions -- so nothing here
+// drives kOS's BAYS binding.
 //
 // has_fairings flags the other common "canopy": a stock procedural fairing
 // (e.g. the AE-FF1/2/3 "Airstream Protective Shell" parts), backed by

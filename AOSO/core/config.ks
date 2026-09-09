@@ -28,7 +28,6 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "LOW_EC_PCT", 20,                   // % ElectricCharge at/below which fuel cells are enabled
     "FUEL_CELL_DISABLE_PCT", 90,        // % ElectricCharge at/above which fuel cells are disabled
     "PANEL_MAX_AIRSPEED", 50,           // m/s, airspeed inside atmosphere above which panels retract
-    "BAY_OPEN_GRACE_S", 5,              // s to wait for a service/cargo bay door to open before deploying enclosed panels anyway
     "REFUEL_TARGET_PCT", 95,            // % capacity of a harvested resource considered "full enough"
     "REFUEL_ORE_MIN_AMOUNT", 0.01,      // Ore units at/below which harvesting is considered depleted
     "HOME_BODY", "Kerbin",              // body return/return.ks treats as the final destination

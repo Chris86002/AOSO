@@ -68,15 +68,6 @@ FUNCTION aoso_power_panels_prelaunch {
     RETURN SHIP:STATUS = "PRELAUNCH".
 }
 
-// TRUE while an enclosing service bay/canopy (kOS's documented BAYS
-// binding -- see vehicle/vessel.ks's has_bays scan) is still closed.
-// Panels mounted inside one can't physically extend until it opens, so
-// this gates the panel deploy (subject to the grace fallback in
-// aoso_power_panels_auto_check for bays that never report open).
-FUNCTION aoso_power_panels_bay_closed {
-    RETURN aoso_vessel_get("has_bays", FALSE) AND NOT BAYS.
-}
-
 // TRUE while a procedural fairing/canopy (e.g. an AE-FF1/2/3 "Airstream
 // Protective Shell") enclosing other hardware still hasn't been jettisoned.
 // kOS has no documented global for fairings the way BAYS covers service
@@ -147,7 +138,7 @@ FUNCTION aoso_power_deploy_panels {
 
 // Retracts every solar panel the same per-module way (with the PANELS binding
 // as a fallback), and clears this deploy cycle's bookkeeping so a later
-// re-deploy re-opens the bay and re-extends from scratch.
+// re-deploy re-extends from scratch.
 FUNCTION aoso_power_retract_panels {
     FOR panel_module IN SHIP:MODULESNAMED("ModuleDeployableSolarPanel") {
         IF NOT aoso_power_module_do_action(panel_module, "retract") {
@@ -156,17 +147,17 @@ FUNCTION aoso_power_retract_panels {
     }
     SET PANELS TO FALSE.
     SET AOSO_POWER_PANELS_DEPLOYED TO FALSE.
-    SET AOSO_POWER_BAY_OPENED_AT TO 0.
     aoso_log_info("POWER", "Retracting solar panels: airspeed=" + ROUND(SHIP:AIRSPEED, 1) + " m/s.").
 }
 
 // Idempotent per-tick driver. Retracts aero-exposed panels, and otherwise
-// only deploys the fairing/bay/panels once the vessel is clear of the
-// atmosphere (aoso_power_out_of_atmosphere), so the airstream shell isn't
-// jettisoned and the panels aren't extended into the airstream on the way up.
-// Each stage of the deploy sequence -- jettison fairing, open bay, extend
-// panels -- runs at most once and yields a tick before the next, so it never
-// spams SetGroup/DOACTION calls or log lines.
+// only deploys the fairing/panels once the vessel is clear of the atmosphere
+// (aoso_power_out_of_atmosphere), so the airstream shell isn't jettisoned and
+// the panels aren't extended into the airstream on the way up. Cargo/service
+// bays are deliberately never commanded open (operator preference): the panels
+// are extended directly via their own actions. Each step -- jettison fairing,
+// extend panels -- runs at most once and yields a tick before the next, so it
+// never spams DOACTION calls or log lines.
 FUNCTION aoso_power_panels_auto_check {
     IF NOT aoso_vessel_get("has_solar_panels", FALSE) { RETURN. }
 
@@ -183,26 +174,10 @@ FUNCTION aoso_power_panels_auto_check {
     IF PANELS OR AOSO_POWER_PANELS_DEPLOYED { RETURN. } // already deployed
 
     // Jettison any enclosing airstream-shell fairing first, giving it a tick
-    // to separate before touching the bay/panels.
+    // to separate before extending the panels.
     IF aoso_power_fairings_pending() {
         aoso_power_deploy_fairings().
         RETURN.
-    }
-
-    // Open any enclosing service/cargo bay exactly once, then give a real bay
-    // door a grace period to finish opening. A non-opening (occlusion-only)
-    // ModuleCargoBay part would otherwise leave BAYS reading closed forever and
-    // block the panels; after the grace elapses we deploy them anyway.
-    IF aoso_vessel_get("has_bays", FALSE) {
-        IF AOSO_POWER_BAY_OPENED_AT = 0 {
-            SET BAYS TO TRUE.
-            SET AOSO_POWER_BAY_OPENED_AT TO TIME:SECONDS.
-            aoso_log_info("POWER", "Opening service bay/canopy before deploying solar panels.").
-            RETURN.
-        }
-        IF aoso_power_panels_bay_closed() AND (TIME:SECONDS - AOSO_POWER_BAY_OPENED_AT) < aoso_config_get("BAY_OPEN_GRACE_S", 5) {
-            RETURN. // give a real bay door time to finish opening
-        }
     }
 
     aoso_power_deploy_panels().
