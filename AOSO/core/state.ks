@@ -52,7 +52,7 @@ FUNCTION aoso_state_transition {
 
     IF machine["current"] <> "" AND machine["states"]:HASKEY(machine["current"]) {
         LOCAL cur IS machine["states"][machine["current"]].
-        IF cur["exit"]:ISTYPE("KOSDelegate") { cur["exit"]:CALL(machine["data"]). }
+        IF cur["exit"]:ISTYPE("Delegate") { cur["exit"]:CALL(machine["data"]). }
     }
 
     IF NOT machine["states"]:HASKEY(new_state) {
@@ -68,7 +68,7 @@ FUNCTION aoso_state_transition {
     IF machine["history"]:LENGTH > 50 { machine["history"]:REMOVE(0). }
 
     LOCAL st IS machine["states"][new_state].
-    IF st["entry"]:ISTYPE("KOSDelegate") { st["entry"]:CALL(machine["data"]). }
+    IF st["entry"]:ISTYPE("Delegate") { st["entry"]:CALL(machine["data"]). }
     aoso_log_info("STATE", "-> " + new_state).
     RETURN TRUE.
 }
@@ -82,7 +82,7 @@ FUNCTION aoso_state_update {
 
     IF st["timeout"] > 0 AND (TIME:SECONDS - machine["entered_at"]) > st["timeout"] {
         aoso_log_warn("STATE", "Timeout in " + machine["current"]).
-        IF st["on_timeout"]:ISTYPE("KOSDelegate") {
+        IF st["on_timeout"]:ISTYPE("Delegate") {
             LOCAL retry IS st["on_timeout"]:CALL(machine["data"]).
             IF retry = TRUE {
                 SET machine["entered_at"] TO TIME:SECONDS. // grant another window
@@ -92,7 +92,7 @@ FUNCTION aoso_state_update {
         RETURN. // caller's on_timeout is responsible for transitioning away
     }
 
-    IF st["execute"]:ISTYPE("KOSDelegate") { st["execute"]:CALL(machine["data"]). }
+    IF st["execute"]:ISTYPE("Delegate") { st["execute"]:CALL(machine["data"]). }
 }
 
 FUNCTION aoso_state_abort {
@@ -101,7 +101,7 @@ FUNCTION aoso_state_abort {
     SET machine["aborted"] TO TRUE.
     IF machine["states"]:HASKEY(machine["current"]) {
         LOCAL st IS machine["states"][machine["current"]].
-        IF st["on_abort"]:ISTYPE("KOSDelegate") { st["on_abort"]:CALL(machine["data"]). }
+        IF st["on_abort"]:ISTYPE("Delegate") { st["on_abort"]:CALL(machine["data"]). }
     }
     aoso_log_warn("STATE", "Abort requested in " + machine["current"]).
 }
