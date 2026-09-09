@@ -53,11 +53,20 @@ FUNCTION aoso_fuel_reserve_ok {
 }
 
 // Returns TRUE if the active stage's propellant has dropped to/below the
-// configured abort threshold. Logs a warning the first time it trips.
+// configured abort threshold, logging a warning while it is tripped.
+//
+// The logger call is made unconditionally (core/logger.ks is always loaded
+// first by main.ks's RUN ONCE order, so aoso_log_warn always exists): a
+// former "IF should_abort AND DEFINED aoso_log_warn" guard crashed the ascent
+// the first time this was reached (on the first GRAVITY_TURN tick). kOS never
+// short-circuits AND, so "DEFINED aoso_log_warn" was always evaluated, and
+// "DEFINED <bare function name>" in a shared RUN-ONCE context auto-calls that
+// function with zero arguments -- invoking aoso_log_warn() with no tag/message
+// threw "Too few arguments" every time (KSP-KOS/KOS#2159).
 FUNCTION aoso_fuel_abort_check {
     LOCAL pct IS aoso_stage_propellant_pct().
     LOCAL should_abort IS pct <= aoso_config_get("ABORT_FUEL_PCT", 3).
-    IF should_abort AND DEFINED aoso_log_warn {
+    IF should_abort {
         aoso_log_warn("FUEL", "Stage propellant at " + ROUND(pct, 1) + "% <= abort threshold.").
     }
     RETURN should_abort.
