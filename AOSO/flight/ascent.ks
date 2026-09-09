@@ -182,12 +182,13 @@ FUNCTION aoso_ascent_pitchover_speed {
 FUNCTION aoso_ascent_pitchover_min_alt {
     PARAMETER com_frac IS 0.5.
     PARAMETER stack_len IS 0.
-    LOCAL alt IS aoso_config_get("ASCENT_PITCHOVER_MIN_ALT", 200).
-    IF com_frac > 0.5 { SET alt TO alt + ((com_frac - 0.5) * 1200). }
-    IF stack_len > 16 { SET alt TO alt + 80. }
-    IF alt < 150 { SET alt TO 150. }
-    IF alt > 500 { SET alt TO 500. }
-    RETURN alt.
+    // Do not name this `alt` — that clobbers kOS's builtin ALT (ALT:RADAR).
+    LOCAL min_alt IS aoso_config_get("ASCENT_PITCHOVER_MIN_ALT", 200).
+    IF com_frac > 0.5 { SET min_alt TO min_alt + ((com_frac - 0.5) * 1200). }
+    IF stack_len > 16 { SET min_alt TO min_alt + 80. }
+    IF min_alt < 150 { SET min_alt TO 150. }
+    IF min_alt > 500 { SET min_alt TO 500. }
+    RETURN min_alt.
 }
 
 // MechJeb PVG pitch-program rate. Instant steps at low Q are what flop
