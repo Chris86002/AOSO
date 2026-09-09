@@ -28,6 +28,7 @@ FUNCTION aoso_checkpoints_save {
     PARAMETER step_index.
     PARAMETER step_name IS "".
     PARAMETER data IS LEXICON().
+    PARAMETER quiet IS FALSE.
 
     SET AOSO_CHECKPOINT TO LEXICON(
         "step_index", step_index,
@@ -36,7 +37,9 @@ FUNCTION aoso_checkpoints_save {
         "saved_at", TIME:SECONDS
     ).
     aoso_json_write(AOSO_CONST["CHECKPOINT_FILE"], AOSO_CHECKPOINT).
-    aoso_log_info("CHECKPOINT", "Saved at step " + (step_index + 1) + ": " + step_name).
+    IF NOT quiet {
+        aoso_log_info("CHECKPOINT", "Saved at step " + (step_index + 1) + ": " + step_name).
+    }
 }
 
 FUNCTION aoso_checkpoints_load {
@@ -89,7 +92,7 @@ FUNCTION aoso_checkpoints_autosave_tick {
         LOCAL idx IS AOSO_MISSION["data"]["index"].
         LOCAL name IS "".
         IF idx >= 0 AND idx < AOSO_MISSION_PLAN:LENGTH { SET name TO AOSO_MISSION_PLAN[idx]["name"]. }
-        aoso_checkpoints_save(idx, name).
+        aoso_checkpoints_save(idx, name, AOSO_CHECKPOINT["data"], TRUE).
     }
 }
 

@@ -54,6 +54,22 @@ FUNCTION aoso_maneuver_add_circularize_at_apoapsis {
     RETURN nd.
 }
 
+// Same vis-viva circularization but at the current radius, for when we
+// already passed apoapsis (ETA:AP jumped a full period) and waiting would
+// put periapsis back in the atmosphere.
+FUNCTION aoso_maneuver_add_circularize_here {
+    LOCAL mu IS SHIP:BODY:MU.
+    LOCAL radius IS SHIP:BODY:RADIUS + ALTITUDE.
+    LOCAL sma IS SHIP:ORBIT:SEMIMAJORAXIS.
+    LOCAL v_circ IS SQRT(mu / radius).
+    LOCAL v_now IS SQRT(MAX(0, mu * (2 / radius - 1 / sma))).
+    LOCAL dv IS v_circ - v_now.
+    LOCAL nd IS NODE(TIME:SECONDS + 10, 0, 0, dv).
+    ADD nd.
+    aoso_log_info("MANEUVER", "Circularization node added: dv=" + ROUND(dv, 1) + " m/s now (past apoapsis).").
+    RETURN nd.
+}
+
 FUNCTION aoso_maneuver_has_pending {
     RETURN HASNODE.
 }
