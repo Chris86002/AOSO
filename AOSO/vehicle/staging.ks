@@ -1,9 +1,15 @@
 // AOSO/vehicle/staging.ks
-// Flameout-driven automatic staging. Deliberately conservative: it only
-// advances the stage when every currently-ignited engine has flamed out
-// while thrust is still being commanded, so it never discards a stage that
-// still has usable engines (e.g. one of several parallel boosters flaming
-// out early) or fires while the vessel is coasting with the throttle down.
+// Flameout-driven automatic staging. Deliberately conservative: it advances
+// the stage when the currently-ignited engines can no longer usefully thrust,
+// while never discarding a stage that still has usable engines or firing while
+// the vessel coasts with the throttle down. Two cases trigger it:
+//   1. every currently-ignited engine has flamed out (the whole active stage
+//      is spent), or
+//   2. a spent BOOSTER subset can be dropped while the core keeps burning --
+//      vehicle/parts.ks's aoso_parts_boosters_ready_to_jettison() confirms the
+//      next separation jettisons only flamed-out engines. Without this second
+//      case, radial boosters (which flame out while the core still burns) were
+//      never dropped, so their near-empty tanks tripped a false fuel abort.
 // Disabled outright when AOSO_CONFIG["SAFE_MODE"] is set, so an operator can
 // always take manual control without fighting the automation.
 
@@ -12,6 +18,7 @@ FUNCTION aoso_staging_should_stage {
 
     IF STAGE:NUMBER <= 0 { RETURN FALSE. } // nothing left to stage
     IF aoso_config_get("SAFE_MODE", FALSE) { RETURN FALSE. }
+    IF commanded_throttle <= 0 { RETURN FALSE. } // don't stage while coasting
 
     LOCAL elist IS LIST().
     LIST ENGINES IN elist.
@@ -26,7 +33,8 @@ FUNCTION aoso_staging_should_stage {
 
     IF lit_count = 0 { RETURN FALSE. } // nothing ignited yet - not our call
 
-    RETURN flamedout_count = lit_count AND commanded_throttle > 0.
+    IF flamedout_count = lit_count { RETURN TRUE. } // whole active stage is spent
+    RETURN aoso_parts_boosters_ready_to_jettison(). // spent booster subset can drop
 }
 
 FUNCTION aoso_staging_auto_check {
@@ -35,6 +43,7 @@ FUNCTION aoso_staging_auto_check {
         STAGE.
         WAIT UNTIL STAGE:READY.
         aoso_vessel_scan().
+        aoso_parts_scan().
         aoso_capabilities_refresh().
     }
 }

@@ -32,6 +32,7 @@ RUN ONCE "AOSO/core/boot".
 
 // --- Vehicle ----------------------------------------------------------------
 RUN ONCE "AOSO/vehicle/vessel".
+RUN ONCE "AOSO/vehicle/parts".
 RUN ONCE "AOSO/vehicle/capabilities".
 RUN ONCE "AOSO/vehicle/performance".
 RUN ONCE "AOSO/vehicle/resources".

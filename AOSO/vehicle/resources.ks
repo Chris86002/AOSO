@@ -52,8 +52,16 @@ FUNCTION aoso_fuel_reserve_ok {
     RETURN aoso_stage_propellant_pct() > aoso_config_get("FUEL_RESERVE_PCT", 10).
 }
 
-// Returns TRUE if the active stage's propellant has dropped to/below the
-// configured abort threshold, logging a warning while it is tripped.
+// Returns TRUE only when the active stage's propellant has dropped to/below
+// the configured abort threshold AND there is no way to recover thrust. A low
+// active-stage reading is normal mid-ascent: lower stages and spent boosters
+// run dry and get jettisoned by vehicle/staging.ks, after which the next
+// stage's fuller tanks take over. So this defers to vehicle/parts.ks's
+// aoso_parts_thrust_recoverable() -- if the vehicle is still burning, can drop
+// spent boosters, or has an un-ignited stage to fall back on, the answer is
+// "stage", not "abort". Only once thrust is genuinely unrecoverable (nothing
+// burning and nothing left to stage to) does this abort, which is exactly the
+// case where continuing is pointless.
 //
 // The logger call is made unconditionally (core/logger.ks is always loaded
 // first by main.ks's RUN ONCE order, so aoso_log_warn always exists): a
@@ -65,9 +73,8 @@ FUNCTION aoso_fuel_reserve_ok {
 // threw "Too few arguments" every time (KSP-KOS/KOS#2159).
 FUNCTION aoso_fuel_abort_check {
     LOCAL pct IS aoso_stage_propellant_pct().
-    LOCAL should_abort IS pct <= aoso_config_get("ABORT_FUEL_PCT", 3).
-    IF should_abort {
-        aoso_log_warn("FUEL", "Stage propellant at " + ROUND(pct, 1) + "% <= abort threshold.").
-    }
-    RETURN should_abort.
+    IF pct > aoso_config_get("ABORT_FUEL_PCT", 3) { RETURN FALSE. }
+    IF aoso_parts_thrust_recoverable() { RETURN FALSE. }
+    aoso_log_warn("FUEL", "Stage propellant at " + ROUND(pct, 1) + "% with no recoverable thrust -- aborting.").
+    RETURN TRUE.
 }
