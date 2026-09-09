@@ -4,17 +4,18 @@
 // aoso_resource_pct() for the EC percentage (ElectricCharge is just another
 // SHIP:RESOURCES entry).
 //
-// Aero-sensitive hardware (the airstream-shell fairing, service/cargo bays and
-// the solar panels they enclose) is only ever deployed once the vessel is
-// clear of the atmosphere -- see aoso_power_out_of_atmosphere() -- so nothing
-// is jettisoned or extended into the airstream during the climb.
+// Aero-sensitive hardware (the airstream-shell fairing and the solar panels)
+// is only ever deployed once the vessel is clear of the atmosphere -- see
+// aoso_power_out_of_atmosphere() -- so nothing is jettisoned or extended into
+// the airstream during the climb. Cargo/service bays are deliberately left
+// alone (never commanded open) per operator preference.
 //
 // Solar panels are extended through each ModuleDeployableSolarPanel's own
 // "extend" KSPAction (the documented PartModule DOACTION path -- the same
 // action a manually-assigned action group would fire), not kOS's PANELS global
 // binding, which proved unreliable at actually deploying the panels on the
-// as-flown vehicle. Fuel cells still use the FUELCELLS binding, and bays the
-// BAYS binding, per core/addons.ks's "no invented suffixes" stance.
+// as-flown vehicle. Fuel cells still use the FUELCELLS binding, per
+// core/addons.ks's "no invented suffixes" stance.
 
 // Current ElectricCharge fill percentage (0-100).
 FUNCTION aoso_power_ec_pct {
@@ -26,13 +27,9 @@ FUNCTION aoso_power_ec_low {
     RETURN aoso_power_ec_pct() <= aoso_config_get("LOW_EC_PCT", 20).
 }
 
-// Tracks whether we've already commanded the panels out this deploy cycle (so
-// the per-panel extend action isn't re-fired every tick) and when the
-// enclosing bay was first told to open (so a real bay door gets a grace period
-// to finish opening, while a non-opening occlusion-only ModuleCargoBay part
-// doesn't block panel deployment forever). Both reset on retract.
+// Tracks whether we've already commanded the panels out this deploy cycle so
+// the per-panel extend action isn't re-fired every tick. Reset on retract.
 GLOBAL AOSO_POWER_PANELS_DEPLOYED IS FALSE.
-GLOBAL AOSO_POWER_BAY_OPENED_AT IS 0.
 
 // TRUE once the vessel is clear of the atmosphere (or on an airless body,
 // where there's no airstream to protect against). Aero-sensitive hardware --
