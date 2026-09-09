@@ -18,6 +18,7 @@ FUNCTION aoso_boot {
     aoso_addons_detect().
 
     aoso_vessel_scan().
+    aoso_parts_scan().
     aoso_capabilities_refresh().
     aoso_body_database_load().
     aoso_checkpoints_load().

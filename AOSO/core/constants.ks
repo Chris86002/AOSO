@@ -18,6 +18,7 @@ GLOBAL AOSO_CONST IS LEXICON(
     "CONFIG_FILE", "0:/aoso_config.json",
     "MISSION_FILE", "0:/aoso_mission.json",
     "VESSEL_FILE", "0:/aoso_vessel.json",
+    "PART_DB_FILE", "0:/aoso_part_database.json",
     "BODY_DB_FILE", "0:/aoso_body_database.json",
     "ROUTE_FILE", "0:/aoso_route.json",
     "TELEMETRY_FILE", "0:/aoso_telemetry.csv",
