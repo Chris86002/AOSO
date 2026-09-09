@@ -248,7 +248,8 @@ FUNCTION aoso_goto_plan_entry {
 
 FUNCTION aoso_goto_wait_execute {
     PARAMETER data.
-    IF TIME:SECONDS >= data["window_ut"] - 8 {
+    LOCAL align_s IS aoso_config_get("MANEUVER_ALIGN_S", 45).
+    IF TIME:SECONDS >= data["window_ut"] - align_s {
         SET WARP TO 0.
         LOCAL hop IS BODY(data["hop"]).
         LOCAL nd IS aoso_interplanetary_add_ejection_node(hop).
@@ -261,7 +262,7 @@ FUNCTION aoso_goto_wait_execute {
     }
     IF WARP = 0 {
         IF aoso_maneuver_can_warp() {
-            WARPTO(data["window_ut"] - 5).
+            WARPTO(data["window_ut"] - align_s).
         }
     }
 }
@@ -285,6 +286,12 @@ FUNCTION aoso_goto_burn_execute {
         RETURN.
     }
     IF aoso_maneuver_execute_next() {
+        LOCAL burn_res IS aoso_maneuver_last_result().
+        IF burn_res = "missed" OR burn_res = "incomplete" {
+            aoso_log_warn("GOTO", "Burn " + burn_res + " - re-planning for the next pass.").
+            aoso_state_transition(AOSO_GOTO, "PLAN").
+            RETURN.
+        }
         IF data["burn_kind"] = "plane" {
             aoso_state_transition(AOSO_GOTO, "PLAN").
         } ELSE {
@@ -327,7 +334,8 @@ FUNCTION aoso_goto_coast_execute {
         IF eta_p > 30 {
             IF WARP = 0 {
                 IF aoso_maneuver_can_warp() {
-                    WARPTO(TIME:SECONDS + eta_p - 20).
+                    LOCAL align_s IS aoso_config_get("MANEUVER_ALIGN_S", 45).
+                    WARPTO(TIME:SECONDS + eta_p - align_s).
                 }
             }
         } ELSE {
@@ -383,6 +391,12 @@ FUNCTION aoso_goto_capture_execute {
         RETURN.
     }
     IF aoso_maneuver_execute_next() {
+        LOCAL cap_res IS aoso_maneuver_last_result().
+        IF cap_res = "missed" OR cap_res = "incomplete" {
+            aoso_log_warn("GOTO", "Capture " + cap_res + " - re-planning.").
+            aoso_state_transition(AOSO_GOTO, "PLAN").
+            RETURN.
+        }
         IF SHIP:BODY:NAME = data["goal"] {
             aoso_state_transition(AOSO_GOTO, "DONE").
         } ELSE {

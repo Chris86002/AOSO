@@ -123,6 +123,12 @@ FUNCTION aoso_return_burn_execute {
         RETURN.
     }
     IF aoso_maneuver_execute_next() {
+        LOCAL burn_res IS aoso_maneuver_last_result().
+        IF burn_res = "missed" OR burn_res = "incomplete" {
+            aoso_log_warn("RETURN", "Burn " + burn_res + " - re-planning.").
+            aoso_state_transition(AOSO_RETURN, "PLAN").
+            RETURN.
+        }
         aoso_state_transition(AOSO_RETURN, "COAST").
     }
 }

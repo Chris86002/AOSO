@@ -163,6 +163,16 @@ FUNCTION aoso_tour_deorbit_entry {
 FUNCTION aoso_tour_deorbit_execute {
     PARAMETER data.
     IF aoso_maneuver_execute_next() {
+        LOCAL burn_res IS aoso_maneuver_last_result().
+        IF burn_res = "missed" OR burn_res = "incomplete" {
+            aoso_log_warn("TOUR", "Deorbit " + burn_res + " - retrying.").
+            LOCAL nd IS aoso_deorbit_add_node().
+            IF nd = 0 {
+                aoso_descent_start().
+                aoso_state_transition(AOSO_TOUR, "DESCEND").
+            }
+            RETURN.
+        }
         aoso_descent_start().
         aoso_state_transition(AOSO_TOUR, "DESCEND").
     }
