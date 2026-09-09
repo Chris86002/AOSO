@@ -23,10 +23,14 @@ FUNCTION aoso_steer_retrograde {
     LOCK STEERING TO SHIP:RETROGRADE.
 }
 
-// Surface-relative counterparts, used by landing/descent.ks: orbital
-// PROGRADE/RETROGRADE point along the body-centered velocity vector, which
-// is wrong for a landing burn that needs to cancel velocity relative to the
-// ground (and, near the surface, the two converge anyway).
+// Surface-relative counterparts. Orbital PROGRADE/RETROGRADE point along
+// the body-centered velocity vector, which is wrong for a landing burn that
+// needs to cancel velocity relative to the ground, and for the atmospheric
+// half of a gravity turn (zero AoA means surface prograde, not orbital).
+FUNCTION aoso_steer_srf_prograde {
+    LOCK STEERING TO SHIP:SRFPROGRADE.
+}
+
 FUNCTION aoso_steer_srf_retrograde {
     LOCK STEERING TO SHIP:SRFRETROGRADE.
 }

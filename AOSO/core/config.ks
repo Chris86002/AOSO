@@ -17,11 +17,10 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "AUTO_CHECKPOINT_INTERVAL", 30,     // s between automatic checkpoint saves
     "WATCHDOG_TIMEOUT", 120,            // s of no-progress before watchdog intervenes
     "WATCHDOG_EC_CRITICAL_PCT", 5,       // % ElectricCharge at/below which hardening/watchdog.ks treats power as critical
-    "ASCENT_TURN_START_ALT", 500,       // m, altitude gravity turn begins
-    "ASCENT_TURN_END_ALT", 45000,       // m, altitude gravity turn program reaches 0 deg (clamped to flight-path +/- AOA)
+    "ASCENT_PITCHOVER_SPEED", 50,       // m/s, vertical rise until pitchover (raised for low TWR, lowered for high TWR)
+    "ASCENT_PITCHOVER_DEG", 8,          // deg from vertical at pitchover; TWR-scaled at runtime (~5-14)
+    "ASCENT_HOLD_AP_S", 45,             // s, time-to-apoapsis the gravity-turn throttle holds (GravityTurn / kOS GT)
     "ASCENT_TARGET_APO", 80000,         // m, default target apoapsis for ascent AP
-    "ASCENT_AOA_LIMIT_DEG", 5,          // deg, max angle-of-attack vs surface prograde during the gravity turn
-    "ASCENT_MIN_PITCH", 3,              // deg, pitch floor inside the atmosphere so apoapsis keeps climbing
     "MANEUVER_FEATHER_S", 2,            // s, remaining burn-time window over which maneuver throttle fades to cut
     "TOUR_REFUEL_BELOW_PCT", 60,        // % LiquidFuel at/below which the grand tour will land and ISRU-refuel
     "TOUR_MIN_LAND_TWR", 1.4,           // surface TWR required before the grand tour will attempt a landing
