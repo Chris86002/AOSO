@@ -133,3 +133,32 @@ FUNCTION aoso_staging_register_task {
     PARAMETER interval_s IS 0.5.
     aoso_sched_add("auto_staging", interval_s, aoso_staging_auto_check@).
 }
+
+// Light the next engine group even with throttle closed (coast / pre-burn).
+// aoso_staging_should_stage() refuses to fire at throttle 0 so it cannot
+// dump a coasting stack, which also meant circularization sat at TWR 0
+// with a full un-ignited core (Acacius stage fuel 0.3%, 8 engines dark).
+FUNCTION aoso_staging_ensure_thrust {
+    IF aoso_parts_has_burning_engine() { RETURN TRUE. }
+    IF NOT aoso_staging_airborne() { RETURN FALSE. }
+    IF aoso_config_get("SAFE_MODE", FALSE) { RETURN FALSE. }
+    IF STAGE:NUMBER <= 0 { RETURN FALSE. }
+    IF NOT aoso_parts_has_unignited_engine() { RETURN FALSE. }
+    IF NOT STAGE:READY { RETURN FALSE. }
+    IF AOSO_STAGING_RELIGHT_ATTEMPTS >= 6 { RETURN FALSE. }
+
+    aoso_log_info("STAGING", "Ensuring thrust for upcoming burn, staging (" + STAGE:NUMBER + ").").
+    SET AOSO_STAGING_RELIGHT_ATTEMPTS TO AOSO_STAGING_RELIGHT_ATTEMPTS + 1.
+    STAGE.
+    WAIT UNTIL STAGE:READY.
+    WAIT 0.15.
+    IF NOT aoso_parts_has_burning_engine() {
+        aoso_staging_relight_until_thrust().
+    } ELSE {
+        SET AOSO_STAGING_RELIGHT_ATTEMPTS TO 0.
+    }
+    aoso_vessel_scan().
+    aoso_parts_scan().
+    aoso_capabilities_refresh().
+    RETURN aoso_parts_has_burning_engine().
+}

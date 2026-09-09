@@ -30,6 +30,7 @@ FUNCTION aoso_power_ec_low {
 // Tracks whether we've already commanded the panels out this deploy cycle so
 // the per-panel extend action isn't re-fired every tick. Reset on retract.
 GLOBAL AOSO_POWER_PANELS_DEPLOYED IS FALSE.
+GLOBAL AOSO_POWER_FUELCELLS_COMMANDED IS FALSE.
 
 // TRUE once the vessel is clear of the atmosphere (or on an airless body,
 // where there's no airstream to protect against). Aero-sensitive hardware --
@@ -45,15 +46,20 @@ FUNCTION aoso_power_out_of_atmosphere {
 // atmosphere (aero stress risks ripping them off); in vacuum/space or below
 // the configured airspeed they're safe to leave deployed, mirroring
 // landing/parachute.ks's altitude-vs-ATM:HEIGHT convention for atmosphere
-// membership. While still above the atmosphere, this also retracts early
-// (predictively) once the current orbit's periapsis already dips inside
-// it -- i.e. a deorbit/aerobraking burn has already been made -- so panels
-// are stowed well before atmosphere is actually reached instead of only
-// reacting once airspeed has already climbed past the threshold.
+// membership. A suborbital coast (PE still in atmosphere, climbing to AP)
+// must NOT count as "retract": that is when we jettison the airstream shell
+// and extend panels. Only stow on the way back in, a few km above the
+// atmosphere, so deorbit still tucks them before the air gets thick.
 FUNCTION aoso_power_panels_should_retract {
     IF NOT SHIP:BODY:ATM:EXISTS { RETURN FALSE. }
     IF ALTITUDE > SHIP:BODY:ATM:HEIGHT {
-        RETURN PERIAPSIS <= SHIP:BODY:ATM:HEIGHT.
+        // Do NOT stow just because periapsis is still in atmosphere.
+        // A Kerbin gravity turn is 100x55 until circularization; treating
+        // that as "deorbit, retract" left the airstream shell on and the
+        // batteries died on the coast to AP. Only stow on the way back in.
+        IF PERIAPSIS > SHIP:BODY:ATM:HEIGHT { RETURN FALSE. }
+        IF VERTICALSPEED >= 0 { RETURN FALSE. }
+        RETURN ALTITUDE < (SHIP:BODY:ATM:HEIGHT + 15000).
     }
     RETURN SHIP:AIRSPEED > aoso_config_get("PANEL_MAX_AIRSPEED", 50).
 }
@@ -68,33 +74,65 @@ FUNCTION aoso_power_panels_prelaunch {
     RETURN SHIP:STATUS = "PRELAUNCH".
 }
 
+FUNCTION aoso_power_module_do_event {
+    PARAMETER part_module.
+    PARAMETER keyword.
+    LOCAL kw IS keyword:TOLOWER.
+    FOR event_name IN part_module:ALLEVENTNAMES {
+        IF event_name:TOLOWER:CONTAINS(kw) {
+            part_module:DOEVENT(event_name).
+            RETURN TRUE.
+        }
+    }
+    RETURN FALSE.
+}
+
 // TRUE while a procedural fairing/canopy (e.g. an AE-FF1/2/3 "Airstream
 // Protective Shell") enclosing other hardware still hasn't been jettisoned.
-// kOS has no documented global for fairings the way BAYS covers service
-// bays, so this checks each ModuleProceduralFairing PartModule's own
-// one-shot "Deploy" KSPEvent directly: HASEVENT("Deploy") is only TRUE
-// while the fairing hasn't been deployed/jettisoned yet, so this
-// automatically stops matching (and this function starts returning FALSE)
-// the moment aoso_power_deploy_fairings() below has done its job -- no
-// separate "already deployed" bookkeeping flag needed.
+// Event names vary by KSP version ("Deploy", "Deploy Fairing", "Jettison"),
+// so this matches ALLEVENTNAMES rather than a single HASEVENT("Deploy").
+FUNCTION aoso_power_fairing_has_jettison_event {
+    PARAMETER fairing_module.
+    FOR event_name IN fairing_module:ALLEVENTNAMES {
+        LOCAL ev_name IS event_name:TOLOWER.
+        IF ev_name:CONTAINS("deploy") { RETURN TRUE. }
+        IF ev_name:CONTAINS("jettison") { RETURN TRUE. }
+    }
+    IF fairing_module:HASEVENT("Deploy") { RETURN TRUE. }
+    RETURN FALSE.
+}
+
 FUNCTION aoso_power_fairings_pending {
-    IF NOT aoso_vessel_get("has_fairings", FALSE) { RETURN FALSE. }
     FOR fairing_module IN SHIP:MODULESNAMED("ModuleProceduralFairing") {
-        IF fairing_module:HASEVENT("Deploy") { RETURN TRUE. }
+        IF aoso_power_fairing_has_jettison_event(fairing_module) { RETURN TRUE. }
     }
     RETURN FALSE.
 }
 
 // Jettisons every not-yet-deployed procedural fairing/canopy so whatever it
 // was enclosing (e.g. solar panels) can subsequently deploy. Safe to call
-// repeatedly -- HASEVENT("Deploy") guards each module so an already-fired
-// fairing is simply skipped.
+// repeatedly -- already-fired fairings simply have no matching event left.
 FUNCTION aoso_power_deploy_fairings {
     FOR fairing_module IN SHIP:MODULESNAMED("ModuleProceduralFairing") {
-        IF fairing_module:HASEVENT("Deploy") {
-            fairing_module:DOEVENT("Deploy").
-            aoso_log_info("POWER", "Deploying fairing/canopy: " + fairing_module:PART:TITLE + ".").
+        IF aoso_power_module_do_event(fairing_module, "deploy") {
+            aoso_log_info("POWER", "Jettisoning fairing/canopy: " + fairing_module:PART:TITLE + ".").
+        } ELSE {
+            IF aoso_power_module_do_event(fairing_module, "jettison") {
+                aoso_log_info("POWER", "Jettisoning fairing/canopy: " + fairing_module:PART:TITLE + ".").
+            }
         }
+    }
+}
+
+// Airstream shells come off once we are above the atmosphere, even if the
+// orbit is still suborbital and even if the ship has no solar panels.
+// Gating this on panel-retract logic is what left Acacius's shell on
+// through the entire coast (PE still in atmosphere → never deploy).
+FUNCTION aoso_power_fairings_auto_check {
+    IF NOT aoso_power_out_of_atmosphere() { RETURN. }
+    IF aoso_power_panels_prelaunch() { RETURN. }
+    IF aoso_power_fairings_pending() {
+        aoso_power_deploy_fairings().
     }
 }
 
@@ -173,8 +211,8 @@ FUNCTION aoso_power_panels_auto_check {
     IF aoso_power_panels_prelaunch() { RETURN. }      // still clamped to the pad
     IF PANELS OR AOSO_POWER_PANELS_DEPLOYED { RETURN. } // already deployed
 
-    // Jettison any enclosing airstream-shell fairing first, giving it a tick
-    // to separate before extending the panels.
+    // Fairing jettison is also driven by aoso_power_fairings_auto_check();
+    // if a shell is still pending, give it this tick and extend next tick.
     IF aoso_power_fairings_pending() {
         aoso_power_deploy_fairings().
         RETURN.
@@ -186,22 +224,36 @@ FUNCTION aoso_power_panels_auto_check {
 // Fuel cells (stock ModuleResourceConverter configured as a "Fuel Cell") are
 // switched on when EC is low and off again once it recovers past a higher
 // threshold, so this doesn't chatter on/off right at the trigger point.
+// Convert-O-Tron counts as has_converters but is NOT a fuel cell: SET
+// FUELCELLS does nothing, FUELCELLS stays false, and a naive log line
+// would print every tick. Only log when the binding actually sticks.
 FUNCTION aoso_power_fuelcells_auto_check {
     IF NOT aoso_vessel_get("has_converters", FALSE) { RETURN. }
 
     LOCAL pct IS aoso_power_ec_pct().
-    IF pct <= aoso_config_get("LOW_EC_PCT", 20) AND NOT FUELCELLS {
-        SET FUELCELLS TO TRUE.
-        aoso_log_info("POWER", "Fuel cells ON: EC=" + ROUND(pct, 1) + "%.").
-    } ELSE IF pct >= aoso_config_get("FUEL_CELL_DISABLE_PCT", 90) AND FUELCELLS {
-        SET FUELCELLS TO FALSE.
-        aoso_log_info("POWER", "Fuel cells OFF: EC=" + ROUND(pct, 1) + "%.").
+    IF pct <= aoso_config_get("LOW_EC_PCT", 20) {
+        IF NOT FUELCELLS { SET FUELCELLS TO TRUE. }
+        IF FUELCELLS {
+            IF NOT AOSO_POWER_FUELCELLS_COMMANDED {
+                aoso_log_info("POWER", "Fuel cells ON: EC=" + ROUND(pct, 1) + "%.").
+                SET AOSO_POWER_FUELCELLS_COMMANDED TO TRUE.
+            }
+        }
+    } ELSE {
+        IF pct >= aoso_config_get("FUEL_CELL_DISABLE_PCT", 90) {
+            IF FUELCELLS {
+                SET FUELCELLS TO FALSE.
+                SET AOSO_POWER_FUELCELLS_COMMANDED TO FALSE.
+                aoso_log_info("POWER", "Fuel cells OFF: EC=" + ROUND(pct, 1) + "%.").
+            }
+        }
     }
 }
 
 // Single entry point combining both checks; call once per scheduler tick
 // (or register via aoso_power_register_task()).
 FUNCTION aoso_power_auto_manage {
+    aoso_power_fairings_auto_check().
     aoso_power_panels_auto_check().
     aoso_power_fuelcells_auto_check().
 }

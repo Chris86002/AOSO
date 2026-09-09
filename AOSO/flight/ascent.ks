@@ -143,9 +143,12 @@ FUNCTION aoso_ascent_pitchover_deg {
             ELSE { SET deg TO base + 6. }
         }
     }
+    IF com_frac < 0.48 { SET deg TO deg + 2. }
     IF com_frac > 0.52 { SET deg TO deg - 2. }
     IF com_frac > 0.62 { SET deg TO deg - 1. }
-    IF stack_len > 16 { SET deg TO deg - 1. }
+    IF stack_len > 16 {
+        IF com_frac > 0.5 { SET deg TO deg - 1. }
+    }
     IF deg < 4 { SET deg TO 4. }
     RETURN deg.
 }
@@ -199,7 +202,9 @@ FUNCTION aoso_ascent_pitchover_rate {
     LOCAL rate IS aoso_config_get("ASCENT_PITCHOVER_RATE", 0.75).
     IF com_frac > 0.5 { SET rate TO rate - ((com_frac - 0.5) * 1.2). }
     IF stack_len > 16 {
-        IF rate > 0.55 { SET rate TO 0.55. }
+        IF com_frac > 0.5 {
+            IF rate > 0.55 { SET rate TO 0.55. }
+        }
     }
     IF rate < 0.4 { SET rate TO 0.4. }
     RETURN rate.
@@ -438,6 +443,21 @@ FUNCTION aoso_ascent_coast_execute {
     // Never light the circularization burn inside the atmosphere.
     IF aoso_ascent_in_atmosphere() { RETURN. }
 
+    // Stage the core even with throttle closed. Auto-staging refuses to
+    // fire at throttle 0, which left Acacius coasting at 0.3% stage fuel
+    // with eight unlit engines.
+    IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
+
+    // Past apoapsis: ETA:APOAPSIS jumps to a full period and we fall into
+    // the atmosphere if we wait. Rails warp also refuses a PE-in-atmo
+    // ellipse, so the old "WARPTO then wait for ETA:AP < 5s" never fired.
+    IF ETA:APOAPSIS > ETA:PERIAPSIS {
+        SET data["circ_now"] TO TRUE.
+        LOCK THROTTLE TO 0.
+        aoso_state_transition(AOSO_ASCENT, "CIRCULARIZE").
+        RETURN.
+    }
+
     LOCAL burn_time IS aoso_perf_burn_time_for_dv(ABS(aoso_maneuver_circularize_dv_at_apoapsis())).
     LOCAL lead_s IS burn_time / 2.
 
@@ -451,7 +471,8 @@ FUNCTION aoso_ascent_coast_execute {
     }
     SET WARP TO 0.
 
-    IF ETA:APOAPSIS <= (lead_s + 5) {
+    IF ETA:APOAPSIS <= (lead_s + 15) {
+        SET data["circ_now"] TO FALSE.
         LOCK THROTTLE TO 0.
         aoso_state_transition(AOSO_ASCENT, "CIRCULARIZE").
     }
@@ -461,6 +482,13 @@ FUNCTION aoso_ascent_circularize_entry {
     PARAMETER data.
     SET WARP TO 0.
     LOCK THROTTLE TO 0.
+    IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
+    IF data:HASKEY("circ_now") {
+        IF data["circ_now"] {
+            aoso_maneuver_add_circularize_here().
+            RETURN.
+        }
+    }
     aoso_maneuver_add_circularize_at_apoapsis().
 }
 
@@ -519,7 +547,8 @@ FUNCTION aoso_ascent_start {
         "pitchover_rate", 0.75,
         "com_frac", -1,
         "stack_length", 0,
-        "pitchover_t0", 0
+        "pitchover_t0", 0,
+        "circ_now", FALSE
     ).
     aoso_log_info("ASCENT", "Profile=PITCHOVER+ZERO_AOA CoM-aware ramp holdAP=" + ROUND(aoso_config_get("ASCENT_HOLD_AP_S", 45), 0) + "s target=" + ROUND(target_apo, 0) + "m. If this line is missing, GameData still has the old ascent.").
     aoso_state_transition(AOSO_ASCENT, "LIFTOFF").

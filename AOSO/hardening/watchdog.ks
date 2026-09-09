@@ -42,7 +42,16 @@ FUNCTION aoso_watchdog_progress_marker {
 
 FUNCTION aoso_watchdog_critical_condition {
     IF aoso_fuel_abort_check() { RETURN TRUE. }
-    IF aoso_power_ec_pct() <= aoso_config_get("WATCHDOG_EC_CRITICAL_PCT", 5) { RETURN TRUE. }
+    IF aoso_power_ec_pct() <= aoso_config_get("WATCHDOG_EC_CRITICAL_PCT", 5) {
+        // Power is recoverable until the airstream shell is off and panels
+        // are out. Aborting a suborbital coast because EC dipped while the
+        // fairing was still on is how the last Acacius flight died.
+        IF aoso_power_fairings_pending() { RETURN FALSE. }
+        IF aoso_vessel_get("has_solar_panels", FALSE) {
+            IF NOT AOSO_POWER_PANELS_DEPLOYED { RETURN FALSE. }
+        }
+        RETURN TRUE.
+    }
     RETURN FALSE.
 }
 
