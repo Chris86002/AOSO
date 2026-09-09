@@ -17,8 +17,10 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "AUTO_CHECKPOINT_INTERVAL", 30,     // s between automatic checkpoint saves
     "WATCHDOG_TIMEOUT", 120,            // s of no-progress before watchdog intervenes
     "WATCHDOG_EC_CRITICAL_PCT", 5,       // % ElectricCharge at/below which hardening/watchdog.ks treats power as critical
-    "ASCENT_PITCHOVER_SPEED", 50,       // m/s, vertical rise until pitchover (raised for low TWR, lowered for high TWR)
-    "ASCENT_PITCHOVER_DEG", 8,          // deg from vertical at pitchover; TWR-scaled at runtime (~5-14)
+    "ASCENT_PITCHOVER_SPEED", 80,       // m/s, vertical rise until pitchover (raised for low TWR / nose-heavy, lowered for high TWR)
+    "ASCENT_PITCHOVER_DEG", 8,          // deg from vertical at pitchover; TWR- and CoM-scaled at runtime (~4-14)
+    "ASCENT_PITCHOVER_RATE", 0.75,      // deg/s, pitch ramp during pitchover (MechJeb PVG; slower if nose-heavy)
+    "ASCENT_PITCHOVER_MIN_ALT", 200,    // m, extra floor besides speed (raised if nose-heavy / long stack)
     "ASCENT_HOLD_AP_S", 45,             // s, time-to-apoapsis the gravity-turn throttle holds (GravityTurn / kOS GT)
     "ASCENT_TARGET_APO", 80000,         // m, default target apoapsis for ascent AP
     "MANEUVER_FEATHER_S", 2,            // s, remaining burn-time window over which maneuver throttle fades to cut
