@@ -167,12 +167,11 @@ FUNCTION aoso_mission_step_dock {
 // it genuinely optional), "start" is a required PARAMETER for every step --
 // every aoso_mission_step_*() preset in this file always supplies a real
 // delegate for it. Calling it unconditionally (rather than gating on an
-// ISTYPE("KOSDelegate") check that can only ever silently swallow a
-// legitimate call) guarantees a step's start callback -- e.g.
-// flight/ascent.ks's aoso_ascent_start, which is what actually locks the
-// throttle and ignites the engines for an ASCEND step -- always runs when
-// its step begins, instead of the mission FSM silently sitting in a step
-// whose subsystem was never armed.
+// ISTYPE("Delegate") check it would always pass anyway) guarantees a step's
+// start callback -- e.g. flight/ascent.ks's aoso_ascent_start, which is what
+// actually locks the throttle and ignites the engines for an ASCEND step --
+// always runs when its step begins, instead of the mission FSM silently
+// sitting in a step whose subsystem was never armed.
 FUNCTION aoso_mission_start_step_at {
     PARAMETER plan_index.
     PARAMETER data.
@@ -211,7 +210,7 @@ FUNCTION aoso_mission_running_execute {
 
     mission_step["update"]:CALL().
 
-    IF mission_step["is_aborted"]:ISTYPE("KOSDelegate") AND mission_step["is_aborted"]:CALL() {
+    IF mission_step["is_aborted"]:ISTYPE("Delegate") AND mission_step["is_aborted"]:CALL() {
         aoso_log_error("MISSION", "Step aborted: " + mission_step["name"]).
         aoso_state_abort(AOSO_MISSION).
         RETURN.
