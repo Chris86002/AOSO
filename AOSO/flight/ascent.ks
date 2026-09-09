@@ -4,14 +4,31 @@
 // flight/maneuver.ks circularization burn. Built on core/state.ks as its own
 // independent machine (AOSO_ASCENT) so it can run alongside the mission-level
 // machine a later phase adds, per state.ks's own multi-machine design.
+//
+// The pitch program is a cosine from 90 deg to 0 deg, but the commanded
+// pitch is clamped to the surface flight-path angle +/- ASCENT_AOA_LIMIT_DEG.
+// A raw pitch program on a TWR ~1.6 vehicle commanded 0 deg at 45 km while
+// the trajectory was still 42 deg (Acacius), so the vessel flew with huge
+// angle of attack and wasted the gravity turn. Following prograde with a
+// small lead is the actual efficient gravity turn, and it adapts to TWR
+// without per-vehicle tuning.
 
 GLOBAL AOSO_ASCENT IS aoso_state_new_machine().
 GLOBAL AOSO_ASCENT_MAX_Q_SEEN IS 0.
 
-// Gravity-turn pitch (deg above horizon) for a given altitude: 90 (straight
-// up) below ASCENT_TURN_START_ALT, 0 (flat) at/above ASCENT_TURN_END_ALT,
-// eased between with a cosine so the turn starts gently and flattens out
-// near the top rather than pitching over sharply at either boundary.
+// Surface flight-path pitch (deg above horizon): 90 straight up, 0 horizontal.
+FUNCTION aoso_ascent_flight_path_pitch {
+    LOCAL vel IS SHIP:VELOCITY:SURFACE.
+    IF vel:MAG < 1 { RETURN 90. }
+    RETURN MAX(0, MIN(90, 90 - VANG(SHIP:UP:VECTOR, vel))).
+}
+
+// Gravity-turn pitch *program* (deg above horizon) for a given altitude: 90
+// (straight up) below ASCENT_TURN_START_ALT, 0 (flat) at/above
+// ASCENT_TURN_END_ALT, eased between with a cosine so the turn starts
+// gently and flattens out near the top rather than pitching over sharply
+// at either boundary. Callers should not steer this raw -- use
+// aoso_ascent_steer_pitch(), which clamps it to the current flight path.
 FUNCTION aoso_ascent_pitch_for_altitude {
     PARAMETER altitude_m.
 
@@ -23,6 +40,33 @@ FUNCTION aoso_ascent_pitch_for_altitude {
 
     LOCAL frac IS (altitude_m - start_alt) / (end_alt - start_alt).
     RETURN MAX(0, MIN(90, 90 * COS(frac * 90))).
+}
+
+// Commanded pitch: the cosine program, but never more than AOA_LIMIT_DEG
+// away from the current surface flight-path angle. Below atmosphere top a
+// minimum pitch keeps the apoapsis climbing instead of flying into the
+// ground. This is the efficient gravity turn: lead prograde a little, never
+// fight it.
+FUNCTION aoso_ascent_steer_pitch {
+    LOCAL program IS aoso_ascent_pitch_for_altitude(ALTITUDE).
+    LOCAL fpa IS aoso_ascent_flight_path_pitch().
+    LOCAL aoa IS aoso_config_get("ASCENT_AOA_LIMIT_DEG", 5).
+    LOCAL min_pitch IS aoso_config_get("ASCENT_MIN_PITCH", 3).
+
+    LOCAL target IS program.
+    IF program < fpa {
+        SET target TO MAX(program, fpa - aoa).
+    } ELSE {
+        SET target TO MIN(program, fpa + aoa).
+    }
+
+    LOCAL in_atm IS FALSE.
+    IF SHIP:BODY:ATM:EXISTS {
+        IF ALTITUDE < SHIP:BODY:ATM:HEIGHT { SET in_atm TO TRUE. }
+    }
+    IF in_atm { SET target TO MAX(target, min_pitch). }
+
+    RETURN MAX(0, MIN(90, target)).
 }
 
 // Throttle multiplier for max-Q limiting. Tracks the highest dynamic
@@ -113,7 +157,7 @@ FUNCTION aoso_ascent_liftoff_execute {
 
 FUNCTION aoso_ascent_turn_execute {
     PARAMETER data.
-    aoso_steer_heading_pitch(data["heading"], aoso_ascent_pitch_for_altitude(ALTITUDE)).
+    aoso_steer_heading_pitch(data["heading"], aoso_ascent_steer_pitch()).
     LOCK THROTTLE TO aoso_ascent_throttle_for_q().
 
     aoso_staging_auto_check().
