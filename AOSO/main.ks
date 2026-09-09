@@ -102,6 +102,15 @@ FUNCTION aoso_main {
     aoso_boot().
     aoso_main_register_tasks().
 
+    // Always rebuild the plan from empty, even on a same-session re-run of
+    // this file (a full "run AOSO/main." without power-cycling the kOS CPU)
+    // where core/boot.ks's RUN ONCE guards mean mission/mission.ks's own
+    // GLOBAL AOSO_MISSION_PLAN IS LIST() line is skipped and would otherwise
+    // still hold whatever an earlier attempt already added -- without this,
+    // a second try appends a duplicate step onto the old list instead of
+    // starting clean.
+    aoso_mission_plan_clear().
+
     IF EXISTS("AOSO/mission_plan.ks") {
         RUN ONCE "AOSO/mission_plan".
     } ELSE IF SHIP:STATUS = "PRELAUNCH" OR SHIP:STATUS = "LANDED" {
