@@ -23,7 +23,10 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "ASCENT_PITCHOVER_MIN_ALT", 200,    // m, extra floor besides speed (raised if nose-heavy / long stack)
     "ASCENT_HOLD_AP_S", 45,             // s, time-to-apoapsis the gravity-turn throttle holds (GravityTurn / kOS GT)
     "ASCENT_TARGET_APO", 80000,         // m, default target apoapsis for ascent AP
+    "ASCENT_LOFT_APO", 75000,           // m, hold a steep pitch until apoapsis reaches this (punch out of atmosphere before flattening)
+    "ASCENT_LOFT_PITCH", 75,            // deg above horizon held during the loft
     "MANEUVER_FEATHER_S", 2,            // s, remaining burn-time window over which maneuver throttle fades to cut
+    "MANEUVER_ALIGN_S", 45,             // s of physics time after warp, before ignition, to point the ship at the burn
     "TOUR_REFUEL_BELOW_PCT", 60,        // % LiquidFuel at/below which the grand tour will land and ISRU-refuel
     "TOUR_MIN_LAND_TWR", 1.4,           // surface TWR required before the grand tour will attempt a landing
     "MAX_Q_LIMIT_MULT", 1.0,            // throttle back factor near max-Q (1.0=off)

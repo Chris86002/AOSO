@@ -9,12 +9,12 @@
 //      flops it before dynamic pressure can damp the rotation.
 //   2. A small pitchover (4-14 deg off vertical), ramped at ~0.5-0.8 deg/s
 //      like MechJeb PVG, never an instant step.
-//   3. Zero angle-of-attack: lock to surface prograde and let gravity
-//      rotate the velocity vector toward the horizon. Throttle holds
-//      time-to-apoapsis near ASCENT_HOLD_AP_S so high-TWR stacks flatten
-//      instead of going vertical, and low-TWR stacks keep AP from collapsing.
-//   4. Once dynamic pressure drops, follow orbital prograde.
-//   5. Cut when apoapsis is at target, hold it against drag until out of
+//   3. Loft: hold ~75 deg pitch until apoapsis is ~75 km so we punch out
+//      of the atmosphere instead of cruising through it at low AoA.
+//   4. Then zero AoA on surface prograde; throttle holds time-to-apoapsis
+//      near ASCENT_HOLD_AP_S.
+//   5. Once dynamic pressure drops, follow orbital prograde.
+//   6. Cut when apoapsis is at target, hold it against drag until out of
 //      the atmosphere, coast to AP, circularize.
 //
 // kOS exposes CoM for free: PART:POSITION is in SHIP-RAW, origin at the
@@ -394,8 +394,43 @@ FUNCTION aoso_ascent_pitchover_execute {
 
 FUNCTION aoso_ascent_turn_execute {
     PARAMETER data.
-    aoso_ascent_follow_prograde(data).
-    LOCK THROTTLE TO aoso_ascent_turn_throttle().
+    LOCAL loft_ap IS aoso_config_get("ASCENT_LOFT_APO", 75000).
+    LOCAL loft_pitch IS aoso_config_get("ASCENT_LOFT_PITCH", 75).
+    IF loft_ap > data["target_apo"] - 5000 {
+        SET loft_ap TO data["target_apo"] - 5000.
+    }
+    LOCAL loft_ceiling IS 50000.
+    IF SHIP:BODY:ATM:EXISTS {
+        SET loft_ceiling TO SHIP:BODY:ATM:HEIGHT * 0.72.
+    }
+
+    LOCAL still_lofting IS FALSE.
+    IF APOAPSIS < loft_ap {
+        IF ALTITUDE < loft_ceiling { SET still_lofting TO TRUE. }
+    }
+
+    IF still_lofting {
+        // Ride prograde down to loft_pitch, then hold that pitch so AP
+        // punches out of the atmosphere instead of flattening in the soup.
+        LOCAL cmd IS loft_pitch.
+        LOCAL fpa IS aoso_ascent_flight_path_pitch().
+        IF fpa > cmd { SET cmd TO fpa. }
+        IF NOT data:HASKEY("loft_logged") {
+            SET data["loft_logged"] TO TRUE.
+            aoso_log_info("ASCENT", "Lofting (hold " + ROUND(loft_pitch, 0) + " deg until AP=" + ROUND(loft_ap, 0) + " m).").
+        }
+        aoso_steer_heading_pitch(data["heading"], cmd).
+        LOCK THROTTLE TO aoso_ascent_throttle_for_q().
+    } ELSE {
+        IF data:HASKEY("loft_logged") {
+            IF data["loft_logged"] {
+                SET data["loft_logged"] TO FALSE.
+                aoso_log_info("ASCENT", "Loft done AP=" + ROUND(APOAPSIS, 0) + " alt=" + ROUND(ALTITUDE, 0) + " - zero-AoA from here.").
+            }
+        }
+        aoso_ascent_follow_prograde(data).
+        LOCK THROTTLE TO aoso_ascent_turn_throttle().
+    }
 
     aoso_staging_auto_check().
     IF aoso_fuel_abort_check() {
@@ -423,7 +458,7 @@ FUNCTION aoso_ascent_coast_entry {
 
 // Coasts to (just short of) apoapsis, nudging the throttle back up only if
 // drag has let the apoapsis decay noticeably below target, then hands off to
-// CIRCULARIZE once we're within half an estimated burn-time of apoapsis.
+// CIRCULARIZE with MANEUVER_ALIGN_S seconds of physics time to point the ship.
 FUNCTION aoso_ascent_coast_execute {
     PARAMETER data.
     aoso_ascent_follow_prograde(data).
@@ -460,18 +495,19 @@ FUNCTION aoso_ascent_coast_execute {
 
     LOCAL burn_time IS aoso_perf_burn_time_for_dv(ABS(aoso_maneuver_circularize_dv_at_apoapsis())).
     LOCAL lead_s IS burn_time / 2.
+    LOCAL align_s IS aoso_config_get("MANEUVER_ALIGN_S", 45).
 
-    IF ETA:APOAPSIS > (lead_s + 20) {
+    IF ETA:APOAPSIS > (lead_s + align_s + 5) {
         IF WARP = 0 {
             IF aoso_maneuver_can_warp() {
-                WARPTO(TIME:SECONDS + ETA:APOAPSIS - (lead_s + 15)).
+                WARPTO(TIME:SECONDS + ETA:APOAPSIS - (lead_s + align_s)).
             }
         }
         RETURN.
     }
     SET WARP TO 0.
 
-    IF ETA:APOAPSIS <= (lead_s + 15) {
+    IF ETA:APOAPSIS <= (lead_s + align_s) {
         SET data["circ_now"] TO FALSE.
         LOCK THROTTLE TO 0.
         aoso_state_transition(AOSO_ASCENT, "CIRCULARIZE").
@@ -495,7 +531,17 @@ FUNCTION aoso_ascent_circularize_entry {
 FUNCTION aoso_ascent_circularize_execute {
     PARAMETER data.
     IF aoso_maneuver_execute_next() {
-        aoso_state_transition(AOSO_ASCENT, "DONE").
+        LOCAL circ_res IS aoso_maneuver_last_result().
+        IF circ_res = "ok" {
+            aoso_state_transition(AOSO_ASCENT, "DONE").
+        } ELSE {
+            aoso_log_warn("ASCENT", "Circularization " + circ_res + " - retrying.").
+            IF ETA:APOAPSIS > ETA:PERIAPSIS {
+                aoso_maneuver_add_circularize_here().
+            } ELSE {
+                aoso_maneuver_add_circularize_at_apoapsis().
+            }
+        }
     }
 }
 
@@ -550,7 +596,7 @@ FUNCTION aoso_ascent_start {
         "pitchover_t0", 0,
         "circ_now", FALSE
     ).
-    aoso_log_info("ASCENT", "Profile=PITCHOVER+ZERO_AOA CoM-aware ramp holdAP=" + ROUND(aoso_config_get("ASCENT_HOLD_AP_S", 45), 0) + "s target=" + ROUND(target_apo, 0) + "m. If this line is missing, GameData still has the old ascent.").
+    aoso_log_info("ASCENT", "Profile=LOFT+PITCHOVER+ZERO_AOA loftAP=" + ROUND(aoso_config_get("ASCENT_LOFT_APO", 75000), 0) + "m holdAP=" + ROUND(aoso_config_get("ASCENT_HOLD_AP_S", 45), 0) + "s target=" + ROUND(target_apo, 0) + "m. If this line is missing, GameData still has the old ascent.").
     aoso_state_transition(AOSO_ASCENT, "LIFTOFF").
 }
 
