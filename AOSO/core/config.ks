@@ -18,8 +18,13 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "WATCHDOG_TIMEOUT", 120,            // s of no-progress before watchdog intervenes
     "WATCHDOG_EC_CRITICAL_PCT", 5,       // % ElectricCharge at/below which hardening/watchdog.ks treats power as critical
     "ASCENT_TURN_START_ALT", 500,       // m, altitude gravity turn begins
-    "ASCENT_TURN_END_ALT", 45000,       // m, altitude gravity turn should be done by
+    "ASCENT_TURN_END_ALT", 45000,       // m, altitude gravity turn program reaches 0 deg (clamped to flight-path +/- AOA)
     "ASCENT_TARGET_APO", 80000,         // m, default target apoapsis for ascent AP
+    "ASCENT_AOA_LIMIT_DEG", 5,          // deg, max angle-of-attack vs surface prograde during the gravity turn
+    "ASCENT_MIN_PITCH", 3,              // deg, pitch floor inside the atmosphere so apoapsis keeps climbing
+    "MANEUVER_FEATHER_S", 2,            // s, remaining burn-time window over which maneuver throttle fades to cut
+    "TOUR_REFUEL_BELOW_PCT", 60,        // % LiquidFuel at/below which the grand tour will land and ISRU-refuel
+    "TOUR_MIN_LAND_TWR", 1.4,           // surface TWR required before the grand tour will attempt a landing
     "MAX_Q_LIMIT_MULT", 1.0,            // throttle back factor near max-Q (1.0=off)
     "DESCENT_BURN_MARGIN_S", 3,         // s of reaction time added to the suicide-burn trigger altitude
     "DESCENT_FINAL_APPROACH_ALT", 150,  // m, radar altitude where descent switches to a slow vertical hold

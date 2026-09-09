@@ -26,7 +26,9 @@ FUNCTION aoso_maneuver_reset_exec {
 
 FUNCTION aoso_maneuver_can_warp {
     IF SHIP:STATUS = "LANDED" OR SHIP:STATUS = "PRELAUNCH" { RETURN FALSE. }
-    IF SHIP:BODY:ATM:EXISTS AND ALTITUDE < SHIP:BODY:ATM:HEIGHT + 1000 { RETURN FALSE. }
+    IF SHIP:BODY:ATM:EXISTS {
+        IF ALTITUDE < SHIP:BODY:ATM:HEIGHT + 1000 { RETURN FALSE. }
+    }
     RETURN TRUE.
 }
 
@@ -84,6 +86,7 @@ FUNCTION aoso_maneuver_throttle_for_dv {
 FUNCTION aoso_maneuver_finish_node {
     PARAMETER nd.
     PARAMETER reason.
+    SET WARP TO 0.
     LOCK THROTTLE TO 0.
     aoso_steer_release().
     IF HASNODE { REMOVE nd. }
@@ -116,8 +119,10 @@ FUNCTION aoso_maneuver_execute_next {
         aoso_steer_to_vector(remaining_vec).
 
         LOCAL burn_time IS aoso_perf_burn_time_for_dv(remaining).
-        IF nd:ETA > (burn_time / 2 + 15) AND aoso_maneuver_can_warp() {
-            IF WARP = 0 { WARPTO(TIME:SECONDS + nd:ETA - (burn_time / 2 + 12)). }
+        IF nd:ETA > (burn_time / 2 + 15) {
+            IF aoso_maneuver_can_warp() {
+                IF WARP = 0 { WARPTO(TIME:SECONDS + nd:ETA - (burn_time / 2 + 12)). }
+            }
             LOCK THROTTLE TO 0.
             RETURN FALSE.
         }

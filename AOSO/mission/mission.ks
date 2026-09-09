@@ -156,6 +156,15 @@ FUNCTION aoso_mission_step_dock {
     RETURN aoso_mission_step("DOCK", aoso_docking_start@, aoso_docking_update@, aoso_docking_is_done@, aoso_docking_is_aborted@).
 }
 
+FUNCTION aoso_mission_step_goto {
+    PARAMETER body_name.
+    RETURN aoso_mission_step("GOTO:" + body_name, aoso_goto_start@:BIND(body_name), aoso_goto_update@, aoso_goto_is_done@, aoso_goto_is_aborted@).
+}
+
+FUNCTION aoso_mission_step_grand_tour {
+    RETURN aoso_mission_step("GRAND_TOUR", aoso_tour_start@, aoso_tour_update@, aoso_tour_is_done@, aoso_tour_is_aborted@).
+}
+
 // --- Runner ---------------------------------------------------------------
 
 // (Re)starts whichever step is at plan_index: logs it, invokes its start
