@@ -80,7 +80,7 @@ FUNCTION aoso_profile_thrust_at_pressure {
     LIST ENGINES IN elist.
     LOCAL thrust_sum IS 0.
     FOR e IN elist {
-        SET thrust_sum TO thrust_sum + e:MAXTHRUSTAT(pressure_atm).
+        SET thrust_sum TO thrust_sum + aoso_capabilities_engine_thrust(e, pressure_atm).
     }
     RETURN thrust_sum.
 }
