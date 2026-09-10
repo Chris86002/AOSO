@@ -37,6 +37,7 @@ RUN ONCE "AOSO/vehicle/resources".
 RUN ONCE "AOSO/vehicle/staging".
 RUN ONCE "AOSO/vehicle/profile".
 RUN ONCE "AOSO/vehicle/budget".
+RUN ONCE "AOSO/vehicle/learn".
 
 // --- Basic flight -----------------------------------------------------------
 RUN ONCE "AOSO/flight/steering".
@@ -54,6 +55,13 @@ RUN ONCE "AOSO/nav/rendezvous".
 RUN ONCE "AOSO/interplanetary/bodydb".
 RUN ONCE "AOSO/interplanetary/transfer".
 RUN ONCE "AOSO/interplanetary/ejection".
+
+// --- World model --------------------------------------------------------
+RUN ONCE "AOSO/world/body".
+RUN ONCE "AOSO/world/resources".
+RUN ONCE "AOSO/world/orbit".
+RUN ONCE "AOSO/world/network".
+RUN ONCE "AOSO/world/world".
 
 // --- Landing -------------------------------------------------------------
 RUN ONCE "AOSO/landing/site".

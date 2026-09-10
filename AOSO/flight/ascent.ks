@@ -355,6 +355,7 @@ FUNCTION aoso_ascent_persist_run {
     }
 
     aoso_json_write(runs_path, store).
+    aoso_learn_record_ascent(rec).
     aoso_log_info("ASCENT", "Fuel-to-orbit profile=" + profile + " pad_lf=" + ROUND(pad_lf, 1) +
         " orbit_lf=" + ROUND(lf, 1) + " used_lf=" + ROUND(used_lf, 1) +
         " circ_dv=" + ROUND(circ_dv, 1) + " m/s apo=" + ROUND(APOAPSIS, 0) +

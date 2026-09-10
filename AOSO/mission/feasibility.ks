@@ -4,10 +4,10 @@
 // The answer is FEASIBLE, ORBIT_ONLY, or SKIP -- not "go to Duna because
 // the itinerary says so."
 //
-// dV costs are the well-known stock map (LKO 80-100 km baseline), with a
-// configurable margin (FEAS_DV_MARGIN, default 1.15). Transfer cost is
-// path-adjusted for "already at a moon" / "already at the destination"
-// so a reboot in Mun SOI does not charge another 860 m/s to "get there."
+// dV costs and landing/escape difficulty live in world/body.ks so the
+// vessel model and the world model feed one feasibility engine. Transfer
+// cost is path-adjusted for "already at a moon" / "already at the
+// destination" so a reboot in Mun SOI does not charge another 860 m/s.
 // Surface TWR uses engine MAXTHRUSTAT at that body's sea-level pressure
 // so Eve/Tylo refuse landing when the ship cannot leave.
 //
@@ -16,35 +16,11 @@
 
 GLOBAL AOSO_FEAS_LAST IS LEXICON().
 
-GLOBAL AOSO_FEAS_DV IS LEXICON(
-    "Kerbin", LEXICON("transfer_from_lko", 0, "capture", 0, "land", 900, "takeoff", 3400, "return", 0),
-    "Mun", LEXICON("transfer_from_lko", 860, "capture", 310, "land", 580, "takeoff", 580, "return", 310),
-    "Minmus", LEXICON("transfer_from_lko", 930, "capture", 160, "land", 180, "takeoff", 180, "return", 160),
-    "Eve", LEXICON("transfer_from_lko", 1070, "capture", 1330, "land", 1200, "takeoff", 8000, "return", 1330),
-    "Gilly", LEXICON("transfer_from_lko", 1740, "capture", 50, "land", 30, "takeoff", 30, "return", 50),
-    "Moho", LEXICON("transfer_from_lko", 2760, "capture", 2410, "land", 870, "takeoff", 870, "return", 2410),
-    "Duna", LEXICON("transfer_from_lko", 1060, "capture", 610, "land", 1450, "takeoff", 1450, "return", 360),
-    "Ike", LEXICON("transfer_from_lko", 1330, "capture", 180, "land", 390, "takeoff", 390, "return", 180),
-    "Dres", LEXICON("transfer_from_lko", 1640, "capture", 665, "land", 430, "takeoff", 430, "return", 665),
-    "Jool", LEXICON("transfer_from_lko", 1920, "capture", 160, "land", 0, "takeoff", 0, "return", 160),
-    "Laythe", LEXICON("transfer_from_lko", 2860, "capture", 940, "land", 2900, "takeoff", 3100, "return", 940),
-    "Vall", LEXICON("transfer_from_lko", 2540, "capture", 860, "land", 860, "takeoff", 860, "return", 860),
-    "Tylo", LEXICON("transfer_from_lko", 2810, "capture", 1100, "land", 2270, "takeoff", 2270, "return", 1100),
-    "Bop", LEXICON("transfer_from_lko", 2820, "capture", 900, "land", 230, "takeoff", 230, "return", 900),
-    "Pol", LEXICON("transfer_from_lko", 2720, "capture", 800, "land", 130, "takeoff", 130, "return", 800),
-    "Eeloo", LEXICON("transfer_from_lko", 2020, "capture", 680, "land", 620, "takeoff", 620, "return", 680),
-    "Sun", LEXICON("transfer_from_lko", 6000, "capture", 0, "land", 0, "takeoff", 0, "return", 0)
-).
-
 FUNCTION aoso_feas_body_stat {
     PARAMETER body_name.
     PARAMETER key_name.
     PARAMETER default_value IS 0.
-    IF AOSO_FEAS_DV:HASKEY(body_name) {
-        LOCAL entry IS AOSO_FEAS_DV[body_name].
-        IF entry:HASKEY(key_name) { RETURN entry[key_name]. }
-    }
-    RETURN default_value.
+    RETURN aoso_world_body_stat(body_name, key_name, default_value).
 }
 
 FUNCTION aoso_feas_planet_of {
@@ -245,9 +221,7 @@ FUNCTION aoso_feas_evaluate {
 
     LOCAL can_refuel IS FALSE.
     IF has_isru {
-        IF dest_name <> "Jool" {
-            IF dest_name <> "Sun" { SET can_refuel TO TRUE. }
-        }
+        IF aoso_world_has_ore(dest_name) { SET can_refuel TO TRUE. }
     }
 
     LOCAL can_return IS mission_dv >= return_dv.
