@@ -369,6 +369,8 @@ FUNCTION aoso_profile_refresh {
         elist:LENGTH + " engines, dV=" + ROUND(dv_total, 0) + " m/s, TWR=" + ROUND(twr_now, 2) +
         " ISRU=" + can_isru + " land=" + can_land + " dock=" + can_dock + ".").
 
+    aoso_classify_refresh().
+
     RETURN AOSO_PROFILE.
 }
 

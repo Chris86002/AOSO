@@ -75,6 +75,10 @@ FUNCTION aoso_hud_dv_status {
 }
 
 FUNCTION aoso_hud_caps_status {
+    LOCAL class_txt IS "".
+    IF DEFINED AOSO_CLASS_LAST {
+        IF AOSO_CLASS_LAST:HASKEY("class") { SET class_txt TO AOSO_CLASS_LAST["class"] + "  ". }
+    }
     LOCAL land_c IS "n".
     LOCAL isru_c IS "n".
     LOCAL dock_c IS "n".
@@ -83,7 +87,7 @@ FUNCTION aoso_hud_caps_status {
         IF aoso_profile_capable("can_isru") { SET isru_c TO "Y". }
         IF aoso_profile_capable("can_dock") { SET dock_c TO "Y". }
     }
-    RETURN "Caps land=" + land_c + " isru=" + isru_c + " dock=" + dock_c + aoso_hud_stage_pred().
+    RETURN class_txt + "land=" + land_c + " isru=" + isru_c + " dock=" + dock_c + aoso_hud_stage_pred().
 }
 
 FUNCTION aoso_hud_stage_pred {
@@ -99,17 +103,26 @@ FUNCTION aoso_hud_stage_pred {
 }
 
 FUNCTION aoso_hud_feas_status {
-    IF DEFINED AOSO_FEAS_LAST {
-        IF AOSO_FEAS_LAST:HASKEY("body") {
-            LOCAL extra IS "".
-            IF DEFINED AOSO_LEARN_LAST {
-                IF AOSO_LEARN_LAST:HASKEY("deviation_pct") {
-                    SET extra TO "  learn " + ROUND(AOSO_LEARN_LAST["deviation_pct"], 1) + "%".
+    LOCAL plan_txt IS "".
+    IF DEFINED AOSO_TOUR {
+        IF AOSO_TOUR:HASKEY("data") {
+            IF AOSO_TOUR["data"]:HASKEY("targets") {
+                LOCAL idx IS AOSO_TOUR["data"]["index"].
+                LOCAL tgts IS AOSO_TOUR["data"]["targets"].
+                IF idx >= 0 {
+                    IF idx < tgts:LENGTH {
+                        SET plan_txt TO "Next " + tgts[idx] + "  ".
+                    }
                 }
             }
-            RETURN "Feas " + AOSO_FEAS_LAST["body"] + ": " + AOSO_FEAS_LAST["result"] + extra.
         }
     }
+    IF DEFINED AOSO_FEAS_LAST {
+        IF AOSO_FEAS_LAST:HASKEY("body") {
+            RETURN plan_txt + "Feas " + AOSO_FEAS_LAST["body"] + ": " + AOSO_FEAS_LAST["result"].
+        }
+    }
+    IF plan_txt <> "" { RETURN plan_txt. }
     RETURN "Feas: -".
 }
 

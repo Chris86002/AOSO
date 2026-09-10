@@ -73,10 +73,11 @@ FUNCTION aoso_landing_site_is_safe {
 }
 
 // Lower-is-better score for comparing candidate sites: disqualifies water
-// or over-slope sites outright (-1), otherwise combines slope with ground
-// distance from an optional preferred target (e.g. a mission waypoint) so
-// safe sites are ranked by how close they are to where the operator
-// actually wanted to land.
+// or over-slope sites outright (-1). Remaining terms: slope (safety),
+// latitude (solar / equatorial departure), terrain altitude (takeoff dV
+// on atmo worlds, peak penalty on airless), optional distance to a
+// preferred waypoint. A slightly steeper highland that is cheaper to
+// leave can beat a dead-flat basin.
 FUNCTION aoso_landing_site_score {
     PARAMETER geo.
     PARAMETER target_geo IS 0.
@@ -87,9 +88,35 @@ FUNCTION aoso_landing_site_score {
     LOCAL max_slope IS aoso_config_get("MAX_SLOPE_DEG", 15).
     IF slope > max_slope { RETURN -1. }
 
-    LOCAL score IS slope.
+    LOCAL score IS slope * 2.5.
+    LOCAL alt_m IS geo:TERRAINHEIGHT.
+    LOCAL lat_abs IS ABS(geo:LAT).
+
+    LOCAL solar_pref IS FALSE.
+    IF DEFINED AOSO_PROFILE {
+        IF AOSO_PROFILE:HASKEY("power") {
+            IF AOSO_PROFILE["power"]["solar_count"] > 0 { SET solar_pref TO TRUE. }
+        }
+    }
+    IF solar_pref {
+        SET score TO score + lat_abs * 0.08.
+    } ELSE {
+        SET score TO score + lat_abs * 0.03.
+    }
+
+    IF SHIP:BODY:ATM:EXISTS {
+        LOCAL high_bonus IS alt_m / 1500.
+        IF high_bonus > 10 { SET high_bonus TO 10. }
+        IF high_bonus < 0 { SET high_bonus TO 0. }
+        SET score TO score - high_bonus.
+        IF alt_m < 0 { SET score TO score + 12. }
+    } ELSE {
+        IF alt_m > 5000 { SET score TO score + 4. }
+        IF alt_m < -200 { SET score TO score + 1. }
+    }
+
     IF target_geo:ISTYPE("GeoCoordinates") {
-        SET score TO score + (geo:DISTANCE / 1000). // km, weighted lightly vs. slope degrees
+        SET score TO score + (geo:DISTANCE / 2000).
     }
     RETURN score.
 }
@@ -137,12 +164,14 @@ FUNCTION aoso_landing_site_scan_orbit {
 
     LOCAL slope IS aoso_landing_site_slope_deg(best_geo).
     aoso_log_info("SITE", "Best landing site lat=" + ROUND(best_geo:LAT, 2) + " lng=" + ROUND(best_geo:LNG, 2) +
-        " slope=" + ROUND(slope, 1) + " deg score=" + ROUND(best_score, 2) + " (" + samples + " samples).").
+        " alt=" + ROUND(best_geo:TERRAINHEIGHT, 0) + "m slope=" + ROUND(slope, 1) +
+        " deg score=" + ROUND(best_score, 2) + " (" + samples + " samples).").
     RETURN LEXICON(
         "lat", best_geo:LAT,
         "lng", best_geo:LNG,
         "score", best_score,
-        "slope", slope
+        "slope", slope,
+        "alt", best_geo:TERRAINHEIGHT
     ).
 }
 
