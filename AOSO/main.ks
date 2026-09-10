@@ -35,6 +35,8 @@ RUN ONCE "AOSO/vehicle/capabilities".
 RUN ONCE "AOSO/vehicle/performance".
 RUN ONCE "AOSO/vehicle/resources".
 RUN ONCE "AOSO/vehicle/staging".
+RUN ONCE "AOSO/vehicle/profile".
+RUN ONCE "AOSO/vehicle/budget".
 
 // --- Basic flight -----------------------------------------------------------
 RUN ONCE "AOSO/flight/steering".
@@ -73,6 +75,7 @@ RUN ONCE "AOSO/precision/kscreturn".
 
 // --- Mission layer -----------------------------------------------------
 RUN ONCE "AOSO/mission/checkpoints".
+RUN ONCE "AOSO/mission/feasibility".
 RUN ONCE "AOSO/mission/goto".
 RUN ONCE "AOSO/mission/tour".
 RUN ONCE "AOSO/mission/mission".
@@ -92,6 +95,7 @@ RUN ONCE "AOSO/ux/telemetry".
 // directly), same as every prior phase.
 FUNCTION aoso_main_register_tasks {
     aoso_staging_register_task().
+    aoso_profile_register_task().
     aoso_power_register_task().
     aoso_checkpoints_register_task().
     aoso_watchdog_register_task().

@@ -17,10 +17,8 @@ FUNCTION aoso_boot {
     aoso_log_info("BOOT", "Vessel: " + SHIP:NAME).
     aoso_addons_detect().
 
-    aoso_vessel_scan().
-    aoso_parts_scan().
-    aoso_capabilities_refresh().
     aoso_body_database_load().
+    aoso_profile_refresh("boot").
     aoso_checkpoints_load().
 
     aoso_log_info("BOOT", "Boot sequence complete.").

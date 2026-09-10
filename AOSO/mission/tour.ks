@@ -1,8 +1,11 @@
 // AOSO/mission/tour.ks
 // Default autonomous mission: visit every stock planet and moon, land and
 // refuel where the vehicle actually needs propellant and can take off
-// again (ISRU drills + converter, surface TWR >= TOUR_MIN_LAND_TWR), then
-// return to Kerbin and hand off to precision/kscreturn.ks for KSC.
+// again. Destination choice is driven by mission/feasibility.ks -- the
+// vehicle-intelligence layer -- not a hard-coded TWR check: before each
+// GOTO the tour evaluates reach/orbit/land/takeoff/refuel/return and will
+// SKIP a body that is not reachable or visit it ORBIT_ONLY (Eve, Tylo,
+// Jool, low TWR) instead of landing a ship that cannot leave.
 // Built on core/state.ks as AOSO_TOUR, driving the existing goto / ascent /
 // polar / scan / deorbit / descent / refuel / return / kscreturn machines as
 // sub-steps the same way mission/mission.ks drives aoso_ascent_*.
@@ -34,31 +37,26 @@ FUNCTION aoso_tour_default_targets {
 
 FUNCTION aoso_tour_surface_twr {
     PARAMETER body_name.
-    LOCAL b IS BODY(body_name).
-    LOCAL g IS b:MU / (b:RADIUS * b:RADIUS).
-    LOCAL thrust IS SHIP:MAXTHRUST.
-    IF thrust <= 0 { SET thrust TO SHIP:AVAILABLETHRUST. }
-    IF SHIP:MASS <= 0 { RETURN 0. }
-    IF g <= 0 { RETURN 0. }
-    RETURN thrust / (SHIP:MASS * g).
+    RETURN aoso_profile_surface_twr(body_name).
 }
 
 FUNCTION aoso_tour_landable {
     PARAMETER body_name.
     IF body_name = "Jool" OR body_name = "Sun" { RETURN FALSE. }
-    LOCAL twr IS aoso_tour_surface_twr(body_name).
-    LOCAL min_twr IS aoso_config_get("TOUR_MIN_LAND_TWR", 1.4).
-    IF twr < min_twr {
-        aoso_log_info("TOUR", "Skipping landing on " + body_name + " (surface TWR " + ROUND(twr, 2) + " < " + min_twr + ").").
-        RETURN FALSE.
+    LOCAL report IS aoso_feas_cached(body_name).
+    IF report["can_land"] {
+        IF report["can_takeoff"] { RETURN TRUE. }
     }
-    RETURN TRUE.
+    aoso_log_info("TOUR", "Skipping landing on " + body_name + " (" + report["reason"] + ").").
+    RETURN FALSE.
 }
 
 FUNCTION aoso_tour_should_refuel {
     PARAMETER body_name.
-    IF NOT aoso_tour_landable(body_name) { RETURN FALSE. }
-    IF NOT aoso_refuel_available() { RETURN FALSE. }
+    LOCAL report IS aoso_feas_cached(body_name).
+    IF NOT report["can_land"] { RETURN FALSE. }
+    IF NOT report["can_takeoff"] { RETURN FALSE. }
+    IF NOT report["can_refuel"] { RETURN FALSE. }
     LOCAL fuel_pct IS aoso_resource_pct("LiquidFuel").
     LOCAL need IS aoso_config_get("TOUR_REFUEL_BELOW_PCT", 60).
     IF fuel_pct >= need {
@@ -155,12 +153,24 @@ FUNCTION aoso_tour_ascend_execute {
 
 FUNCTION aoso_tour_goto_entry {
     PARAMETER data.
-    LOCAL name IS aoso_tour_current_name(data).
-    IF name = "" {
-        aoso_state_transition(AOSO_TOUR, "RETURN").
-        RETURN.
+    aoso_profile_refresh("tour_goto").
+    UNTIL FALSE {
+        LOCAL name IS aoso_tour_current_name(data).
+        IF name = "" {
+            aoso_state_transition(AOSO_TOUR, "RETURN").
+            RETURN.
+        }
+        LOCAL report IS aoso_feas_evaluate(name).
+        aoso_feas_log_report(report).
+        SET data["feas_result"] TO report["result"].
+        IF report["result"] = "SKIP" {
+            aoso_log_warn("TOUR", "Skipping " + name + " - " + report["reason"] + ".").
+            SET data["index"] TO data["index"] + 1.
+        } ELSE {
+            aoso_goto_start(name).
+            RETURN.
+        }
     }
-    aoso_goto_start(name).
 }
 
 FUNCTION aoso_tour_goto_execute {

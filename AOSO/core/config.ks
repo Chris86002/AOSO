@@ -31,6 +31,9 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "TOUR_MIN_LAND_TWR", 1.4,           // surface TWR required before the grand tour will attempt a landing
     "TOUR_POLAR_INCLINATION", 90,       // deg, parking inclination before a landing-site scan
     "TOUR_POLAR_TOLERANCE_DEG", 15,     // deg, |inc-90| at/below which the orbit is polar enough to scan
+    "DV_RESERVE_MIN", 200,              // m/s, floor on the dV budget reserve (also FUEL_RESERVE_PCT of total)
+    "DV_ABORT_MIN", 100,                // m/s, abort-budget floor carved out of usable dV
+    "FEAS_DV_MARGIN", 1.15,             // multiplier on table dV costs before a destination is declared reachable
     "LANDING_SCAN_SAMPLES", 24,         // ground-track samples scored before picking a landing site
     "MAX_Q_LIMIT_MULT", 1.0,            // throttle back factor near max-Q (1.0=off)
     "DESCENT_BURN_MARGIN_S", 4,         // s of surface-speed reaction time added to the suicide-burn trigger altitude

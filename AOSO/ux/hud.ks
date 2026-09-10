@@ -9,7 +9,7 @@
 // suffix or one of this repo's own getters (vehicle/resources.ks,
 // power/power.ks, mission/mission.ks); no new suffixes are invented.
 
-GLOBAL AOSO_HUD_ROWS IS 9. // rows 0..(AOSO_HUD_ROWS-1) are reserved for the HUD
+GLOBAL AOSO_HUD_ROWS IS 11. // rows 0..(AOSO_HUD_ROWS-1) are reserved for the HUD
 
 // Pads/truncates to the terminal width so a shorter status line fully
 // overwrites a longer one left over from a previous tick instead of
@@ -59,7 +59,40 @@ FUNCTION aoso_hud_draw {
     aoso_hud_line(5, "Fuel(stage): " + ROUND(fuel_pct, 1) + "%   EC: " + ROUND(ec_pct, 1) + "%").
     aoso_hud_line(6, "Throttle: " + ROUND(THROTTLE * 100, 0) + "%   SAS: " + SAS + "   RCS: " + RCS).
     aoso_hud_line(7, "Mission: " + aoso_hud_mission_status()).
-    aoso_hud_line(8, "Watchdog: " + watchdog_status).
+    aoso_hud_line(8, "Watchdog: " + watchdog_status + "   " + aoso_hud_dv_status()).
+    aoso_hud_line(9, aoso_hud_caps_status()).
+    aoso_hud_line(10, aoso_hud_feas_status()).
+}
+
+FUNCTION aoso_hud_dv_status {
+    LOCAL mission_dv IS 0.
+    LOCAL total_dv IS 0.
+    IF DEFINED AOSO_BUDGET {
+        IF AOSO_BUDGET:HASKEY("mission_dv") { SET mission_dv TO AOSO_BUDGET["mission_dv"]. }
+        IF AOSO_BUDGET:HASKEY("total_dv") { SET total_dv TO AOSO_BUDGET["total_dv"]. }
+    }
+    RETURN "dV mis " + ROUND(mission_dv, 0) + "/" + ROUND(total_dv, 0).
+}
+
+FUNCTION aoso_hud_caps_status {
+    LOCAL land_c IS "n".
+    LOCAL isru_c IS "n".
+    LOCAL dock_c IS "n".
+    IF DEFINED AOSO_PROFILE {
+        IF aoso_profile_capable("can_land") { SET land_c TO "Y". }
+        IF aoso_profile_capable("can_isru") { SET isru_c TO "Y". }
+        IF aoso_profile_capable("can_dock") { SET dock_c TO "Y". }
+    }
+    RETURN "Caps land=" + land_c + " isru=" + isru_c + " dock=" + dock_c.
+}
+
+FUNCTION aoso_hud_feas_status {
+    IF DEFINED AOSO_FEAS_LAST {
+        IF AOSO_FEAS_LAST:HASKEY("body") {
+            RETURN "Feas " + AOSO_FEAS_LAST["body"] + ": " + AOSO_FEAS_LAST["result"].
+        }
+    }
+    RETURN "Feas: -".
 }
 
 // Wires the HUD into core/scheduler.ks, mirroring
