@@ -24,14 +24,22 @@ FUNCTION aoso_world_orbit_is_stable {
 
 FUNCTION aoso_world_orbit_summary {
     LOCAL park IS aoso_world_parking_alt(SHIP:BODY:NAME).
+    LOCAL hyperbolic IS aoso_orbit_is_hyperbolic().
+    LOCAL apo_alt IS 0.
+    LOCAL period_s IS 0.
+    IF NOT hyperbolic {
+        SET apo_alt TO APOAPSIS.
+        SET period_s TO aoso_orbit_period_s().
+    }
     RETURN LEXICON(
         "body", SHIP:BODY:NAME,
         "status", SHIP:STATUS,
-        "apo", APOAPSIS,
+        "apo", apo_alt,
         "peri", PERIAPSIS,
         "ecc", SHIP:ORBIT:ECCENTRICITY,
         "inclination", SHIP:ORBIT:INCLINATION,
-        "period", SHIP:ORBIT:PERIOD,
+        "period", period_s,
+        "hyperbolic", hyperbolic,
         "altitude", ALTITUDE,
         "parking_alt", park,
         "stable", aoso_world_orbit_is_stable()

@@ -67,7 +67,8 @@ FUNCTION aoso_ejection_burn_eta_for_direction {
 
     LOCAL dir IS target_dir:NORMALIZED.
     LOCAL na IS aoso_orbit_normal_now(SHIP).
-    LOCAL period IS SHIP:ORBIT:PERIOD.
+    LOCAL period IS aoso_orbit_period_s().
+    IF period <= 0 { RETURN -1. }
     LOCAL now IS TIME:SECONDS.
     LOCAL dt IS period / samples.
 

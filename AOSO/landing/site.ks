@@ -130,7 +130,7 @@ FUNCTION aoso_landing_site_scan_orbit {
     IF samples <= 0 { SET samples TO aoso_config_get("LANDING_SCAN_SAMPLES", 24). }
     IF samples < 4 { SET samples TO 4. }
 
-    LOCAL period IS SHIP:ORBIT:PERIOD.
+    LOCAL period IS aoso_orbit_period_s().
     IF period <= 0 { SET period TO 600. }
 
     LOCAL best_geo IS 0.

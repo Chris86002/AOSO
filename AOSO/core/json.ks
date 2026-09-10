@@ -239,3 +239,39 @@ FUNCTION aoso_json_read {
     IF text:LENGTH = 0 { RETURN default_value. }
     RETURN aoso_json_decode(text).
 }
+
+// Archive volume survives revert-to-VAB / new launches; 0:/ is wiped with
+// the processor. LIST VOLUMES is the only way to know Archive is mounted
+// without CREATE throwing.
+GLOBAL AOSO_ARCHIVE_OK IS -1.
+
+FUNCTION aoso_json_archive_ok {
+    IF AOSO_ARCHIVE_OK >= 0 { RETURN AOSO_ARCHIVE_OK = 1. }
+    SET AOSO_ARCHIVE_OK TO 0.
+    LOCAL vols IS LIST().
+    LIST VOLUMES IN vols.
+    FOR vol IN vols {
+        IF vol:NAME = "Archive" { SET AOSO_ARCHIVE_OK TO 1. }
+        IF vol:NAME = "archive" { SET AOSO_ARCHIVE_OK TO 1. }
+    }
+    RETURN AOSO_ARCHIVE_OK = 1.
+}
+
+FUNCTION aoso_json_write_persistent {
+    PARAMETER local_path.
+    PARAMETER archive_path.
+    PARAMETER value.
+    aoso_json_write(local_path, value).
+    IF aoso_json_archive_ok() { aoso_json_write(archive_path, value). }
+    RETURN TRUE.
+}
+
+FUNCTION aoso_json_read_persistent {
+    PARAMETER local_path.
+    PARAMETER archive_path.
+    PARAMETER default_value IS LEXICON().
+    IF aoso_json_archive_ok() {
+        IF EXISTS(archive_path) { RETURN aoso_json_read(archive_path, default_value). }
+    }
+    RETURN aoso_json_read(local_path, default_value).
+}

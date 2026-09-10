@@ -148,11 +148,15 @@ FUNCTION aoso_feas_evaluate {
 
     LOCAL has_legs IS FALSE.
     LOCAL has_chutes IS FALSE.
+    LOCAL has_wheels IS FALSE.
     LOCAL has_isru IS aoso_profile_capable("can_isru").
     LOCAL has_heat IS FALSE.
     IF AOSO_PROFILE:HASKEY("mobility") {
         SET has_legs TO AOSO_PROFILE["mobility"]["has_legs"].
         SET has_chutes TO AOSO_PROFILE["mobility"]["has_parachutes"].
+        IF AOSO_PROFILE["mobility"]:HASKEY("has_wheels") {
+            SET has_wheels TO AOSO_PROFILE["mobility"]["has_wheels"].
+        }
     }
     IF AOSO_PROFILE:HASKEY("mission_hw") {
         SET has_heat TO AOSO_PROFILE["mission_hw"]["has_heatshield"].
@@ -171,6 +175,7 @@ FUNCTION aoso_feas_evaluate {
 
     LOCAL land_ok_hw IS FALSE.
     IF has_legs { SET land_ok_hw TO TRUE. }
+    IF has_wheels { SET land_ok_hw TO TRUE. }
     IF dest_atmo {
         IF has_chutes { SET land_ok_hw TO TRUE. }
     }
@@ -180,7 +185,7 @@ FUNCTION aoso_feas_evaluate {
     IF dest_name = "Jool" OR dest_name = "Sun" {
         SET land_note TO "no surface".
     } ELSE IF NOT land_ok_hw {
-        SET land_note TO "no legs/chutes".
+        SET land_note TO "no legs/wheels/chutes".
     } ELSE IF surface_twr < 1.05 {
         SET land_note TO "surface TWR " + ROUND(surface_twr, 2) + " < 1.05".
     } ELSE IF dest_atmo {

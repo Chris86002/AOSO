@@ -45,6 +45,7 @@ FUNCTION aoso_maneuver_can_warp {
 // target circular speed minus the vessel's actual speed there, derived from
 // the current orbit's semi-major axis via vis-viva.
 FUNCTION aoso_maneuver_circularize_dv_at_apoapsis {
+    IF aoso_orbit_is_hyperbolic() { RETURN 0. }
     LOCAL mu IS SHIP:BODY:MU.
     LOCAL radius IS SHIP:BODY:RADIUS + APOAPSIS.
     LOCAL sma IS SHIP:ORBIT:SEMIMAJORAXIS.
@@ -56,8 +57,12 @@ FUNCTION aoso_maneuver_circularize_dv_at_apoapsis {
 }
 
 FUNCTION aoso_maneuver_add_circularize_at_apoapsis {
+    IF aoso_orbit_is_hyperbolic() {
+        aoso_log_warn("MANEUVER", "No apoapsis on a hyperbola - circularizing at periapsis instead.").
+        RETURN aoso_hohmann_add_circularize_at_periapsis().
+    }
     LOCAL dv IS aoso_maneuver_circularize_dv_at_apoapsis().
-    LOCAL nd IS NODE(TIME:SECONDS + ETA:APOAPSIS, 0, 0, dv).
+    LOCAL nd IS NODE(TIME:SECONDS + aoso_orbit_eta_apoapsis(), 0, 0, dv).
     ADD nd.
     aoso_log_info("MANEUVER", "Circularization node added: dv=" + ROUND(dv, 1) + " m/s at apoapsis.").
     RETURN nd.

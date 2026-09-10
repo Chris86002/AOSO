@@ -66,8 +66,12 @@ FUNCTION aoso_rendezvous_wait_time_to_transfer_s {
     LOCAL current_phase IS aoso_rendezvous_phase_angle_deg(target_orbitable).
     LOCAL required_phase IS aoso_rendezvous_required_phase_angle_deg(target_orbitable).
 
-    LOCAL ship_rate IS 360 / SHIP:ORBIT:PERIOD.
-    LOCAL target_rate IS 360 / target_orbitable:ORBIT:PERIOD.
+    LOCAL ship_period IS aoso_orbit_period_s().
+    LOCAL tgt_period IS aoso_orbit_period_s(target_orbitable).
+    IF ship_period <= 0 { RETURN -1. }
+    IF tgt_period <= 0 { RETURN -1. }
+    LOCAL ship_rate IS 360 / ship_period.
+    LOCAL target_rate IS 360 / tgt_period.
     LOCAL relative_rate IS ship_rate - target_rate.
     IF relative_rate = 0 { RETURN -1. }
 
@@ -136,7 +140,7 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
     IF already {
         SET r1 TO SHIP:BODY:RADIUS + MAX(PERIAPSIS, 1000).
         SET node_wait TO ETA:PERIAPSIS.
-        IF node_wait < 30 { SET node_wait TO node_wait + SHIP:ORBIT:PERIOD. }
+        IF node_wait < 30 { SET node_wait TO node_wait + MAX(60, aoso_orbit_period_s()). }
         aoso_log_info("RENDEZVOUS", "Already near " + target_orbitable:NAME + " altitude (AP=" + ROUND(APOAPSIS, 0) + " m) - correcting at periapsis instead of a new Hohmann.").
     } ELSE {
         LOCAL wait_s IS aoso_rendezvous_wait_time_to_transfer_s(target_orbitable).
@@ -156,7 +160,7 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
     LOCAL burn_time IS aoso_perf_burn_time_for_dv(ABS(dv)).
     LOCAL need_s IS (burn_time / 2) + align_s + 15.
     IF node_wait < need_s {
-        LOCAL period IS SHIP:ORBIT:PERIOD.
+        LOCAL period IS aoso_orbit_period_s().
         IF period < 60 { SET period TO 60. }
         UNTIL node_wait >= need_s {
             SET node_wait TO node_wait + period.

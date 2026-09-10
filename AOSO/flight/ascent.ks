@@ -323,7 +323,11 @@ FUNCTION aoso_ascent_persist_run {
     ).
 
     LOCAL runs_path IS AOSO_CONST["ASCENT_RUNS_FILE"].
-    LOCAL store IS aoso_json_read(runs_path, LEXICON("runs", LIST(), "best", LEXICON())).
+    LOCAL store IS aoso_json_read_persistent(
+        runs_path,
+        AOSO_CONST["ASCENT_RUNS_ARCHIVE_FILE"],
+        LEXICON("runs", LIST(), "best", LEXICON())
+    ).
     IF NOT store:ISTYPE("Lexicon") { SET store TO LEXICON("runs", LIST(), "best", LEXICON()). }
     IF NOT store:HASKEY("runs") { SET store["runs"] TO LIST(). }
     IF NOT store:HASKEY("best") { SET store["best"] TO LEXICON(). }
@@ -368,7 +372,7 @@ FUNCTION aoso_ascent_persist_run {
         SET best_line TO "orbit not stable, not ranked.".
     }
 
-    aoso_json_write(runs_path, store).
+    aoso_json_write_persistent(runs_path, AOSO_CONST["ASCENT_RUNS_ARCHIVE_FILE"], store).
     aoso_learn_record_ascent(rec).
     aoso_log_info("ASCENT", "Fuel-to-orbit profile=" + profile + " pad_lf=" + ROUND(pad_lf, 1) +
         " orbit_lf=" + ROUND(lf, 1) + " used_lf=" + ROUND(used_lf, 1) +

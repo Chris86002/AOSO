@@ -71,7 +71,7 @@ FUNCTION aoso_planechange_add_node_for_inclination {
     PARAMETER tolerance_deg IS 15.
 
     IF SHIP:ORBIT:ECCENTRICITY >= 1 { RETURN 0. }
-    IF SHIP:ORBIT:PERIOD <= 0 { RETURN 0. }
+    IF aoso_orbit_period_s() <= 0 { RETURN 0. }
 
     LOCAL nb IS SHIP:BODY:ANGULARVEL:NORMALIZED.
     LOCAL inc_now IS VANG(aoso_orbit_normal_now(SHIP), nb).
