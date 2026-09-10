@@ -196,6 +196,13 @@ FUNCTION aoso_goto_plan_entry {
         IF hop:BODY:NAME = SHIP:BODY:NAME {
             LOCAL nd_m IS aoso_rendezvous_add_phasing_transfer_node(hop).
             IF nd_m = 0 {
+                IF SHIP:ORBIT:HASNEXTPATCH {
+                    IF SHIP:ORBIT:NEXTPATCH:BODY:NAME = hop:NAME {
+                        SET data["burn_kind"] TO "transfer".
+                        aoso_state_transition(AOSO_GOTO, "COAST").
+                        RETURN.
+                    }
+                }
                 aoso_state_abort(AOSO_GOTO).
                 RETURN.
             }
@@ -248,7 +255,7 @@ FUNCTION aoso_goto_plan_entry {
 
 FUNCTION aoso_goto_wait_execute {
     PARAMETER data.
-    LOCAL align_s IS aoso_config_get("MANEUVER_ALIGN_S", 45).
+    LOCAL align_s IS aoso_maneuver_align_s().
     IF TIME:SECONDS >= data["window_ut"] - align_s {
         SET WARP TO 0.
         LOCAL hop IS BODY(data["hop"]).
@@ -334,7 +341,7 @@ FUNCTION aoso_goto_coast_execute {
         IF eta_p > 30 {
             IF WARP = 0 {
                 IF aoso_maneuver_can_warp() {
-                    LOCAL align_s IS aoso_config_get("MANEUVER_ALIGN_S", 45).
+                    LOCAL align_s IS aoso_maneuver_align_s().
                     WARPTO(TIME:SECONDS + eta_p - align_s).
                 }
             }
@@ -345,19 +352,15 @@ FUNCTION aoso_goto_coast_execute {
     }
 
     LOCAL coasted IS TIME:SECONDS - data["coast_since"].
-    LOCAL give_up IS MAX(SHIP:ORBIT:PERIOD, 3600) * 1.5.
-    IF coasted > give_up {
+    // No patch after the burn means the intercept is wrong. Do not sit on
+    // a 12000x100 km ellipse for 24 h (Acacius after the missed Mun burn).
+    IF coasted > 120 {
         SET WARP TO 0.
-        aoso_log_warn("GOTO", "Coast produced no encounter after " + ROUND(coasted, 0) + "s - re-planning.").
+        aoso_log_warn("GOTO", "No encounter after burn - re-planning.").
         aoso_state_transition(AOSO_GOTO, "PLAN").
         RETURN.
     }
-
-    IF WARP = 0 {
-        IF aoso_maneuver_can_warp() {
-            SET WARP TO MIN(5, aoso_config_get("MAX_WARP_FACTOR", 6)).
-        }
-    }
+    RETURN.
 }
 
 FUNCTION aoso_goto_capture_entry {

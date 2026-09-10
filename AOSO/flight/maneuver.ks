@@ -5,13 +5,11 @@
 // aoso_maneuver_execute_next() as its burn executor instead of each writing
 // its own throttle/steering loop.
 //
-// Burn execution deliberately does NOT chase the live node vector. Once the
-// engines light, steering is locked to the facing at ignition and throttle
-// is feathered from remaining delta-v vs. current acceleration. Chasing
-// NEXTNODE:BURNVECTOR rotates the remaining vector as you burn, so the
-// vessel hunts the marker, thrusts off-axis, and overshoots (Acacius's
-// 618 m/s circularization became an 82x78 km ellipse after the core
-// relight jumped TWR). Feathering used to start at 2 m/s remaining -- at
+// Burn execution: short burns (circularization) lock facing at ignition so
+// a TWR jump cannot hunt NEXTNODE:BURNVECTOR. Long burns (Mun 840 m/s)
+// follow the live marker until a few seconds remain, then lock and feather.
+// Acacius's 104 s Mun burn locked at ignition, staged, and left the marker;
+// the intercept missed. Feathering used to start at 2 m/s remaining -- at
 // TWR ~1 that is a fraction of a tick -- so the cut always arrived late.
 
 GLOBAL AOSO_MANEUVER_LOCK IS V(0, 0, 0).
@@ -27,6 +25,12 @@ FUNCTION aoso_maneuver_reset_exec {
 
 FUNCTION aoso_maneuver_last_result {
     RETURN AOSO_MANEUVER_RESULT.
+}
+
+FUNCTION aoso_maneuver_align_s {
+    LOCAL s IS aoso_config_get("MANEUVER_ALIGN_S", 120).
+    IF s < 120 { SET s TO 120. }
+    RETURN s.
 }
 
 FUNCTION aoso_maneuver_can_warp {
@@ -121,11 +125,12 @@ FUNCTION aoso_maneuver_finish_node {
 }
 
 // Non-blocking: call once per scheduler tick (or in a tight WAIT 0 loop).
-// Warps out with MANEUVER_ALIGN_S seconds of physics time to point the
-// ship before ignition. Stage even if throttle is already 0 (empty stage
-// used to zero the throttle, which then blocked auto-staging). If the
-// node is already in the past, or the burn dies with a lot of dv left,
-// finish as missed/incomplete so the caller can replan the next pass.
+// Warps out with ~2 minutes of physics time to point the ship before
+// ignition. Long burns follow the live node marker (Mun 840 m/s); short
+// burns lock facing at ignition so a TWR jump cannot hunt. Stage even if
+// throttle is already 0. If the node is already in the past, or the burn
+// dies with a lot of dv left, finish as missed/incomplete so the caller
+// can replan the next pass.
 // Returns TRUE once there is no pending node left, FALSE while in progress.
 FUNCTION aoso_maneuver_execute_next {
     IF NOT HASNODE {
@@ -143,9 +148,10 @@ FUNCTION aoso_maneuver_execute_next {
     }
 
     IF NOT AOSO_MANEUVER_BURNING {
+        aoso_steer_prepare_for_burn().
         aoso_steer_to_vector(remaining_vec).
 
-        IF nd:ETA < -5 {
+        IF nd:ETA < -8 {
             aoso_log_warn("MANEUVER", "Missed node (ETA=" + ROUND(nd:ETA, 1) + "s) - retry next pass.").
             aoso_maneuver_finish_node(nd, "missed").
             RETURN TRUE.
@@ -153,11 +159,11 @@ FUNCTION aoso_maneuver_execute_next {
 
         LOCAL burn_time IS aoso_perf_burn_time_for_dv(remaining).
         LOCAL ignite_lead IS burn_time / 2.
-        LOCAL align_s IS aoso_config_get("MANEUVER_ALIGN_S", 45).
+        LOCAL align_s IS aoso_maneuver_align_s().
         LOCAL warp_lead IS ignite_lead + align_s.
 
         IF WARP > 0 {
-            IF nd:ETA <= warp_lead + 2 { SET WARP TO 0. }
+            IF nd:ETA <= warp_lead + 8 { SET WARP TO 0. }
             LOCK THROTTLE TO 0.
             RETURN FALSE.
         }
@@ -171,8 +177,6 @@ FUNCTION aoso_maneuver_execute_next {
         }
         SET WARP TO 0.
 
-        // Light the next stage during the align window, not at ignition.
-        // Empty tanks used to make burn_time 0 and then block auto-stage.
         IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
 
         IF nd:ETA > ignite_lead + 1 {
@@ -180,30 +184,41 @@ FUNCTION aoso_maneuver_execute_next {
             RETURN FALSE.
         }
 
-        IF NOT aoso_steer_is_aligned(remaining_vec, 5) {
-            IF nd:ETA < -3 {
-                aoso_log_warn("MANEUVER", "Never aligned in time - retry next pass.").
-                aoso_maneuver_finish_node(nd, "missed").
-                RETURN TRUE.
+        IF NOT aoso_steer_is_aligned(remaining_vec, 8) {
+            LOCAL err_deg IS aoso_steer_error_deg(remaining_vec).
+            IF nd:ETA >= 0 {
+                LOCK THROTTLE TO 0.
+                RETURN FALSE.
             }
-            LOCK THROTTLE TO 0.
-            RETURN FALSE.
+            IF err_deg > 20 {
+                IF nd:ETA < -8 {
+                    aoso_log_warn("MANEUVER", "Never aligned in time - retry next pass.").
+                    aoso_maneuver_finish_node(nd, "missed").
+                    RETURN TRUE.
+                }
+                LOCK THROTTLE TO 0.
+                RETURN FALSE.
+            }
         }
 
         IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
 
         SET WARP TO 0.
-        SET AOSO_MANEUVER_LOCK TO SHIP:FACING:FOREVECTOR.
+        SET AOSO_MANEUVER_LOCK TO remaining_vec.
         SET AOSO_MANEUVER_BURNING TO TRUE.
         SET AOSO_MANEUVER_LAST_REMAINING TO remaining.
         SET AOSO_MANEUVER_RESULT TO "ok".
-        aoso_log_info("MANEUVER", "Burn lock engaged, remaining=" + ROUND(remaining, 1) + " m/s.").
+        LOCAL accel0 IS aoso_maneuver_current_accel().
+        LOCAL t0 IS 0.
+        IF accel0 > 0.05 { SET t0 TO remaining / accel0. }
+        IF t0 > aoso_config_get("MANEUVER_FOLLOW_ABOVE_S", 8) {
+            aoso_log_info("MANEUVER", "Burn started, following node, remaining=" + ROUND(remaining, 1) + " m/s.").
+        } ELSE {
+            SET AOSO_MANEUVER_LOCK TO SHIP:FACING:FOREVECTOR.
+            aoso_log_info("MANEUVER", "Burn lock engaged, remaining=" + ROUND(remaining, 1) + " m/s.").
+        }
     }
 
-    aoso_steer_to_vector(AOSO_MANEUVER_LOCK).
-
-    // Stage before touching throttle. Empty tanks make accel 0, which used
-    // to LOCK THROTTLE TO 0 and then auto-stage refused to fire.
     IF SHIP:AVAILABLETHRUST <= 0 {
         aoso_staging_ensure_thrust().
         IF SHIP:AVAILABLETHRUST <= 0 {
@@ -213,7 +228,22 @@ FUNCTION aoso_maneuver_execute_next {
     }
     aoso_staging_auto_check().
 
-    LOCAL remaining_along IS VDOT(AOSO_MANEUVER_LOCK, remaining_vec).
+    LOCAL accel IS aoso_maneuver_current_accel().
+    LOCAL t_remain IS 0.
+    IF accel > 0.05 { SET t_remain TO remaining / accel. }
+    LOCAL follow_s IS aoso_config_get("MANEUVER_FOLLOW_ABOVE_S", 8).
+
+    IF t_remain > follow_s {
+        SET AOSO_MANEUVER_LOCK TO remaining_vec.
+        aoso_steer_to_vector(remaining_vec).
+    } ELSE {
+        IF AOSO_MANEUVER_LOCK:MAG < 0.1 {
+            SET AOSO_MANEUVER_LOCK TO SHIP:FACING:FOREVECTOR.
+        }
+        aoso_steer_to_vector(AOSO_MANEUVER_LOCK).
+    }
+
+    LOCAL remaining_along IS VDOT(AOSO_MANEUVER_LOCK:NORMALIZED, remaining_vec).
 
     IF remaining_along < 0.08 {
         aoso_maneuver_finish_node(nd, "feather cut").
