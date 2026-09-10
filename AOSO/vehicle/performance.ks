@@ -13,7 +13,7 @@ FUNCTION aoso_perf_twr {
 }
 
 FUNCTION aoso_perf_time_to_apoapsis {
-    RETURN ETA:APOAPSIS.
+    RETURN aoso_orbit_eta_apoapsis().
 }
 
 FUNCTION aoso_perf_time_to_periapsis {

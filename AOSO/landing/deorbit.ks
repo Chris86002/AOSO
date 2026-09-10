@@ -46,7 +46,7 @@ FUNCTION aoso_deorbit_add_node {
     }
 
     LOCAL dv IS aoso_hohmann_dv_at_apoapsis_for_periapsis(target_pe_alt).
-    LOCAL burn_eta IS ETA:APOAPSIS.
+    LOCAL burn_eta IS aoso_orbit_eta_apoapsis().
     IF eta_s >= 0 { SET burn_eta TO eta_s. }
     LOCAL nd IS NODE(TIME:SECONDS + burn_eta, 0, 0, dv).
     ADD nd.

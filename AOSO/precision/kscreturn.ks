@@ -55,7 +55,8 @@ FUNCTION aoso_kscreturn_equatorial_node_etas {
     PARAMETER samples IS 360.
 
     LOCAL nb IS SHIP:BODY:ANGULARVEL:NORMALIZED.
-    LOCAL period IS SHIP:ORBIT:PERIOD.
+    LOCAL period IS aoso_orbit_period_s().
+    IF period <= 0 { RETURN LIST(). }
     LOCAL now IS TIME:SECONDS.
     LOCAL dt IS period / samples.
 
@@ -151,7 +152,7 @@ FUNCTION aoso_kscreturn_evaluate_deorbit_delay {
     PARAMETER target_geo.
 
     LOCAL dv IS aoso_hohmann_dv_at_apoapsis_for_periapsis(target_pe_alt).
-    LOCAL burn_t IS TIME:SECONDS + ETA:APOAPSIS + delay_orbits * SHIP:ORBIT:PERIOD.
+    LOCAL burn_t IS TIME:SECONDS + aoso_orbit_eta_apoapsis() + delay_orbits * aoso_orbit_period_s().
     LOCAL nd IS NODE(burn_t, 0, 0, dv).
     ADD nd.
 
@@ -192,7 +193,7 @@ FUNCTION aoso_kscreturn_add_best_deorbit_node {
     }
 
     LOCAL dv IS aoso_hohmann_dv_at_apoapsis_for_periapsis(target_pe_alt).
-    LOCAL burn_t IS TIME:SECONDS + ETA:APOAPSIS + best_delay * SHIP:ORBIT:PERIOD.
+    LOCAL burn_t IS TIME:SECONDS + aoso_orbit_eta_apoapsis() + best_delay * aoso_orbit_period_s().
     LOCAL nd IS NODE(burn_t, 0, 0, dv).
     ADD nd.
 

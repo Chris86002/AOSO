@@ -208,11 +208,12 @@ FUNCTION aoso_profile_refresh {
 
     LOCAL can_land IS FALSE.
     LOCAL land_conf IS 0.5.
-    IF chute_count > 0 OR leg_count > 0 {
+    IF chute_count > 0 OR leg_count > 0 OR wheel_count > 0 {
         SET can_land TO TRUE.
         SET land_conf TO 0.55.
         IF chute_count > 0 { SET land_conf TO land_conf + 0.2. }
         IF leg_count > 0 { SET land_conf TO land_conf + 0.2. }
+        IF wheel_count > 0 { SET land_conf TO land_conf + 0.15. }
         IF land_conf > 0.95 { SET land_conf TO 0.95. }
     } ELSE {
         SET land_conf TO 0.9.

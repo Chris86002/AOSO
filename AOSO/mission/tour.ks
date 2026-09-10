@@ -85,7 +85,11 @@ FUNCTION aoso_tour_is_polar {
 
 FUNCTION aoso_tour_is_impacting {
     IF SHIP:STATUS = "LANDED" { RETURN FALSE. }
-    IF ETA:PERIAPSIS >= ETA:APOAPSIS { RETURN FALSE. }
+    IF aoso_orbit_is_hyperbolic() {
+        IF PERIAPSIS < 0 { RETURN TRUE. }
+        RETURN FALSE.
+    }
+    IF ETA:PERIAPSIS >= aoso_orbit_eta_apoapsis() { RETURN FALSE. }
     IF PERIAPSIS < 0 { RETURN TRUE. }
     IF NOT SHIP:BODY:ATM:EXISTS {
         IF PERIAPSIS < aoso_config_get("DESCENT_SAFE_PE_ALT", 8000) { RETURN TRUE. }
@@ -344,7 +348,7 @@ FUNCTION aoso_tour_deorbit_execute {
     }
 
     LOCAL waited IS TIME:SECONDS - data["deorbit_wait_since"].
-    LOCAL period IS SHIP:ORBIT:PERIOD.
+    LOCAL period IS aoso_orbit_period_s().
     IF period <= 0 { SET period TO 600. }
 
     IF have_site {

@@ -72,6 +72,28 @@ FUNCTION aoso_orbit_is_hyperbolic {
     RETURN orbitable:ORBIT:ECCENTRICITY >= 1.
 }
 
+// kOS returns Infinity for PERIOD / APOAPSIS / ETA:APOAPSIS on a hyperbola
+// (ESCAPING). Pushing Infinity onto the stack crashes the CPU. These
+// helpers return 0 instead so a SOI capture can re-profile.
+FUNCTION aoso_orbit_period_s {
+    PARAMETER orbitable IS SHIP.
+    IF orbitable:ORBIT:ECCENTRICITY >= 1 { RETURN 0. }
+    LOCAL p IS orbitable:ORBIT:PERIOD.
+    IF p <= 0 { RETURN 0. }
+    RETURN p.
+}
+
+FUNCTION aoso_orbit_apoapsis_alt {
+    PARAMETER orbitable IS SHIP.
+    IF orbitable:ORBIT:ECCENTRICITY >= 1 { RETURN 0. }
+    RETURN orbitable:ORBIT:APOAPSIS.
+}
+
+FUNCTION aoso_orbit_eta_apoapsis {
+    IF SHIP:ORBIT:ECCENTRICITY >= 1 { RETURN 0. }
+    RETURN ETA:APOAPSIS.
+}
+
 // Seconds until this orbit's next SOI transition, or -1 if none is patched.
 FUNCTION aoso_orbit_time_to_soi_change {
     PARAMETER orbitable IS SHIP.
@@ -92,7 +114,8 @@ FUNCTION aoso_orbit_relative_node_etas {
     PARAMETER samples IS 360.
 
     LOCAL nb IS aoso_orbit_normal_now(orbitable_b).
-    LOCAL period IS orbitable_a:ORBIT:PERIOD.
+    LOCAL period IS aoso_orbit_period_s(orbitable_a).
+    IF period <= 0 { RETURN LIST(). }
     LOCAL now IS TIME:SECONDS.
     LOCAL dt IS period / samples.
 
@@ -140,7 +163,7 @@ FUNCTION aoso_orbit_equatorial_node_etas {
     PARAMETER samples IS 360.
 
     LOCAL nb IS orbitable:BODY:ANGULARVEL:NORMALIZED.
-    LOCAL period IS orbitable:ORBIT:PERIOD.
+    LOCAL period IS aoso_orbit_period_s(orbitable).
     IF period <= 0 { RETURN LIST(). }
     LOCAL now IS TIME:SECONDS.
     LOCAL dt IS period / samples.

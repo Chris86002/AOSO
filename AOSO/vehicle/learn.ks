@@ -10,11 +10,10 @@ GLOBAL AOSO_LEARN IS LEXICON("loaded", FALSE, "store", LEXICON()).
 GLOBAL AOSO_LEARN_LAST IS LEXICON().
 
 FUNCTION aoso_learn_vessel_key {
-    LOCAL plist IS LIST().
-    LIST PARTS IN plist.
-    LOCAL elist IS LIST().
-    LIST ENGINES IN elist.
-    RETURN SHIP:NAME + "|" + plist:LENGTH + "|" + elist:LENGTH.
+    // Name only: part/engine counts change after staging and after a VAB
+    // revert, so a 110-part pad stack would never match the 59-part orbit
+    // record from the last flight.
+    RETURN SHIP:NAME.
 }
 
 FUNCTION aoso_learn_stat_key {
@@ -25,7 +24,11 @@ FUNCTION aoso_learn_stat_key {
 
 FUNCTION aoso_learn_load {
     IF AOSO_LEARN["loaded"] { RETURN AOSO_LEARN["store"]. }
-    LOCAL loaded IS aoso_json_read(AOSO_CONST["LEARN_FILE"], LEXICON("flights", LIST(), "stats", LEXICON())).
+    LOCAL loaded IS aoso_json_read_persistent(
+        AOSO_CONST["LEARN_FILE"],
+        AOSO_CONST["LEARN_ARCHIVE_FILE"],
+        LEXICON("flights", LIST(), "stats", LEXICON())
+    ).
     IF NOT loaded:ISTYPE("Lexicon") { SET loaded TO LEXICON("flights", LIST(), "stats", LEXICON()). }
     IF NOT loaded:HASKEY("flights") { SET loaded["flights"] TO LIST(). }
     IF NOT loaded:HASKEY("stats") { SET loaded["stats"] TO LEXICON(). }
@@ -35,7 +38,11 @@ FUNCTION aoso_learn_load {
 }
 
 FUNCTION aoso_learn_save {
-    aoso_json_write(AOSO_CONST["LEARN_FILE"], AOSO_LEARN["store"]).
+    aoso_json_write_persistent(
+        AOSO_CONST["LEARN_FILE"],
+        AOSO_CONST["LEARN_ARCHIVE_FILE"],
+        AOSO_LEARN["store"]
+    ).
 }
 
 FUNCTION aoso_learn_record_ascent {
