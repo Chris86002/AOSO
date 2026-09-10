@@ -15,9 +15,14 @@
 // or PART:HASMODULE, matching vehicle/vessel.ks's "no invented suffixes"
 // stance. The scanned profile is JSON-safe and persisted to PROFILE_FILE.
 
+// kOS identifiers are case-insensitive: a GLOBAL and a FUNCTION must
+// never share a name (AOSO_PROFILE_SNAPSHOT vs aoso_profile_snapshot()
+// compiles to "Cannot find label ...`0-default"). The last snapshot is
+// therefore AOSO_PROFILE_LAST_SNAP, not AOSO_PROFILE_SNAPSHOT.
+
 GLOBAL AOSO_PROFILE IS LEXICON().
 GLOBAL AOSO_PROFILE_LAST_MASS IS 0.
-GLOBAL AOSO_PROFILE_SNAPSHOT IS LEXICON().
+GLOBAL AOSO_PROFILE_LAST_SNAP IS LEXICON().
 
 FUNCTION aoso_profile_snapshot {
     LOCAL plist IS LIST().
@@ -355,7 +360,7 @@ FUNCTION aoso_profile_refresh {
     ).
 
     SET AOSO_PROFILE_LAST_MASS TO SHIP:MASS.
-    SET AOSO_PROFILE_SNAPSHOT TO AOSO_PROFILE["snapshot"].
+    SET AOSO_PROFILE_LAST_SNAP TO AOSO_PROFILE["snapshot"].
     aoso_budget_refresh().
     aoso_capabilities_predict_next().
     aoso_profile_save().
@@ -373,7 +378,7 @@ FUNCTION aoso_profile_maybe_refresh {
         RETURN.
     }
     LOCAL snap IS aoso_profile_snapshot().
-    LOCAL prev IS AOSO_PROFILE_SNAPSHOT.
+    LOCAL prev IS AOSO_PROFILE_LAST_SNAP.
     IF NOT prev:HASKEY("parts") {
         aoso_profile_refresh("init").
         RETURN.
@@ -419,7 +424,7 @@ FUNCTION aoso_profile_maybe_refresh {
         aoso_budget_refresh().
         aoso_capabilities_predict_next().
         SET AOSO_PROFILE_LAST_MASS TO snap["mass"].
-        SET AOSO_PROFILE_SNAPSHOT TO snap.
+        SET AOSO_PROFILE_LAST_SNAP TO snap.
         SET AOSO_PROFILE["mass"] TO snap["mass"].
         SET AOSO_PROFILE["snapshot"] TO snap.
         SET AOSO_PROFILE["propulsion"]["dv_total"] TO aoso_caps_get("dv_total_vac", 0).
