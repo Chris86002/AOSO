@@ -52,6 +52,12 @@ FUNCTION aoso_steer_release {
     UNLOCK STEERING.
 }
 
+// Long stacks oscillate at the stock MAXSTOPPINGTIME of ~2 s and never
+// settle inside a 5-8 deg align cone (Acacius: 44 m, two Mun windows missed).
+FUNCTION aoso_steer_prepare_for_burn {
+    SET STEERINGMANAGER:MAXSTOPPINGTIME TO MAX(STEERINGMANAGER:MAXSTOPPINGTIME, 5).
+}
+
 // Angle in degrees between the ship's current facing and a target direction
 // vector. Used by guidance/maneuver code to decide when it is safe to throttle.
 FUNCTION aoso_steer_error_deg {
