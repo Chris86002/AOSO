@@ -120,9 +120,7 @@ FUNCTION aoso_staging_auto_check {
             SET AOSO_STAGING_RELIGHT_ATTEMPTS TO 0.
         }
 
-        aoso_vessel_scan().
-        aoso_parts_scan().
-        aoso_capabilities_refresh().
+        aoso_profile_refresh("staging").
     }
 }
 
@@ -157,8 +155,6 @@ FUNCTION aoso_staging_ensure_thrust {
     } ELSE {
         SET AOSO_STAGING_RELIGHT_ATTEMPTS TO 0.
     }
-    aoso_vessel_scan().
-    aoso_parts_scan().
-    aoso_capabilities_refresh().
+    aoso_profile_refresh("ensure_thrust").
     RETURN aoso_parts_has_burning_engine().
 }
