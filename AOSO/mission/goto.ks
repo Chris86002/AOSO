@@ -229,12 +229,15 @@ FUNCTION aoso_goto_plan_entry {
     // Sibling planets sharing a parent (the Sun, usually).
     IF hop:NAME <> SUN:NAME {
         IF hop:BODY:NAME = SHIP:BODY:BODY:NAME {
-            LOCAL wait_s IS aoso_interplanetary_wait_time_to_window_s(SHIP:BODY, hop).
+            LOCAL decision IS aoso_window_decide(SHIP:BODY, hop).
+            LOCAL wait_s IS decision["wait_s"].
             IF wait_s < 0 { SET wait_s TO 0. }
-            IF wait_s > 20 {
+            IF decision["action"] = "WAIT" {
                 SET data["window_ut"] TO TIME:SECONDS + wait_s.
                 SET data["burn_kind"] TO "eject".
-                aoso_log_info("GOTO", "Transfer window to " + hop:NAME + " in " + ROUND(wait_s, 0) + "s.").
+                aoso_log_info("GOTO", "Window to " + hop:NAME + ": wait " + ROUND(wait_s, 0) +
+                    "s  eff=" + decision["efficiency"] + "  best dV=" + decision["best_dv"] +
+                    "  now dV=" + decision["now_dv"] + "  (" + decision["why"] + ").").
                 aoso_state_transition(AOSO_GOTO, "WAIT").
                 RETURN.
             }

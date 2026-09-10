@@ -38,6 +38,7 @@ RUN ONCE "AOSO/vehicle/staging".
 RUN ONCE "AOSO/vehicle/profile".
 RUN ONCE "AOSO/vehicle/budget".
 RUN ONCE "AOSO/vehicle/learn".
+RUN ONCE "AOSO/vehicle/classify".
 
 // --- Basic flight -----------------------------------------------------------
 RUN ONCE "AOSO/flight/steering".
@@ -84,6 +85,11 @@ RUN ONCE "AOSO/precision/kscreturn".
 // --- Mission layer -----------------------------------------------------
 RUN ONCE "AOSO/mission/checkpoints".
 RUN ONCE "AOSO/mission/feasibility".
+RUN ONCE "AOSO/mission/matrix".
+RUN ONCE "AOSO/mission/windows".
+RUN ONCE "AOSO/mission/score".
+RUN ONCE "AOSO/mission/route".
+RUN ONCE "AOSO/mission/planner".
 RUN ONCE "AOSO/mission/goto".
 RUN ONCE "AOSO/mission/tour".
 RUN ONCE "AOSO/mission/mission".

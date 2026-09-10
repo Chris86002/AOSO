@@ -1,11 +1,12 @@
 // AOSO/mission/tour.ks
-// Default autonomous mission: visit every stock planet and moon, land and
-// refuel where the vehicle actually needs propellant and can take off
-// again. Destination choice is driven by mission/feasibility.ks -- the
-// vehicle-intelligence layer -- not a hard-coded TWR check: before each
-// GOTO the tour evaluates reach/orbit/land/takeoff/refuel/return and will
-// SKIP a body that is not reachable or visit it ORBIT_ONLY (Eve, Tylo,
-// Jool, low TWR) instead of landing a ship that cannot leave.
+// Default autonomous mission: visit every stock planet and moon the
+// vessel can actually reach, land and refuel where it needs propellant
+// and can take off again. The itinerary is NOT a hard-coded list --
+// mission/planner.ks classifies the ship, builds a capability matrix,
+// scores CAN vs SHOULD, then a cluster-greedy route (Jool's moons are
+// one interplanetary hop). Destination checks still go through
+// mission/feasibility.ks: SKIP unreachable, ORBIT_ONLY rather than
+// landing a ship that cannot leave.
 // Built on core/state.ks as AOSO_TOUR, driving the existing goto / ascent /
 // polar / scan / deorbit / descent / refuel / return / kscreturn machines as
 // sub-steps the same way mission/mission.ks drives aoso_ascent_*.
@@ -514,11 +515,14 @@ FUNCTION aoso_tour_define_states {
 
 FUNCTION aoso_tour_start {
     PARAMETER targets IS LIST().
-    IF targets:LENGTH = 0 { SET targets TO aoso_tour_default_targets(). }
+    IF targets:LENGTH = 0 {
+        SET targets TO aoso_plan_targets().
+        IF targets:LENGTH = 0 { SET targets TO aoso_tour_default_targets(). }
+    }
 
     aoso_tour_define_states().
     SET AOSO_TOUR["data"] TO LEXICON("targets", targets, "index", 0, "site_lat", 0, "site_lng", 0, "site_score", -1, "deorbit_wait_since", 0).
-    aoso_log_info("TOUR", "Grand tour armed: " + targets:LENGTH + " bodies, then KSC return.").
+    aoso_log_info("TOUR", "Grand tour armed: " + targets:LENGTH + " bodies (" + aoso_classify_name() + "), then KSC return.").
     aoso_state_transition(AOSO_TOUR, "BOOT").
 }
 

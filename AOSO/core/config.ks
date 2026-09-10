@@ -34,6 +34,9 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "DV_RESERVE_MIN", 200,              // m/s, floor on the dV budget reserve (also FUEL_RESERVE_PCT of total)
     "DV_ABORT_MIN", 100,                // m/s, abort-budget floor carved out of usable dV
     "FEAS_DV_MARGIN", 1.15,             // multiplier on table dV costs before a destination is declared reachable
+    "WINDOW_MAX_WAIT_S", 3888000,       // s (~45 Kerbin days): planner treats longer waits as a reason to pick another cluster first
+    "WINDOW_MIN_EFFICIENCY", 0.82,      // 0-1, current-phase vs Hohmann phase; below this the window is "poor"
+    "PLANNER_MIN_SHOULD_SCORE", 30,     // 0-100, CAN destinations below this are not SHOULD
     "LANDING_SCAN_SAMPLES", 24,         // ground-track samples scored before picking a landing site
     "MAX_Q_LIMIT_MULT", 1.0,            // throttle back factor near max-Q (1.0=off)
     "DESCENT_BURN_MARGIN_S", 4,         // s of surface-speed reaction time added to the suicide-burn trigger altitude
