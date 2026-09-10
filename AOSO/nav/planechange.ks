@@ -60,3 +60,51 @@ FUNCTION aoso_planechange_add_node_for_target {
         " m/s normal, closing " + ROUND(rel_incl, 2) + " deg relative inclination.").
     RETURN nd.
 }
+
+// Adds a normal-direction node at the next equatorial crossing that rotates
+// SHIP's inclination toward target_inc_deg (90 = polar). Sign is resolved
+// the same way aoso_planechange_add_node_for_target does: whichever of
+// +/- normal leaves |inclination - target| smaller. Returns 0 if already
+// within tolerance, hyperbolic, or no equatorial node was found.
+FUNCTION aoso_planechange_add_node_for_inclination {
+    PARAMETER target_inc_deg IS 90.
+    PARAMETER tolerance_deg IS 15.
+
+    IF SHIP:ORBIT:ECCENTRICITY >= 1 { RETURN 0. }
+    IF SHIP:ORBIT:PERIOD <= 0 { RETURN 0. }
+
+    LOCAL nb IS SHIP:BODY:ANGULARVEL:NORMALIZED.
+    LOCAL inc_now IS VANG(aoso_orbit_normal_now(SHIP), nb).
+    LOCAL err IS ABS(inc_now - target_inc_deg).
+    IF err <= tolerance_deg {
+        aoso_log_info("PLANECHANGE", "Already within " + tolerance_deg + " deg of inclination " + target_inc_deg + " (now " + ROUND(inc_now, 1) + ").").
+        RETURN 0.
+    }
+
+    LOCAL etas IS aoso_orbit_equatorial_node_etas(SHIP).
+    IF etas:LENGTH = 0 {
+        aoso_log_warn("PLANECHANGE", "No equatorial crossing found within one orbit.").
+        RETURN 0.
+    }
+
+    LOCAL burn_eta IS etas[0].
+    LOCAL t IS TIME:SECONDS + burn_eta.
+    LOCAL r_vec IS aoso_orbit_position_at(SHIP, t).
+    LOCAL v_vec IS aoso_orbit_velocity_at(SHIP, t).
+    LOCAL na IS VCRS(r_vec, v_vec):NORMALIZED.
+    LOCAL d_inc IS ABS(target_inc_deg - VANG(na, nb)).
+    LOCAL dv_mag IS aoso_planechange_dv_for_angle(d_inc, v_vec:MAG).
+
+    LOCAL na_plus IS VCRS(r_vec, v_vec + na * dv_mag):NORMALIZED.
+    LOCAL na_minus IS VCRS(r_vec, v_vec - na * dv_mag):NORMALIZED.
+    LOCAL err_plus IS ABS(VANG(na_plus, nb) - target_inc_deg).
+    LOCAL err_minus IS ABS(VANG(na_minus, nb) - target_inc_deg).
+    LOCAL sign IS 1.
+    IF err_minus < err_plus { SET sign TO -1. }
+
+    LOCAL nd IS NODE(t, 0, sign * dv_mag, 0).
+    ADD nd.
+    aoso_log_info("PLANECHANGE", "Inclination node added: dv=" + ROUND(sign * dv_mag, 1) +
+        " m/s normal, " + ROUND(inc_now, 1) + " -> " + ROUND(target_inc_deg, 0) + " deg.").
+    RETURN nd.
+}

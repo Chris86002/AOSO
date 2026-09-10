@@ -93,3 +93,61 @@ FUNCTION aoso_landing_site_score {
     }
     RETURN score.
 }
+
+// Instant orbital scan: samples the ground track over the next ~one period
+// (kOS can query TERRAINHEIGHT of any lat/lng from anywhere, so this does
+// not require actually flying over the sites) and returns a lexicon with
+// the lowest-score safe site, or 0 if none of the samples were landable.
+FUNCTION aoso_landing_site_scan_orbit {
+    PARAMETER samples IS 0.
+    IF samples <= 0 { SET samples TO aoso_config_get("LANDING_SCAN_SAMPLES", 24). }
+    IF samples < 4 { SET samples TO 4. }
+
+    LOCAL period IS SHIP:ORBIT:PERIOD.
+    IF period <= 0 { SET period TO 600. }
+
+    LOCAL best_geo IS 0.
+    LOCAL best_score IS 0.
+    LOCAL found IS FALSE.
+    LOCAL i IS 0.
+    UNTIL i >= samples {
+        LOCAL frac IS (i + 0.5) / samples.
+        LOCAL ut IS TIME:SECONDS + (frac * period).
+        LOCAL geo IS SHIP:BODY:GEOPOSITIONOF(POSITIONAT(SHIP, ut)).
+        LOCAL sc IS aoso_landing_site_score(geo).
+        IF sc >= 0 {
+            IF NOT found {
+                SET best_geo TO geo.
+                SET best_score TO sc.
+                SET found TO TRUE.
+            } ELSE {
+                IF sc < best_score {
+                    SET best_geo TO geo.
+                    SET best_score TO sc.
+                }
+            }
+        }
+        SET i TO i + 1.
+    }
+
+    IF NOT found {
+        aoso_log_warn("SITE", "Orbit scan found no safe landing site among " + samples + " samples.").
+        RETURN 0.
+    }
+
+    LOCAL slope IS aoso_landing_site_slope_deg(best_geo).
+    aoso_log_info("SITE", "Best landing site lat=" + ROUND(best_geo:LAT, 2) + " lng=" + ROUND(best_geo:LNG, 2) +
+        " slope=" + ROUND(slope, 1) + " deg score=" + ROUND(best_score, 2) + " (" + samples + " samples).").
+    RETURN LEXICON(
+        "lat", best_geo:LAT,
+        "lng", best_geo:LNG,
+        "score", best_score,
+        "slope", slope
+    ).
+}
+
+FUNCTION aoso_landing_site_from_latlng {
+    PARAMETER lat.
+    PARAMETER lng.
+    RETURN LATLNG(lat, lng).
+}

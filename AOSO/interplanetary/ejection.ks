@@ -157,15 +157,25 @@ FUNCTION aoso_interplanetary_add_ejection_node {
 }
 
 // Capture/insertion burn once inside arr_body's SOI (SHIP:BODY = arr_body,
-// arriving on a hyperbolic or high-apoapsis trajectory): lowers apoapsis to
-// target_apo_alt at the current periapsis. Reuses nav/hohmann.ks's generic
-// apoapsis-change helper, which is already vis-viva-general enough to size
-// a capture burn correctly (positive hyperbolic "apoapsis" included) --
-// same reuse relationship hohmann.ks has with flight/maneuver.ks.
+// arriving on a hyperbolic or high-apoapsis trajectory). Targeting a
+// parking apoapsis *below* the current periapsis (Mun patchPE=1189 km,
+// park=16 km) used vis-viva to "set AP=16 km at PE" and over-burned into
+// 1166 x -2 km. Circularize at PE when PE is already safe; raise PE at AP
+// when it is not.
 FUNCTION aoso_interplanetary_add_capture_node {
     PARAMETER target_apo_alt.
-    LOCAL nd IS aoso_hohmann_add_apoapsis_change(target_apo_alt).
-    aoso_log_info("EJECTION", "Capture node added at " + SHIP:BODY:NAME + ", target apo=" +
-        ROUND(target_apo_alt, 0) + "m.").
-    RETURN nd.
+    LOCAL min_pe IS target_apo_alt.
+    IF SHIP:BODY:ATM:EXISTS {
+        LOCAL atm_floor IS SHIP:BODY:ATM:HEIGHT + 15000.
+        IF min_pe < atm_floor { SET min_pe TO atm_floor. }
+    } ELSE {
+        IF min_pe < 5000 { SET min_pe TO 5000. }
+    }
+
+    IF PERIAPSIS < min_pe {
+        aoso_log_info("EJECTION", "Capture at " + SHIP:BODY:NAME + ": raising periapsis to " + ROUND(min_pe, 0) + "m (now " + ROUND(PERIAPSIS, 0) + "m).").
+        RETURN aoso_hohmann_add_periapsis_change(min_pe).
+    }
+    aoso_log_info("EJECTION", "Capture at " + SHIP:BODY:NAME + ": circularizing at periapsis " + ROUND(PERIAPSIS, 0) + "m.").
+    RETURN aoso_hohmann_add_circularize_at_periapsis().
 }

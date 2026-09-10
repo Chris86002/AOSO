@@ -130,3 +130,52 @@ FUNCTION aoso_orbit_relative_node_etas {
     }
     RETURN etas.
 }
+
+// Upcoming times (seconds from now) at which orbitable crosses the body's
+// equatorial plane -- the AN/DN used for polar or equatorial plane changes.
+// Same bisection as aoso_orbit_relative_node_etas, but the reference normal
+// is BODY:ANGULARVEL instead of another orbitable.
+FUNCTION aoso_orbit_equatorial_node_etas {
+    PARAMETER orbitable IS SHIP.
+    PARAMETER samples IS 360.
+
+    LOCAL nb IS orbitable:BODY:ANGULARVEL:NORMALIZED.
+    LOCAL period IS orbitable:ORBIT:PERIOD.
+    IF period <= 0 { RETURN LIST(). }
+    LOCAL now IS TIME:SECONDS.
+    LOCAL dt IS period / samples.
+
+    LOCAL etas IS LIST().
+    LOCAL prev_t IS 0.
+    LOCAL prev_val IS VDOT(aoso_orbit_position_at(orbitable, now), nb).
+
+    LOCAL i IS 1.
+    UNTIL i > samples OR etas:LENGTH >= 2 {
+        LOCAL t IS i * dt.
+        LOCAL val IS VDOT(aoso_orbit_position_at(orbitable, now + t), nb).
+
+        IF (val >= 0 AND prev_val < 0) OR (val < 0 AND prev_val >= 0) {
+            LOCAL lo IS prev_t.
+            LOCAL hi IS t.
+            LOCAL lo_val IS prev_val.
+            LOCAL iter IS 0.
+            UNTIL iter >= 20 {
+                LOCAL mid IS (lo + hi) / 2.
+                LOCAL mid_val IS VDOT(aoso_orbit_position_at(orbitable, now + mid), nb).
+                IF (mid_val >= 0 AND lo_val < 0) OR (mid_val < 0 AND lo_val >= 0) {
+                    SET hi TO mid.
+                } ELSE {
+                    SET lo TO mid.
+                    SET lo_val TO mid_val.
+                }
+                SET iter TO iter + 1.
+            }
+            etas:ADD((lo + hi) / 2).
+        }
+
+        SET prev_t TO t.
+        SET prev_val TO val.
+        SET i TO i + 1.
+    }
+    RETURN etas.
+}
