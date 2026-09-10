@@ -83,13 +83,31 @@ FUNCTION aoso_hud_caps_status {
         IF aoso_profile_capable("can_isru") { SET isru_c TO "Y". }
         IF aoso_profile_capable("can_dock") { SET dock_c TO "Y". }
     }
-    RETURN "Caps land=" + land_c + " isru=" + isru_c + " dock=" + dock_c.
+    RETURN "Caps land=" + land_c + " isru=" + isru_c + " dock=" + dock_c + aoso_hud_stage_pred().
+}
+
+FUNCTION aoso_hud_stage_pred {
+    IF DEFINED AOSO_CAPS {
+        IF AOSO_CAPS:HASKEY("prediction") {
+            LOCAL pred IS AOSO_CAPS["prediction"].
+            IF pred:HASKEY("twr_next") {
+                RETURN "  nextTWR " + ROUND(pred["twr_next"], 2).
+            }
+        }
+    }
+    RETURN "".
 }
 
 FUNCTION aoso_hud_feas_status {
     IF DEFINED AOSO_FEAS_LAST {
         IF AOSO_FEAS_LAST:HASKEY("body") {
-            RETURN "Feas " + AOSO_FEAS_LAST["body"] + ": " + AOSO_FEAS_LAST["result"].
+            LOCAL extra IS "".
+            IF DEFINED AOSO_LEARN_LAST {
+                IF AOSO_LEARN_LAST:HASKEY("deviation_pct") {
+                    SET extra TO "  learn " + ROUND(AOSO_LEARN_LAST["deviation_pct"], 1) + "%".
+                }
+            }
+            RETURN "Feas " + AOSO_FEAS_LAST["body"] + ": " + AOSO_FEAS_LAST["result"] + extra.
         }
     }
     RETURN "Feas: -".

@@ -5,11 +5,11 @@
 // Mission code asks "what can this ship do?" instead of hard-coding a
 // ship type.
 //
-// Continuously re-profiles: a scheduler task compares a cheap fingerprint
-// (part count, stage number, engine count, status, control part) and
-// rebuilds the profile when the vehicle changes. Staging already calls
-// aoso_profile_refresh() directly. Fuel burn alone (mass change, same
-// fingerprint) only refreshes the dV budget, not the whole part walk.
+// Continuously re-profiles: a scheduler task compares a structured
+// snapshot (parts, engines, tanks, mass, stages, docking, drills, solar,
+// status, control point, thrust) and only rebuilds the subsystem that
+// actually changed -- mass/fuel → dV budget; engine/stage/parts → full
+// profile. Staging still calls aoso_profile_refresh() directly.
 //
 // Every suffix used here is a documented stock kOS Part / Vessel suffix
 // or PART:HASMODULE, matching vehicle/vessel.ks's "no invented suffixes"
@@ -17,15 +17,50 @@
 
 GLOBAL AOSO_PROFILE IS LEXICON().
 GLOBAL AOSO_PROFILE_LAST_MASS IS 0.
+GLOBAL AOSO_PROFILE_SNAPSHOT IS LEXICON().
 
-FUNCTION aoso_profile_fingerprint {
-    LOCAL control_id IS "".
-    IF SHIP:CONTROLPART:ISTYPE("Part") { SET control_id TO "" + SHIP:CONTROLPART:UID. }
+FUNCTION aoso_profile_snapshot {
     LOCAL plist IS LIST().
     LIST PARTS IN plist.
     LOCAL elist IS LIST().
     LIST ENGINES IN elist.
-    RETURN SHIP:NAME + "|" + SHIP:STATUS + "|" + plist:LENGTH + "|" + STAGE:NUMBER + "|" + elist:LENGTH + "|" + control_id.
+    LOCAL doclist IS LIST().
+    LIST DOCKINGPORTS IN doclist.
+    LOCAL tank_n IS 0.
+    LOCAL drill_n IS 0.
+    LOCAL solar_n IS 0.
+    FOR p IN plist {
+        IF p:HASMODULE("ModuleDeployableSolarPanel") { SET solar_n TO solar_n + 1. }
+        IF p:HASMODULE("ModuleResourceHarvester") { SET drill_n TO drill_n + 1. }
+        LOCAL has_tank IS FALSE.
+        FOR res_item IN p:RESOURCES {
+            IF aoso_capabilities_is_propellant(res_item:NAME) {
+                IF res_item:CAPACITY > 0 { SET has_tank TO TRUE. }
+            }
+        }
+        IF has_tank { SET tank_n TO tank_n + 1. }
+    }
+    LOCAL control_id IS "".
+    IF SHIP:CONTROLPART:ISTYPE("Part") { SET control_id TO "" + SHIP:CONTROLPART:UID. }
+    RETURN LEXICON(
+        "parts", plist:LENGTH,
+        "engines", elist:LENGTH,
+        "tanks", tank_n,
+        "mass", SHIP:MASS,
+        "stages", STAGE:NUMBER,
+        "docking", doclist:LENGTH,
+        "drills", drill_n,
+        "solar", solar_n,
+        "status", SHIP:STATUS,
+        "control", control_id,
+        "thrust", SHIP:AVAILABLETHRUST
+    ).
+}
+
+FUNCTION aoso_profile_fingerprint {
+    LOCAL snap IS aoso_profile_snapshot().
+    RETURN snap["parts"] + "|" + snap["engines"] + "|" + snap["tanks"] + "|" + snap["stages"] + "|" +
+        snap["docking"] + "|" + snap["drills"] + "|" + snap["solar"] + "|" + snap["status"] + "|" + snap["control"].
 }
 
 FUNCTION aoso_profile_flag {
@@ -247,6 +282,7 @@ FUNCTION aoso_profile_refresh {
         "fingerprint", aoso_profile_fingerprint(),
         "reason", reason,
         "scanned_at", TIME:SECONDS,
+        "snapshot", aoso_profile_snapshot(),
         "structure", LEXICON(
             "root", root_title,
             "stages", STAGE:NUMBER + 1,
@@ -260,8 +296,11 @@ FUNCTION aoso_profile_refresh {
             "engine_groups", engine_groups,
             "fuel_types", fuel_types,
             "twr", twr_now,
+            "max_surface_twr", home_twr,
             "isp_vac", isp_vac,
             "dv_total", dv_total,
+            "vacuum_dv", dv_total,
+            "atmospheric_dv", dv_stage,
             "dv_stage", dv_stage,
             "has_rcs", has_rcs
         ),
@@ -316,7 +355,9 @@ FUNCTION aoso_profile_refresh {
     ).
 
     SET AOSO_PROFILE_LAST_MASS TO SHIP:MASS.
+    SET AOSO_PROFILE_SNAPSHOT TO AOSO_PROFILE["snapshot"].
     aoso_budget_refresh().
+    aoso_capabilities_predict_next().
     aoso_profile_save().
 
     aoso_log_info("PROFILE", "Re-profiled (" + reason + "): " + plist:LENGTH + " parts, " +
@@ -327,25 +368,65 @@ FUNCTION aoso_profile_refresh {
 }
 
 FUNCTION aoso_profile_maybe_refresh {
-    IF NOT AOSO_PROFILE:HASKEY("fingerprint") {
+    IF NOT AOSO_PROFILE:HASKEY("snapshot") {
         aoso_profile_refresh("init").
         RETURN.
     }
-    LOCAL fp IS aoso_profile_fingerprint().
-    IF fp <> AOSO_PROFILE["fingerprint"] {
-        aoso_profile_refresh("change").
+    LOCAL snap IS aoso_profile_snapshot().
+    LOCAL prev IS AOSO_PROFILE_SNAPSHOT.
+    IF NOT prev:HASKEY("parts") {
+        aoso_profile_refresh("init").
         RETURN.
     }
-    IF AOSO_PROFILE_LAST_MASS > 0.05 {
-        LOCAL mass_delta IS ABS(SHIP:MASS - AOSO_PROFILE_LAST_MASS) / AOSO_PROFILE_LAST_MASS.
-        IF mass_delta > 0.08 {
-            aoso_capabilities_refresh().
-            aoso_budget_refresh().
-            SET AOSO_PROFILE_LAST_MASS TO SHIP:MASS.
-            SET AOSO_PROFILE["mass"] TO SHIP:MASS.
-            SET AOSO_PROFILE["propulsion"]["dv_total"] TO aoso_caps_get("dv_total_vac", 0).
-            SET AOSO_PROFILE["propulsion"]["twr"] TO aoso_caps_get("twr", 0).
-        }
+
+    LOCAL structural IS FALSE.
+    LOCAL reason IS "".
+    IF snap["parts"] <> prev["parts"] { SET structural TO TRUE. SET reason TO "parts " + prev["parts"] + "->" + snap["parts"]. }
+    IF snap["engines"] <> prev["engines"] { SET structural TO TRUE. SET reason TO "engines " + prev["engines"] + "->" + snap["engines"]. }
+    IF snap["stages"] <> prev["stages"] { SET structural TO TRUE. SET reason TO "stage " + prev["stages"] + "->" + snap["stages"]. }
+    IF snap["docking"] <> prev["docking"] { SET structural TO TRUE. SET reason TO "docking". }
+    IF snap["drills"] <> prev["drills"] { SET structural TO TRUE. SET reason TO "drills". }
+    IF snap["solar"] <> prev["solar"] { SET structural TO TRUE. SET reason TO "solar". }
+    IF snap["status"] <> prev["status"] { SET structural TO TRUE. SET reason TO "status " + prev["status"] + "->" + snap["status"]. }
+    IF snap["control"] <> prev["control"] { SET structural TO TRUE. SET reason TO "control-point". }
+
+    IF structural {
+        aoso_log_info("PROFILE", "Change: " + reason + " - full re-profile.").
+        aoso_world_refresh(reason).
+        aoso_profile_refresh(reason).
+        RETURN.
+    }
+
+    LOCAL resource_cfg IS FALSE.
+    IF snap["tanks"] <> prev["tanks"] { SET resource_cfg TO TRUE. }
+
+    LOCAL thrust_fail IS FALSE.
+    IF prev["thrust"] > 1 {
+        IF snap["thrust"] < prev["thrust"] * 0.7 { SET thrust_fail TO TRUE. }
+    }
+
+    LOCAL mass_delta IS 0.
+    IF prev["mass"] > 0.05 {
+        SET mass_delta TO ABS(snap["mass"] - prev["mass"]) / prev["mass"].
+    }
+
+    IF resource_cfg OR thrust_fail OR mass_delta > 0.08 {
+        LOCAL why IS "mass".
+        IF resource_cfg { SET why TO "resource-config". }
+        IF thrust_fail { SET why TO "engine-failure". }
+        aoso_log_debug("PROFILE", "Change: " + why + " - refresh dV/budget only.").
+        aoso_capabilities_refresh().
+        aoso_budget_refresh().
+        aoso_capabilities_predict_next().
+        SET AOSO_PROFILE_LAST_MASS TO snap["mass"].
+        SET AOSO_PROFILE_SNAPSHOT TO snap.
+        SET AOSO_PROFILE["mass"] TO snap["mass"].
+        SET AOSO_PROFILE["snapshot"] TO snap.
+        SET AOSO_PROFILE["propulsion"]["dv_total"] TO aoso_caps_get("dv_total_vac", 0).
+        SET AOSO_PROFILE["propulsion"]["vacuum_dv"] TO aoso_caps_get("dv_total_vac", 0).
+        SET AOSO_PROFILE["propulsion"]["atmospheric_dv"] TO aoso_caps_get("dv_current_stage", 0).
+        SET AOSO_PROFILE["propulsion"]["twr"] TO aoso_caps_get("twr", 0).
+        RETURN.
     }
 }
 

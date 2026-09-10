@@ -104,7 +104,10 @@ FUNCTION aoso_staging_auto_check {
         }
 
         IF had_ignition {
-            aoso_log_info("STAGING", "Auto-staging: flameout detected, stage " + prev + " -> " + (prev - 1)).
+            LOCAL pred IS aoso_capabilities_predict_next().
+            aoso_log_info("STAGING", "Auto-staging: flameout detected, stage " + prev + " -> " + (prev - 1) +
+                "  TWR " + ROUND(pred["twr_now"], 2) + " -> " + ROUND(pred["twr_next"], 2) +
+                "  dV after " + ROUND(pred["dv_after"], 0) + " m/s.").
         } ELSE {
             aoso_log_info("STAGING", "Relight: no burning engines, staging (" + prev + ").").
             SET AOSO_STAGING_RELIGHT_ATTEMPTS TO AOSO_STAGING_RELIGHT_ATTEMPTS + 1.

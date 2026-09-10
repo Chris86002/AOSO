@@ -241,3 +241,60 @@ FUNCTION aoso_caps_get {
     IF AOSO_CAPS:HASKEY(key) { RETURN AOSO_CAPS[key]. }
     RETURN default_value.
 }
+
+// "If I stage now": TWR and remaining dV after dropping the soonest
+// engine layer. Uses the last stage-breakdown plus live mass/g. Staging
+// logs this before firing so the operator (and later the stager) can see
+// "TWR 1.8 -> 0.62, leftover dV on this stage 40 m/s."
+FUNCTION aoso_capabilities_predict_next {
+    LOCAL layers IS aoso_caps_get("stages", LIST()).
+    LOCAL g_now IS SHIP:BODY:MU / (SHIP:BODY:RADIUS + ALTITUDE) ^ 2.
+    IF g_now <= 0 { SET g_now TO AOSO_CONST["G0"]. }
+    LOCAL twr_now IS aoso_caps_get("twr", 0).
+    LOCAL dv_total IS aoso_caps_get("dv_total_vac", 0).
+    LOCAL pred IS LEXICON(
+        "twr_now", twr_now,
+        "twr_next", twr_now,
+        "dv_this", 0,
+        "dv_after", dv_total,
+        "mass_now", SHIP:MASS,
+        "mass_next", SHIP:MASS,
+        "role_this", "",
+        "role_next", ""
+    ).
+    IF layers:LENGTH < 1 {
+        SET AOSO_CAPS["prediction"] TO pred.
+        RETURN pred.
+    }
+    LOCAL cur IS layers[0].
+    SET pred["dv_this"] TO cur["dv_vac"].
+    SET pred["role_this"] TO cur["role"].
+    SET pred["dv_after"] TO dv_total - cur["dv_vac"].
+    IF pred["dv_after"] < 0 { SET pred["dv_after"] TO 0. }
+
+    LOCAL mass_next IS SHIP:MASS.
+    IF cur["decoupled_in"] >= 0 {
+        SET mass_next TO SHIP:MASS - cur["dry_mass"].
+        IF cur["prop_mass"] < cur["wet_mass"] * 0.15 {
+            // spent / nearly spent: drop dry hardware
+        } ELSE {
+            SET mass_next TO SHIP:MASS - cur["wet_mass"].
+        }
+        IF mass_next < 0.1 { SET mass_next TO 0.1. }
+    }
+    SET pred["mass_next"] TO mass_next.
+
+    IF layers:LENGTH > 1 {
+        LOCAL nxt IS layers[1].
+        SET pred["role_next"] TO nxt["role"].
+        IF mass_next > 0 {
+            SET pred["twr_next"] TO nxt["thrust_vac"] / (mass_next * g_now).
+        }
+    } ELSE {
+        IF mass_next > 0 {
+            SET pred["twr_next"] TO cur["thrust_vac"] / (mass_next * g_now).
+        }
+    }
+    SET AOSO_CAPS["prediction"] TO pred.
+    RETURN pred.
+}

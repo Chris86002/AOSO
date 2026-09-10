@@ -26,6 +26,7 @@ GLOBAL AOSO_CONST IS LEXICON(
     "CHECKPOINT_FILE", "0:/aoso_checkpoints.json",
     "ASCENT_RUNS_FILE", "0:/aoso_ascent_runs.json",
     "PROFILE_FILE", "0:/aoso_profile.json",
+    "LEARN_FILE", "0:/aoso_learn.json",
     "SOI_RADIUS_INFINITE", 1000000000000000  // sentinel (m) for a body with no SOI boundary (e.g. the Sun), since kOS cannot push a real Infinity value onto its stack
 ).
 

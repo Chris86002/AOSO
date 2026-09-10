@@ -19,6 +19,7 @@ FUNCTION aoso_boot {
 
     aoso_body_database_load().
     aoso_profile_refresh("boot").
+    aoso_world_refresh("boot").
     aoso_checkpoints_load().
 
     aoso_log_info("BOOT", "Boot sequence complete.").
