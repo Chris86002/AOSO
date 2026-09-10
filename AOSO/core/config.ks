@@ -21,20 +21,26 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "ASCENT_PITCHOVER_DEG", 10,         // deg from vertical at pitchover; TWR- and CoM-scaled at runtime (~6-14)
     "ASCENT_PITCHOVER_RATE", 0.75,      // deg/s, pitch ramp during pitchover (MechJeb PVG; slower if nose-heavy)
     "ASCENT_PITCHOVER_MIN_ALT", 200,    // m, extra floor besides speed (raised if nose-heavy / long stack)
-    "ASCENT_HOLD_AP_S", 45,             // s, time-to-apoapsis the gravity-turn throttle holds AFTER leaving thick air
+    "ASCENT_HOLD_AP_S", 45,             // s, time-to-apoapsis the gravity-turn throttle holds AFTER leaving dense air
     "ASCENT_TARGET_APO", 80000,         // m, default target apoapsis for ascent AP
-    "ASCENT_ATMO_MIN_PITCH", 40,        // deg, pitch floor while below ASCENT_ATMO_MIN_PITCH_ALT (punch out of atmosphere)
-    "ASCENT_ATMO_MIN_PITCH_ALT", 55000, // m, hold the pitch floor until this altitude
+    "ASCENT_FULL_THROTTLE_ALT", 45000,  // m, stay at full throttle (on prograde) until this altitude so 50-70 km is not a 35% crawl
     "MANEUVER_FEATHER_S", 2,            // s, remaining burn-time window over which maneuver throttle fades to cut
     "MANEUVER_ALIGN_S", 120,            // s of physics time after warp, before ignition, to point the ship at the burn
     "MANEUVER_FOLLOW_ABOVE_S", 8,       // s of remaining burn-time above which we follow the live node instead of locking
     "TOUR_REFUEL_BELOW_PCT", 60,        // % LiquidFuel at/below which the grand tour will land and ISRU-refuel
     "TOUR_MIN_LAND_TWR", 1.4,           // surface TWR required before the grand tour will attempt a landing
+    "TOUR_POLAR_INCLINATION", 90,       // deg, parking inclination before a landing-site scan
+    "TOUR_POLAR_TOLERANCE_DEG", 15,     // deg, |inc-90| at/below which the orbit is polar enough to scan
+    "LANDING_SCAN_SAMPLES", 24,         // ground-track samples scored before picking a landing site
     "MAX_Q_LIMIT_MULT", 1.0,            // throttle back factor near max-Q (1.0=off)
-    "DESCENT_BURN_MARGIN_S", 3,         // s of reaction time added to the suicide-burn trigger altitude
-    "DESCENT_FINAL_APPROACH_ALT", 150,  // m, radar altitude where descent switches to a slow vertical hold
+    "DESCENT_BURN_MARGIN_S", 4,         // s of surface-speed reaction time added to the suicide-burn trigger altitude
+    "DESCENT_STOP_MARGIN", 1.2,         // extra multiplier on kinematic stop distance (elwanderer / MechJeb-style pad)
+    "DESCENT_RADAR_OFFSET", 0,          // m, extra radar offset; 0 = measure from the lowest part at descent start
+    "DESCENT_FINAL_APPROACH_ALT", 150,  // m, radar altitude where descent *may* switch to a slow vertical hold
+    "DESCENT_FINAL_SPEED_MAX", 25,      // m/s surface speed required before leaving suicide burn for final approach
     "DESCENT_FINAL_SPEED", -3,          // m/s, target vertical speed held during final approach
     "DESCENT_TOUCHDOWN_ALT", 0.5,       // m, radar altitude below which touchdown is declared
+    "DESCENT_SAFE_PE_ALT", 8000,        // m, airless deorbit periapsis floor (never sea level / lithobrake)
     "LOW_EC_PCT", 20,                   // % ElectricCharge at/below which fuel cells are enabled
     "FUEL_CELL_DISABLE_PCT", 90,        // % ElectricCharge at/above which fuel cells are disabled
     "PANEL_MAX_AIRSPEED", 50,           // m/s, airspeed inside atmosphere above which panels retract

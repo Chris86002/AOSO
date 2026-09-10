@@ -4,8 +4,12 @@
 // again (ISRU drills + converter, surface TWR >= TOUR_MIN_LAND_TWR), then
 // return to Kerbin and hand off to precision/kscreturn.ks for KSC.
 // Built on core/state.ks as AOSO_TOUR, driving the existing goto / ascent /
-// deorbit / descent / refuel / return / kscreturn machines as sub-steps
-// the same way mission/mission.ks drives aoso_ascent_*.
+// polar / scan / deorbit / descent / refuel / return / kscreturn machines as
+// sub-steps the same way mission/mission.ks drives aoso_ascent_*.
+// Landings go polar -> ground-track scan (landing/site.ks) -> deorbit to a
+// periapsis above the highlands -> surface-velocity suicide burn. The old
+// GOTO-capture -> PE=0 deorbit -> immediate descent skipped the scan and
+// lithobraked into Mun.
 //
 // Gas giants (Jool) and the Sun are orbited, not landed. High-g / thick-
 // atmosphere bodies the ship cannot leave (Eve, Tylo with TWR ~1) are
@@ -62,6 +66,41 @@ FUNCTION aoso_tour_should_refuel {
         RETURN FALSE.
     }
     RETURN TRUE.
+}
+
+FUNCTION aoso_tour_orbit_is_stable {
+    IF SHIP:STATUS = "LANDED" OR SHIP:STATUS = "PRELAUNCH" { RETURN FALSE. }
+    IF SHIP:ORBIT:ECCENTRICITY >= 1 { RETURN FALSE. }
+    IF PERIAPSIS < 2000 { RETURN FALSE. }
+    IF SHIP:BODY:ATM:EXISTS {
+        IF PERIAPSIS < SHIP:BODY:ATM:HEIGHT + 5000 { RETURN FALSE. }
+    }
+    RETURN TRUE.
+}
+
+FUNCTION aoso_tour_is_polar {
+    LOCAL tgt IS aoso_config_get("TOUR_POLAR_INCLINATION", 90).
+    LOCAL tol IS aoso_config_get("TOUR_POLAR_TOLERANCE_DEG", 15).
+    RETURN ABS(SHIP:ORBIT:INCLINATION - tgt) <= tol.
+}
+
+FUNCTION aoso_tour_is_impacting {
+    IF SHIP:STATUS = "LANDED" { RETURN FALSE. }
+    IF ETA:PERIAPSIS >= ETA:APOAPSIS { RETURN FALSE. }
+    IF PERIAPSIS < 0 { RETURN TRUE. }
+    IF NOT SHIP:BODY:ATM:EXISTS {
+        IF PERIAPSIS < aoso_config_get("DESCENT_SAFE_PE_ALT", 8000) { RETURN TRUE. }
+    }
+    RETURN FALSE.
+}
+
+FUNCTION aoso_tour_opposite_site {
+    PARAMETER lat.
+    PARAMETER lng.
+    LOCAL geo IS LATLNG(lat, lng).
+    LOCAL ship_r IS SHIP:POSITION - SHIP:BODY:POSITION.
+    LOCAL site_r IS geo:POSITION - SHIP:BODY:POSITION.
+    RETURN VANG(ship_r, site_r) >= 140.
 }
 
 FUNCTION aoso_tour_on_abort {
@@ -137,12 +176,110 @@ FUNCTION aoso_tour_goto_execute {
             IF SHIP:STATUS = "LANDED" {
                 aoso_state_transition(AOSO_TOUR, "REFUEL").
             } ELSE {
-                aoso_state_transition(AOSO_TOUR, "DEORBIT").
+                aoso_state_transition(AOSO_TOUR, "POLAR").
             }
         } ELSE {
             aoso_tour_advance(data).
         }
     }
+}
+
+FUNCTION aoso_tour_polar_entry {
+    PARAMETER data.
+    SET WARP TO 0.
+    LOCK THROTTLE TO 0.
+    aoso_maneuver_clear_all().
+
+    IF SHIP:STATUS = "LANDED" {
+        aoso_state_transition(AOSO_TOUR, "REFUEL").
+        RETURN.
+    }
+
+    IF aoso_tour_is_impacting() {
+        aoso_log_warn("TOUR", "Impact trajectory at " + SHIP:BODY:NAME + " - skipping polar/scan, suicide-burning.").
+        aoso_descent_start().
+        aoso_state_transition(AOSO_TOUR, "DESCEND").
+        RETURN.
+    }
+
+    IF NOT aoso_tour_orbit_is_stable() {
+        LOCAL park IS aoso_goto_parking_alt(SHIP:BODY).
+        IF PERIAPSIS < park {
+            aoso_log_info("TOUR", "Raising periapsis to " + ROUND(park, 0) + "m before polar capture.").
+            LOCAL nd_pe IS aoso_hohmann_add_periapsis_change(park).
+            IF nd_pe = 0 {
+                aoso_descent_start().
+                aoso_state_transition(AOSO_TOUR, "DESCEND").
+            }
+            RETURN.
+        }
+        aoso_log_info("TOUR", "Circularizing at periapsis before polar.").
+        LOCAL nd_c IS aoso_hohmann_add_circularize_at_periapsis().
+        IF nd_c = 0 {
+            aoso_state_transition(AOSO_TOUR, "SCAN").
+        }
+        RETURN.
+    }
+
+    IF NOT aoso_tour_is_polar() {
+        LOCAL tgt IS aoso_config_get("TOUR_POLAR_INCLINATION", 90).
+        aoso_log_info("TOUR", "Plane-changing to polar (" + ROUND(SHIP:ORBIT:INCLINATION, 1) + " -> " + tgt + " deg).").
+        LOCAL nd_p IS aoso_planechange_add_node_for_inclination(tgt, aoso_config_get("TOUR_POLAR_TOLERANCE_DEG", 15)).
+        IF nd_p = 0 {
+            aoso_state_transition(AOSO_TOUR, "SCAN").
+        }
+        RETURN.
+    }
+
+    aoso_log_info("TOUR", "Polar parking established (inc=" + ROUND(SHIP:ORBIT:INCLINATION, 1) + " deg).").
+    aoso_state_transition(AOSO_TOUR, "SCAN").
+}
+
+FUNCTION aoso_tour_polar_execute {
+    PARAMETER data.
+    IF aoso_fuel_abort_check() {
+        aoso_state_abort(AOSO_TOUR).
+        RETURN.
+    }
+    IF NOT HASNODE {
+        aoso_state_transition(AOSO_TOUR, "POLAR").
+        RETURN.
+    }
+    IF aoso_maneuver_execute_next() {
+        LOCAL burn_res IS aoso_maneuver_last_result().
+        IF burn_res = "missed" OR burn_res = "incomplete" {
+            aoso_log_warn("TOUR", "Polar/stabilize " + burn_res + " - retrying.").
+        }
+        aoso_state_transition(AOSO_TOUR, "POLAR").
+    }
+}
+
+FUNCTION aoso_tour_scan_entry {
+    PARAMETER data.
+    SET WARP TO 0.
+    LOCK THROTTLE TO 0.
+    aoso_steer_release().
+
+    LOCAL result IS aoso_landing_site_scan_orbit().
+    IF result:ISTYPE("Lexicon") {
+        SET data["site_lat"] TO result["lat"].
+        SET data["site_lng"] TO result["lng"].
+        SET data["site_score"] TO result["score"].
+        aoso_log_info("TOUR", "Landing site lat=" + ROUND(result["lat"], 2) + " lng=" + ROUND(result["lng"], 2) +
+            " slope=" + ROUND(result["slope"], 1) + " deg.").
+    } ELSE {
+        SET data["site_lat"] TO SHIP:GEOPOSITION:LAT.
+        SET data["site_lng"] TO SHIP:GEOPOSITION:LNG.
+        aoso_log_warn("TOUR", "Scan found nothing safer than the current ground track - landing near lat=" +
+            ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) + ".").
+        SET data["site_score"] TO 0.
+    }
+    SET data["deorbit_wait_since"] TO TIME:SECONDS.
+}
+
+FUNCTION aoso_tour_scan_execute {
+    PARAMETER data.
+    aoso_state_transition(AOSO_TOUR, "DEORBIT").
 }
 
 FUNCTION aoso_tour_deorbit_entry {
@@ -153,26 +290,61 @@ FUNCTION aoso_tour_deorbit_entry {
         aoso_state_transition(AOSO_TOUR, "REFUEL").
         RETURN.
     }
-    LOCAL nd IS aoso_deorbit_add_node().
-    IF nd = 0 {
-        aoso_descent_start().
-        aoso_state_transition(AOSO_TOUR, "DESCEND").
+    IF NOT data:HASKEY("deorbit_wait_since") {
+        SET data["deorbit_wait_since"] TO TIME:SECONDS.
     }
 }
 
 FUNCTION aoso_tour_deorbit_execute {
     PARAMETER data.
-    IF aoso_maneuver_execute_next() {
-        LOCAL burn_res IS aoso_maneuver_last_result().
-        IF burn_res = "missed" OR burn_res = "incomplete" {
-            aoso_log_warn("TOUR", "Deorbit " + burn_res + " - retrying.").
-            LOCAL nd IS aoso_deorbit_add_node().
-            IF nd = 0 {
-                aoso_descent_start().
-                aoso_state_transition(AOSO_TOUR, "DESCEND").
+    IF SHIP:STATUS = "LANDED" {
+        aoso_state_transition(AOSO_TOUR, "REFUEL").
+        RETURN.
+    }
+
+    IF HASNODE {
+        IF aoso_maneuver_execute_next() {
+            LOCAL burn_res IS aoso_maneuver_last_result().
+            IF burn_res = "missed" OR burn_res = "incomplete" {
+                aoso_log_warn("TOUR", "Deorbit " + burn_res + " - retrying.").
+                RETURN.
             }
-            RETURN.
+            aoso_descent_start().
+            aoso_state_transition(AOSO_TOUR, "DESCEND").
         }
+        RETURN.
+    }
+
+    LOCAL have_site IS FALSE.
+    IF data:HASKEY("site_score") {
+        IF data["site_score"] >= 0 { SET have_site TO TRUE. }
+    }
+
+    LOCAL opposite IS FALSE.
+    IF have_site {
+        SET opposite TO aoso_tour_opposite_site(data["site_lat"], data["site_lng"]).
+    }
+
+    LOCAL waited IS TIME:SECONDS - data["deorbit_wait_since"].
+    LOCAL period IS SHIP:ORBIT:PERIOD.
+    IF period <= 0 { SET period TO 600. }
+
+    IF have_site {
+        IF NOT opposite {
+            IF waited < period {
+                IF WARP = 0 {
+                    IF aoso_maneuver_can_warp() { SET WARP TO 3. }
+                }
+                RETURN.
+            }
+        }
+    }
+
+    SET WARP TO 0.
+    LOCAL eta_s IS -1.
+    IF opposite { SET eta_s TO aoso_maneuver_align_s(). }
+    LOCAL nd IS aoso_deorbit_add_node(0, FALSE, eta_s).
+    IF nd = 0 {
         aoso_descent_start().
         aoso_state_transition(AOSO_TOUR, "DESCEND").
     }
@@ -318,6 +490,8 @@ FUNCTION aoso_tour_define_states {
     aoso_state_define(AOSO_TOUR, "BOOT", aoso_tour_boot_entry@, 0, 0, 0, 0, aoso_tour_on_abort@).
     aoso_state_define(AOSO_TOUR, "ASCEND", 0, aoso_tour_ascend_execute@, 0, 0, 0, aoso_tour_on_abort@).
     aoso_state_define(AOSO_TOUR, "GOTO", aoso_tour_goto_entry@, aoso_tour_goto_execute@, 0, 0, 0, aoso_tour_on_abort@).
+    aoso_state_define(AOSO_TOUR, "POLAR", aoso_tour_polar_entry@, aoso_tour_polar_execute@, 0, 0, 0, aoso_tour_on_abort@).
+    aoso_state_define(AOSO_TOUR, "SCAN", aoso_tour_scan_entry@, aoso_tour_scan_execute@, 0, 0, 0, aoso_tour_on_abort@).
     aoso_state_define(AOSO_TOUR, "DEORBIT", aoso_tour_deorbit_entry@, aoso_tour_deorbit_execute@, 0, 0, 0, aoso_tour_on_abort@).
     aoso_state_define(AOSO_TOUR, "DESCEND", 0, aoso_tour_descend_execute@, 0, 0, 0, aoso_tour_on_abort@).
     aoso_state_define(AOSO_TOUR, "REFUEL", aoso_tour_refuel_entry@, aoso_tour_refuel_execute@, 0, 0, 0, aoso_tour_on_abort@).
@@ -333,7 +507,7 @@ FUNCTION aoso_tour_start {
     IF targets:LENGTH = 0 { SET targets TO aoso_tour_default_targets(). }
 
     aoso_tour_define_states().
-    SET AOSO_TOUR["data"] TO LEXICON("targets", targets, "index", 0).
+    SET AOSO_TOUR["data"] TO LEXICON("targets", targets, "index", 0, "site_lat", 0, "site_lng", 0, "site_score", -1, "deorbit_wait_since", 0).
     aoso_log_info("TOUR", "Grand tour armed: " + targets:LENGTH + " bodies, then KSC return.").
     aoso_state_transition(AOSO_TOUR, "BOOT").
 }

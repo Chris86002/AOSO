@@ -9,13 +9,16 @@
 //      flops it before dynamic pressure can damp the rotation.
 //   2. A small pitchover (5-14 deg off vertical), ramped at ~0.5-0.8 deg/s
 //      like MechJeb PVG, never an instant step.
-//   3. Zero angle-of-attack on surface prograde, with a pitch floor so we
-//      do not flatten to 10 deg and crawl 50-70 km at 35% throttle. Full
-//      throttle until we are out of thick air; the 45 s-to-AP hold only
-//      starts after that.
+//   3. Zero angle-of-attack on surface prograde. Full throttle through
+//      dense air (ASCENT_FULL_THROTTLE_ALT) so 50-70 km is not a 35% crawl,
+//      then the 45 s-to-AP hold. A pitch floor ("punch") was tried and
+//      produced 1458 m/s circularization -- loft by another name. Throttle
+//      shapes the trajectory; pitch stays on prograde.
 //   4. Once dynamic pressure drops, follow orbital prograde.
 //   5. Cut when apoapsis is at target, hold it against drag until out of
 //      the atmosphere, coast to AP, circularize.
+//   6. Every completed ascent is appended to 0:/aoso_ascent_runs.json so
+//      profiles can be ranked by LiquidFuel remaining in stable orbit.
 //
 // kOS exposes CoM for free: PART:POSITION is in SHIP-RAW, origin at the
 // vessel CoM. Stack CoM fraction along UP is (0 - aft) / length: 0.5 is
@@ -108,39 +111,22 @@ FUNCTION aoso_ascent_restore_steering {
     }
 }
 
-// Follow surface velocity in the launch plane, with a pitch floor in
-// atmosphere so we punch out of 50-70 km instead of flattening to 10 deg
-// and crawling at 35% throttle. Orbital prograde once the air is gone.
+// Follow surface velocity in the launch plane (zero AoA) while Q is still
+// meaningful; orbital prograde once the air is thin. Heading is held so a
+// weathercock does not walk inclination off the launch azimuth. Do not
+// command a pitch floor above FPA -- that is a loft, and it cost 1458 m/s
+// to circularize on the last pad flight.
 FUNCTION aoso_ascent_follow_prograde {
     PARAMETER data.
-    IF NOT aoso_ascent_in_atmosphere() {
-        aoso_steer_prograde().
-        RETURN.
+    LOCAL use_srf IS FALSE.
+    IF aoso_ascent_in_atmosphere() {
+        IF SHIP:Q > 0.02 { SET use_srf TO TRUE. }
     }
-
-    LOCAL pitch IS aoso_ascent_flight_path_pitch().
-    LOCAL floor_alt IS aoso_config_get("ASCENT_ATMO_MIN_PITCH_ALT", 55000).
-    LOCAL floor_deg IS aoso_config_get("ASCENT_ATMO_MIN_PITCH", 40).
-    LOCAL floor_p IS 0.
-    IF ALTITUDE < floor_alt {
-        SET floor_p TO floor_deg.
+    IF use_srf {
+        aoso_steer_heading_pitch(data["heading"], aoso_ascent_flight_path_pitch()).
     } ELSE {
-        // Ease 40 deg at 55 km down to 15 deg at atmosphere top.
-        LOCAL span IS SHIP:BODY:ATM:HEIGHT - floor_alt.
-        IF span < 1000 { SET span TO 1000. }
-        LOCAL frac IS (ALTITUDE - floor_alt) / span.
-        IF frac > 1 { SET frac TO 1. }
-        SET floor_p TO floor_deg + ((15 - floor_deg) * frac).
-        IF floor_p < 15 { SET floor_p TO 15. }
+        aoso_steer_prograde().
     }
-    IF pitch < floor_p {
-        SET pitch TO floor_p.
-        IF NOT data:HASKEY("floor_logged") {
-            SET data["floor_logged"] TO TRUE.
-            aoso_log_info("ASCENT", "Atmo pitch floor " + ROUND(floor_p, 0) + " deg at " + ROUND(ALTITUDE, 0) + " m - punching out instead of crawling.").
-        }
-    }
-    aoso_steer_heading_pitch(data["heading"], pitch).
 }
 
 // Pitchover magnitude (deg from vertical). Higher TWR can afford a slightly
@@ -246,8 +232,9 @@ FUNCTION aoso_ascent_throttle_for_q {
     RETURN 1.0.
 }
 
-// Gravity-turn throttle. Full throttle in thick air so 50-70 km is not a
-// 35% crawl. The 45 s-to-AP hold only starts after we have punched out.
+// Gravity-turn throttle. Full throttle through dense air so 50-70 km is
+// not a 35% crawl, then the 45 s-to-AP hold (GravityTurn / kOS GT). Pitch
+// stays on prograde; throttle is the only loft lever.
 FUNCTION aoso_ascent_turn_throttle {
     LOCAL q_mult IS aoso_ascent_throttle_for_q().
     LOCAL target_apo IS AOSO_ASCENT["data"]["target_apo"].
@@ -260,8 +247,9 @@ FUNCTION aoso_ascent_turn_throttle {
         RETURN 0.
     }
 
+    LOCAL full_alt IS aoso_config_get("ASCENT_FULL_THROTTLE_ALT", 45000).
     IF aoso_ascent_in_atmosphere() {
-        IF ALTITUDE < SHIP:BODY:ATM:HEIGHT * 0.8 { RETURN q_mult. }
+        IF ALTITUDE < full_alt { RETURN q_mult. }
     }
 
     IF NOT aoso_ascent_in_atmosphere() { RETURN q_mult. }
@@ -274,10 +262,103 @@ FUNCTION aoso_ascent_turn_throttle {
     LOCAL hold_s IS aoso_config_get("ASCENT_HOLD_AP_S", 45).
     LOCAL err IS hold_s - eta_ap.
     LOCAL th IS 0.6 + (err * 0.02).
-    IF th < 0.45 { SET th TO 0.45. }
+    IF th < 0.40 { SET th TO 0.40. }
     IF th > 1 { SET th TO 1. }
     IF th > q_mult { SET th TO q_mult. }
     RETURN th.
+}
+
+FUNCTION aoso_ascent_profile_name {
+    RETURN "PITCHOVER+ZERO_AOA".
+}
+
+FUNCTION aoso_ascent_snapshot_pad {
+    PARAMETER data.
+    IF data:HASKEY("pad_lf") { RETURN. }
+    SET data["pad_lf"] TO aoso_resource_amount("LiquidFuel").
+    SET data["pad_ox"] TO aoso_resource_amount("Oxidizer").
+    SET data["pad_mass"] TO SHIP:MASS.
+    SET data["pad_ut"] TO TIME:SECONDS.
+    aoso_log_info("ASCENT", "Pad snapshot LF=" + ROUND(data["pad_lf"], 1) + " Ox=" + ROUND(data["pad_ox"], 1) + " mass=" + ROUND(data["pad_mass"], 2) + " t.").
+}
+
+FUNCTION aoso_ascent_persist_run {
+    PARAMETER data.
+    LOCAL lf IS aoso_resource_amount("LiquidFuel").
+    LOCAL ox IS aoso_resource_amount("Oxidizer").
+    LOCAL pad_lf IS 0.
+    IF data:HASKEY("pad_lf") { SET pad_lf TO data["pad_lf"]. }
+    LOCAL used_lf IS pad_lf - lf.
+    LOCAL circ_dv IS 0.
+    IF data:HASKEY("circ_dv") { SET circ_dv TO data["circ_dv"]. }
+    LOCAL profile IS aoso_ascent_profile_name().
+    LOCAL rec IS LEXICON(
+        "ut", TIME:SECONDS,
+        "body", SHIP:BODY:NAME,
+        "profile", profile,
+        "pad_lf", pad_lf,
+        "orbit_lf", lf,
+        "used_lf", used_lf,
+        "orbit_ox", ox,
+        "apo", APOAPSIS,
+        "peri", PERIAPSIS,
+        "circ_dv", circ_dv,
+        "com_frac", data["com_frac"],
+        "pitchover_deg", data["pitchover_deg"],
+        "mass", SHIP:MASS
+    ).
+
+    LOCAL runs_path IS AOSO_CONST["ASCENT_RUNS_FILE"].
+    LOCAL store IS aoso_json_read(runs_path, LEXICON("runs", LIST(), "best", LEXICON())).
+    IF NOT store:ISTYPE("Lexicon") { SET store TO LEXICON("runs", LIST(), "best", LEXICON()). }
+    IF NOT store:HASKEY("runs") { SET store["runs"] TO LIST(). }
+    IF NOT store:HASKEY("best") { SET store["best"] TO LEXICON(). }
+
+    store["runs"]:ADD(rec).
+    UNTIL store["runs"]:LENGTH <= 15 {
+        store["runs"]:REMOVE(0).
+    }
+
+    LOCAL stable IS TRUE.
+    IF SHIP:BODY:ATM:EXISTS {
+        IF PERIAPSIS < SHIP:BODY:ATM:HEIGHT + 5000 { SET stable TO FALSE. }
+    } ELSE {
+        IF PERIAPSIS < 5000 { SET stable TO FALSE. }
+    }
+
+    LOCAL best_line IS "no previous best".
+    IF stable {
+        LOCAL body_name IS SHIP:BODY:NAME.
+        LOCAL prev IS 0.
+        IF store["best"]:HASKEY(body_name) { SET prev TO store["best"][body_name]. }
+        LOCAL is_best IS FALSE.
+        IF NOT prev:ISTYPE("Lexicon") {
+            SET is_best TO TRUE.
+        } ELSE {
+            IF NOT prev:HASKEY("orbit_lf") {
+                SET is_best TO TRUE.
+            } ELSE {
+                IF lf > prev["orbit_lf"] { SET is_best TO TRUE. }
+            }
+        }
+        IF is_best {
+            LOCAL best_map IS store["best"].
+            SET best_map[body_name] TO rec.
+            SET best_line TO "NEW BEST for " + body_name + " (LF remaining " + ROUND(lf, 1) + ").".
+        } ELSE {
+            SET best_line TO "best so far: profile=" + prev["profile"] + " orbit_lf=" + ROUND(prev["orbit_lf"], 1) +
+                " used_lf=" + ROUND(prev["used_lf"], 1) + " circ_dv=" + ROUND(prev["circ_dv"], 1) +
+                " " + ROUND(prev["apo"], 0) + "x" + ROUND(prev["peri"], 0) + "m.".
+        }
+    } ELSE {
+        SET best_line TO "orbit not stable, not ranked.".
+    }
+
+    aoso_json_write(runs_path, store).
+    aoso_log_info("ASCENT", "Fuel-to-orbit profile=" + profile + " pad_lf=" + ROUND(pad_lf, 1) +
+        " orbit_lf=" + ROUND(lf, 1) + " used_lf=" + ROUND(used_lf, 1) +
+        " circ_dv=" + ROUND(circ_dv, 1) + " m/s apo=" + ROUND(APOAPSIS, 0) +
+        " peri=" + ROUND(PERIAPSIS, 0) + " - " + best_line).
 }
 
 FUNCTION aoso_ascent_on_abort {
@@ -352,6 +433,7 @@ FUNCTION aoso_ascent_liftoff_execute {
     LOCK THROTTLE TO 1.0.
     aoso_staging_auto_check().
     aoso_ascent_cache_stack_layout(data).
+    aoso_ascent_snapshot_pad(data).
 
     SET data["pitchover_deg"] TO aoso_ascent_pitchover_deg(data["com_frac"], data["stack_length"]).
     SET data["pitchover_speed"] TO aoso_ascent_pitchover_speed(data["com_frac"], data["stack_length"]).
@@ -509,10 +591,12 @@ FUNCTION aoso_ascent_circularize_entry {
     IF data:HASKEY("circ_now") {
         IF data["circ_now"] {
             aoso_maneuver_add_circularize_here().
+            SET data["circ_dv"] TO ABS(aoso_maneuver_circularize_dv_at_apoapsis()).
             RETURN.
         }
     }
     aoso_maneuver_add_circularize_at_apoapsis().
+    SET data["circ_dv"] TO ABS(aoso_maneuver_circularize_dv_at_apoapsis()).
 }
 
 FUNCTION aoso_ascent_circularize_execute {
@@ -539,6 +623,7 @@ FUNCTION aoso_ascent_done_entry {
     aoso_ascent_restore_steering(data).
     aoso_steer_release().
     aoso_log_info("ASCENT", "Ascent complete. Apo=" + ROUND(APOAPSIS, 0) + " Peri=" + ROUND(PERIAPSIS, 0)).
+    aoso_ascent_persist_run(data).
 }
 
 FUNCTION aoso_ascent_aborted_entry {
@@ -581,9 +666,10 @@ FUNCTION aoso_ascent_start {
         "com_frac", -1,
         "stack_length", 0,
         "pitchover_t0", 0,
-        "circ_now", FALSE
+        "circ_now", FALSE,
+        "circ_dv", 0
     ).
-    aoso_log_info("ASCENT", "Profile=PITCHOVER+FLOOR+PUNCH CoM-aware ramp floor=" + ROUND(aoso_config_get("ASCENT_ATMO_MIN_PITCH", 40), 0) + "deg@" + ROUND(aoso_config_get("ASCENT_ATMO_MIN_PITCH_ALT", 55000), 0) + "m holdAP=" + ROUND(aoso_config_get("ASCENT_HOLD_AP_S", 45), 0) + "s target=" + ROUND(target_apo, 0) + "m. If this line is missing, GameData still has the old ascent.").
+    aoso_log_info("ASCENT", "Profile=" + aoso_ascent_profile_name() + " CoM-aware ramp fullThrottle=" + ROUND(aoso_config_get("ASCENT_FULL_THROTTLE_ALT", 45000), 0) + "m holdAP=" + ROUND(aoso_config_get("ASCENT_HOLD_AP_S", 45), 0) + "s target=" + ROUND(target_apo, 0) + "m. If this line is missing, GameData still has the old ascent.").
     aoso_state_transition(AOSO_ASCENT, "LIFTOFF").
 }
 
