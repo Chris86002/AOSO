@@ -110,8 +110,9 @@ FUNCTION aoso_feas_step {
     PARAMETER dv_need.
     PARAMETER dv_have.
     PARAMETER passed.
-    PARAMETER note IS "".
-    RETURN LEXICON("name", step_name, "dv", dv_need, "available", dv_have, "pass", passed, "note", note).
+    // "note" is a kOS builtin (NOTE()), so the parameter cannot be named that.
+    PARAMETER remark IS "".
+    RETURN LEXICON("name", step_name, "dv", dv_need, "available", dv_have, "pass", passed, "note", remark).
 }
 
 FUNCTION aoso_feas_evaluate {
@@ -300,13 +301,13 @@ FUNCTION aoso_feas_log_report {
     PARAMETER report.
     aoso_log_info("FEAS", report["body"] + " from " + report["from"] +
         "  RESULT=" + report["result"] + "  (" + report["reason"] + ")").
-    FOR step IN report["steps"] {
+    FOR row IN report["steps"] {
         LOCAL mark IS "FAIL".
-        IF step["pass"] { SET mark TO "PASS". }
-        LOCAL note_txt IS "".
-        IF step["note"] <> "" { SET note_txt TO "  " + step["note"]. }
-        aoso_log_info("FEAS", "  " + step["name"] + "  dv=" + ROUND(step["dv"], 0) +
-            "  have=" + ROUND(step["available"], 0) + "  " + mark + note_txt).
+        IF row["pass"] { SET mark TO "PASS". }
+        LOCAL extra IS "".
+        IF row["note"] <> "" { SET extra TO "  " + row["note"]. }
+        aoso_log_info("FEAS", "  " + row["name"] + "  dv=" + ROUND(row["dv"], 0) +
+            "  have=" + ROUND(row["available"], 0) + "  " + mark + extra).
     }
 }
 
