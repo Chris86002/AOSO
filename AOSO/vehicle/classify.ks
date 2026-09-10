@@ -91,21 +91,22 @@ FUNCTION aoso_classify_refresh {
     }
     IF class_name = "hybrid" {
         IF has_wheels {
-            IF flags["lifting"] >= 2 { SET class_name TO "spaceplane". }
+            IF flags["lifting"] >= 2 {
+                IF flags["intakes"] > 0 { SET class_name TO "spaceplane". }
+            }
         }
     }
     IF class_name = "hybrid" {
         IF flags["lifting"] >= 2 {
             IF decouplers <= 2 {
-                IF flags["intakes"] > 0 OR has_chutes { SET class_name TO "ssto". }
+                IF flags["intakes"] > 0 { SET class_name TO "ssto". }
             }
         }
     }
     IF class_name = "hybrid" {
-        IF has_legs {
-            IF has_isru {
-                IF dv_total < 4500 { SET class_name TO "hopper". }
-            }
+        IF has_isru {
+            IF has_legs { SET class_name TO "hopper". }
+            IF has_wheels { SET class_name TO "hopper". }
         }
     }
     IF class_name = "hybrid" {

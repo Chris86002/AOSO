@@ -9,12 +9,9 @@
 //
 // Stage layers reuse vehicle/parts.ks's DECOUPLEDIN model: higher
 // DECOUPLEDIN separates first (boosters), -1 is the never-jettisoned
-// core. Propellant mass on a layer is (part MASS - DRYMASS) of every
-// non-ElectricCharge resource on parts that drop in that stage. After a
-// layer burns, its dry hardware is dropped and the next layer's wet mass
-// is whatever remains. This is still an estimate -- fuel lines that cross
-// stages and asparagus plumbing are not simulated part-by-part -- but it
-// is the remaining vehicle, not just the active stage.
+// core. Engine thrust for unlit stages uses POSSIBLETHRUSTAT so a pad
+// scan is not dV=0 / TWR=0 (MAXTHRUST is zero until the engine has
+// ignited, which is why the planner SKIP'd every body on Acacius).
 
 GLOBAL AOSO_CAPS IS LEXICON().
 
@@ -25,6 +22,51 @@ FUNCTION aoso_capabilities_is_propellant {
     IF res_name = "Ablator" { RETURN FALSE. }
     IF res_name = "IntakeAir" { RETURN FALSE. }
     RETURN TRUE.
+}
+
+// Thrust an engine would produce at pressure_atm (atm), even if it is not
+// lit. MAXTHRUST / MAXTHRUSTAT are 0 on the pad for engines that have
+// never been activated, which is why boot reported dV=0 and the planner
+// SKIP'd every body. POSSIBLETHRUSTAT is the kOS suffix for "if it were
+// running."
+FUNCTION aoso_capabilities_engine_thrust {
+    PARAMETER eng.
+    PARAMETER pressure_atm.
+    LOCAL t IS eng:POSSIBLETHRUSTAT(pressure_atm).
+    IF t > 0 { RETURN t. }
+    SET t TO eng:MAXTHRUSTAT(pressure_atm).
+    IF t > 0 { RETURN t. }
+    IF eng:IGNITION {
+        IF NOT eng:FLAMEOUT { RETURN eng:MAXTHRUST. }
+    }
+    RETURN 0.
+}
+
+// Live thrust for TWR: ignited engines if any are running, otherwise the
+// next-to-fire layer (highest DECOUPLEDIN) via possible thrust. Counts
+// only that layer so a 400 t stack is not given TWR 5 from unlit uppers.
+FUNCTION aoso_capabilities_live_thrust {
+    LOCAL elist IS LIST().
+    LIST ENGINES IN elist.
+    LOCAL ignited IS 0.
+    FOR eng IN elist {
+        IF eng:IGNITION AND NOT eng:FLAMEOUT { SET ignited TO ignited + eng:MAXTHRUST. }
+    }
+    IF ignited > 0 { RETURN ignited. }
+
+    LOCAL best_d IS -999.
+    FOR eng IN elist {
+        IF eng:DECOUPLEDIN > best_d { SET best_d TO eng:DECOUPLEDIN. }
+    }
+    LOCAL pressure_atm IS 0.
+    IF SHIP:BODY:ATM:EXISTS { SET pressure_atm TO SHIP:BODY:ATM:ALTITUDEPRESSURE(ALTITUDE). }
+    LOCAL possible IS 0.
+    FOR eng IN elist {
+        IF eng:DECOUPLEDIN = best_d {
+            IF NOT eng:FLAMEOUT { SET possible TO possible + aoso_capabilities_engine_thrust(eng, pressure_atm). }
+        }
+    }
+    RETURN possible.
 }
 
 FUNCTION aoso_capabilities_refresh {
@@ -39,8 +81,9 @@ FUNCTION aoso_capabilities_refresh {
     }
 
     LOCAL g_now IS SHIP:BODY:MU / (SHIP:BODY:RADIUS + ALTITUDE) ^ 2.
+    LOCAL live_thrust IS aoso_capabilities_live_thrust().
     LOCAL twr IS 0.
-    IF SHIP:MASS > 0 { SET twr TO SHIP:AVAILABLETHRUST / (SHIP:MASS * g_now). }
+    IF SHIP:MASS > 0 { SET twr TO live_thrust / (SHIP:MASS * g_now). }
 
     LOCAL wet_mass IS SHIP:MASS.
     LOCAL propellant_mass IS 0.
@@ -81,7 +124,7 @@ FUNCTION aoso_capabilities_refresh {
     SET AOSO_CAPS TO LEXICON(
         "twr", twr,
         "active_engine_count", lit:LENGTH,
-        "available_thrust", SHIP:AVAILABLETHRUST,
+        "available_thrust", live_thrust,
         "max_thrust", SHIP:MAXTHRUST,
         "wet_mass", wet_mass,
         "dry_mass_est", dry_mass,
@@ -153,7 +196,7 @@ FUNCTION aoso_capabilities_stage_breakdown {
                 "wet_mass", 0
             ).
         }
-        LOCAL thrust_vac IS e:MAXTHRUSTAT(0).
+        LOCAL thrust_vac IS aoso_capabilities_engine_thrust(e, 0).
         LOCAL isp_here IS e:VACUUMISP.
         SET groups[dkey]["engines"] TO groups[dkey]["engines"] + 1.
         SET groups[dkey]["thrust_vac"] TO groups[dkey]["thrust_vac"] + thrust_vac.

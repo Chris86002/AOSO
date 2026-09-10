@@ -148,6 +148,13 @@ FUNCTION aoso_tour_ascend_execute {
         RETURN.
     }
     IF aoso_ascent_is_done() {
+        aoso_log_info("TOUR", "Orbit reached - replanning the tour against remaining dV.").
+        aoso_plan_build().
+        LOCAL next_targets IS aoso_plan_targets().
+        IF next_targets:LENGTH > 0 {
+            SET data["targets"] TO next_targets.
+            SET data["index"] TO 0.
+        }
         aoso_state_transition(AOSO_TOUR, "GOTO").
     }
 }

@@ -37,6 +37,16 @@ FUNCTION aoso_plan_build {
     IF AOSO_ROUTE_LAST:HASKEY("order") { SET order TO AOSO_ROUTE_LAST["order"]. }
     SET order TO aoso_plan_compress(order).
 
+    LOCAL provisional IS FALSE.
+    IF order:LENGTH = 0 {
+        IF SHIP:STATUS = "PRELAUNCH" {
+            SET order TO aoso_matrix_catalog().
+            SET provisional TO TRUE.
+            aoso_log_warn("PLAN", "Pad dV not usable yet (mission dV " + ROUND(aoso_budget_get("mission_dv", 0), 0) +
+                " m/s) - provisional full itinerary; will replan in orbit.").
+        }
+    }
+
     LOCAL skipped IS LIST().
     LOCAL catalog IS aoso_matrix_catalog().
     FOR dest_name IN catalog {
@@ -58,6 +68,7 @@ FUNCTION aoso_plan_build {
         "mode", aoso_config_get("OPTIMIZATION_MODE", "BALANCED"),
         "from", SHIP:BODY:NAME,
         "mission_dv", aoso_budget_get("mission_dv", 0),
+        "provisional", provisional,
         "at", TIME:SECONDS
     ).
     aoso_json_write(AOSO_CONST["ROUTE_FILE"], AOSO_PLAN_LAST).

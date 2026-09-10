@@ -148,14 +148,19 @@ FUNCTION aoso_ascent_pitchover_deg {
             ELSE { SET deg TO base + 6. }
         }
     }
-    IF com_frac < 0.48 { SET deg TO deg + 2. }
+    IF com_frac < 0.48 { SET deg TO deg + 3. }
     IF com_frac > 0.52 { SET deg TO deg - 2. }
     IF com_frac > 0.62 { SET deg TO deg - 1. }
     IF stack_len > 16 {
         IF com_frac > 0.5 { SET deg TO deg - 1. }
     }
+    IF com_frac < 0.45 {
+        IF twr >= 1.35 {
+            IF deg < 13 { SET deg TO 13. }
+        }
+    }
     IF deg < 5 { SET deg TO 5. }
-    IF deg > 14 { SET deg TO 14. }
+    IF deg > 16 { SET deg TO 16. }
     RETURN deg.
 }
 
@@ -174,14 +179,21 @@ FUNCTION aoso_ascent_pitchover_speed {
         IF twr >= 1.8 { SET speed TO MAX(40, base - 15). }
     }
     IF com_frac > 0.5 { SET speed TO speed + ((com_frac - 0.5) * 250). }
-    IF stack_len > 16 { SET speed TO speed + 25. }
+    IF stack_len > 16 {
+        IF com_frac > 0.5 { SET speed TO speed + 25. }
+    }
     IF com_frac > 0.58 {
         IF speed < 110 { SET speed TO 110. }
     }
     ELSE {
         IF stack_len > 15 {
-            IF speed < 90 { SET speed TO 90. }
+            IF com_frac > 0.5 {
+                IF speed < 90 { SET speed TO 90. }
+            }
         }
+    }
+    IF com_frac < 0.45 {
+        IF speed > 90 { SET speed TO 90. }
     }
     IF speed < 70 { SET speed TO 70. }
     IF speed > 140 { SET speed TO 140. }
@@ -194,7 +206,9 @@ FUNCTION aoso_ascent_pitchover_min_alt {
     // Do not name this `alt` — that clobbers kOS's builtin ALT (ALT:RADAR).
     LOCAL min_alt IS aoso_config_get("ASCENT_PITCHOVER_MIN_ALT", 200).
     IF com_frac > 0.5 { SET min_alt TO min_alt + ((com_frac - 0.5) * 1200). }
-    IF stack_len > 16 { SET min_alt TO min_alt + 80. }
+    IF stack_len > 16 {
+        IF com_frac > 0.5 { SET min_alt TO min_alt + 80. }
+    }
     IF min_alt < 150 { SET min_alt TO 150. }
     IF min_alt > 500 { SET min_alt TO 500. }
     RETURN min_alt.
