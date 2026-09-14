@@ -24,6 +24,12 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "ASCENT_HOLD_AP_S", 45,             // s, time-to-apoapsis the gravity-turn throttle holds AFTER leaving dense air
     "ASCENT_TARGET_APO", 80000,         // m, default target apoapsis for ascent AP
     "ASCENT_FULL_THROTTLE_ALT", 45000,  // m, stay at full throttle (on prograde) until this altitude so 50-70 km is not a 35% crawl
+    "ASCENT_DENSE_ALT", 40000,          // m, splits DENSE_AIR vs UPPER_ATM phase records in flight/ascent_opt.ks
+    "ASCENT_OPTIMIZE", TRUE,            // try a grid of pitchover kicks across pad reverts; lock the leftover-LF winner
+    "ASCENT_OPT_MAX_TRIALS", 6,         // pad flights in the kick search (5 grid points + 1 optional edge refine)
+    "STAGING_FUEL_EMPTY", 0.25,         // units, stage when current-stage LF/Ox/SF drops to/below this (don't wait for flameout)
+    "STAGING_DEAD_S", 0.2,              // s of AVAILABLETHRUST~0 before a thrust-collapse stage
+    "MANEUVER_NO_THRUST_TICKS", 20,     // execute_next retries staging this many ticks before declaring a burn dead
     "MANEUVER_FEATHER_S", 2,            // s, remaining burn-time window over which maneuver throttle fades to cut
     "MANEUVER_ALIGN_S", 120,            // s of physics time after warp, before ignition, to point the ship at the burn
     "MANEUVER_FOLLOW_ABOVE_S", 8,       // s of remaining burn-time above which we follow the live node instead of locking

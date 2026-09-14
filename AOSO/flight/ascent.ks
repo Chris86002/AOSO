@@ -19,6 +19,10 @@
 //      the atmosphere, coast to AP, circularize.
 //   6. Every completed ascent is appended to 0:/aoso_ascent_runs.json so
 //      profiles can be ranked by LiquidFuel remaining in stable orbit.
+//   7. flight/ascent_opt.ks sweeps kick angles (8/11/14/17/20 deg, ~6
+//      pad flights) and records VERTICAL / PITCHOVER / DENSE_AIR /
+//      UPPER_ATM / COAST / CIRCULARIZE so leftover fuel can be compared
+//      period-by-period. Pitch stays on prograde; only the kick changes.
 //
 // kOS exposes CoM for free: PART:POSITION is in SHIP-RAW, origin at the
 // vessel CoM. Stack CoM fraction along UP is (0 - aft) / length: 0.5 is
@@ -283,7 +287,13 @@ FUNCTION aoso_ascent_turn_throttle {
 }
 
 FUNCTION aoso_ascent_profile_name {
-    RETURN "PITCHOVER+ZERO_AOA".
+    LOCAL kick IS 0.
+    IF DEFINED AOSO_ASCENT {
+        IF AOSO_ASCENT["data"]:HASKEY("pitchover_deg") {
+            SET kick TO AOSO_ASCENT["data"]["pitchover_deg"].
+        }
+    }
+    RETURN "PITCHOVER+ZERO_AOA/k" + ROUND(kick, 0).
 }
 
 FUNCTION aoso_ascent_snapshot_pad {
@@ -343,6 +353,7 @@ FUNCTION aoso_ascent_persist_run {
     } ELSE {
         IF PERIAPSIS < 5000 { SET stable TO FALSE. }
     }
+    SET rec["stable"] TO stable.
 
     LOCAL best_line IS "no previous best".
     IF stable {
@@ -372,6 +383,7 @@ FUNCTION aoso_ascent_persist_run {
         SET best_line TO "orbit not stable, not ranked.".
     }
 
+    aoso_ascent_opt_commit(rec).
     aoso_json_write_persistent(runs_path, AOSO_CONST["ASCENT_RUNS_ARCHIVE_FILE"], store).
     aoso_learn_record_ascent(rec).
     aoso_log_info("ASCENT", "Fuel-to-orbit profile=" + profile + " pad_lf=" + ROUND(pad_lf, 1) +
@@ -458,6 +470,11 @@ FUNCTION aoso_ascent_liftoff_execute {
     SET data["pitchover_speed"] TO aoso_ascent_pitchover_speed(data["com_frac"], data["stack_length"]).
     SET data["pitchover_min_alt"] TO aoso_ascent_pitchover_min_alt(data["com_frac"], data["stack_length"]).
     SET data["pitchover_rate"] TO aoso_ascent_pitchover_rate(data["com_frac"], data["stack_length"]).
+    IF AOSO_ASCENT_OPT["applied_deg"] < 0 {
+        aoso_ascent_opt_apply(data).
+    } ELSE {
+        SET data["pitchover_deg"] TO AOSO_ASCENT_OPT["applied_deg"].
+    }
 
     IF SHIP:VELOCITY:SURFACE:MAG >= data["pitchover_speed"] {
         IF ALTITUDE > data["pitchover_min_alt"] {
@@ -651,6 +668,26 @@ FUNCTION aoso_ascent_aborted_entry {
     LOCK THROTTLE TO 0.
     aoso_ascent_restore_steering(data).
     aoso_log_error("ASCENT", "Ascent aborted.").
+    IF AOSO_ASCENT_OPT["applied_deg"] >= 0 {
+        LOCAL rec IS LEXICON(
+            "ut", TIME:SECONDS,
+            "body", SHIP:BODY:NAME,
+            "profile", aoso_ascent_profile_name(),
+            "pad_lf", 0,
+            "orbit_lf", aoso_resource_amount("LiquidFuel"),
+            "used_lf", 0,
+            "circ_dv", 9999,
+            "apo", APOAPSIS,
+            "peri", PERIAPSIS,
+            "pitchover_deg", data["pitchover_deg"],
+            "stable", FALSE
+        ).
+        IF data:HASKEY("pad_lf") {
+            SET rec["pad_lf"] TO data["pad_lf"].
+            SET rec["used_lf"] TO rec["pad_lf"] - rec["orbit_lf"].
+        }
+        aoso_ascent_opt_commit(rec).
+    }
 }
 
 FUNCTION aoso_ascent_define_states {
@@ -674,6 +711,7 @@ FUNCTION aoso_ascent_start {
     IF target_apo <= 0 { SET target_apo TO aoso_config_get("ASCENT_TARGET_APO", 80000). }
 
     SET AOSO_ASCENT_MAX_Q_SEEN TO 0.
+    aoso_ascent_opt_begin().
     aoso_ascent_define_states().
     SET AOSO_ASCENT["data"] TO LEXICON(
         "heading", launch_heading,
@@ -693,6 +731,7 @@ FUNCTION aoso_ascent_start {
 }
 
 FUNCTION aoso_ascent_update {
+    aoso_ascent_opt_tick().
     aoso_state_update(AOSO_ASCENT).
 }
 

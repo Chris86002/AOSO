@@ -43,6 +43,7 @@ RUN ONCE "AOSO/vehicle/classify".
 // --- Basic flight -----------------------------------------------------------
 RUN ONCE "AOSO/flight/steering".
 RUN ONCE "AOSO/flight/maneuver".
+RUN ONCE "AOSO/flight/ascent_opt".
 RUN ONCE "AOSO/flight/ascent".
 RUN ONCE "AOSO/flight/launch".
 
@@ -108,7 +109,7 @@ RUN ONCE "AOSO/ux/telemetry".
 // responsibility of whatever builds AOSO_MISSION_PLAN (or drives that FSM
 // directly), same as every prior phase.
 FUNCTION aoso_main_register_tasks {
-    aoso_staging_register_task().
+    aoso_staging_register_task(0.1).
     aoso_profile_register_task().
     aoso_power_register_task().
     aoso_checkpoints_register_task().

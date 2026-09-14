@@ -9,7 +9,7 @@
 // suffix or one of this repo's own getters (vehicle/resources.ks,
 // power/power.ks, mission/mission.ks); no new suffixes are invented.
 
-GLOBAL AOSO_HUD_ROWS IS 11. // rows 0..(AOSO_HUD_ROWS-1) are reserved for the HUD
+GLOBAL AOSO_HUD_ROWS IS 12. // rows 0..(AOSO_HUD_ROWS-1) are reserved for the HUD
 
 // Pads/truncates to the terminal width so a shorter status line fully
 // overwrites a longer one left over from a previous tick instead of
@@ -62,6 +62,7 @@ FUNCTION aoso_hud_draw {
     aoso_hud_line(8, "Watchdog: " + watchdog_status + "   " + aoso_hud_dv_status()).
     aoso_hud_line(9, aoso_hud_caps_status()).
     aoso_hud_line(10, aoso_hud_feas_status()).
+    aoso_hud_line(11, aoso_hud_ascent_opt_status()).
 }
 
 FUNCTION aoso_hud_dv_status {
@@ -124,6 +125,13 @@ FUNCTION aoso_hud_feas_status {
     }
     IF plan_txt <> "" { RETURN plan_txt. }
     RETURN "Feas: -".
+}
+
+FUNCTION aoso_hud_ascent_opt_status {
+    IF DEFINED AOSO_ASCENT_OPT {
+        RETURN aoso_ascent_opt_hud().
+    }
+    RETURN "Ascent opt: -".
 }
 
 // Wires the HUD into core/scheduler.ks, mirroring

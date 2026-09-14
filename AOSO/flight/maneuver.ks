@@ -16,11 +16,13 @@ GLOBAL AOSO_MANEUVER_LOCK IS V(0, 0, 0).
 GLOBAL AOSO_MANEUVER_BURNING IS FALSE.
 GLOBAL AOSO_MANEUVER_LAST_REMAINING IS 0.
 GLOBAL AOSO_MANEUVER_RESULT IS "ok".
+GLOBAL AOSO_MANEUVER_NO_THRUST_TICKS IS 0.
 
 FUNCTION aoso_maneuver_reset_exec {
     SET AOSO_MANEUVER_BURNING TO FALSE.
     SET AOSO_MANEUVER_LOCK TO V(0, 0, 0).
     SET AOSO_MANEUVER_LAST_REMAINING TO 0.
+    SET AOSO_MANEUVER_NO_THRUST_TICKS TO 0.
 }
 
 FUNCTION aoso_maneuver_last_result {
@@ -182,6 +184,7 @@ FUNCTION aoso_maneuver_execute_next {
         }
         SET WARP TO 0.
 
+        aoso_staging_auto_check().
         IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
 
         IF nd:ETA > ignite_lead + 1 {
@@ -212,6 +215,7 @@ FUNCTION aoso_maneuver_execute_next {
         SET AOSO_MANEUVER_LOCK TO remaining_vec.
         SET AOSO_MANEUVER_BURNING TO TRUE.
         SET AOSO_MANEUVER_LAST_REMAINING TO remaining.
+        SET AOSO_MANEUVER_NO_THRUST_TICKS TO 0.
         SET AOSO_MANEUVER_RESULT TO "ok".
         LOCAL accel0 IS aoso_maneuver_current_accel().
         LOCAL t0 IS 0.
@@ -225,12 +229,20 @@ FUNCTION aoso_maneuver_execute_next {
     }
 
     IF SHIP:AVAILABLETHRUST <= 0 {
+        aoso_staging_auto_check().
         aoso_staging_ensure_thrust().
         IF SHIP:AVAILABLETHRUST <= 0 {
+            SET AOSO_MANEUVER_NO_THRUST_TICKS TO AOSO_MANEUVER_NO_THRUST_TICKS + 1.
+            LOCAL patience IS aoso_config_get("MANEUVER_NO_THRUST_TICKS", 20).
+            IF AOSO_MANEUVER_NO_THRUST_TICKS < patience {
+                LOCK THROTTLE TO 0.
+                RETURN FALSE.
+            }
             aoso_maneuver_finish_node(nd, "no thrust").
             RETURN TRUE.
         }
     }
+    SET AOSO_MANEUVER_NO_THRUST_TICKS TO 0.
     aoso_staging_auto_check().
 
     LOCAL accel IS aoso_maneuver_current_accel().
