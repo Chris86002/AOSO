@@ -13,7 +13,8 @@ FUNCTION aoso_boot {
     // aoso_log_reset() header) before the very first aoso_log_* call below.
     aoso_log_reset().
     aoso_config_load().
-    aoso_log_set_level(aoso_config_get("LOG_LEVEL", "DEBUG")).
+    aoso_observe_init().
+    aoso_log_set_level(aoso_config_get("LOG_LEVEL", "INFO")).
     aoso_log_info("BOOT", "Vessel: " + SHIP:NAME).
     aoso_addons_detect().
 

@@ -70,6 +70,8 @@ FUNCTION aoso_state_transition {
     LOCAL st IS machine["states"][new_state].
     IF st["entry"]:ISTYPE("Delegate") { st["entry"]:CALL(machine["data"]). }
     aoso_log_info("STATE", "-> " + new_state).
+    aoso_observe_event("STATE", "INFO", new_state, machine["previous"] + "->" + new_state).
+    aoso_observe_on_state(new_state).
     RETURN TRUE.
 }
 
@@ -104,6 +106,7 @@ FUNCTION aoso_state_abort {
         IF st["on_abort"]:ISTYPE("Delegate") { st["on_abort"]:CALL(machine["data"]). }
     }
     aoso_log_warn("STATE", "Abort requested in " + machine["current"]).
+    aoso_observe_event("ABORT", "WARN", machine["current"], "abort").
 }
 
 // --- Persistence: survive a reload/scene-change/resume ------------------

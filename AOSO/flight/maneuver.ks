@@ -118,6 +118,7 @@ FUNCTION aoso_maneuver_throttle_for_dv {
 FUNCTION aoso_maneuver_finish_node {
     PARAMETER nd.
     PARAMETER reason.
+    LOCAL left IS AOSO_MANEUVER_LAST_REMAINING.
     SET WARP TO 0.
     aoso_throttle_set(0).
     aoso_steer_release().
@@ -129,6 +130,19 @@ FUNCTION aoso_maneuver_finish_node {
         ELSE { SET AOSO_MANEUVER_RESULT TO "ok". }
     }
     aoso_log_info("MANEUVER", "Node executed (" + reason + ").").
+    aoso_observe_event("BURN", "INFO", reason, "left=" + ROUND(left, 2)).
+    aoso_decide("MANEUVER", "finish", reason, AOSO_MANEUVER_RESULT, "left=" + ROUND(left, 2)).
+    IF reason = "missed" {
+        aoso_observe_anomaly("BURN_MISSED", "HIGH", 0, left).
+    } ELSE {
+        IF reason = "incomplete" {
+            aoso_observe_anomaly("BURN_INCOMPLETE", "HIGH", 0, left).
+        } ELSE {
+            IF reason = "no thrust" {
+                aoso_observe_anomaly("BURN_INCOMPLETE", "HIGH", 0, left).
+            }
+        }
+    }
 }
 
 // Non-blocking: call once per scheduler tick (or in a tight WAIT 0 loop).

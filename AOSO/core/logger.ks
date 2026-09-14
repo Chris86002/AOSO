@@ -5,7 +5,7 @@
 // minimum level.
 
 GLOBAL AOSO_LOG_BUFFER IS LIST().
-GLOBAL AOSO_LOG_MIN_LEVEL IS 1.          // DEBUG by default
+GLOBAL AOSO_LOG_MIN_LEVEL IS 2.          // INFO by default
 GLOBAL AOSO_LOG_LAST_FLUSH IS 0.
 
 FUNCTION aoso_log_set_level {
@@ -40,6 +40,15 @@ FUNCTION aoso_log {
     LOCAL lvl IS 2.
     IF AOSO_LOG_LEVELS:HASKEY(level_name) { SET lvl TO AOSO_LOG_LEVELS[level_name]. }
     IF lvl < AOSO_LOG_MIN_LEVEL { RETURN. }
+    IF DEFINED AOSO_CPU_LEVEL {
+        IF AOSO_CPU_LEVEL >= 2 {
+            IF lvl < 3 { RETURN. }
+        } ELSE {
+            IF AOSO_CPU_LEVEL >= 1 {
+                IF lvl < 2 { RETURN. }
+            }
+        }
+    }
 
     LOCAL t IS 0.
     IF DEFINED TIME { SET t TO TIME:SECONDS. }

@@ -9,7 +9,10 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "ABORT_FUEL_PCT", 3,                // % remaining that forces an abort
     "MAX_WARP_FACTOR", 6,               // cap on TIMEWARP:WARP used by any module
     "OPTIMIZATION_MODE", "BALANCED",    // FUEL | TIME | SAFETY | BALANCED | MINIMUM_DV
-    "LOG_LEVEL", "DEBUG",               // TRACE..FATAL
+    "LOG_LEVEL", "INFO",                // TRACE..FATAL  (INFO default; TRACE is for hard bugs)
+    "TELEM_RATE", "AUTO",               // AUTO | FAST | NORMAL | SLOW | OFF
+    "OBS_ENABLED", TRUE,
+    "PROF_ENABLED", TRUE,
     "PRECISION_LANDING_RADIUS", 150,    // m, acceptable TARGET_ERROR for KSC return
     "MAX_SLOPE_DEG", 15,                // landing-site scoring cutoff
     "DEORBIT_PE_ALT", 30000,            // m, target periapsis for deorbit burns
@@ -19,9 +22,14 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "WATCHDOG_EC_CRITICAL_PCT", 5,       // % ElectricCharge at/below which hardening/watchdog.ks treats power as critical
     "ASCENT_PITCHOVER_SPEED", 80,       // m/s, vertical rise until the gravity turn starts (optimizer searches this)
     "ASCENT_PITCHOVER_MIN_ALT", 200,    // m, extra floor besides speed (raised if nose-heavy / long stack)
-    "ASCENT_TURN_BIAS_DEG", 3.2,        // deg below FPA; eased in from 1 deg, never a 13 deg kick
-    "ASCENT_TURN_BLEND_S", 8,           // s, cosine ramp of the lead so the nose never yanks
-    "ASCENT_TWR_LIMIT", 1.7,            // hold TWR here while the flight path is still steep so gravity can turn
+    "ASCENT_TURN_BIAS_DEG", 3.2,        // kept so old JSON loads; steering is now MJ classic pitch
+    "ASCENT_TURN_BLEND_S", 8,           // kept so old JSON loads; unused by the pitch program
+    "ASCENT_TURN_START_ALT", 1000,      // m, MJ classic turn starts here (raised if TWR<1.35 / long stack)
+    "ASCENT_TURN_END_ALT", 0,           // m, 0 = auto 0.93 * ATM:HEIGHT (Kerbin ~65100)
+    "ASCENT_TURN_END_ANGLE", 0,         // deg, pitch at turn end
+    "ASCENT_TURN_SHAPE", 0.45,          // MJ shape exponent; 0.25-0.8
+    "ASCENT_MAX_AOA", 7,                // deg, Limit AoA around flight-path pitch
+    "ASCENT_TWR_LIMIT", 2.2,            // hold TWR here while the flight path is still steep so gravity can turn
     "ASCENT_HOLD_AP_S", 45,             // s, time-to-apoapsis the gravity-turn throttle holds AFTER the path shallows
     "ASCENT_TARGET_APO", 80000,         // m, default target apoapsis for ascent AP
     "ASCENT_FULL_THROTTLE_ALT", 45000,  // m, kept for old configs; TWR cap now shapes dense air
@@ -32,6 +40,9 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "STAGING_FUEL_EMPTY_PCT", 1.5,      // % of stage tank capacity also treated as empty (big-tank residue)
 
     "STAGING_DEAD_S", 0.2,              // s of AVAILABLETHRUST~0 before a thrust-collapse stage
+    "STAGING_SPOOL_S", 0.45,            // s to wait after STAGE for engine spool (NOT 0.08)
+    "STAGING_COOLDOWN_S", 1.2,          // s after STAGE before another auto-stage (flameout still allowed)
+    "STAGING_MAX_EXTRA", 1,             // extra STAGE events in relight_until_thrust (serial = jettison + ignite)
     "MANEUVER_NO_THRUST_TICKS", 20,     // execute_next retries staging this many ticks before declaring a burn dead
     "MANEUVER_FEATHER_S", 2,            // s, remaining burn-time window over which maneuver throttle fades to cut
     "MANEUVER_ALIGN_S", 120,            // s of physics time after warp, before ignition, to point the ship at the burn
@@ -132,7 +143,23 @@ FUNCTION aoso_config_load {
             SET AOSO_CONFIG["ASCENT_TWR_LIMIT"] TO 2.4.
         }
     }
-    aoso_log_set_level(aoso_config_get("LOG_LEVEL", "DEBUG")).
+    IF AOSO_CONFIG:HASKEY("ASCENT_TURN_SHAPE") {
+        IF AOSO_CONFIG["ASCENT_TURN_SHAPE"] < 0.25 {
+            SET AOSO_CONFIG["ASCENT_TURN_SHAPE"] TO 0.25.
+        }
+        IF AOSO_CONFIG["ASCENT_TURN_SHAPE"] > 0.8 {
+            SET AOSO_CONFIG["ASCENT_TURN_SHAPE"] TO 0.8.
+        }
+    }
+    IF AOSO_CONFIG:HASKEY("ASCENT_MAX_AOA") {
+        IF AOSO_CONFIG["ASCENT_MAX_AOA"] < 3 {
+            SET AOSO_CONFIG["ASCENT_MAX_AOA"] TO 3.
+        }
+        IF AOSO_CONFIG["ASCENT_MAX_AOA"] > 15 {
+            SET AOSO_CONFIG["ASCENT_MAX_AOA"] TO 15.
+        }
+    }
+    aoso_log_set_level(aoso_config_get("LOG_LEVEL", "INFO")).
     RETURN AOSO_CONFIG.
 }
 

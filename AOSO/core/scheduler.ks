@@ -28,7 +28,10 @@ FUNCTION aoso_sched_add {
         "fn", task_delegate,
         "enabled", enabled,
         "run_count", 0,
-        "last_error", ""
+        "last_error", "",
+        "last_dt", 0,
+        "sum_dt", 0,
+        "max_dt", 0
     )).
 }
 
@@ -56,7 +59,12 @@ FUNCTION aoso_sched_run {
             IF now >= t["next_run"] {
                 SET t["next_run"] TO now + t["interval"].
                 SET t["run_count"] TO t["run_count"] + 1.
+                LOCAL t0 IS KUNIVERSE:REALTIME.
                 t["fn"]:CALL().
+                LOCAL dt IS KUNIVERSE:REALTIME - t0.
+                SET t["last_dt"] TO dt.
+                SET t["sum_dt"] TO t["sum_dt"] + dt.
+                IF dt > t["max_dt"] { SET t["max_dt"] TO dt. }
             }
         }
     }

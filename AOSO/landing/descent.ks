@@ -166,6 +166,8 @@ FUNCTION aoso_descent_freefall_execute {
         aoso_log_info("DESCENT", "Suicide burn now: radar=" + ROUND(radar, 0) + " m trigger=" + ROUND(trigger, 0) +
             " m vSrf=" + ROUND(speed_ms, 1) + " m/s vVert=" + ROUND(VERTICALSPEED, 1) +
             " m/s decel=" + ROUND(aoso_descent_max_deceleration(), 2) + " m/s^2.").
+        aoso_observe_event("LAND", "INFO", "BURN", "suicide radar=" + ROUND(radar, 0) + " vSrf=" + ROUND(speed_ms, 1)).
+        aoso_decide("DESCENT", "suicide", "BURN", "trigger", "radar=" + ROUND(radar, 0) + " trig=" + ROUND(trigger, 0)).
         aoso_state_transition(AOSO_DESCENT, "BURN").
         RETURN.
     }
@@ -259,6 +261,7 @@ FUNCTION aoso_descent_touchdown_entry {
     aoso_throttle_set(0).
     aoso_steer_release().
     aoso_log_info("DESCENT", "Touchdown, throttle cut.").
+    aoso_observe_event("TOUCHDOWN", "INFO", "TOUCHDOWN", "radar=" + ROUND(aoso_descent_true_radar(), 1)).
 }
 
 FUNCTION aoso_descent_is_landed {

@@ -9,7 +9,8 @@
 // snapshot (parts, engines, tanks, mass, stages, docking, drills, solar,
 // status, control point, thrust) and only rebuilds the subsystem that
 // actually changed -- mass/fuel → dV budget; engine/stage/parts → full
-// profile. Staging still calls aoso_profile_refresh() directly.
+// profile. Staging sets AOSO_PROFILE_PENDING instead of calling
+// aoso_profile_refresh() inline so ascent guidance is not blocked.
 //
 // Every suffix used here is a documented stock kOS Part / Vessel suffix
 // or PART:HASMODULE, matching vehicle/vessel.ks's "no invented suffixes"
@@ -23,6 +24,7 @@
 GLOBAL AOSO_PROFILE IS LEXICON().
 GLOBAL AOSO_PROFILE_LAST_MASS IS 0.
 GLOBAL AOSO_PROFILE_LAST_SNAP IS LEXICON().
+GLOBAL AOSO_PROFILE_PENDING IS "".
 
 FUNCTION aoso_profile_snapshot {
     LOCAL plist IS aoso_parts_list().
@@ -96,6 +98,7 @@ FUNCTION aoso_profile_surface_twr {
 FUNCTION aoso_profile_refresh {
     PARAMETER reason IS "manual".
 
+    aoso_prof_start("profile_refresh").
     aoso_parts_cache_invalidate().
     aoso_vessel_scan().
     aoso_parts_scan().
@@ -369,11 +372,25 @@ FUNCTION aoso_profile_refresh {
         " ISRU=" + can_isru + " land=" + can_land + " dock=" + can_dock + ".").
 
     aoso_classify_refresh().
+    aoso_observe_on_fingerprint().
+    aoso_prof_end().
 
     RETURN AOSO_PROFILE.
 }
 
 FUNCTION aoso_profile_maybe_refresh {
+    IF AOSO_PROFILE_PENDING <> "" {
+        LOCAL why IS AOSO_PROFILE_PENDING.
+        SET AOSO_PROFILE_PENDING TO "".
+        IF DEFINED AOSO_CPU_LEVEL {
+            IF AOSO_CPU_LEVEL >= 2 {
+                SET AOSO_PROFILE_PENDING TO why.
+                RETURN.
+            }
+        }
+        aoso_profile_refresh(why).
+        RETURN.
+    }
     IF NOT AOSO_PROFILE:HASKEY("snapshot") {
         aoso_profile_refresh("init").
         RETURN.
@@ -399,6 +416,10 @@ FUNCTION aoso_profile_maybe_refresh {
                 }
             }
         }
+    }
+
+    IF DEFINED AOSO_CPU_LEVEL {
+        IF AOSO_CPU_LEVEL >= 2 { RETURN. }
     }
 
     LOCAL snap IS aoso_profile_snapshot().

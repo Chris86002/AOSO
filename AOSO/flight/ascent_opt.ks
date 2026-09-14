@@ -1,12 +1,11 @@
 // AOSO/flight/ascent_opt.ks
 // Launch-profile search + per-phase efficiency.
 //
-// A smooth gravity turn (GravityTurn / MechJeb classic) never commands a
-// kick. The nose rides prograde with a 1-2 deg cosine-eased bias; that
-// look is fixed. The free efficiency knob is *when* we leave vertical
-// (start speed). This module sweeps 70 / 85 / 100 / 115 / 130 m/s across
-// pad reverts, scores each by leftover LiquidFuel minus a circularization
-// tax, then locks the winner.
+// Steering is MechJeb Classic's pitch-vs-altitude program (altitude^shape
+// from startAlt to endAlt, AoA-limited). The free efficiency knob is still
+// *when* we leave vertical (start speed). This module sweeps 70 / 85 / 100
+// / 115 / 130 m/s across pad reverts, scores each by leftover LiquidFuel
+// minus a circularization tax, then locks the winner.
 //
 // Default grid is 5 speeds plus one optional refine past the best edge --
 // 6 flights, set by ASCENT_OPT_MAX_TRIALS. When ASCENT_OPTIMIZE is FALSE
@@ -14,7 +13,7 @@
 //
 // Phases (sectioned so two speeds can be compared period-by-period):
 //   VERTICAL    pad -> turn start
-//   STARTTURN   cosine-eased bias ramp (still glued to prograde)
+//   STARTTURN   first seconds of the pitch program
 //   DENSE_AIR   gravity turn below ASCENT_DENSE_ALT (default 40 km)
 //   UPPER_ATM   40 km -> coast
 //   COAST       AP hold / warp to circularization

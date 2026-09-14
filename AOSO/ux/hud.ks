@@ -47,6 +47,15 @@ FUNCTION aoso_hud_mission_status {
 }
 
 FUNCTION aoso_hud_draw {
+    IF DEFINED AOSO_CPU_LEVEL {
+        IF AOSO_CPU_LEVEL >= 2 {
+            aoso_hud_line(0, "AOSO CPU HIGH - shedding HUD").
+            aoso_hud_line(1, SHIP:NAME + "  CPU " + AOSO_CPU_NAME).
+            aoso_hud_line(2, aoso_hud_mission_status()).
+            RETURN.
+        }
+    }
+
     LOCAL ec_pct IS 0.
     SET ec_pct TO aoso_power_ec_pct().
     LOCAL fuel_pct IS 0.
@@ -55,6 +64,8 @@ FUNCTION aoso_hud_draw {
     IF aoso_watchdog_is_tripped() { SET watchdog_status TO "TRIPPED". }
     LOCAL mode IS "AUTO".
     IF AOSO_CONFIG["SAFE_MODE"] { SET mode TO "SAFE". }
+    LOCAL cpu_txt IS "".
+    IF DEFINED AOSO_CPU_NAME { SET cpu_txt TO "  CPU " + AOSO_CPU_NAME. }
 
     aoso_hud_line(0, "==== AOSO - " + SHIP:NAME + " (" + mode + ") ====").
     aoso_hud_line(1, "Body: " + SHIP:BODY:NAME + "   MET: " + ROUND(MISSIONTIME, 0) + "s").
@@ -64,7 +75,7 @@ FUNCTION aoso_hud_draw {
     aoso_hud_line(5, "Fuel(stage): " + ROUND(fuel_pct, 1) + "%   EC: " + ROUND(ec_pct, 1) + "%").
     aoso_hud_line(6, "Throttle: " + ROUND(THROTTLE * 100, 0) + "%   SAS: " + SAS + "   RCS: " + RCS).
     aoso_hud_line(7, "Mission: " + aoso_hud_mission_status()).
-    aoso_hud_line(8, "Watchdog: " + watchdog_status + "   " + aoso_hud_dv_status()).
+    aoso_hud_line(8, "Watchdog: " + watchdog_status + "   " + aoso_hud_dv_status() + cpu_txt).
     aoso_hud_line(9, aoso_hud_caps_status()).
     aoso_hud_line(10, aoso_hud_feas_status()).
     aoso_hud_line(11, aoso_hud_ascent_opt_status()).

@@ -1,18 +1,12 @@
 // AOSO/flight/ascent.ks
 // True gravity-turn ascent, then a vis-viva circularization at apoapsis.
 //
-// NASA / GravityTurn / MechJeb classic:
-//   1. Vertical until there is enough speed (and Q) to control a turn.
-//   2. Ride surface prograde with a small lead (about 3 deg, eased in over
-//      ~8 s -- not a 13 deg kick). The nose stays near the prograde marker.
-//   3. Throttle is the loft lever: cap TWR ~1.7 while the flight path is
-//      still steep so gravity can pull the trajectory over. A TWR 2.6
-//      stack at full throttle and 1.8 deg of lead is a sounding rocket
-//      (Acacius: FPA 83 deg at 30 km, 1807 m/s circularization, never
-//      aligned). After the path shallows, the 45 s-to-AP hold.
-//   4. Out of the atmosphere, orbital prograde, coast, circularize.
-//   5. Each ascent is sectioned VERTICAL / STARTTURN / DENSE_AIR /
-//      UPPER_ATM / COAST / CIRCULARIZE. Optimizer sweeps start speed.
+// MechJeb Classic pitch program (MechJebModuleAscentClassicAutopilot.FlightPathAngle):
+//   pitch = clamp(90 - ((alt-turnStart)/(turnEnd-turnStart))^shape * (90-turnEndAngle), 0.01, 89.99)
+// Vertical while alt < turnStart OR speed < turnStartSpeed. AoA limiter (default 7 deg)
+// around flight-path pitch so the nose does not yank. Out of atmosphere: orbital prograde.
+// Throttle still caps TWR (default 2.2) then holds ~45 s-to-AP after the path shallows.
+// Optimizer sweeps start speed; steering is this altitude program, not a prograde lead.
 //
 // Do not name locals `alt` -- that clobbers kOS's builtin ALT (ALT:RADAR).
 
@@ -76,18 +70,18 @@ FUNCTION aoso_ascent_cache_stack_layout {
         LOCAL stop_s IS data["steering_stopping_saved"].
         LOCAL pitch_ts IS data["steering_pitchts_saved"].
         IF data["stack_length"] > 16 {
-            SET stop_s TO MAX(stop_s, 3.2).
+            SET stop_s TO MAX(stop_s, 3.0).
             SET pitch_ts TO MAX(pitch_ts, 2.4).
         }
         IF data["stack_length"] > 30 {
-            SET stop_s TO MAX(stop_s, 4.0).
-            SET pitch_ts TO MAX(pitch_ts, 2.8).
+            SET stop_s TO MAX(stop_s, 3.0).
+            SET pitch_ts TO MAX(pitch_ts, 2.4).
         }
         IF data["com_frac"] > 0.55 {
-            SET stop_s TO MAX(stop_s, 3.8).
-            SET pitch_ts TO MAX(pitch_ts, 2.6).
+            SET stop_s TO MAX(stop_s, 3.0).
+            SET pitch_ts TO MAX(pitch_ts, 2.4).
         }
-        IF stop_s > 4.5 { SET stop_s TO 4.5. }
+        IF stop_s > 3.2 { SET stop_s TO 3.2. }
         SET STEERINGMANAGER:MAXSTOPPINGTIME TO stop_s.
         SET STEERINGMANAGER:PITCHTS TO pitch_ts.
     }
@@ -165,14 +159,92 @@ FUNCTION aoso_ascent_turn_blend_s {
     RETURN blend.
 }
 
-// Surface prograde + small lead for the whole atmosphere (heading held so
-// weathercock does not walk inclination). Switching to orbital prograde
-// at Q=0.02 while still going 70 deg up was an 11 deg yank on Acacius.
+// Surface prograde + small lead was the old atmospheric law. Kept so
+// callers still compile; steering is now the MJ classic pitch program.
 FUNCTION aoso_ascent_follow_prograde {
     PARAMETER data.
+    aoso_ascent_steer(data).
+}
+
+FUNCTION aoso_ascent_turn_start_alt {
+    PARAMETER com_frac IS 0.5.
+    PARAMETER stack_len IS 0.
+    LOCAL start_a IS aoso_config_get("ASCENT_TURN_START_ALT", 1000).
+    LOCAL twr IS aoso_perf_twr().
+    IF twr < 1.35 { SET start_a TO start_a + 400. }
+    IF stack_len > 30 { SET start_a TO start_a + 300. }
+    IF com_frac > 0.55 { SET start_a TO start_a + 250. }
+    IF start_a < 400 { SET start_a TO 400. }
+    IF start_a > 2500 { SET start_a TO 2500. }
+    RETURN start_a.
+}
+
+FUNCTION aoso_ascent_turn_end_alt {
+    LOCAL end_a IS aoso_config_get("ASCENT_TURN_END_ALT", 0).
+    IF end_a > 0 { RETURN end_a. }
+    IF SHIP:BODY:ATM:EXISTS { RETURN 0.93 * SHIP:BODY:ATM:HEIGHT. }
+    RETURN 30000.
+}
+
+FUNCTION aoso_ascent_turn_shape {
+    LOCAL s IS aoso_config_get("ASCENT_TURN_SHAPE", 0.45).
+    IF s < 0.25 { SET s TO 0.25. }
+    IF s > 0.8 { SET s TO 0.8. }
+    RETURN s.
+}
+
+FUNCTION aoso_ascent_max_aoa {
+    LOCAL a IS aoso_config_get("ASCENT_MAX_AOA", 7).
+    IF a < 3 { SET a TO 3. }
+    IF a > 15 { SET a TO 15. }
+    RETURN a.
+}
+
+FUNCTION aoso_ascent_program_pitch {
+    PARAMETER data.
+    LOCAL alt_now IS ALTITUDE.
+    LOCAL spd IS SHIP:VELOCITY:SURFACE:MAG.
+    LOCAL start_alt IS 1000.
+    IF data:HASKEY("turn_start_alt") { SET start_alt TO data["turn_start_alt"]. }
+    LOCAL start_spd IS 80.
+    IF data:HASKEY("pitchover_speed") { SET start_spd TO data["pitchover_speed"]. }
+    IF alt_now < start_alt { RETURN 90. }
+    IF spd < start_spd { RETURN 90. }
+    LOCAL t0 IS start_alt.
+    IF data:HASKEY("turn_alt0") {
+        IF data["turn_alt0"] > t0 { SET t0 TO data["turn_alt0"]. }
+    }
+    LOCAL end_alt IS 65000.
+    IF data:HASKEY("turn_end_alt") {
+        IF data["turn_end_alt"] > 0 { SET end_alt TO data["turn_end_alt"]. }
+    }
+    LOCAL end_ang IS 0.
+    IF data:HASKEY("turn_end_angle") { SET end_ang TO data["turn_end_angle"]. }
+    IF alt_now >= end_alt { RETURN end_ang. }
+    LOCAL span IS end_alt - t0.
+    IF span < 100 { RETURN end_ang. }
+    LOCAL frac IS (alt_now - t0) / span.
+    IF frac < 0 { SET frac TO 0. }
+    IF frac > 1 { SET frac TO 1. }
+    LOCAL shape IS 0.45.
+    IF data:HASKEY("turn_shape") { SET shape TO data["turn_shape"]. }
+    LOCAL shaped IS frac ^ shape.
+    LOCAL p IS 90 - shaped * (90 - end_ang).
+    IF p < 0.01 { SET p TO 0.01. }
+    IF p > 89.99 { SET p TO 89.99. }
+    RETURN p.
+}
+
+FUNCTION aoso_ascent_steer {
+    PARAMETER data.
     IF aoso_ascent_in_atmosphere() {
+        LOCAL cmd IS aoso_ascent_program_pitch(data).
         LOCAL fpa IS aoso_ascent_flight_path_pitch().
-        LOCAL cmd IS fpa - aoso_ascent_live_bias(data).
+        LOCAL max_aoa IS aoso_ascent_max_aoa().
+        LOCAL lo IS fpa - max_aoa.
+        LOCAL hi IS fpa + max_aoa.
+        IF cmd < lo { SET cmd TO lo. }
+        IF cmd > hi { SET cmd TO hi. }
         IF cmd < 0 { SET cmd TO 0. }
         IF cmd > 90 { SET cmd TO 90. }
         aoso_steer_heading_pitch(data["heading"], cmd).
@@ -296,7 +368,7 @@ FUNCTION aoso_ascent_profile_name {
             SET spd TO AOSO_ASCENT["data"]["pitchover_speed"].
         }
     }
-    RETURN "GT+TWRCAP/s" + ROUND(spd, 0).
+    RETURN "MJCL/s" + ROUND(spd, 0).
 }
 
 FUNCTION aoso_ascent_snapshot_pad {
@@ -414,6 +486,12 @@ FUNCTION aoso_ascent_liftoff_entry {
     SET data["pitchover_min_alt"] TO aoso_config_get("ASCENT_PITCHOVER_MIN_ALT", 200).
     SET data["turn_bias"] TO aoso_config_get("ASCENT_TURN_BIAS_DEG", 3.2).
     SET data["turn_blend_s"] TO aoso_config_get("ASCENT_TURN_BLEND_S", 8).
+    SET data["turn_start_alt"] TO aoso_config_get("ASCENT_TURN_START_ALT", 1000).
+    SET data["turn_end_alt"] TO aoso_ascent_turn_end_alt().
+    SET data["turn_shape"] TO aoso_ascent_turn_shape().
+    SET data["turn_end_angle"] TO aoso_config_get("ASCENT_TURN_END_ANGLE", 0).
+    SET data["turn_alt0"] TO 0.
+    SET data["loft_flagged"] TO FALSE.
     aoso_throttle_set(1).
 }
 
@@ -457,6 +535,10 @@ FUNCTION aoso_ascent_liftoff_execute {
     SET data["pitchover_min_alt"] TO aoso_ascent_pitchover_min_alt(data["com_frac"], data["stack_length"]).
     SET data["turn_bias"] TO aoso_ascent_turn_bias(data["com_frac"]).
     SET data["turn_blend_s"] TO aoso_ascent_turn_blend_s(data["stack_length"]).
+    SET data["turn_start_alt"] TO aoso_ascent_turn_start_alt(data["com_frac"], data["stack_length"]).
+    SET data["turn_end_alt"] TO aoso_ascent_turn_end_alt().
+    SET data["turn_shape"] TO aoso_ascent_turn_shape().
+    SET data["turn_end_angle"] TO aoso_config_get("ASCENT_TURN_END_ANGLE", 0).
     IF AOSO_ASCENT_OPT["applied_speed"] < 0 {
         aoso_ascent_opt_apply(data).
     } ELSE {
@@ -465,7 +547,8 @@ FUNCTION aoso_ascent_liftoff_execute {
 
     IF SHIP:VELOCITY:SURFACE:MAG >= data["pitchover_speed"] {
         IF ALTITUDE > data["pitchover_min_alt"] {
-            aoso_log_info("ASCENT", "Gravity turn at " + ROUND(SHIP:VELOCITY:SURFACE:MAG, 0) + " m/s, bias=" + ROUND(data["turn_bias"], 1) + " deg over " + ROUND(data["turn_blend_s"], 0) + " s, TWR cap=" + ROUND(aoso_config_get("ASCENT_TWR_LIMIT", 1.7), 2) + ", TWR=" + ROUND(aoso_perf_twr(), 2) + ", CoM=" + ROUND(data["com_frac"], 2) + ", len=" + ROUND(data["stack_length"], 1) + " m.").
+            SET data["turn_alt0"] TO ALTITUDE.
+            aoso_log_info("ASCENT", "Gravity turn at " + ROUND(SHIP:VELOCITY:SURFACE:MAG, 0) + " m/s, MJ-classic startAlt=" + ROUND(data["turn_start_alt"], 0) + " endAlt=" + ROUND(data["turn_end_alt"], 0) + " shape=" + ROUND(data["turn_shape"], 2) + " maxAoA=" + ROUND(aoso_ascent_max_aoa(), 1) + " TWR cap=" + ROUND(aoso_config_get("ASCENT_TWR_LIMIT", 2.2), 2) + ", TWR=" + ROUND(aoso_perf_twr(), 2) + ", CoM=" + ROUND(data["com_frac"], 2) + ", len=" + ROUND(data["stack_length"], 1) + " m.").
             aoso_state_transition(AOSO_ASCENT, "GRAVITY_TURN").
         }
     }
@@ -476,17 +559,33 @@ FUNCTION aoso_ascent_turn_entry {
     IF data["turn_t0"] = 0 {
         SET data["turn_t0"] TO TIME:SECONDS.
     }
+    IF NOT data:HASKEY("turn_alt0") {
+        SET data["turn_alt0"] TO ALTITUDE.
+    } ELSE {
+        IF data["turn_alt0"] = 0 { SET data["turn_alt0"] TO ALTITUDE. }
+    }
 }
 
 FUNCTION aoso_ascent_turn_execute {
     PARAMETER data.
-    aoso_ascent_follow_prograde(data).
+    aoso_ascent_steer(data).
     aoso_throttle_set(aoso_ascent_turn_throttle()).
 
     aoso_staging_auto_check().
     IF aoso_fuel_abort_check() {
         aoso_state_abort(AOSO_ASCENT).
         RETURN.
+    }
+
+    IF NOT data:HASKEY("loft_flagged") { SET data["loft_flagged"] TO FALSE. }
+    IF NOT data["loft_flagged"] {
+        IF ALTITUDE > 25000 {
+            LOCAL fpa_now IS aoso_ascent_flight_path_pitch().
+            IF fpa_now > 75 {
+                SET data["loft_flagged"] TO TRUE.
+                aoso_observe_anomaly("LOFT", "HIGH", 45, fpa_now).
+            }
+        }
     }
 
     IF APOAPSIS < data["target_apo"] { RETURN. }
@@ -508,7 +607,7 @@ FUNCTION aoso_ascent_coast_entry {
 
 FUNCTION aoso_ascent_coast_execute {
     PARAMETER data.
-    aoso_ascent_follow_prograde(data).
+    aoso_ascent_steer(data).
     aoso_staging_auto_check().
     IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
 
@@ -671,12 +770,24 @@ FUNCTION aoso_ascent_start {
         "turn_bias", 3.2,
         "turn_blend_s", 8,
         "turn_t0", 0,
+        "turn_alt0", 0,
+        "turn_start_alt", 1000,
+        "turn_end_alt", 0,
+        "turn_shape", 0.45,
+        "turn_end_angle", 0,
+        "loft_flagged", FALSE,
         "com_frac", -1,
         "stack_length", 0,
         "circ_now", FALSE,
         "circ_dv", 0
     ).
-    aoso_log_info("ASCENT", "Profile=" + aoso_ascent_profile_name() + " gravity-turn (prograde + eased lead, TWR cap=" + ROUND(aoso_config_get("ASCENT_TWR_LIMIT", 1.7), 2) + ") holdAP=" + ROUND(aoso_config_get("ASCENT_HOLD_AP_S", 45), 0) + "s target=" + ROUND(target_apo, 0) + "m. If this line is missing, GameData still has the old ascent.").
+    LOCAL shape_now IS aoso_ascent_turn_shape().
+    LOCAL start_a IS aoso_config_get("ASCENT_TURN_START_ALT", 1000).
+    LOCAL end_a IS aoso_ascent_turn_end_alt().
+    LOCAL max_aoa IS aoso_ascent_max_aoa().
+    LOCAL twr_cap IS aoso_config_get("ASCENT_TWR_LIMIT", 2.2).
+    aoso_log_info("ASCENT", "Profile=" + aoso_ascent_profile_name() + " gravity-turn (MechJeb-classic pitch program, shape=" + ROUND(shape_now, 2) + ", startAlt=" + ROUND(start_a, 0) + ", endAlt=" + ROUND(end_a, 0) + ", maxAoA=" + ROUND(max_aoa, 1) + ", TWR cap=" + ROUND(twr_cap, 2) + ") holdAP=" + ROUND(aoso_config_get("ASCENT_HOLD_AP_S", 45), 0) + "s target=" + ROUND(target_apo, 0) + "m. If this line is missing, GameData still has the old ascent.").
+    aoso_decide("ASCENT", "start", aoso_ascent_profile_name(), "start speed / shape", "spd=" + ROUND(AOSO_ASCENT["data"]["pitchover_speed"], 0) + " shape=" + ROUND(shape_now, 2) + " startAlt=" + ROUND(start_a, 0) + " endAlt=" + ROUND(end_a, 0)).
     aoso_state_transition(AOSO_ASCENT, "LIFTOFF").
 }
 

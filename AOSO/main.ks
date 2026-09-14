@@ -26,6 +26,7 @@ RUN ONCE "AOSO/core/addons".
 RUN ONCE "AOSO/core/config".
 RUN ONCE "AOSO/core/state".
 RUN ONCE "AOSO/core/scheduler".
+RUN ONCE "AOSO/core/observe".
 RUN ONCE "AOSO/core/boot".
 
 // --- Vehicle ----------------------------------------------------------------
@@ -143,7 +144,11 @@ FUNCTION aoso_main {
     aoso_log_info("MAIN", "Entering main loop.").
 
     UNTIL FALSE {
+        SET AOSO_CPU_UT0 TO TIME:SECONDS.
+        SET AOSO_CPU_OP0 TO OPCODESLEFT.
+        SET AOSO_CPU_RT0 TO KUNIVERSE:REALTIME.
         aoso_sched_run().
+        aoso_observe_cpu_end().
         WAIT 0.
     }
 }
