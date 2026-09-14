@@ -58,6 +58,7 @@ RUN ONCE "AOSO/nav/rendezvous".
 RUN ONCE "AOSO/interplanetary/bodydb".
 RUN ONCE "AOSO/interplanetary/transfer".
 RUN ONCE "AOSO/interplanetary/ejection".
+RUN ONCE "AOSO/interplanetary/assist".
 
 // --- World model --------------------------------------------------------
 RUN ONCE "AOSO/world/body".

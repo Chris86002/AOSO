@@ -56,9 +56,25 @@ FUNCTION aoso_goto_next_hop_body {
     RETURN goal.
 }
 
+FUNCTION aoso_goto_orbit_is_parked {
+    LOCAL park IS aoso_goto_parking_alt(SHIP:BODY).
+    IF SHIP:ORBIT:ECCENTRICITY >= 0.12 { RETURN FALSE. }
+    IF PERIAPSIS < 0 { RETURN FALSE. }
+    IF SHIP:BODY:ATM:EXISTS {
+        IF PERIAPSIS < SHIP:BODY:ATM:HEIGHT + 5000 { RETURN FALSE. }
+    } ELSE {
+        IF PERIAPSIS < park * 0.45 { RETURN FALSE. }
+    }
+    LOCAL soi_a IS SHIP:BODY:SOIRADIUS - SHIP:BODY:RADIUS.
+    IF PERIAPSIS > soi_a * 0.2 { RETURN FALSE. }
+    IF PERIAPSIS > park * 4 { RETURN FALSE. }
+    RETURN TRUE.
+}
+
 // TRUE when we should circularize/capture around the body we are in now,
 // rather than keep going. Intentional ejections (ESCAPING with a patch to
 // the parent) must NOT capture -- that was eating Kerbin->Duna transfers.
+// At the goal, a grazing 2000 km Minmus ellipse is NOT parked.
 FUNCTION aoso_goto_should_capture {
     PARAMETER data.
 
@@ -75,16 +91,14 @@ FUNCTION aoso_goto_should_capture {
         }
     }
 
-    IF NOT should_stop {
-        IF SHIP:STATUS = "ESCAPING" { RETURN FALSE. }
-        IF SHIP:ORBIT:HASNEXTPATCH { RETURN FALSE. }
-        IF PERIAPSIS < 0 { RETURN TRUE. }
-        RETURN FALSE.
+    IF should_stop {
+        IF aoso_goto_orbit_is_parked() { RETURN FALSE. }
+        RETURN TRUE.
     }
 
-    IF SHIP:ORBIT:ECCENTRICITY >= 1 { RETURN TRUE. }
+    IF SHIP:STATUS = "ESCAPING" { RETURN FALSE. }
+    IF SHIP:ORBIT:HASNEXTPATCH { RETURN FALSE. }
     IF PERIAPSIS < 0 { RETURN TRUE. }
-    IF SHIP:STATUS = "ESCAPING" { RETURN TRUE. }
     RETURN FALSE.
 }
 
@@ -140,7 +154,20 @@ FUNCTION aoso_goto_plan_entry {
 
     LOCAL np IS aoso_goto_patch_body_name().
     IF np <> "" {
-        IF np = goal:NAME OR np = hop:NAME {
+        LOCAL patch_ours IS FALSE.
+        IF np = goal:NAME { SET patch_ours TO TRUE. }
+        IF np = hop:NAME { SET patch_ours TO TRUE. }
+        IF patch_ours {
+            LOCAL hop_b IS BODY(np).
+            IF aoso_rendezvous_orbit_needs_correct(SHIP:ORBIT, hop_b) {
+                LOCAL ndc IS aoso_rendezvous_add_correction_node(hop_b).
+                IF ndc <> 0 {
+                    aoso_log_info("GOTO", "Patch to " + np + " has a poor PE - mid-course correction.").
+                    SET data["burn_kind"] TO "correct".
+                    aoso_state_transition(AOSO_GOTO, "BURN").
+                    RETURN.
+                }
+            }
             aoso_log_info("GOTO", "Existing patch to " + np + " - coasting.").
             SET data["burn_kind"] TO "coast".
             aoso_state_transition(AOSO_GOTO, "COAST").
@@ -192,13 +219,22 @@ FUNCTION aoso_goto_plan_entry {
     }
 
     // Moon of the current body: Hohmann phasing transfer into its SOI.
+    // If an inner moon flyby saves dV (or fuel is tight), intercept that
+    // moon first and do not capture -- same pattern as a Mun pump to Minmus.
     IF hop:NAME <> SUN:NAME {
         IF hop:BODY:NAME = SHIP:BODY:NAME {
+            LOCAL kind IS "transfer".
+            LOCAL via IS aoso_assist_should_flyby(hop).
+            IF via:ISTYPE("Body") {
+                SET hop TO via.
+                SET data["hop"] TO hop:NAME.
+                SET kind TO "assist".
+            }
             LOCAL nd_m IS aoso_rendezvous_add_phasing_transfer_node(hop).
             IF nd_m = 0 {
                 IF SHIP:ORBIT:HASNEXTPATCH {
                     IF SHIP:ORBIT:NEXTPATCH:BODY:NAME = hop:NAME {
-                        SET data["burn_kind"] TO "transfer".
+                        SET data["burn_kind"] TO kind.
                         aoso_state_transition(AOSO_GOTO, "COAST").
                         RETURN.
                     }
@@ -206,7 +242,7 @@ FUNCTION aoso_goto_plan_entry {
                 aoso_state_abort(AOSO_GOTO).
                 RETURN.
             }
-            SET data["burn_kind"] TO "transfer".
+            SET data["burn_kind"] TO kind.
             aoso_state_transition(AOSO_GOTO, "BURN").
             RETURN.
         }
@@ -374,10 +410,19 @@ FUNCTION aoso_goto_capture_entry {
     LOCAL nd IS aoso_interplanetary_add_capture_node(park).
     IF nd = 0 {
         aoso_log_warn("GOTO", "No capture node; continuing from current orbit.").
-        IF SHIP:BODY:NAME = data["goal"] {
-            aoso_state_transition(AOSO_GOTO, "DONE").
+        IF aoso_goto_orbit_is_parked() {
+            IF SHIP:BODY:NAME = data["goal"] {
+                aoso_state_transition(AOSO_GOTO, "DONE").
+            } ELSE {
+                aoso_state_transition(AOSO_GOTO, "PLAN").
+            }
         } ELSE {
-            aoso_state_transition(AOSO_GOTO, "PLAN").
+            IF SHIP:BODY:NAME = data["goal"] {
+                aoso_log_warn("GOTO", "At " + SHIP:BODY:NAME + " but PE=" + ROUND(PERIAPSIS, 0) + "m is not parked - will retry next tick.").
+                aoso_state_transition(AOSO_GOTO, "PLAN").
+            } ELSE {
+                aoso_state_transition(AOSO_GOTO, "PLAN").
+            }
         }
     }
 }
@@ -389,8 +434,12 @@ FUNCTION aoso_goto_capture_execute {
         RETURN.
     }
     IF NOT HASNODE {
-        IF SHIP:BODY:NAME = data["goal"] {
-            aoso_state_transition(AOSO_GOTO, "DONE").
+        IF aoso_goto_orbit_is_parked() {
+            IF SHIP:BODY:NAME = data["goal"] {
+                aoso_state_transition(AOSO_GOTO, "DONE").
+            } ELSE {
+                aoso_state_transition(AOSO_GOTO, "PLAN").
+            }
         } ELSE {
             aoso_state_transition(AOSO_GOTO, "PLAN").
         }
@@ -403,11 +452,7 @@ FUNCTION aoso_goto_capture_execute {
             aoso_state_transition(AOSO_GOTO, "PLAN").
             RETURN.
         }
-        IF SHIP:BODY:NAME = data["goal"] {
-            aoso_state_transition(AOSO_GOTO, "DONE").
-        } ELSE {
-            aoso_state_transition(AOSO_GOTO, "PLAN").
-        }
+        aoso_state_transition(AOSO_GOTO, "PLAN").
     }
 }
 

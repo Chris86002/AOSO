@@ -25,13 +25,13 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "ASCENT_TURN_BIAS_DEG", 3.2,        // kept so old JSON loads; steering is now MJ classic pitch
     "ASCENT_TURN_BLEND_S", 8,           // kept so old JSON loads; unused by the pitch program
     "ASCENT_TURN_START_ALT", 1000,      // m, MJ classic turn starts here (raised if TWR<1.35 / long stack)
-    "ASCENT_TURN_END_ALT", 0,           // m, 0 = auto 0.93 * ATM:HEIGHT (Kerbin ~65100)
+    "ASCENT_TURN_END_ALT", 0,           // m, 0 = auto 0.93 * ATM:HEIGHT; Kerbin about 65100
     "ASCENT_TURN_END_ANGLE", 0,         // deg, pitch at turn end
     "ASCENT_TURN_SHAPE", 0.45,          // MJ shape exponent; 0.25-0.8
     "ASCENT_MAX_AOA", 7,                // deg, Limit AoA around flight-path pitch
     "ASCENT_TWR_LIMIT", 2.2,            // hold TWR here while the flight path is still steep so gravity can turn
     "ASCENT_HOLD_AP_S", 45,             // s, time-to-apoapsis the gravity-turn throttle holds AFTER the path shallows
-    "ASCENT_TARGET_APO", 80000,         // m, gravity-turn CUTS here (Kerbin 80 km). Parking 100 km is not the burn goal.
+    "ASCENT_TARGET_APO", 80000,         // m, gravity-turn cuts here; Kerbin 80 km
     "ASCENT_FULL_THROTTLE_ALT", 45000,  // m, kept for old configs; TWR cap now shapes dense air
     "ASCENT_DENSE_ALT", 40000,          // m, splits DENSE_AIR vs UPPER_ATM phase records in flight/ascent_opt.ks
     "ASCENT_OPTIMIZE", TRUE,            // try a grid of turn *start speeds* across pad reverts; lock the leftover-LF winner

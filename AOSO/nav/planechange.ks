@@ -32,11 +32,16 @@ FUNCTION aoso_planechange_add_node_for_target {
         RETURN 0.
     }
 
-    LOCAL etas IS aoso_orbit_relative_node_etas(SHIP, target_orbitable).
-    IF etas:LENGTH = 0 OR node_index >= etas:LENGTH {
+    LOCAL etas IS aoso_orbit_relative_node_etas(SHIP, target_orbitable, 180).
+    IF etas:LENGTH = 0 {
+        LOCAL fb IS aoso_orbit_lan_node_eta(target_orbitable).
+        IF fb > 20 { etas:ADD(fb). }
+    }
+    IF etas:LENGTH = 0 {
         aoso_log_warn("PLANECHANGE", "No relative node found within one orbit.").
         RETURN 0.
     }
+    IF node_index >= etas:LENGTH { SET node_index TO 0. }
 
     LOCAL burn_eta IS etas[node_index].
     LOCAL t IS TIME:SECONDS + burn_eta.

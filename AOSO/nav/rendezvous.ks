@@ -194,13 +194,223 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
     }
 
     IF hit {
+        aoso_rendezvous_tune_pe(nd, target_orbitable).
         LOCAL pe_txt IS "".
         IF nd:ORBIT:HASNEXTPATCH {
-            SET pe_txt TO " patchPE=" + ROUND(nd:ORBIT:NEXTPATCH:PERIAPSIS, 0) + " m".
+            SET pe_txt TO " patchPE=" + ROUND(aoso_rendezvous_orbit_pe(nd:ORBIT, target_orbitable), 0) + " m".
         }
         aoso_log_info("RENDEZVOUS", "Encounter with " + target_orbitable:NAME + " in " + ROUND(nd:ETA, 0) + "s dv=" + ROUND(nd:PROGRADE, 1) + " m/s" + pe_txt + ".").
     } ELSE {
         aoso_log_warn("RENDEZVOUS", "No patched encounter found; flying Hohmann dv=" + ROUND(nd:PROGRADE, 1) + " m/s in " + ROUND(nd:ETA, 0) + "s anyway.").
     }
+    RETURN nd.
+}
+
+// Parking-like periapsis we want at the hop body so capture is cheap
+// (not a SOI-graze). Matches goto parking without calling goto at load.
+FUNCTION aoso_rendezvous_desired_pe {
+    PARAMETER hop.
+    IF hop:ATM:EXISTS {
+        LOCAL pe_atm IS hop:ATM:HEIGHT + 15000.
+        IF pe_atm < 80000 { SET pe_atm TO 80000. }
+        RETURN pe_atm.
+    }
+    LOCAL pe_air IS hop:RADIUS * 0.08.
+    IF pe_air < 15000 { SET pe_air TO 15000. }
+    RETURN pe_air.
+}
+
+FUNCTION aoso_rendezvous_soi_alt {
+    PARAMETER hop.
+    LOCAL soi_a IS hop:SOIRADIUS - hop:RADIUS.
+    IF soi_a < 2000 { SET soi_a TO 2000. }
+    RETURN soi_a.
+}
+
+// Walk patched conics from an orbit until hop, return that patch PE
+// altitude, or -1 if no encounter.
+FUNCTION aoso_rendezvous_orbit_pe {
+    PARAMETER orb.
+    PARAMETER hop.
+    LOCAL cur IS orb.
+    LOCAL n IS 0.
+    UNTIL n >= 5 {
+        IF NOT cur:HASNEXTPATCH { RETURN -1. }
+        SET cur TO cur:NEXTPATCH.
+        IF cur:BODY:NAME = hop:NAME { RETURN cur:PERIAPSIS. }
+        SET n TO n + 1.
+    }
+    RETURN -1.
+}
+
+FUNCTION aoso_rendezvous_pe_min {
+    PARAMETER hop.
+    PARAMETER desired_pe.
+    LOCAL min_pe IS desired_pe * 0.45.
+    IF hop:ATM:EXISTS {
+        LOCAL floor_pe IS hop:ATM:HEIGHT + 8000.
+        IF min_pe < floor_pe { SET min_pe TO floor_pe. }
+    } ELSE {
+        IF min_pe < 3000 { SET min_pe TO 3000. }
+    }
+    RETURN min_pe.
+}
+
+// Lower is better. Miss / lithobrake / SOI-graze are huge.
+FUNCTION aoso_rendezvous_pe_score {
+    PARAMETER nd.
+    PARAMETER hop.
+    PARAMETER desired_pe.
+    LOCAL pe IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
+    IF pe < -0.5 { RETURN 1000000000000. }
+    LOCAL min_pe IS aoso_rendezvous_pe_min(hop, desired_pe).
+    IF pe < min_pe { RETURN 5000000000 + (min_pe - pe). }
+    LOCAL graze IS aoso_rendezvous_soi_alt(hop) * 0.35.
+    IF pe > graze { RETURN 100000000 + (pe - desired_pe). }
+    RETURN ABS(pe - desired_pe).
+}
+
+FUNCTION aoso_rendezvous_pe_ok_value {
+    PARAMETER pe.
+    PARAMETER hop.
+    IF pe < -0.5 { RETURN FALSE. }
+    LOCAL desired IS aoso_rendezvous_desired_pe(hop).
+    LOCAL min_pe IS aoso_rendezvous_pe_min(hop, desired).
+    IF pe < min_pe { RETURN FALSE. }
+    LOCAL graze IS aoso_rendezvous_soi_alt(hop) * 0.35.
+    IF pe > graze { RETURN FALSE. }
+    RETURN TRUE.
+}
+
+FUNCTION aoso_rendezvous_orbit_needs_correct {
+    PARAMETER orb.
+    PARAMETER hop.
+    IF aoso_rendezvous_pe_ok_value(aoso_rendezvous_orbit_pe(orb, hop), hop) { RETURN FALSE. }
+    RETURN TRUE.
+}
+
+// ElWanderer-style hill climb on ETA / prograde / radial / normal so the
+// patched PE is a capture altitude, not a SOI clip. RSVP/MechJeb do this
+// after the Hohmann guess; we stay on stock NODE suffixes.
+FUNCTION aoso_rendezvous_tune_pe {
+    PARAMETER nd.
+    PARAMETER hop.
+    LOCAL desired IS aoso_rendezvous_desired_pe(hop).
+    LOCAL best IS aoso_rendezvous_pe_score(nd, hop, desired).
+    IF best < desired * 0.35 { RETURN TRUE. }
+
+    LOCAL step_t IS 240.
+    LOCAL step_dv IS 20.
+    LOCAL rounds IS 0.
+    UNTIL rounds >= 7 {
+        LOCAL improved IS FALSE.
+
+        LOCAL orig_eta IS nd:ETA.
+        SET nd:ETA TO orig_eta + step_t.
+        IF nd:ETA < 25 { SET nd:ETA TO 25. }
+        LOCAL s IS aoso_rendezvous_pe_score(nd, hop, desired).
+        IF s < best {
+            SET best TO s.
+            SET improved TO TRUE.
+        } ELSE {
+            SET nd:ETA TO orig_eta - step_t.
+            IF nd:ETA < 25 {
+                SET nd:ETA TO orig_eta.
+            } ELSE {
+                SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
+                IF s < best {
+                    SET best TO s.
+                    SET improved TO TRUE.
+                } ELSE {
+                    SET nd:ETA TO orig_eta.
+                }
+            }
+        }
+
+        LOCAL orig_pg IS nd:PROGRADE.
+        SET nd:PROGRADE TO orig_pg + step_dv.
+        SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
+        IF s < best {
+            SET best TO s.
+            SET improved TO TRUE.
+        } ELSE {
+            SET nd:PROGRADE TO orig_pg - step_dv.
+            SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
+            IF s < best {
+                SET best TO s.
+                SET improved TO TRUE.
+            } ELSE {
+                SET nd:PROGRADE TO orig_pg.
+            }
+        }
+
+        LOCAL orig_rad IS nd:RADIALOUT.
+        SET nd:RADIALOUT TO orig_rad + step_dv.
+        SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
+        IF s < best {
+            SET best TO s.
+            SET improved TO TRUE.
+        } ELSE {
+            SET nd:RADIALOUT TO orig_rad - step_dv.
+            SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
+            IF s < best {
+                SET best TO s.
+                SET improved TO TRUE.
+            } ELSE {
+                SET nd:RADIALOUT TO orig_rad.
+            }
+        }
+
+        LOCAL orig_n IS nd:NORMAL.
+        SET nd:NORMAL TO orig_n + step_dv.
+        SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
+        IF s < best {
+            SET best TO s.
+            SET improved TO TRUE.
+        } ELSE {
+            SET nd:NORMAL TO orig_n - step_dv.
+            SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
+            IF s < best {
+                SET best TO s.
+                SET improved TO TRUE.
+            } ELSE {
+                SET nd:NORMAL TO orig_n.
+            }
+        }
+
+        IF best < desired * 0.5 { RETURN TRUE. }
+        IF NOT improved {
+            SET step_t TO step_t * 0.5.
+            SET step_dv TO step_dv * 0.5.
+            IF step_dv < 0.3 { RETURN aoso_rendezvous_pe_ok_value(aoso_rendezvous_orbit_pe(nd:ORBIT, hop), hop). }
+        }
+        SET rounds TO rounds + 1.
+    }
+    LOCAL pe_now IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
+    aoso_log_info("RENDEZVOUS", "Tuned intercept PE to " + ROUND(pe_now, 0) + "m target=" + ROUND(desired, 0) + "m.").
+    RETURN aoso_rendezvous_pe_ok_value(pe_now, hop).
+}
+
+// Mid-course while already on a patch whose PE is a graze / lithobrake.
+FUNCTION aoso_rendezvous_add_correction_node {
+    PARAMETER hop.
+    IF NOT SHIP:ORBIT:HASNEXTPATCH { RETURN 0. }
+    LOCAL pe_now IS aoso_rendezvous_orbit_pe(SHIP:ORBIT, hop).
+    IF aoso_rendezvous_pe_ok_value(pe_now, hop) { RETURN 0. }
+
+    LOCAL eta_p IS SHIP:ORBIT:NEXTPATCHETA.
+    IF eta_p < 150 { RETURN 0. }
+    LOCAL t_corr IS eta_p * 0.3.
+    IF t_corr > eta_p - 180 { SET t_corr TO eta_p - 180. }
+    IF t_corr < 45 { SET t_corr TO 45. }
+
+    LOCAL nd IS NODE(TIME:SECONDS + t_corr, 0, 0, 0).
+    ADD nd.
+    aoso_rendezvous_tune_pe(nd, hop).
+    IF nd:DELTAV:MAG < 0.8 {
+        REMOVE nd.
+        RETURN 0.
+    }
+    aoso_log_info("RENDEZVOUS", "Mid-course correction dv=" + ROUND(nd:DELTAV:MAG, 1) + " m/s, PE " + ROUND(pe_now, 0) + " -> " + ROUND(aoso_rendezvous_orbit_pe(nd:ORBIT, hop), 0) + "m.").
     RETURN nd.
 }

@@ -154,6 +154,24 @@ FUNCTION aoso_orbit_relative_node_etas {
     RETURN etas.
 }
 
+// Near-circular fallback when the sample bisection misses the relative
+// node (Acacius equatorial vs Minmus 6 deg returned no crossing). LAN
+// difference is the AN true anomaly on a low-ecc orbit around the same body.
+FUNCTION aoso_orbit_lan_node_eta {
+    PARAMETER target_orbitable.
+    LOCAL period IS aoso_orbit_period_s().
+    IF period <= 0 { RETURN -1. }
+    LOCAL ta_an IS target_orbitable:ORBIT:LAN - SHIP:ORBIT:LAN - SHIP:ORBIT:ARGUMENTOFPERIAPSIS.
+    LOCAL dta IS ta_an - SHIP:ORBIT:TRUEANOMALY.
+    UNTIL dta >= 8 {
+        SET dta TO dta + 360.
+    }
+    UNTIL dta < 368 {
+        SET dta TO dta - 360.
+    }
+    RETURN period * dta / 360.
+}
+
 // Upcoming times (seconds from now) at which orbitable crosses the body's
 // equatorial plane -- the AN/DN used for polar or equatorial plane changes.
 // Same bisection as aoso_orbit_relative_node_etas, but the reference normal

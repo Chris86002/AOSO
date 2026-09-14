@@ -152,17 +152,95 @@ FUNCTION aoso_interplanetary_add_ejection_node {
 
     LOCAL nd IS NODE(TIME:SECONDS + burn_eta, 0, 0, dv).
     ADD nd.
-    aoso_log_info("EJECTION", "Ejection node added: dv=" + ROUND(dv, 1) + " m/s, v_inf=" +
-        ROUND(v_inf_mag, 1) + " m/s, in " + ROUND(burn_eta, 0) + "s.").
+    aoso_ejection_seek_arrival(nd, arr_body).
+    aoso_log_info("EJECTION", "Ejection node added: dv=" + ROUND(nd:PROGRADE, 1) + " m/s, v_inf=" +
+        ROUND(v_inf_mag, 1) + " m/s, in " + ROUND(nd:ETA, 0) + "s.").
     RETURN nd.
 }
 
-// Capture/insertion burn once inside arr_body's SOI (SHIP:BODY = arr_body,
-// arriving on a hyperbolic or high-apoapsis trajectory). Targeting a
-// parking apoapsis *below* the current periapsis (Mun patchPE=1189 km,
-// park=16 km) used vis-viva to "set AP=16 km at PE" and over-burned into
-// 1166 x -2 km. Circularize at PE when PE is already safe; raise PE at AP
-// when it is not.
+// After a Hohmann-geometry ejection, walk extra parking orbits so patched
+// conics actually show the destination (same idea as the moon seek).
+FUNCTION aoso_ejection_seek_arrival {
+    PARAMETER nd.
+    PARAMETER arr_body.
+    IF aoso_rendezvous_orbit_pe(nd:ORBIT, arr_body) >= 0 {
+        aoso_rendezvous_tune_pe(nd, arr_body).
+        RETURN TRUE.
+    }
+    LOCAL period IS aoso_orbit_period_s().
+    IF period < 60 { RETURN FALSE. }
+    LOCAL t0 IS nd:ETA.
+    LOCAL i IS 1.
+    UNTIL i > 10 {
+        SET nd:ETA TO t0 + (i * period).
+        IF aoso_rendezvous_orbit_pe(nd:ORBIT, arr_body) >= 0 {
+            aoso_rendezvous_tune_pe(nd, arr_body).
+            RETURN TRUE.
+        }
+        SET i TO i + 1.
+    }
+    SET nd:ETA TO t0.
+    RETURN FALSE.
+}
+
+FUNCTION aoso_capture_pe_too_high {
+    PARAMETER park.
+    LOCAL soi_a IS SHIP:BODY:SOIRADIUS - SHIP:BODY:RADIUS.
+    IF PERIAPSIS > park * 3 { RETURN TRUE. }
+    IF PERIAPSIS > soi_a * 0.2 { RETURN TRUE. }
+    RETURN FALSE.
+}
+
+// Hill-climb a near-term prograde/retro node until nd:ORBIT periapsis is
+// the parking altitude. Works on hyperbolas (no apoapsis to burn at).
+FUNCTION aoso_capture_add_pe_adjust {
+    PARAMETER target_pe.
+    LOCAL eta_b IS 40.
+    IF HASNODE { RETURN 0. }
+    LOCAL nd IS NODE(TIME:SECONDS + eta_b, 0, 0, 0).
+    ADD nd.
+    LOCAL step IS 25.
+    LOCAL best_err IS ABS(nd:ORBIT:PERIAPSIS - target_pe).
+    LOCAL r IS 0.
+    UNTIL r >= 12 {
+        LOCAL orig IS nd:PROGRADE.
+        SET nd:PROGRADE TO orig - step.
+        LOCAL err IS ABS(nd:ORBIT:PERIAPSIS - target_pe).
+        IF err < best_err {
+            SET best_err TO err.
+        } ELSE {
+            SET nd:PROGRADE TO orig + step.
+            SET err TO ABS(nd:ORBIT:PERIAPSIS - target_pe).
+            IF err < best_err {
+                SET best_err TO err.
+            } ELSE {
+                SET nd:PROGRADE TO orig.
+                SET step TO step * 0.5.
+            }
+        }
+        IF best_err < 800 { 
+            SET r TO 12.
+        } ELSE {
+            SET r TO r + 1.
+        }
+    }
+    IF nd:DELTAV:MAG < 0.5 {
+        REMOVE nd.
+        RETURN 0.
+    }
+    IF nd:DELTAV:MAG > 2500 {
+        aoso_log_warn("EJECTION", "PE-adjust dv " + ROUND(nd:DELTAV:MAG, 0) + " m/s is too large - circularizing at current PE instead.").
+        REMOVE nd.
+        RETURN aoso_hohmann_add_circularize_at_periapsis().
+    }
+    aoso_log_info("EJECTION", "Capture PE-adjust dv=" + ROUND(nd:PROGRADE, 1) + " m/s, PE " + ROUND(PERIAPSIS, 0) + " -> " + ROUND(nd:ORBIT:PERIAPSIS, 0) + "m.").
+    RETURN nd.
+}
+
+// Capture/insertion once inside arr_body's SOI. A grazing flyby
+// (Minmus patchPE at the SOI edge) must LOWER periapsis first; circularizing
+// there leaves a barely-bound orbit. Hyperbolas have no apoapsis, so PE is
+// set with a near-term vis-viva node, then we circularize at PE.
 FUNCTION aoso_interplanetary_add_capture_node {
     PARAMETER target_apo_alt.
     LOCAL min_pe IS target_apo_alt.
@@ -175,7 +253,15 @@ FUNCTION aoso_interplanetary_add_capture_node {
 
     IF PERIAPSIS < min_pe {
         aoso_log_info("EJECTION", "Capture at " + SHIP:BODY:NAME + ": raising periapsis to " + ROUND(min_pe, 0) + "m (now " + ROUND(PERIAPSIS, 0) + "m).").
+        IF aoso_orbit_is_hyperbolic() {
+            RETURN aoso_capture_add_pe_adjust(min_pe).
+        }
         RETURN aoso_hohmann_add_periapsis_change(min_pe).
+    }
+    IF aoso_capture_pe_too_high(min_pe) {
+        aoso_log_info("EJECTION", "Capture at " + SHIP:BODY:NAME + ": lowering periapsis from " + ROUND(PERIAPSIS, 0) + "m to " + ROUND(min_pe, 0) + "m before circularizing.").
+        LOCAL nd_pe IS aoso_capture_add_pe_adjust(min_pe).
+        IF nd_pe <> 0 { RETURN nd_pe. }
     }
     aoso_log_info("EJECTION", "Capture at " + SHIP:BODY:NAME + ": circularizing at periapsis " + ROUND(PERIAPSIS, 0) + "m.").
     RETURN aoso_hohmann_add_circularize_at_periapsis().
