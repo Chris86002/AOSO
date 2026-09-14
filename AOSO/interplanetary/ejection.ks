@@ -201,8 +201,8 @@ FUNCTION aoso_capture_add_pe_adjust {
     ADD nd.
     LOCAL step IS 25.
     LOCAL best_err IS ABS(nd:ORBIT:PERIAPSIS - target_pe).
-    LOCAL r IS 0.
-    UNTIL r >= 12 {
+    LOCAL round_i IS 0.
+    UNTIL round_i >= 12 {
         LOCAL orig IS nd:PROGRADE.
         SET nd:PROGRADE TO orig - step.
         LOCAL err IS ABS(nd:ORBIT:PERIAPSIS - target_pe).
@@ -219,9 +219,9 @@ FUNCTION aoso_capture_add_pe_adjust {
             }
         }
         IF best_err < 800 { 
-            SET r TO 12.
+            SET round_i TO 12.
         } ELSE {
-            SET r TO r + 1.
+            SET round_i TO round_i + 1.
         }
     }
     IF nd:DELTAV:MAG < 0.5 {
