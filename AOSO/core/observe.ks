@@ -5,6 +5,7 @@
 //   flightrec  0:/aoso_flightrec.txt   pre-event ring + post samples
 // Hot paths: no JSON, no LIST PARTS, ring capped, CPU load-shed drops
 // HUD/telem/debug first. Staging/ascent/maneuver/descent always run.
+// Do not name locals `path` -- that clobbers kOS's builtin PATH().
 
 GLOBAL AOSO_OBS_PHASE IS "BOOT".
 GLOBAL AOSO_CPU_LEVEL IS 0.
@@ -181,12 +182,12 @@ FUNCTION aoso_observe_flush {
         SET AOSO_EVT_LAST_FLUSH TO TIME:SECONDS.
         RETURN.
     }
-    LOCAL path IS AOSO_CONST["EVENTS_FILE"].
+    LOCAL evpath IS AOSO_CONST["EVENTS_FILE"].
     LOCAL f IS 0.
-    IF EXISTS(path) {
-        SET f TO OPEN(path).
+    IF EXISTS(evpath) {
+        SET f TO OPEN(evpath).
     } ELSE {
-        SET f TO CREATE(path).
+        SET f TO CREATE(evpath).
         f:WRITELN("ut,met,phase,type,severity,state,msg").
     }
     UNTIL AOSO_EVT_BUF:LENGTH = 0 {
@@ -225,24 +226,24 @@ FUNCTION aoso_observe_ring_push {
 
 FUNCTION aoso_observe_flightrec_append {
     PARAMETER line.
-    LOCAL path IS AOSO_CONST["FLIGHTREC_FILE"].
+    LOCAL recpath IS AOSO_CONST["FLIGHTREC_FILE"].
     LOCAL f IS 0.
-    IF EXISTS(path) {
-        SET f TO OPEN(path).
+    IF EXISTS(recpath) {
+        SET f TO OPEN(recpath).
     } ELSE {
-        SET f TO CREATE(path).
+        SET f TO CREATE(recpath).
     }
     f:WRITELN(line).
 }
 
 FUNCTION aoso_observe_dump_pre {
     PARAMETER why.
-    LOCAL path IS AOSO_CONST["FLIGHTREC_FILE"].
+    LOCAL recpath IS AOSO_CONST["FLIGHTREC_FILE"].
     LOCAL f IS 0.
-    IF EXISTS(path) {
-        SET f TO OPEN(path).
+    IF EXISTS(recpath) {
+        SET f TO OPEN(recpath).
     } ELSE {
-        SET f TO CREATE(path).
+        SET f TO CREATE(recpath).
     }
     f:WRITELN("#PRE " + why).
     LOCAL cap IS AOSO_RING_CAP.
