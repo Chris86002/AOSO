@@ -38,23 +38,53 @@ FUNCTION aoso_staging_stage_fuel {
     LOCAL ox IS -1.
     LOCAL sf IS -1.
     LOCAL xe IS -1.
+    LOCAL lf_cap IS 0.
+    LOCAL ox_cap IS 0.
+    LOCAL sf_cap IS 0.
+    LOCAL xe_cap IS 0.
     FOR r IN STAGE:RESOURCES {
         IF r:CAPACITY > 0 {
-            IF r:NAME = "LiquidFuel" { SET lf TO r:AMOUNT. }
-            IF r:NAME = "Oxidizer" { SET ox TO r:AMOUNT. }
-            IF r:NAME = "SolidFuel" { SET sf TO r:AMOUNT. }
-            IF r:NAME = "XenonGas" { SET xe TO r:AMOUNT. }
+            IF r:NAME = "LiquidFuel" {
+                SET lf TO r:AMOUNT.
+                SET lf_cap TO r:CAPACITY.
+            }
+            IF r:NAME = "Oxidizer" {
+                SET ox TO r:AMOUNT.
+                SET ox_cap TO r:CAPACITY.
+            }
+            IF r:NAME = "SolidFuel" {
+                SET sf TO r:AMOUNT.
+                SET sf_cap TO r:CAPACITY.
+            }
+            IF r:NAME = "XenonGas" {
+                SET xe TO r:AMOUNT.
+                SET xe_cap TO r:CAPACITY.
+            }
         }
     }
-    RETURN LEXICON("lf", lf, "ox", ox, "sf", sf, "xe", xe).
+    RETURN LEXICON("lf", lf, "ox", ox, "sf", sf, "xe", xe, "lf_cap", lf_cap, "ox_cap", ox_cap, "sf_cap", sf_cap, "xe_cap", xe_cap).
 }
 
 // TRUE when the active stage's engines can no longer draw propellant.
-// Threshold is a few tenths of a unit: KSP leaves a residue in big tanks
-// and solid boosters often never report a true 0.00.
+// Absolute tenths-of-a-unit catch tiny residues; percent catch a 2000-unit
+// tank that still reports 20 units (Acacius coasted with 11 m/s stage dV).
+FUNCTION aoso_staging_resource_gone {
+    PARAMETER amount.
+    PARAMETER capacity.
+    PARAMETER thresh.
+    PARAMETER pct.
+    IF amount < 0 { RETURN FALSE. }
+    IF amount <= thresh { RETURN TRUE. }
+    IF capacity > 1 {
+        IF (amount / capacity) * 100 <= pct { RETURN TRUE. }
+    }
+    RETURN FALSE.
+}
+
 FUNCTION aoso_staging_fuel_empty {
     LOCAL fuel IS aoso_staging_stage_fuel().
     LOCAL thresh IS aoso_config_get("STAGING_FUEL_EMPTY", 0.25).
+    LOCAL pct IS aoso_config_get("STAGING_FUEL_EMPTY_PCT", 1.5).
     LOCAL any_tank IS FALSE.
 
     IF fuel["lf"] >= 0 { SET any_tank TO TRUE. }
@@ -63,25 +93,12 @@ FUNCTION aoso_staging_fuel_empty {
     IF fuel["xe"] >= 0 { SET any_tank TO TRUE. }
     IF NOT any_tank { RETURN FALSE. }
 
-    // LFO: starved if either resource in this stage is gone.
-    IF fuel["lf"] >= 0 {
-        IF fuel["lf"] <= thresh { RETURN TRUE. }
-    }
-    IF fuel["ox"] >= 0 {
-        IF fuel["ox"] <= thresh { RETURN TRUE. }
-    }
-    IF fuel["sf"] >= 0 {
-        IF fuel["lf"] < 0 {
-            IF fuel["ox"] < 0 {
-                IF fuel["sf"] <= thresh { RETURN TRUE. }
-            }
-        }
-    }
-    IF fuel["xe"] >= 0 {
-        IF fuel["lf"] < 0 {
-            IF fuel["ox"] < 0 {
-                IF fuel["xe"] <= thresh { RETURN TRUE. }
-            }
+    IF aoso_staging_resource_gone(fuel["lf"], fuel["lf_cap"], thresh, pct) { RETURN TRUE. }
+    IF aoso_staging_resource_gone(fuel["ox"], fuel["ox_cap"], thresh, pct) { RETURN TRUE. }
+    IF fuel["lf"] < 0 {
+        IF fuel["ox"] < 0 {
+            IF aoso_staging_resource_gone(fuel["sf"], fuel["sf_cap"], thresh, pct) { RETURN TRUE. }
+            IF aoso_staging_resource_gone(fuel["xe"], fuel["xe_cap"], thresh, pct) { RETURN TRUE. }
         }
     }
     RETURN FALSE.

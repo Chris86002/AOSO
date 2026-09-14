@@ -19,15 +19,18 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "WATCHDOG_EC_CRITICAL_PCT", 5,       // % ElectricCharge at/below which hardening/watchdog.ks treats power as critical
     "ASCENT_PITCHOVER_SPEED", 80,       // m/s, vertical rise until the gravity turn starts (optimizer searches this)
     "ASCENT_PITCHOVER_MIN_ALT", 200,    // m, extra floor besides speed (raised if nose-heavy / long stack)
-    "ASCENT_TURN_BIAS_DEG", 1.8,        // deg below FPA while Q is meaningful; cosine-eased in, never a kick
-    "ASCENT_TURN_BLEND_S", 12,          // s, cosine ramp of the bias so the nose never yanks off vertical
-    "ASCENT_HOLD_AP_S", 45,             // s, time-to-apoapsis the gravity-turn throttle holds AFTER leaving dense air
+    "ASCENT_TURN_BIAS_DEG", 3.2,        // deg below FPA; eased in from 1 deg, never a 13 deg kick
+    "ASCENT_TURN_BLEND_S", 8,           // s, cosine ramp of the lead so the nose never yanks
+    "ASCENT_TWR_LIMIT", 1.7,            // hold TWR here while the flight path is still steep so gravity can turn
+    "ASCENT_HOLD_AP_S", 45,             // s, time-to-apoapsis the gravity-turn throttle holds AFTER the path shallows
     "ASCENT_TARGET_APO", 80000,         // m, default target apoapsis for ascent AP
-    "ASCENT_FULL_THROTTLE_ALT", 45000,  // m, stay at full throttle (on prograde) until this altitude so 50-70 km is not a 35% crawl
+    "ASCENT_FULL_THROTTLE_ALT", 45000,  // m, kept for old configs; TWR cap now shapes dense air
     "ASCENT_DENSE_ALT", 40000,          // m, splits DENSE_AIR vs UPPER_ATM phase records in flight/ascent_opt.ks
     "ASCENT_OPTIMIZE", TRUE,            // try a grid of turn *start speeds* across pad reverts; lock the leftover-LF winner
     "ASCENT_OPT_MAX_TRIALS", 6,         // pad flights in the start-speed search (5 grid points + 1 optional edge refine)
-    "STAGING_FUEL_EMPTY", 0.25,         // units, stage when current-stage LF/Ox/SF drops to/below this (don't wait for flameout)
+    "STAGING_FUEL_EMPTY", 0.25,         // units, stage when current-stage LF/Ox/SF drops to/below this
+    "STAGING_FUEL_EMPTY_PCT", 1.5,      // % of stage tank capacity also treated as empty (big-tank residue)
+
     "STAGING_DEAD_S", 0.2,              // s of AVAILABLETHRUST~0 before a thrust-collapse stage
     "MANEUVER_NO_THRUST_TICKS", 20,     // execute_next retries staging this many ticks before declaring a burn dead
     "MANEUVER_FEATHER_S", 2,            // s, remaining burn-time window over which maneuver throttle fades to cut
@@ -92,23 +95,41 @@ FUNCTION aoso_config_load {
             SET AOSO_CONFIG[k] TO loaded[k].
         }
     }
-    // Old kick-angle configs commanded 10-20 deg off vertical. Ascent no
-    // longer uses PITCHOVER_DEG/RATE; clamp leftover bias so a persisted
-    // file cannot yank the nose.
+    // Old kick-angle configs commanded 10-20 deg off vertical. The 1.8 deg
+    // / 12 s "smooth" config produced a sounding rocket (Acacius FPA 83 deg
+    // at 30 km, 1807 m/s circ). Reset those leftovers.
+    IF AOSO_CONFIG:HASKEY("ASCENT_TURN_BLEND_S") {
+        IF AOSO_CONFIG["ASCENT_TURN_BLEND_S"] > 10 {
+            SET AOSO_CONFIG["ASCENT_TURN_BLEND_S"] TO 8.
+            IF AOSO_CONFIG:HASKEY("ASCENT_TURN_BIAS_DEG") {
+                IF AOSO_CONFIG["ASCENT_TURN_BIAS_DEG"] <= 2 {
+                    SET AOSO_CONFIG["ASCENT_TURN_BIAS_DEG"] TO 3.2.
+                }
+            }
+        }
+    }
     IF AOSO_CONFIG:HASKEY("ASCENT_TURN_BIAS_DEG") {
-        IF AOSO_CONFIG["ASCENT_TURN_BIAS_DEG"] > 2.5 {
-            SET AOSO_CONFIG["ASCENT_TURN_BIAS_DEG"] TO 2.5.
+        IF AOSO_CONFIG["ASCENT_TURN_BIAS_DEG"] > 5 {
+            SET AOSO_CONFIG["ASCENT_TURN_BIAS_DEG"] TO 5.
         }
         IF AOSO_CONFIG["ASCENT_TURN_BIAS_DEG"] < 0 {
             SET AOSO_CONFIG["ASCENT_TURN_BIAS_DEG"] TO 0.
         }
     }
     IF AOSO_CONFIG:HASKEY("ASCENT_TURN_BLEND_S") {
-        IF AOSO_CONFIG["ASCENT_TURN_BLEND_S"] < 6 {
-            SET AOSO_CONFIG["ASCENT_TURN_BLEND_S"] TO 6.
+        IF AOSO_CONFIG["ASCENT_TURN_BLEND_S"] < 5 {
+            SET AOSO_CONFIG["ASCENT_TURN_BLEND_S"] TO 5.
         }
-        IF AOSO_CONFIG["ASCENT_TURN_BLEND_S"] > 20 {
-            SET AOSO_CONFIG["ASCENT_TURN_BLEND_S"] TO 20.
+        IF AOSO_CONFIG["ASCENT_TURN_BLEND_S"] > 12 {
+            SET AOSO_CONFIG["ASCENT_TURN_BLEND_S"] TO 12.
+        }
+    }
+    IF AOSO_CONFIG:HASKEY("ASCENT_TWR_LIMIT") {
+        IF AOSO_CONFIG["ASCENT_TWR_LIMIT"] < 1.3 {
+            SET AOSO_CONFIG["ASCENT_TWR_LIMIT"] TO 1.3.
+        }
+        IF AOSO_CONFIG["ASCENT_TWR_LIMIT"] > 2.4 {
+            SET AOSO_CONFIG["ASCENT_TWR_LIMIT"] TO 2.4.
         }
     }
     aoso_log_set_level(aoso_config_get("LOG_LEVEL", "DEBUG")).

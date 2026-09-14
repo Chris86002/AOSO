@@ -194,18 +194,33 @@ FUNCTION aoso_maneuver_execute_next {
 
         IF NOT aoso_steer_is_aligned(remaining_vec, 8) {
             LOCAL err_deg IS aoso_steer_error_deg(remaining_vec).
+            LOCAL must_burn IS FALSE.
+            IF SHIP:BODY:ATM:EXISTS {
+                IF PERIAPSIS < SHIP:BODY:ATM:HEIGHT {
+                    IF nd:ETA < 0 { SET must_burn TO TRUE. }
+                }
+            }
             IF nd:ETA >= 0 {
                 LOCK THROTTLE TO 0.
                 RETURN FALSE.
             }
             IF err_deg > 20 {
-                IF nd:ETA < -8 {
-                    aoso_log_warn("MANEUVER", "Never aligned in time - retry next pass.").
-                    aoso_maneuver_finish_node(nd, "missed").
-                    RETURN TRUE.
+                IF must_burn {
+                    IF err_deg > 40 {
+                        aoso_log_warn("MANEUVER", "Never aligned in time - retry next pass.").
+                        aoso_maneuver_finish_node(nd, "missed").
+                        RETURN TRUE.
+                    }
+                    aoso_log_warn("MANEUVER", "Lighting off-axis (" + ROUND(err_deg, 0) + " deg) to keep periapsis out of atmosphere.").
+                } ELSE {
+                    IF nd:ETA < -8 {
+                        aoso_log_warn("MANEUVER", "Never aligned in time - retry next pass.").
+                        aoso_maneuver_finish_node(nd, "missed").
+                        RETURN TRUE.
+                    }
+                    LOCK THROTTLE TO 0.
+                    RETURN FALSE.
                 }
-                LOCK THROTTLE TO 0.
-                RETURN FALSE.
             }
         }
 
