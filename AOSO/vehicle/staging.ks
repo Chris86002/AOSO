@@ -18,10 +18,9 @@
 //   4. Spent BOOSTER subset can drop while the core keeps burning
 //      (vehicle/parts.ks aoso_parts_boosters_ready_to_jettison).
 // Empty current-stage tanks still drop while other engines push (asparagus /
-// boosters). A no-thrust empty stage with ship LF remaining is a relight,
-// capped at STAGING_MAX_EXTRA so the lander is not walked. Dry ship (LF~0)
-// still dumps the spent stage at throttle 0 so a coast does not carry it
-// into the next node. Pad ignition is still flight/ascent.ks LIFTOFF.
+// boosters) ONLY if the engine group that would fall off has MASSFLOW ~ 0.
+// Staging while that group is still thrusting is a hot-sep: the booster
+// flies into the core (Acacius MET 62, stage 7, TWR 1.48 after the drop).
 // Disabled outright when AOSO_CONFIG["SAFE_MODE"] is set.
 //
 // aoso_staging_sense() fills one snapshot per check (STAGE:RESOURCES +
@@ -37,6 +36,8 @@ GLOBAL AOSO_STAGING_COOLDOWN_UNTIL IS 0.
 GLOBAL AOSO_STAGING_SPOOL_UNTIL IS 0.
 GLOBAL AOSO_STAGING_PENDING_RELIGHT IS FALSE.
 GLOBAL AOSO_STAGING_EXTRA_THIS IS 0.
+GLOBAL AOSO_STG_DROP_FLOWING IS FALSE.
+GLOBAL AOSO_STAGING_HOTSEP_LOG IS 0.
 GLOBAL AOSO_STG_LIT IS 0.
 GLOBAL AOSO_STG_FLAMED IS 0.
 GLOBAL AOSO_STG_FLOWING IS 0.
@@ -239,6 +240,29 @@ FUNCTION aoso_staging_sense {
         }
     }
     SET AOSO_STG_BOOSTERS TO boosters.
+
+    // Highest DECOUPLEDIN group falls off on the next STAGE(). If any of
+    // those engines still have MASSFLOW, staging is a hot-sep and the
+    // booster flies into the core (Acacius MET 62, stage 7, TWR 1.48).
+    LOCAL max_d IS -1.
+    FOR e IN elist {
+        IF e:DECOUPLEDIN > max_d { SET max_d TO e:DECOUPLEDIN. }
+    }
+    LOCAL drop_flowing IS FALSE.
+    IF max_d >= 0 {
+        FOR e IN elist {
+            IF e:DECOUPLEDIN = max_d {
+                IF e:IGNITION {
+                    IF NOT e:FLAMEOUT {
+                        IF e:MASSFLOW > 0.0001 { SET drop_flowing TO TRUE. }
+                    }
+                }
+            }
+        }
+    } ELSE {
+        IF flowing > 0 { SET drop_flowing TO TRUE. }
+    }
+    SET AOSO_STG_DROP_FLOWING TO drop_flowing.
 }
 
 FUNCTION aoso_staging_engine_counts {
@@ -300,6 +324,14 @@ FUNCTION aoso_staging_should_stage {
     IF NOT STAGE:READY { RETURN FALSE. }
 
     aoso_staging_sense(commanded_throttle).
+
+    IF AOSO_STG_DROP_FLOWING {
+        IF TIME:SECONDS - AOSO_STAGING_HOTSEP_LOG > 5 {
+            aoso_log_info("STAGING", "Holding stage " + STAGE:NUMBER + " - next drop group still thrusting (hot-sep).").
+            SET AOSO_STAGING_HOTSEP_LOG TO TIME:SECONDS.
+        }
+        RETURN FALSE.
+    }
 
     IF TIME:SECONDS < AOSO_STAGING_COOLDOWN_UNTIL {
         LOCAL all_flamed IS FALSE.
@@ -423,6 +455,12 @@ FUNCTION aoso_staging_finish_relight {
         SET AOSO_STAGING_EXTRA_THIS TO 0.
         RETURN.
     }
+    aoso_staging_sense(1).
+    IF AOSO_STG_DROP_FLOWING {
+        aoso_log_warn("STAGING", "No thrust after staging but next drop group still thrusting - not dumping it.").
+        SET AOSO_STAGING_EXTRA_THIS TO 0.
+        RETURN.
+    }
     IF aoso_staging_stage_has_fuel() {
         aoso_log_warn("STAGING", "No thrust after staging but current stage still has fuel - not dumping it.").
         SET AOSO_STAGING_EXTRA_THIS TO 0.
@@ -503,6 +541,7 @@ FUNCTION aoso_staging_ensure_thrust {
     IF STAGE:NUMBER <= 0 { RETURN FALSE. }
     IF NOT STAGE:READY { RETURN FALSE. }
     IF TIME:SECONDS < AOSO_STAGING_COOLDOWN_UNTIL { RETURN FALSE. }
+    IF AOSO_STG_DROP_FLOWING { RETURN FALSE. }
     LOCAL max_relight IS aoso_config_get("STAGING_MAX_EXTRA", 1).
     IF AOSO_STAGING_RELIGHT_ATTEMPTS >= max_relight { RETURN FALSE. }
 
