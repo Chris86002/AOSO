@@ -10,20 +10,25 @@
 // power/power.ks, mission/mission.ks); no new suffixes are invented.
 
 GLOBAL AOSO_HUD_ROWS IS 12. // rows 0..(AOSO_HUD_ROWS-1) are reserved for the HUD
+GLOBAL AOSO_HUD_SPACES IS "                                                                                                    ".
 
 // Pads/truncates to the terminal width so a shorter status line fully
 // overwrites a longer one left over from a previous tick instead of
-// leaving stale trailing characters on screen.
+// leaving stale trailing characters on screen. Cap at 100; pad from the
+// precomputed spaces string (no per-character concat loop).
 FUNCTION aoso_hud_line {
     PARAMETER row.
     PARAMETER text.
 
     LOCAL width IS 50.
     IF TERMINAL:WIDTH > 0 { SET width TO TERMINAL:WIDTH. }
+    IF width > 100 { SET width TO 100. }
 
     LOCAL out IS text.
     IF out:LENGTH > width { SET out TO out:SUBSTRING(0, width). }
-    UNTIL out:LENGTH >= width { SET out TO out + " ". }
+    IF out:LENGTH < width {
+        SET out TO out + AOSO_HUD_SPACES:SUBSTRING(0, width - out:LENGTH).
+    }
     PRINT out AT(0, row).
 }
 
@@ -49,7 +54,7 @@ FUNCTION aoso_hud_draw {
     LOCAL watchdog_status IS "OK".
     IF aoso_watchdog_is_tripped() { SET watchdog_status TO "TRIPPED". }
     LOCAL mode IS "AUTO".
-    IF aoso_config_get("SAFE_MODE", FALSE) { SET mode TO "SAFE". }
+    IF AOSO_CONFIG["SAFE_MODE"] { SET mode TO "SAFE". }
 
     aoso_hud_line(0, "==== AOSO - " + SHIP:NAME + " (" + mode + ") ====").
     aoso_hud_line(1, "Body: " + SHIP:BODY:NAME + "   MET: " + ROUND(MISSIONTIME, 0) + "s").

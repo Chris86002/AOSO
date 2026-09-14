@@ -34,15 +34,17 @@ GLOBAL AOSO_WATCHDOG IS LEXICON(
 // length while the mission layer is active, or -1 (never stalled) if it
 // isn't running at all.
 FUNCTION aoso_watchdog_progress_marker {
-    IF DEFINED AOSO_MISSION AND AOSO_MISSION["current"] <> "" {
-        RETURN AOSO_MISSION["history"]:LENGTH.
+    IF DEFINED AOSO_MISSION {
+        IF AOSO_MISSION["current"] <> "" {
+            RETURN AOSO_MISSION["history"]:LENGTH.
+        }
     }
     RETURN -1.
 }
 
 FUNCTION aoso_watchdog_critical_condition {
     IF aoso_fuel_abort_check() { RETURN TRUE. }
-    IF aoso_power_ec_pct() <= aoso_config_get("WATCHDOG_EC_CRITICAL_PCT", 5) {
+    IF aoso_power_ec_pct() <= AOSO_CONFIG["WATCHDOG_EC_CRITICAL_PCT"] {
         // Power is recoverable until the airstream shell is off and panels
         // are out. Aborting a suborbital coast because EC dipped while the
         // fairing was still on is how the last Acacius flight died.
@@ -61,12 +63,14 @@ FUNCTION aoso_watchdog_trip {
     IF AOSO_WATCHDOG["tripped"] { RETURN. }
     SET AOSO_WATCHDOG["tripped"] TO TRUE.
 
-    aoso_log_fatal("WATCHDOG", "No mission progress for " + aoso_config_get("WATCHDOG_TIMEOUT", 120) +
+    aoso_log_fatal("WATCHDOG", "No mission progress for " + AOSO_CONFIG["WATCHDOG_TIMEOUT"] +
         "s with a critical condition active; forcing safe abort.").
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_steer_release().
-    IF DEFINED AOSO_MISSION AND AOSO_MISSION["current"] <> "" {
-        aoso_state_abort(AOSO_MISSION).
+    IF DEFINED AOSO_MISSION {
+        IF AOSO_MISSION["current"] <> "" {
+            aoso_state_abort(AOSO_MISSION).
+        }
     }
 }
 
@@ -88,7 +92,7 @@ FUNCTION aoso_watchdog_tick {
     IF marker < 0 { RETURN. } // no mission layer running - nothing to watch
 
     LOCAL stalled_s IS TIME:SECONDS - AOSO_WATCHDOG["last_progress_at"].
-    IF stalled_s < aoso_config_get("WATCHDOG_TIMEOUT", 120) { RETURN. }
+    IF stalled_s < AOSO_CONFIG["WATCHDOG_TIMEOUT"] { RETURN. }
 
     IF aoso_watchdog_critical_condition() {
         aoso_watchdog_trip().

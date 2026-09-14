@@ -16,7 +16,7 @@ FUNCTION aoso_launch_countdown {
 // that need one STAGE for engine ignition and a second for launch clamps/
 // fairing-style holds, without assuming a fixed part layout.
 FUNCTION aoso_launch_ignite {
-    LOCK THROTTLE TO 1.0.
+    aoso_throttle_set(1).
 
     LOCAL attempts IS 0.
     UNTIL SHIP:AVAILABLETHRUST > 0 OR STAGE:NUMBER <= 0 OR attempts >= 4 {

@@ -3,24 +3,64 @@
 // module commands attitude the same way. MechJeb's SmartASS is deliberately
 // not used here (see core/addons.ks reasoning on not guessing at its
 // suffixes) -- native kOS STEERING is correct on every install.
+//
+// WHY lock-once: LOCK expressions re-eval every physics tick at trigger
+// priority; locking to a user function burns IPU/EC at 25 Hz. Commanded
+// throttle/steering therefore live in cheap globals. Callers SET the
+// global each tick; the LOCK is issued once and just reads the global.
+// Tracking modes (PROGRADE etc.) lock the native suffix once and return.
+
+GLOBAL AOSO_CMD_THROTTLE IS 0.
+GLOBAL AOSO_CMD_STEERING IS SHIP:UP.
+GLOBAL AOSO_THROTTLE_MODE IS "OFF".
+GLOBAL AOSO_STEER_MODE IS "OFF".
+
+FUNCTION aoso_throttle_set {
+    PARAMETER t.
+    IF t < 0 { SET t TO 0. }
+    IF t > 1 { SET t TO 1. }
+    SET AOSO_CMD_THROTTLE TO t.
+    IF AOSO_THROTTLE_MODE <> "CMD" {
+        LOCK THROTTLE TO AOSO_CMD_THROTTLE.
+        SET AOSO_THROTTLE_MODE TO "CMD".
+    }
+}
+
+FUNCTION aoso_throttle_release {
+    SET AOSO_CMD_THROTTLE TO 0.
+    UNLOCK THROTTLE.
+    SET AOSO_THROTTLE_MODE TO "OFF".
+}
 
 FUNCTION aoso_steer_heading_pitch {
     PARAMETER hdg.
     PARAMETER pitch.
-    LOCK STEERING TO HEADING(hdg, pitch).
+    SET AOSO_CMD_STEERING TO HEADING(hdg, pitch).
+    IF AOSO_STEER_MODE <> "CMD" {
+        LOCK STEERING TO AOSO_CMD_STEERING.
+        SET AOSO_STEER_MODE TO "CMD".
+    }
 }
 
 FUNCTION aoso_steer_to_vector {
     PARAMETER dir_vector.
-    LOCK STEERING TO dir_vector.
+    SET AOSO_CMD_STEERING TO dir_vector.
+    IF AOSO_STEER_MODE <> "CMD" {
+        LOCK STEERING TO AOSO_CMD_STEERING.
+        SET AOSO_STEER_MODE TO "CMD".
+    }
 }
 
 FUNCTION aoso_steer_prograde {
+    IF AOSO_STEER_MODE = "PROGRADE" { RETURN. }
     LOCK STEERING TO SHIP:PROGRADE.
+    SET AOSO_STEER_MODE TO "PROGRADE".
 }
 
 FUNCTION aoso_steer_retrograde {
+    IF AOSO_STEER_MODE = "RETROGRADE" { RETURN. }
     LOCK STEERING TO SHIP:RETROGRADE.
+    SET AOSO_STEER_MODE TO "RETROGRADE".
 }
 
 // Surface-relative counterparts. Orbital PROGRADE/RETROGRADE point along
@@ -28,28 +68,37 @@ FUNCTION aoso_steer_retrograde {
 // needs to cancel velocity relative to the ground, and for the atmospheric
 // half of a gravity turn (zero AoA means surface prograde, not orbital).
 FUNCTION aoso_steer_srf_prograde {
+    IF AOSO_STEER_MODE = "SRF_PROGRADE" { RETURN. }
     LOCK STEERING TO SHIP:SRFPROGRADE.
+    SET AOSO_STEER_MODE TO "SRF_PROGRADE".
 }
 
 FUNCTION aoso_steer_srf_retrograde {
+    IF AOSO_STEER_MODE = "SRF_RETROGRADE" { RETURN. }
     LOCK STEERING TO SHIP:SRFRETROGRADE.
+    SET AOSO_STEER_MODE TO "SRF_RETROGRADE".
 }
 
 // Radial-out ("straight up" from the local surface), used for the final
 // vertical hold just before touchdown so the vessel settles upright rather
 // than tipping toward whatever direction the last velocity vector pointed.
 FUNCTION aoso_steer_up {
+    IF AOSO_STEER_MODE = "UP" { RETURN. }
     LOCK STEERING TO SHIP:UP.
+    SET AOSO_STEER_MODE TO "UP".
 }
 
 // Actively damps angular velocity toward zero without commanding a facing,
 // mirroring the stock "Kill Rotation" SAS mode.
 FUNCTION aoso_steer_kill_rotation {
+    IF AOSO_STEER_MODE = "KILL" { RETURN. }
     LOCK STEERING TO "KILL".
+    SET AOSO_STEER_MODE TO "KILL".
 }
 
 FUNCTION aoso_steer_release {
     UNLOCK STEERING.
+    SET AOSO_STEER_MODE TO "OFF".
 }
 
 // Long stacks oscillate at the stock MAXSTOPPINGTIME of ~2 s and never

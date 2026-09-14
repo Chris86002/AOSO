@@ -110,7 +110,7 @@ FUNCTION aoso_maneuver_throttle_for_dv {
     IF remaining_dv <= 0.05 { RETURN 0. }
 
     LOCAL t_remain IS remaining_dv / accel.
-    LOCAL feather_s IS aoso_config_get("MANEUVER_FEATHER_S", 2).
+    LOCAL feather_s IS AOSO_CONFIG["MANEUVER_FEATHER_S"].
     IF t_remain > feather_s { RETURN 1.0. }
     RETURN MAX(0.05, t_remain / feather_s).
 }
@@ -119,7 +119,7 @@ FUNCTION aoso_maneuver_finish_node {
     PARAMETER nd.
     PARAMETER reason.
     SET WARP TO 0.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_steer_release().
     IF HASNODE { REMOVE nd. }
     aoso_maneuver_reset_exec().
@@ -171,7 +171,7 @@ FUNCTION aoso_maneuver_execute_next {
 
         IF WARP > 0 {
             IF nd:ETA <= warp_lead + 8 { SET WARP TO 0. }
-            LOCK THROTTLE TO 0.
+            aoso_throttle_set(0).
             RETURN FALSE.
         }
 
@@ -179,7 +179,7 @@ FUNCTION aoso_maneuver_execute_next {
             IF aoso_maneuver_can_warp() {
                 WARPTO(TIME:SECONDS + nd:ETA - warp_lead).
             }
-            LOCK THROTTLE TO 0.
+            aoso_throttle_set(0).
             RETURN FALSE.
         }
         SET WARP TO 0.
@@ -188,7 +188,7 @@ FUNCTION aoso_maneuver_execute_next {
         IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
 
         IF nd:ETA > ignite_lead + 1 {
-            LOCK THROTTLE TO 0.
+            aoso_throttle_set(0).
             RETURN FALSE.
         }
 
@@ -201,7 +201,7 @@ FUNCTION aoso_maneuver_execute_next {
                 }
             }
             IF nd:ETA >= 0 {
-                LOCK THROTTLE TO 0.
+                aoso_throttle_set(0).
                 RETURN FALSE.
             }
             IF err_deg > 20 {
@@ -218,7 +218,7 @@ FUNCTION aoso_maneuver_execute_next {
                         aoso_maneuver_finish_node(nd, "missed").
                         RETURN TRUE.
                     }
-                    LOCK THROTTLE TO 0.
+                    aoso_throttle_set(0).
                     RETURN FALSE.
                 }
             }
@@ -235,7 +235,7 @@ FUNCTION aoso_maneuver_execute_next {
         LOCAL accel0 IS aoso_maneuver_current_accel().
         LOCAL t0 IS 0.
         IF accel0 > 0.05 { SET t0 TO remaining / accel0. }
-        IF t0 > aoso_config_get("MANEUVER_FOLLOW_ABOVE_S", 8) {
+        IF t0 > AOSO_CONFIG["MANEUVER_FOLLOW_ABOVE_S"] {
             aoso_log_info("MANEUVER", "Burn started, following node, remaining=" + ROUND(remaining, 1) + " m/s.").
         } ELSE {
             SET AOSO_MANEUVER_LOCK TO SHIP:FACING:FOREVECTOR.
@@ -248,9 +248,9 @@ FUNCTION aoso_maneuver_execute_next {
         aoso_staging_ensure_thrust().
         IF SHIP:AVAILABLETHRUST <= 0 {
             SET AOSO_MANEUVER_NO_THRUST_TICKS TO AOSO_MANEUVER_NO_THRUST_TICKS + 1.
-            LOCAL patience IS aoso_config_get("MANEUVER_NO_THRUST_TICKS", 20).
+            LOCAL patience IS AOSO_CONFIG["MANEUVER_NO_THRUST_TICKS"].
             IF AOSO_MANEUVER_NO_THRUST_TICKS < patience {
-                LOCK THROTTLE TO 0.
+                aoso_throttle_set(0).
                 RETURN FALSE.
             }
             aoso_maneuver_finish_node(nd, "no thrust").
@@ -263,7 +263,7 @@ FUNCTION aoso_maneuver_execute_next {
     LOCAL accel IS aoso_maneuver_current_accel().
     LOCAL t_remain IS 0.
     IF accel > 0.05 { SET t_remain TO remaining / accel. }
-    LOCAL follow_s IS aoso_config_get("MANEUVER_FOLLOW_ABOVE_S", 8).
+    LOCAL follow_s IS AOSO_CONFIG["MANEUVER_FOLLOW_ABOVE_S"].
 
     IF t_remain > follow_s {
         SET AOSO_MANEUVER_LOCK TO remaining_vec.
@@ -291,7 +291,7 @@ FUNCTION aoso_maneuver_execute_next {
     }
 
     SET AOSO_MANEUVER_LAST_REMAINING TO remaining.
-    LOCK THROTTLE TO aoso_maneuver_throttle_for_dv(remaining_along).
+    aoso_throttle_set(aoso_maneuver_throttle_for_dv(remaining_along)).
     RETURN FALSE.
 }
 

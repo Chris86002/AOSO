@@ -11,12 +11,7 @@
 // armed).
 
 FUNCTION aoso_parachute_available {
-    LOCAL plist IS LIST().
-    LIST PARTS IN plist.
-    FOR p IN plist {
-        IF p:HASMODULE("ModuleParachute") { RETURN TRUE. }
-    }
-    RETURN FALSE.
+    RETURN aoso_vessel_get("parachute_count", 0) > 0.
 }
 
 // TRUE once the vessel is inside an atmosphere at all -- CHUTESSAFE itself

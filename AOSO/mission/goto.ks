@@ -96,7 +96,7 @@ FUNCTION aoso_goto_patch_body_name {
 FUNCTION aoso_goto_on_abort {
     PARAMETER data.
     SET WARP TO 0.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_steer_release().
     aoso_maneuver_clear_all().
     aoso_state_transition(AOSO_GOTO, "ABORTED").
@@ -105,7 +105,7 @@ FUNCTION aoso_goto_on_abort {
 FUNCTION aoso_goto_plan_entry {
     PARAMETER data.
     SET WARP TO 0.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_maneuver_clear_all().
 
     LOCAL goal IS BODY(data["goal"]).
@@ -312,7 +312,7 @@ FUNCTION aoso_goto_burn_execute {
 
 FUNCTION aoso_goto_coast_entry {
     PARAMETER data.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_steer_release().
     SET data["coast_since"] TO TIME:SECONDS.
 }
@@ -369,7 +369,7 @@ FUNCTION aoso_goto_coast_execute {
 FUNCTION aoso_goto_capture_entry {
     PARAMETER data.
     SET WARP TO 0.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     LOCAL park IS aoso_goto_parking_alt(SHIP:BODY).
     LOCAL nd IS aoso_interplanetary_add_capture_node(park).
     IF nd = 0 {
@@ -414,7 +414,7 @@ FUNCTION aoso_goto_capture_execute {
 FUNCTION aoso_goto_done_entry {
     PARAMETER data.
     SET WARP TO 0.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_steer_release().
     aoso_log_info("GOTO", "Arrived at " + data["goal"] + ".").
 }
@@ -422,7 +422,7 @@ FUNCTION aoso_goto_done_entry {
 FUNCTION aoso_goto_aborted_entry {
     PARAMETER data.
     SET WARP TO 0.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_log_error("GOTO", "Goto " + data["goal"] + " aborted.").
 }
 

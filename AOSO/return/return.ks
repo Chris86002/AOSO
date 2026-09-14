@@ -93,14 +93,14 @@ FUNCTION aoso_return_add_departure_node {
 
 FUNCTION aoso_return_on_abort {
     PARAMETER data.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_steer_release().
     aoso_state_transition(AOSO_RETURN, "ABORTED").
 }
 
 FUNCTION aoso_return_plan_entry {
     PARAMETER data.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
 
     IF aoso_return_is_home() {
         aoso_state_transition(AOSO_RETURN, "DONE").
@@ -135,7 +135,7 @@ FUNCTION aoso_return_burn_execute {
 
 FUNCTION aoso_return_coast_entry {
     PARAMETER data.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_steer_release().
 }
 
@@ -157,14 +157,14 @@ FUNCTION aoso_return_coast_execute {
 
 FUNCTION aoso_return_done_entry {
     PARAMETER data.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_steer_release().
     aoso_log_info("RETURN", "Home body " + aoso_return_home_body():NAME + " reached.").
 }
 
 FUNCTION aoso_return_aborted_entry {
     PARAMETER data.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_log_error("RETURN", "Return sequence aborted.").
 }
 

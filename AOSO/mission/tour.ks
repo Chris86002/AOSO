@@ -109,7 +109,7 @@ FUNCTION aoso_tour_opposite_site {
 FUNCTION aoso_tour_on_abort {
     PARAMETER data.
     SET WARP TO 0.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_steer_release().
     aoso_state_transition(AOSO_TOUR, "ABORTED").
 }
@@ -209,7 +209,7 @@ FUNCTION aoso_tour_goto_execute {
 FUNCTION aoso_tour_polar_entry {
     PARAMETER data.
     SET WARP TO 0.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_maneuver_clear_all().
 
     IF SHIP:STATUS = "LANDED" {
@@ -279,7 +279,7 @@ FUNCTION aoso_tour_polar_execute {
 FUNCTION aoso_tour_scan_entry {
     PARAMETER data.
     SET WARP TO 0.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_steer_release().
 
     LOCAL result IS aoso_landing_site_scan_orbit().
@@ -307,7 +307,7 @@ FUNCTION aoso_tour_scan_execute {
 FUNCTION aoso_tour_deorbit_entry {
     PARAMETER data.
     SET WARP TO 0.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     IF SHIP:STATUS = "LANDED" {
         aoso_state_transition(AOSO_TOUR, "REFUEL").
         RETURN.
@@ -496,7 +496,7 @@ FUNCTION aoso_tour_ksc_execute {
 FUNCTION aoso_tour_done_entry {
     PARAMETER data.
     SET WARP TO 0.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_steer_release().
     aoso_log_info("TOUR", "Grand tour complete.").
 }
@@ -504,7 +504,7 @@ FUNCTION aoso_tour_done_entry {
 FUNCTION aoso_tour_aborted_entry {
     PARAMETER data.
     SET WARP TO 0.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_log_error("TOUR", "Grand tour aborted at body index " + data["index"] + ".").
 }
 

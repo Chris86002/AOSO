@@ -25,8 +25,7 @@ FUNCTION aoso_perf_time_to_periapsis {
 // rate of the ignited, non-flamed-out engines. Returns 0 if nothing is
 // burning.
 FUNCTION aoso_perf_stage_burn_time_remaining {
-    LOCAL elist IS LIST().
-    LIST ENGINES IN elist.
+    LOCAL elist IS aoso_parts_engines().
     LOCAL total_flow IS 0.
     FOR e IN elist {
         IF e:IGNITION AND NOT e:FLAMEOUT { SET total_flow TO total_flow + e:MASSFLOW. }
@@ -48,8 +47,7 @@ FUNCTION aoso_perf_stage_burn_time_remaining {
 FUNCTION aoso_perf_burn_time_for_dv {
     PARAMETER dv.
 
-    LOCAL elist IS LIST().
-    LIST ENGINES IN elist.
+    LOCAL elist IS aoso_parts_engines().
     LOCAL thrust_sum IS 0.
     LOCAL isp_weighted IS 0.
     FOR e IN elist {

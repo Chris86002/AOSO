@@ -25,12 +25,9 @@ GLOBAL AOSO_PROFILE_LAST_MASS IS 0.
 GLOBAL AOSO_PROFILE_LAST_SNAP IS LEXICON().
 
 FUNCTION aoso_profile_snapshot {
-    LOCAL plist IS LIST().
-    LIST PARTS IN plist.
-    LOCAL elist IS LIST().
-    LIST ENGINES IN elist.
-    LOCAL doclist IS LIST().
-    LIST DOCKINGPORTS IN doclist.
+    LOCAL plist IS aoso_parts_list().
+    LOCAL elist IS aoso_parts_engines().
+    LOCAL doclist IS aoso_parts_dockports().
     LOCAL tank_n IS 0.
     LOCAL drill_n IS 0.
     LOCAL solar_n IS 0.
@@ -76,8 +73,7 @@ FUNCTION aoso_profile_flag {
 
 FUNCTION aoso_profile_thrust_at_pressure {
     PARAMETER pressure_atm.
-    LOCAL elist IS LIST().
-    LIST ENGINES IN elist.
+    LOCAL elist IS aoso_parts_engines().
     LOCAL thrust_sum IS 0.
     FOR e IN elist {
         SET thrust_sum TO thrust_sum + aoso_capabilities_engine_thrust(e, pressure_atm).
@@ -100,16 +96,14 @@ FUNCTION aoso_profile_surface_twr {
 FUNCTION aoso_profile_refresh {
     PARAMETER reason IS "manual".
 
+    aoso_parts_cache_invalidate().
     aoso_vessel_scan().
     aoso_parts_scan().
     aoso_capabilities_refresh().
 
-    LOCAL plist IS LIST().
-    LIST PARTS IN plist.
-    LOCAL elist IS LIST().
-    LIST ENGINES IN elist.
-    LOCAL doclist IS LIST().
-    LIST DOCKINGPORTS IN doclist.
+    LOCAL plist IS aoso_parts_list().
+    LOCAL elist IS aoso_parts_engines().
+    LOCAL doclist IS aoso_parts_dockports().
 
     LOCAL solar_count IS 0.
     LOCAL generator_count IS 0.
@@ -279,16 +273,20 @@ FUNCTION aoso_profile_refresh {
     LOCAL root_title IS "".
     IF SHIP:ROOTPART:ISTYPE("Part") { SET root_title TO SHIP:ROOTPART:TITLE. }
 
+    LOCAL snap IS aoso_profile_snapshot().
+    LOCAL fingerprint IS snap["parts"] + "|" + snap["engines"] + "|" + snap["tanks"] + "|" + snap["stages"] + "|" +
+        snap["docking"] + "|" + snap["drills"] + "|" + snap["solar"] + "|" + snap["status"] + "|" + snap["control"].
+
     SET AOSO_PROFILE TO LEXICON(
         "name", SHIP:NAME,
         "body", SHIP:BODY:NAME,
         "status", st,
         "mass", SHIP:MASS,
         "part_count", plist:LENGTH,
-        "fingerprint", aoso_profile_fingerprint(),
+        "fingerprint", fingerprint,
         "reason", reason,
         "scanned_at", TIME:SECONDS,
-        "snapshot", aoso_profile_snapshot(),
+        "snapshot", snap,
         "structure", LEXICON(
             "root", root_title,
             "stages", STAGE:NUMBER + 1,
@@ -380,12 +378,30 @@ FUNCTION aoso_profile_maybe_refresh {
         aoso_profile_refresh("init").
         RETURN.
     }
-    LOCAL snap IS aoso_profile_snapshot().
     LOCAL prev IS AOSO_PROFILE_LAST_SNAP.
     IF NOT prev:HASKEY("parts") {
         aoso_profile_refresh("init").
         RETURN.
     }
+
+    // Cheap suffixes first: skip the HASMODULE snapshot walk unless
+    // stage/status/mass/thrust actually moved.
+    IF STAGE:NUMBER = prev["stages"] {
+        IF SHIP:STATUS = prev["status"] {
+            LOCAL mass_now IS SHIP:MASS.
+            LOCAL mass_shift IS 0.
+            IF prev["mass"] > 0.05 {
+                SET mass_shift TO ABS(mass_now - prev["mass"]) / prev["mass"].
+            }
+            IF mass_shift <= 0.08 {
+                IF SHIP:AVAILABLETHRUST >= prev["thrust"] * 0.7 {
+                    RETURN.
+                }
+            }
+        }
+    }
+
+    LOCAL snap IS aoso_profile_snapshot().
 
     LOCAL structural IS FALSE.
     LOCAL reason IS "".

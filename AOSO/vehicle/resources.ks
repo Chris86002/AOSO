@@ -24,9 +24,13 @@ FUNCTION aoso_resource_capacity {
 
 FUNCTION aoso_resource_pct {
     PARAMETER res_name.
-    LOCAL cap IS aoso_resource_capacity(res_name).
-    IF cap <= 0 { RETURN 0. }
-    RETURN (aoso_resource_amount(res_name) / cap) * 100.
+    FOR r IN SHIP:RESOURCES {
+        IF r:NAME = res_name {
+            IF r:CAPACITY <= 0 { RETURN 0. }
+            RETURN (r:AMOUNT / r:CAPACITY) * 100.
+        }
+    }
+    RETURN 0.
 }
 
 // Lowest fill percentage among the current stage's tracked propellants (i.e.
@@ -73,7 +77,7 @@ FUNCTION aoso_fuel_reserve_ok {
 // threw "Too few arguments" every time (KSP-KOS/KOS#2159).
 FUNCTION aoso_fuel_abort_check {
     LOCAL pct IS aoso_stage_propellant_pct().
-    IF pct > aoso_config_get("ABORT_FUEL_PCT", 3) { RETURN FALSE. }
+    IF pct > AOSO_CONFIG["ABORT_FUEL_PCT"] { RETURN FALSE. }
     IF aoso_parts_thrust_recoverable() { RETURN FALSE. }
     aoso_log_warn("FUEL", "Stage propellant at " + ROUND(pct, 1) + "% with no recoverable thrust -- aborting.").
     RETURN TRUE.

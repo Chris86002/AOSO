@@ -42,12 +42,9 @@
 GLOBAL AOSO_VESSEL IS LEXICON().
 
 FUNCTION aoso_vessel_scan {
-    LOCAL plist IS LIST().
-    LIST PARTS IN plist.
-    LOCAL elist IS LIST().
-    LIST ENGINES IN elist.
-    LOCAL doclist IS LIST().
-    LIST DOCKINGPORTS IN doclist.
+    LOCAL plist IS aoso_parts_list().
+    LOCAL elist IS aoso_parts_engines().
+    LOCAL doclist IS aoso_parts_dockports().
 
     LOCAL has_rcs IS FALSE.
     LOCAL has_solar IS FALSE.

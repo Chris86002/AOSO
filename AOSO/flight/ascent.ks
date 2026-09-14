@@ -35,8 +35,7 @@ FUNCTION aoso_ascent_in_atmosphere {
 }
 
 FUNCTION aoso_ascent_stack_layout {
-    LOCAL plist IS LIST().
-    LIST PARTS IN plist.
+    LOCAL plist IS aoso_parts_list().
     LOCAL axis IS SHIP:UP:VECTOR.
     LOCAL min_along IS 0.
     LOCAL max_along IS 0.
@@ -227,7 +226,7 @@ FUNCTION aoso_ascent_pitchover_min_alt {
 }
 
 FUNCTION aoso_ascent_throttle_for_q {
-    LOCAL mult IS aoso_config_get("MAX_Q_LIMIT_MULT", 1.0).
+    LOCAL mult IS AOSO_CONFIG["MAX_Q_LIMIT_MULT"].
     IF mult >= 1.0 { RETURN 1.0. }
 
     IF SHIP:Q > AOSO_ASCENT_MAX_Q_SEEN { SET AOSO_ASCENT_MAX_Q_SEEN TO SHIP:Q. }
@@ -241,7 +240,7 @@ FUNCTION aoso_ascent_throttle_for_q {
 // TWR cap so gravity can turn a high-thrust stack, then the 45 s-to-AP hold.
 FUNCTION aoso_ascent_twr_throttle {
     LOCAL twr IS aoso_perf_twr().
-    LOCAL lim IS aoso_config_get("ASCENT_TWR_LIMIT", 1.7).
+    LOCAL lim IS AOSO_CONFIG["ASCENT_TWR_LIMIT"].
     IF lim < 1.3 { SET lim TO 1.3. }
     IF lim > 2.4 { SET lim TO 2.4. }
     IF twr <= lim { RETURN 1. }
@@ -280,7 +279,7 @@ FUNCTION aoso_ascent_turn_throttle {
     LOCAL eta_pe IS ETA:PERIAPSIS.
     IF eta_ap > eta_pe { RETURN MIN(q_mult, twr_th). }
 
-    LOCAL hold_s IS aoso_config_get("ASCENT_HOLD_AP_S", 45).
+    LOCAL hold_s IS AOSO_CONFIG["ASCENT_HOLD_AP_S"].
     LOCAL err IS hold_s - eta_ap.
     LOCAL th IS 0.6 + (err * 0.02).
     IF th < 0.35 { SET th TO 0.35. }
@@ -400,7 +399,7 @@ FUNCTION aoso_ascent_persist_run {
 
 FUNCTION aoso_ascent_on_abort {
     PARAMETER data.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_ascent_restore_steering(data).
     aoso_state_transition(AOSO_ASCENT, "ABORTED").
 }
@@ -415,7 +414,7 @@ FUNCTION aoso_ascent_liftoff_entry {
     SET data["pitchover_min_alt"] TO aoso_config_get("ASCENT_PITCHOVER_MIN_ALT", 200).
     SET data["turn_bias"] TO aoso_config_get("ASCENT_TURN_BIAS_DEG", 3.2).
     SET data["turn_blend_s"] TO aoso_config_get("ASCENT_TURN_BLEND_S", 8).
-    LOCK THROTTLE TO 1.0.
+    aoso_throttle_set(1).
 }
 
 FUNCTION aoso_ascent_liftoff_execute {
@@ -449,7 +448,7 @@ FUNCTION aoso_ascent_liftoff_execute {
     }
 
     aoso_steer_heading_pitch(data["heading"], 90).
-    LOCK THROTTLE TO 1.0.
+    aoso_throttle_set(1).
     aoso_staging_auto_check().
     aoso_ascent_cache_stack_layout(data).
     aoso_ascent_snapshot_pad(data).
@@ -482,7 +481,7 @@ FUNCTION aoso_ascent_turn_entry {
 FUNCTION aoso_ascent_turn_execute {
     PARAMETER data.
     aoso_ascent_follow_prograde(data).
-    LOCK THROTTLE TO aoso_ascent_turn_throttle().
+    aoso_throttle_set(aoso_ascent_turn_throttle()).
 
     aoso_staging_auto_check().
     IF aoso_fuel_abort_check() {
@@ -495,14 +494,14 @@ FUNCTION aoso_ascent_turn_execute {
     IF aoso_ascent_in_atmosphere() {
         IF ALTITUDE < SHIP:BODY:ATM:HEIGHT * 0.92 { RETURN. }
     }
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_state_transition(AOSO_ASCENT, "COAST").
 }
 
 FUNCTION aoso_ascent_coast_entry {
     PARAMETER data.
     SET WARP TO 0.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_ascent_restore_steering(data).
     aoso_steer_prepare_for_burn().
 }
@@ -515,9 +514,9 @@ FUNCTION aoso_ascent_coast_execute {
 
     IF APOAPSIS < data["target_apo"] * 0.98 {
         SET WARP TO 0.
-        LOCK THROTTLE TO 0.2.
+        aoso_throttle_set(0.2).
     } ELSE {
-        LOCK THROTTLE TO 0.
+        aoso_throttle_set(0).
     }
 
     IF aoso_fuel_abort_check() {
@@ -529,7 +528,7 @@ FUNCTION aoso_ascent_coast_execute {
 
     IF ETA:APOAPSIS > ETA:PERIAPSIS {
         SET data["circ_now"] TO TRUE.
-        LOCK THROTTLE TO 0.
+        aoso_throttle_set(0).
         aoso_state_transition(AOSO_ASCENT, "CIRCULARIZE").
         RETURN.
     }
@@ -550,7 +549,7 @@ FUNCTION aoso_ascent_coast_execute {
 
     IF ETA:APOAPSIS <= (lead_s + align_s) {
         SET data["circ_now"] TO FALSE.
-        LOCK THROTTLE TO 0.
+        aoso_throttle_set(0).
         aoso_state_transition(AOSO_ASCENT, "CIRCULARIZE").
     }
 }
@@ -558,7 +557,7 @@ FUNCTION aoso_ascent_coast_execute {
 FUNCTION aoso_ascent_circularize_entry {
     PARAMETER data.
     SET WARP TO 0.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_ascent_restore_steering(data).
     aoso_steer_prepare_for_burn().
     aoso_staging_auto_check().
@@ -607,7 +606,7 @@ FUNCTION aoso_ascent_circularize_execute {
 FUNCTION aoso_ascent_done_entry {
     PARAMETER data.
     SET WARP TO 0.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_ascent_restore_steering(data).
     aoso_steer_release().
     aoso_log_info("ASCENT", "Ascent complete. Apo=" + ROUND(APOAPSIS, 0) + " Peri=" + ROUND(PERIAPSIS, 0)).
@@ -617,7 +616,7 @@ FUNCTION aoso_ascent_done_entry {
 FUNCTION aoso_ascent_aborted_entry {
     PARAMETER data.
     SET WARP TO 0.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_ascent_restore_steering(data).
     aoso_log_error("ASCENT", "Ascent aborted.").
     IF AOSO_ASCENT_OPT["applied_speed"] >= 0 {

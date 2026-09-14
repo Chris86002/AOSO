@@ -31,8 +31,7 @@ FUNCTION aoso_descent_measure_radar_offset {
     LOCAL configured IS aoso_config_get("DESCENT_RADAR_OFFSET", 0).
     IF configured > 0 { RETURN configured. }
 
-    LOCAL plist IS LIST().
-    LIST PARTS IN plist.
+    LOCAL plist IS aoso_parts_list().
     LOCAL axis IS SHIP:UP:VECTOR.
     LOCAL min_along IS 0.
     LOCAL seen IS FALSE.
@@ -130,14 +129,14 @@ FUNCTION aoso_descent_should_final_approach {
 
 FUNCTION aoso_descent_on_abort {
     PARAMETER data.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_steer_release().
     aoso_state_transition(AOSO_DESCENT, "ABORTED").
 }
 
 FUNCTION aoso_descent_freefall_entry {
     PARAMETER data.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     SET AOSO_DESCENT_RADAR_OFFSET TO aoso_descent_measure_radar_offset().
     aoso_log_info("DESCENT", "Radar offset=" + ROUND(AOSO_DESCENT_RADAR_OFFSET, 1) + " m.").
 }
@@ -191,6 +190,8 @@ FUNCTION aoso_descent_burn_entry {
     SET WARP TO 0.
     aoso_steer_srf_retrograde().
     IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
+    LOCK THROTTLE TO aoso_descent_required_throttle().
+    SET AOSO_THROTTLE_MODE TO "DESCENT_BURN".
 }
 
 FUNCTION aoso_descent_burn_execute {
@@ -199,7 +200,6 @@ FUNCTION aoso_descent_burn_execute {
     SET WARP TO 0.
 
     aoso_steer_srf_retrograde().
-    LOCK THROTTLE TO aoso_descent_required_throttle().
 
     aoso_staging_auto_check().
     IF aoso_fuel_abort_check() {
@@ -224,6 +224,8 @@ FUNCTION aoso_descent_final_approach_entry {
     PARAMETER data.
     aoso_steer_up().
     LEGS ON.
+    LOCK THROTTLE TO aoso_descent_final_approach_throttle().
+    SET AOSO_THROTTLE_MODE TO "DESCENT_FINAL".
 }
 
 FUNCTION aoso_descent_final_approach_execute {
@@ -240,7 +242,6 @@ FUNCTION aoso_descent_final_approach_execute {
     }
 
     aoso_steer_up().
-    LOCK THROTTLE TO aoso_descent_final_approach_throttle().
 
     aoso_staging_auto_check().
 
@@ -255,7 +256,7 @@ FUNCTION aoso_descent_final_approach_execute {
 
 FUNCTION aoso_descent_touchdown_entry {
     PARAMETER data.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_steer_release().
     aoso_log_info("DESCENT", "Touchdown, throttle cut.").
 }

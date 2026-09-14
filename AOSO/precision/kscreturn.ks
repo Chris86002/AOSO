@@ -208,14 +208,14 @@ FUNCTION aoso_kscreturn_add_best_deorbit_node {
 
 FUNCTION aoso_kscreturn_on_abort {
     PARAMETER data.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_steer_release().
     aoso_state_transition(AOSO_PRECISION, "ABORTED").
 }
 
 FUNCTION aoso_kscreturn_plan_entry {
     PARAMETER data.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
 
     IF SHIP:STATUS <> "ORBITING" {
         aoso_log_error("KSCRETURN", "Ship must be in a stable orbit around " + SHIP:BODY:NAME + " before precision return can plan.").
@@ -232,7 +232,7 @@ FUNCTION aoso_kscreturn_plan_entry {
 
 FUNCTION aoso_kscreturn_align_entry {
     PARAMETER data.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     LOCAL nd IS aoso_kscreturn_add_plane_align_node().
     IF nd = 0 {
         aoso_state_transition(AOSO_PRECISION, "DEORBIT").
@@ -248,7 +248,7 @@ FUNCTION aoso_kscreturn_align_execute {
 
 FUNCTION aoso_kscreturn_deorbit_entry {
     PARAMETER data.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
 
     // Mirrors landing/deorbit.ks's own guard: periapsis already at/below
     // target means there is nothing to burn (a success, not a failure), so
@@ -307,7 +307,7 @@ FUNCTION aoso_kscreturn_done_entry {
 
 FUNCTION aoso_kscreturn_aborted_entry {
     PARAMETER data.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_log_error("KSCRETURN", "Precision KSC return aborted.").
 }
 

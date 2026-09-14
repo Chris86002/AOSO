@@ -41,3 +41,5 @@ Built across 12 ordered phases:
 - [x] Phase 10 — Mission layer
 - [x] Phase 11 — Advanced
 - [x] Phase 12 — Hardening & UX
+
+kOS 1.4 hot paths now lock-once cooked throttle/steering to cheap globals (LOCK expressions re-eval every physics tick; locking to a user function burns IPU/EC at 25 Hz). LIST ENGINES/PARTS/DOCKINGPORTS is cached until STAGE:NUMBER changes (engine refs stay live). Staging fills one snapshot per tick and debounces the 0.1 s auto-stage + ascent double call. The 2 s profile walk is skipped unless stage/status/mass actually moved.

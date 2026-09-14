@@ -46,8 +46,7 @@ FUNCTION aoso_capabilities_engine_thrust {
 // next-to-fire layer (highest DECOUPLEDIN) via possible thrust. Counts
 // only that layer so a 400 t stack is not given TWR 5 from unlit uppers.
 FUNCTION aoso_capabilities_live_thrust {
-    LOCAL elist IS LIST().
-    LIST ENGINES IN elist.
+    LOCAL elist IS aoso_parts_engines().
     LOCAL ignited IS 0.
     FOR eng IN elist {
         IF eng:IGNITION AND NOT eng:FLAMEOUT { SET ignited TO ignited + eng:MAXTHRUST. }
@@ -70,10 +69,8 @@ FUNCTION aoso_capabilities_live_thrust {
 }
 
 FUNCTION aoso_capabilities_refresh {
-    LOCAL elist IS LIST().
-    LIST ENGINES IN elist.
-    LOCAL plist IS LIST().
-    LIST PARTS IN plist.
+    LOCAL elist IS aoso_parts_engines().
+    LOCAL plist IS aoso_parts_list().
 
     LOCAL lit IS LIST().
     FOR e IN elist {
@@ -81,7 +78,26 @@ FUNCTION aoso_capabilities_refresh {
     }
 
     LOCAL g_now IS SHIP:BODY:MU / (SHIP:BODY:RADIUS + ALTITUDE) ^ 2.
-    LOCAL live_thrust IS aoso_capabilities_live_thrust().
+    LOCAL live_thrust IS 0.
+    LOCAL ignited_thrust IS 0.
+    FOR eng IN elist {
+        IF eng:IGNITION AND NOT eng:FLAMEOUT { SET ignited_thrust TO ignited_thrust + eng:MAXTHRUST. }
+    }
+    IF ignited_thrust > 0 {
+        SET live_thrust TO ignited_thrust.
+    } ELSE {
+        LOCAL best_d IS -999.
+        FOR eng IN elist {
+            IF eng:DECOUPLEDIN > best_d { SET best_d TO eng:DECOUPLEDIN. }
+        }
+        LOCAL pressure_atm IS 0.
+        IF SHIP:BODY:ATM:EXISTS { SET pressure_atm TO SHIP:BODY:ATM:ALTITUDEPRESSURE(ALTITUDE). }
+        FOR eng IN elist {
+            IF eng:DECOUPLEDIN = best_d {
+                IF NOT eng:FLAMEOUT { SET live_thrust TO live_thrust + aoso_capabilities_engine_thrust(eng, pressure_atm). }
+            }
+        }
+    }
     LOCAL twr IS 0.
     IF SHIP:MASS > 0 { SET twr TO live_thrust / (SHIP:MASS * g_now). }
 

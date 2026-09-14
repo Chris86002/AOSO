@@ -36,8 +36,53 @@
 // persisted to PART_DB_FILE so a reload/scene-change can inspect the last
 // known stack without a rescan. The live decision helpers below instead read
 // current engine state directly, since flameout/ignition change tick to tick.
+//
+// LIST ENGINES / LIST PARTS / LIST DOCKINGPORTS is expensive. Engine structure
+// refs stay live for IGNITION/FLAMEOUT/MASSFLOW, so we cache until STAGE:NUMBER
+// changes (or a caller invalidates after STAGE.).
 
 GLOBAL AOSO_PARTS IS LEXICON().
+GLOBAL AOSO_ENGINES IS LIST().
+GLOBAL AOSO_PARTS_LIVE IS LIST().
+GLOBAL AOSO_DOCKPORTS IS LIST().
+GLOBAL AOSO_CACHE_STAGE IS -99.
+GLOBAL AOSO_CACHE_VALID IS FALSE.
+
+FUNCTION aoso_parts_cache_invalidate {
+    SET AOSO_CACHE_VALID TO FALSE.
+}
+
+FUNCTION aoso_parts_cache_ensure {
+    IF AOSO_CACHE_VALID {
+        IF STAGE:NUMBER = AOSO_CACHE_STAGE { RETURN. }
+    }
+    LOCAL elist IS LIST().
+    LIST ENGINES IN elist.
+    SET AOSO_ENGINES TO elist.
+    LOCAL plist IS LIST().
+    LIST PARTS IN plist.
+    SET AOSO_PARTS_LIVE TO plist.
+    LOCAL dlist IS LIST().
+    LIST DOCKINGPORTS IN dlist.
+    SET AOSO_DOCKPORTS TO dlist.
+    SET AOSO_CACHE_STAGE TO STAGE:NUMBER.
+    SET AOSO_CACHE_VALID TO TRUE.
+}
+
+FUNCTION aoso_parts_engines {
+    aoso_parts_cache_ensure().
+    RETURN AOSO_ENGINES.
+}
+
+FUNCTION aoso_parts_list {
+    aoso_parts_cache_ensure().
+    RETURN AOSO_PARTS_LIVE.
+}
+
+FUNCTION aoso_parts_dockports {
+    aoso_parts_cache_ensure().
+    RETURN AOSO_DOCKPORTS.
+}
 
 // Builds AOSO_PARTS: the top of the chain (root part), hierarchy depth, and
 // the staging stack expressed as engine "layers" ordered boosters-first
@@ -45,10 +90,9 @@ GLOBAL AOSO_PARTS IS LEXICON().
 // boot and again after every staging event (vehicle/staging.ks) so the model
 // always reflects the vessel as it is now.
 FUNCTION aoso_parts_scan {
-    LOCAL plist IS LIST().
-    LIST PARTS IN plist.
-    LOCAL elist IS LIST().
-    LIST ENGINES IN elist.
+    PARAMETER persist IS TRUE.
+    LOCAL plist IS aoso_parts_list().
+    LOCAL elist IS aoso_parts_engines().
 
     // Top of the chain: the root command part everything hangs from.
     LOCAL root_title IS "".
@@ -132,7 +176,7 @@ FUNCTION aoso_parts_scan {
     aoso_log_info("PARTS", "Hierarchy: root='" + root_title + "' depth=" + max_depth +
         " engines=" + elist:LENGTH + " layers=" + layers:LENGTH + ".").
 
-    aoso_parts_save().
+    IF persist { aoso_parts_save(). }
     RETURN AOSO_PARTS.
 }
 
@@ -162,8 +206,7 @@ FUNCTION aoso_parts_load {
 // active engine at zero throttle still counts as ignited/not-flamed-out, which
 // is the intended reading: it can produce thrust the moment the throttle opens.
 FUNCTION aoso_parts_has_burning_engine {
-    LOCAL elist IS LIST().
-    LIST ENGINES IN elist.
+    LOCAL elist IS aoso_parts_engines().
     FOR e IN elist {
         IF e:IGNITION AND NOT e:FLAMEOUT { RETURN TRUE. }
     }
@@ -175,8 +218,7 @@ FUNCTION aoso_parts_has_burning_engine {
 // decide there is still a thrust path forward before ever declaring a fuel
 // abort.
 FUNCTION aoso_parts_has_unignited_engine {
-    LOCAL elist IS LIST().
-    LIST ENGINES IN elist.
+    LOCAL elist IS aoso_parts_engines().
     FOR e IN elist {
         IF NOT e:IGNITION { RETURN TRUE. }
     }
@@ -194,8 +236,7 @@ FUNCTION aoso_parts_has_unignited_engine {
 // running. A -1 (never-decoupled) engine is treated as separating last, so a
 // spent core engine is never mistaken for a droppable booster.
 FUNCTION aoso_parts_boosters_ready_to_jettison {
-    LOCAL elist IS LIST().
-    LIST ENGINES IN elist.
+    LOCAL elist IS aoso_parts_engines().
 
     LOCAL have_spent IS FALSE.
     LOCAL have_burning IS FALSE.

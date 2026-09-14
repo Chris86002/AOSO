@@ -199,7 +199,7 @@ FUNCTION aoso_mission_start_step_at {
 
 FUNCTION aoso_mission_on_abort {
     PARAMETER data.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_steer_release().
     aoso_state_transition(AOSO_MISSION, "ABORTED").
 }
@@ -233,7 +233,7 @@ FUNCTION aoso_mission_running_execute {
 
 FUNCTION aoso_mission_done_entry {
     PARAMETER data.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_steer_release().
     aoso_log_info("MISSION", "Mission plan complete (" + AOSO_MISSION_PLAN:LENGTH + " step(s)).").
     aoso_checkpoints_clear().
@@ -241,7 +241,7 @@ FUNCTION aoso_mission_done_entry {
 
 FUNCTION aoso_mission_aborted_entry {
     PARAMETER data.
-    LOCK THROTTLE TO 0.
+    aoso_throttle_set(0).
     aoso_log_error("MISSION", "Mission aborted at step " + (data["index"] + 1) + "/" + AOSO_MISSION_PLAN:LENGTH + ".").
 }
 

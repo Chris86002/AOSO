@@ -5,6 +5,11 @@
 // interval has elapsed, passing no arguments. Long-running work must be
 // implemented as non-blocking (return quickly); use the state machine
 // (core/state.ks) for multi-tick sequences.
+//
+// next_run (init 0) makes the first dispatch immediate. Nested IF so a
+// disabled task never pays the time compare (kOS AND always evaluates both
+// sides). The hot loop inlines CALL -- aoso_sched_invoke remains as a
+// wrapper for any external caller but is not used from run.
 
 GLOBAL AOSO_TASKS IS LIST().
 
@@ -19,7 +24,7 @@ FUNCTION aoso_sched_add {
     AOSO_TASKS:ADD(LEXICON(
         "name", task_name,
         "interval", interval_s,
-        "last_run", 0,
+        "next_run", 0,
         "fn", task_delegate,
         "enabled", enabled,
         "run_count", 0,
@@ -47,10 +52,12 @@ FUNCTION aoso_sched_enable {
 FUNCTION aoso_sched_run {
     LOCAL now IS TIME:SECONDS.
     FOR t IN AOSO_TASKS {
-        IF t["enabled"] AND (now - t["last_run"]) >= t["interval"] {
-            SET t["last_run"] TO now.
-            SET t["run_count"] TO t["run_count"] + 1.
-            aoso_sched_invoke(t).
+        IF t["enabled"] {
+            IF now >= t["next_run"] {
+                SET t["next_run"] TO now + t["interval"].
+                SET t["run_count"] TO t["run_count"] + 1.
+                t["fn"]:CALL().
+            }
         }
     }
 }

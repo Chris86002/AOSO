@@ -24,7 +24,7 @@ FUNCTION aoso_power_ec_pct {
 
 // TRUE if EC has dropped to/below the configured low-power threshold.
 FUNCTION aoso_power_ec_low {
-    RETURN aoso_power_ec_pct() <= aoso_config_get("LOW_EC_PCT", 20).
+    RETURN aoso_power_ec_pct() <= AOSO_CONFIG["LOW_EC_PCT"].
 }
 
 // Tracks whether we've already commanded the panels out this deploy cycle so
@@ -61,7 +61,7 @@ FUNCTION aoso_power_panels_should_retract {
         IF VERTICALSPEED >= 0 { RETURN FALSE. }
         RETURN ALTITUDE < (SHIP:BODY:ATM:HEIGHT + 15000).
     }
-    RETURN SHIP:AIRSPEED > aoso_config_get("PANEL_MAX_AIRSPEED", 50).
+    RETURN SHIP:AIRSPEED > AOSO_CONFIG["PANEL_MAX_AIRSPEED"].
 }
 
 // TRUE while it's not yet safe to even attempt extending panels, regardless
@@ -103,6 +103,7 @@ FUNCTION aoso_power_fairing_has_jettison_event {
 }
 
 FUNCTION aoso_power_fairings_pending {
+    IF NOT aoso_vessel_get("has_fairings", FALSE) { RETURN FALSE. }
     FOR fairing_module IN SHIP:MODULESNAMED("ModuleProceduralFairing") {
         IF aoso_power_fairing_has_jettison_event(fairing_module) { RETURN TRUE. }
     }
@@ -231,7 +232,7 @@ FUNCTION aoso_power_fuelcells_auto_check {
     IF NOT aoso_vessel_get("has_converters", FALSE) { RETURN. }
 
     LOCAL pct IS aoso_power_ec_pct().
-    IF pct <= aoso_config_get("LOW_EC_PCT", 20) {
+    IF pct <= AOSO_CONFIG["LOW_EC_PCT"] {
         IF NOT FUELCELLS { SET FUELCELLS TO TRUE. }
         IF FUELCELLS {
             IF NOT AOSO_POWER_FUELCELLS_COMMANDED {
@@ -240,7 +241,7 @@ FUNCTION aoso_power_fuelcells_auto_check {
             }
         }
     } ELSE {
-        IF pct >= aoso_config_get("FUEL_CELL_DISABLE_PCT", 90) {
+        IF pct >= AOSO_CONFIG["FUEL_CELL_DISABLE_PCT"] {
             IF FUELCELLS {
                 SET FUELCELLS TO FALSE.
                 SET AOSO_POWER_FUELCELLS_COMMANDED TO FALSE.

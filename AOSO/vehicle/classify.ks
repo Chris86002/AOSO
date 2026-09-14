@@ -7,14 +7,12 @@
 GLOBAL AOSO_CLASS_LAST IS LEXICON().
 
 FUNCTION aoso_classify_engine_flags {
-    LOCAL elist IS LIST().
-    LIST ENGINES IN elist.
+    LOCAL elist IS aoso_parts_engines().
     LOCAL has_nuke IS FALSE.
     LOCAL has_ion IS FALSE.
     LOCAL lifting_n IS 0.
     LOCAL intake_n IS 0.
-    LOCAL plist IS LIST().
-    LIST PARTS IN plist.
+    LOCAL plist IS aoso_parts_list().
     FOR p IN plist {
         IF p:HASMODULE("ModuleLiftingSurface") OR p:HASMODULE("ModuleControlSurface") {
             SET lifting_n TO lifting_n + 1.
