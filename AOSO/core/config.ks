@@ -17,18 +17,16 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "AUTO_CHECKPOINT_INTERVAL", 30,     // s between automatic checkpoint saves
     "WATCHDOG_TIMEOUT", 120,            // s of no-progress before watchdog intervenes
     "WATCHDOG_EC_CRITICAL_PCT", 5,       // % ElectricCharge at/below which hardening/watchdog.ks treats power as critical
-    "ASCENT_PITCHOVER_SPEED", 80,       // m/s, vertical rise until the smooth turn starts
-    "ASCENT_PITCHOVER_DEG", 5,          // deg, max nod off vertical before handing off to prograde (GravityTurn-sized, not a kick)
-    "ASCENT_PITCHOVER_RATE", 0.45,      // deg/s, how fast the nose eases over (search this; slower = smoother)
+    "ASCENT_PITCHOVER_SPEED", 80,       // m/s, vertical rise until the gravity turn starts (optimizer searches this)
     "ASCENT_PITCHOVER_MIN_ALT", 200,    // m, extra floor besides speed (raised if nose-heavy / long stack)
-    "ASCENT_AOA_LIMIT", 2.5,            // deg, never command more than this off the flight path during the start-turn
-    "ASCENT_TURN_BIAS_DEG", 1.5,        // deg below FPA while Q is meaningful, so high TWR still turns over without a kick
+    "ASCENT_TURN_BIAS_DEG", 1.8,        // deg below FPA while Q is meaningful; cosine-eased in, never a kick
+    "ASCENT_TURN_BLEND_S", 12,          // s, cosine ramp of the bias so the nose never yanks off vertical
     "ASCENT_HOLD_AP_S", 45,             // s, time-to-apoapsis the gravity-turn throttle holds AFTER leaving dense air
     "ASCENT_TARGET_APO", 80000,         // m, default target apoapsis for ascent AP
     "ASCENT_FULL_THROTTLE_ALT", 45000,  // m, stay at full throttle (on prograde) until this altitude so 50-70 km is not a 35% crawl
     "ASCENT_DENSE_ALT", 40000,          // m, splits DENSE_AIR vs UPPER_ATM phase records in flight/ascent_opt.ks
-    "ASCENT_OPTIMIZE", TRUE,            // try a grid of turn *rates* across pad reverts; lock the leftover-LF winner
-    "ASCENT_OPT_MAX_TRIALS", 6,         // pad flights in the rate search (5 grid points + 1 optional edge refine)
+    "ASCENT_OPTIMIZE", TRUE,            // try a grid of turn *start speeds* across pad reverts; lock the leftover-LF winner
+    "ASCENT_OPT_MAX_TRIALS", 6,         // pad flights in the start-speed search (5 grid points + 1 optional edge refine)
     "STAGING_FUEL_EMPTY", 0.25,         // units, stage when current-stage LF/Ox/SF drops to/below this (don't wait for flameout)
     "STAGING_DEAD_S", 0.2,              // s of AVAILABLETHRUST~0 before a thrust-collapse stage
     "MANEUVER_NO_THRUST_TICKS", 20,     // execute_next retries staging this many ticks before declaring a burn dead
@@ -92,6 +90,25 @@ FUNCTION aoso_config_load {
     IF loaded:ISTYPE("Lexicon") {
         FOR k IN loaded:KEYS {
             SET AOSO_CONFIG[k] TO loaded[k].
+        }
+    }
+    // Old kick-angle configs commanded 10-20 deg off vertical. Ascent no
+    // longer uses PITCHOVER_DEG/RATE; clamp leftover bias so a persisted
+    // file cannot yank the nose.
+    IF AOSO_CONFIG:HASKEY("ASCENT_TURN_BIAS_DEG") {
+        IF AOSO_CONFIG["ASCENT_TURN_BIAS_DEG"] > 2.5 {
+            SET AOSO_CONFIG["ASCENT_TURN_BIAS_DEG"] TO 2.5.
+        }
+        IF AOSO_CONFIG["ASCENT_TURN_BIAS_DEG"] < 0 {
+            SET AOSO_CONFIG["ASCENT_TURN_BIAS_DEG"] TO 0.
+        }
+    }
+    IF AOSO_CONFIG:HASKEY("ASCENT_TURN_BLEND_S") {
+        IF AOSO_CONFIG["ASCENT_TURN_BLEND_S"] < 6 {
+            SET AOSO_CONFIG["ASCENT_TURN_BLEND_S"] TO 6.
+        }
+        IF AOSO_CONFIG["ASCENT_TURN_BLEND_S"] > 20 {
+            SET AOSO_CONFIG["ASCENT_TURN_BLEND_S"] TO 20.
         }
     }
     aoso_log_set_level(aoso_config_get("LOG_LEVEL", "DEBUG")).

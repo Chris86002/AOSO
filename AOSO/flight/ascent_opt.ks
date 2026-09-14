@@ -1,22 +1,20 @@
 // AOSO/flight/ascent_opt.ks
 // Launch-profile search + per-phase efficiency.
 //
-// A smooth gravity turn (GravityTurn / MechJeb classic) only has one
-// free knob once pitch is AoA-limited onto prograde: how fast the nose
-// *eases* off vertical. Searching 13-20 deg kicks made the start look
-// violent (AoA = kick until FPA caught up). This module sweeps nod rate
-// (0.30, 0.40, 0.50, 0.65, 0.85 deg/s) across pad reverts, scores each
-// by leftover LiquidFuel minus a circularization tax, then locks the
-// winner. The start itself stays within ASCENT_AOA_LIMIT of the flight
-// path on every trial.
+// A smooth gravity turn (GravityTurn / MechJeb classic) never commands a
+// kick. The nose rides prograde with a 1-2 deg cosine-eased bias; that
+// look is fixed. The free efficiency knob is *when* we leave vertical
+// (start speed). This module sweeps 70 / 85 / 100 / 115 / 130 m/s across
+// pad reverts, scores each by leftover LiquidFuel minus a circularization
+// tax, then locks the winner.
 //
-// Default grid is 5 rates plus one optional refine past the best edge --
+// Default grid is 5 speeds plus one optional refine past the best edge --
 // 6 flights, set by ASCENT_OPT_MAX_TRIALS. When ASCENT_OPTIMIZE is FALSE
 // the search is idle but phases are still recorded.
 //
-// Phases (sectioned so two rates can be compared period-by-period):
+// Phases (sectioned so two speeds can be compared period-by-period):
 //   VERTICAL    pad -> turn start
-//   PITCHOVER   smooth nod (AoA-limited)
+//   STARTTURN   cosine-eased bias ramp (still glued to prograde)
 //   DENSE_AIR   gravity turn below ASCENT_DENSE_ALT (default 40 km)
 //   UPPER_ATM   40 km -> coast
 //   COAST       AP hold / warp to circularization
@@ -40,23 +38,23 @@ GLOBAL AOSO_ASCENT_OPT IS LEXICON(
     "max_q", 0,
     "samples", 0,
     "phases", LIST(),
-    "applied_rate", -1,
+    "applied_speed", -1,
     "applied_mode", "heuristic"
 ).
 
 FUNCTION aoso_ascent_opt_grid {
     LOCAL g IS LIST().
-    g:ADD(0.30).
-    g:ADD(0.40).
-    g:ADD(0.50).
-    g:ADD(0.65).
-    g:ADD(0.85).
+    g:ADD(70).
+    g:ADD(85).
+    g:ADD(100).
+    g:ADD(115).
+    g:ADD(130).
     RETURN g.
 }
 
-FUNCTION aoso_ascent_opt_rate_key {
-    PARAMETER rate.
-    RETURN "" + ROUND(rate * 100, 0).
+FUNCTION aoso_ascent_opt_speed_key {
+    PARAMETER spd.
+    RETURN "" + ROUND(spd, 0).
 }
 
 FUNCTION aoso_ascent_opt_key {
@@ -92,15 +90,35 @@ FUNCTION aoso_ascent_opt_save {
 FUNCTION aoso_ascent_opt_row {
     LOCAL store IS aoso_ascent_opt_load().
     LOCAL k IS aoso_ascent_opt_key().
-    IF store["vessels"]:HASKEY(k) { RETURN store["vessels"][k]. }
+    IF store["vessels"]:HASKEY(k) {
+        LOCAL row IS store["vessels"][k].
+        LOCAL migrated IS FALSE.
+        IF NOT row:HASKEY("search_kind") {
+            SET migrated TO TRUE.
+        } ELSE {
+            IF row["search_kind"] <> "start_speed" { SET migrated TO TRUE. }
+        }
+        IF migrated {
+            SET row["search_kind"] TO "start_speed".
+            SET row["trials"] TO LIST().
+            SET row["best"] TO LEXICON().
+            SET row["status"] TO "searching".
+            SET row["trial_index"] TO 0.
+            SET row["next_speed"] TO 70.
+            aoso_ascent_opt_save().
+            aoso_log_info("ASCENT_OPT", "Restarting search on start-speed grid (old kick/rate trials discarded).").
+        }
+        RETURN row.
+    }
     LOCAL row IS LEXICON(
         "vessel", SHIP:NAME,
         "body", SHIP:BODY:NAME,
+        "search_kind", "start_speed",
         "status", "searching",
         "trial_index", 0,
         "trials", LIST(),
         "best", LEXICON(),
-        "next_rate", 0.30
+        "next_speed", 70
     ).
     SET store["vessels"][k] TO row.
     RETURN row.
@@ -118,29 +136,40 @@ FUNCTION aoso_ascent_opt_score {
     RETURN lf - (circ * 0.25).
 }
 
-FUNCTION aoso_ascent_opt_pick_next_rate {
+FUNCTION aoso_ascent_opt_trial_speed {
+    PARAMETER t.
+    IF t:HASKEY("turn_speed") { RETURN t["turn_speed"]. }
+    RETURN -1.
+}
+
+FUNCTION aoso_ascent_opt_pick_next_speed {
     PARAMETER row.
-    LOCAL grid IS aoso_ascent_opt_grid().
+    PARAMETER heuristic IS 80.
+    LOCAL floor_spd IS heuristic - 30.
+    IF floor_spd < 55 { SET floor_spd TO 55. }
     LOCAL used IS LEXICON().
     FOR t IN row["trials"] {
-        IF t:HASKEY("pitchover_rate") {
-            LOCAL used_key IS aoso_ascent_opt_rate_key(t["pitchover_rate"]).
-            SET used[used_key] TO TRUE.
+        LOCAL spd IS aoso_ascent_opt_trial_speed(t).
+        IF spd >= 0 {
+            SET used[aoso_ascent_opt_speed_key(spd)] TO TRUE.
         }
     }
+    LOCAL grid IS aoso_ascent_opt_grid().
     FOR d IN grid {
-        LOCAL key IS aoso_ascent_opt_rate_key(d).
-        IF NOT used:HASKEY(key) { RETURN d. }
+        IF d >= floor_spd {
+            LOCAL key IS aoso_ascent_opt_speed_key(d).
+            IF NOT used:HASKEY(key) { RETURN d. }
+        }
     }
 
-    LOCAL best_rate IS 0.
-    IF row["best"]:HASKEY("pitchover_rate") { SET best_rate TO row["best"]["pitchover_rate"]. }
-    IF best_rate > 0 {
-        IF best_rate <= 0.32 {
-            IF NOT used:HASKEY("22") { RETURN 0.22. }
+    LOCAL best_spd IS 0.
+    IF row["best"]:HASKEY("turn_speed") { SET best_spd TO row["best"]["turn_speed"]. }
+    IF best_spd > 0 {
+        IF best_spd <= 75 {
+            IF NOT used:HASKEY("60") { RETURN 60. }
         }
-        IF best_rate >= 0.82 {
-            IF NOT used:HASKEY("100") { RETURN 1.00. }
+        IF best_spd >= 125 {
+            IF NOT used:HASKEY("145") { RETURN 145. }
         }
     }
     RETURN -1.
@@ -149,50 +178,50 @@ FUNCTION aoso_ascent_opt_pick_next_rate {
 FUNCTION aoso_ascent_opt_hud {
     LOCAL row IS aoso_ascent_opt_row().
     LOCAL mode IS AOSO_ASCENT_OPT["applied_mode"].
-    LOCAL rate IS AOSO_ASCENT_OPT["applied_rate"].
+    LOCAL spd IS AOSO_ASCENT_OPT["applied_speed"].
     LOCAL n IS row["trials"]:LENGTH.
     LOCAL max_n IS aoso_config_get("ASCENT_OPT_MAX_TRIALS", 6).
     LOCAL best_txt IS "none".
     IF row["best"]:HASKEY("orbit_lf") {
-        IF row["best"]:HASKEY("pitchover_rate") {
-            SET best_txt TO "r" + ROUND(row["best"]["pitchover_rate"], 2) + " LF=" + ROUND(row["best"]["orbit_lf"], 0).
+        IF row["best"]:HASKEY("turn_speed") {
+            SET best_txt TO "s" + ROUND(row["best"]["turn_speed"], 0) + " LF=" + ROUND(row["best"]["orbit_lf"], 0).
         }
     }
-    IF rate < 0 { RETURN "Ascent opt " + row["status"] + " n=" + n + "/" + max_n + " best " + best_txt. }
-    RETURN "Ascent " + mode + " r" + ROUND(rate, 2) + "  " + n + "/" + max_n + " best " + best_txt.
+    IF spd < 0 { RETURN "Ascent opt " + row["status"] + " n=" + n + "/" + max_n + " best " + best_txt. }
+    RETURN "Ascent " + mode + " s" + ROUND(spd, 0) + "  " + n + "/" + max_n + " best " + best_txt.
 }
 
-// Decide the nod rate for this flight. Called from LIFTOFF after the CoM
-// heuristic has filled data["pitchover_rate"].
+// Decide the start speed for this flight. Called from LIFTOFF after the
+// CoM heuristic has filled data["pitchover_speed"].
 FUNCTION aoso_ascent_opt_apply {
     PARAMETER data.
-    LOCAL heuristic IS data["pitchover_rate"].
+    LOCAL heuristic IS data["pitchover_speed"].
     LOCAL row IS aoso_ascent_opt_row().
     LOCAL want_search IS aoso_config_get("ASCENT_OPTIMIZE", TRUE).
     LOCAL max_n IS aoso_config_get("ASCENT_OPT_MAX_TRIALS", 6).
 
     IF NOT want_search {
         IF row["status"] = "locked" {
-            IF row["best"]:HASKEY("pitchover_rate") {
-                SET data["pitchover_rate"] TO row["best"]["pitchover_rate"].
-                SET AOSO_ASCENT_OPT["applied_rate"] TO data["pitchover_rate"].
+            IF row["best"]:HASKEY("turn_speed") {
+                SET data["pitchover_speed"] TO row["best"]["turn_speed"].
+                SET AOSO_ASCENT_OPT["applied_speed"] TO data["pitchover_speed"].
                 SET AOSO_ASCENT_OPT["applied_mode"] TO "locked".
-                aoso_log_info("ASCENT_OPT", "Search off; flying locked best rate=" + ROUND(data["pitchover_rate"], 2) + " deg/s (heuristic was " + ROUND(heuristic, 2) + ").").
+                aoso_log_info("ASCENT_OPT", "Search off; flying locked best start=" + ROUND(data["pitchover_speed"], 0) + " m/s (heuristic was " + ROUND(heuristic, 0) + ").").
                 RETURN.
             }
         }
-        SET AOSO_ASCENT_OPT["applied_rate"] TO heuristic.
+        SET AOSO_ASCENT_OPT["applied_speed"] TO heuristic.
         SET AOSO_ASCENT_OPT["applied_mode"] TO "heuristic".
-        aoso_log_info("ASCENT_OPT", "Search off; heuristic rate=" + ROUND(heuristic, 2) + " deg/s.").
+        aoso_log_info("ASCENT_OPT", "Search off; heuristic start=" + ROUND(heuristic, 0) + " m/s.").
         RETURN.
     }
 
     IF row["status"] = "locked" {
-        IF row["best"]:HASKEY("pitchover_rate") {
-            SET data["pitchover_rate"] TO row["best"]["pitchover_rate"].
-            SET AOSO_ASCENT_OPT["applied_rate"] TO data["pitchover_rate"].
+        IF row["best"]:HASKEY("turn_speed") {
+            SET data["pitchover_speed"] TO row["best"]["turn_speed"].
+            SET AOSO_ASCENT_OPT["applied_speed"] TO data["pitchover_speed"].
             SET AOSO_ASCENT_OPT["applied_mode"] TO "locked".
-            aoso_log_info("ASCENT_OPT", "Locked best rate=" + ROUND(data["pitchover_rate"], 2) + " deg/s, orbit_lf=" + ROUND(row["best"]["orbit_lf"], 1) + " circ_dv=" + ROUND(row["best"]["circ_dv"], 1) + ".").
+            aoso_log_info("ASCENT_OPT", "Locked best start=" + ROUND(data["pitchover_speed"], 0) + " m/s, orbit_lf=" + ROUND(row["best"]["orbit_lf"], 1) + " circ_dv=" + ROUND(row["best"]["circ_dv"], 1) + ".").
             RETURN.
         }
     }
@@ -200,35 +229,35 @@ FUNCTION aoso_ascent_opt_apply {
     IF row["trials"]:LENGTH >= max_n {
         SET row["status"] TO "locked".
         aoso_ascent_opt_save().
-        IF row["best"]:HASKEY("pitchover_rate") {
-            SET data["pitchover_rate"] TO row["best"]["pitchover_rate"].
-            SET AOSO_ASCENT_OPT["applied_rate"] TO data["pitchover_rate"].
+        IF row["best"]:HASKEY("turn_speed") {
+            SET data["pitchover_speed"] TO row["best"]["turn_speed"].
+            SET AOSO_ASCENT_OPT["applied_speed"] TO data["pitchover_speed"].
             SET AOSO_ASCENT_OPT["applied_mode"] TO "locked".
-            aoso_log_info("ASCENT_OPT", "Trial budget spent; locking rate=" + ROUND(data["pitchover_rate"], 2) + " deg/s.").
+            aoso_log_info("ASCENT_OPT", "Trial budget spent; locking start=" + ROUND(data["pitchover_speed"], 0) + " m/s.").
             RETURN.
         }
     }
 
-    LOCAL next_rate IS aoso_ascent_opt_pick_next_rate(row).
-    IF next_rate < 0 {
+    LOCAL next_spd IS aoso_ascent_opt_pick_next_speed(row, heuristic).
+    IF next_spd < 0 {
         SET row["status"] TO "locked".
         aoso_ascent_opt_save().
-        IF row["best"]:HASKEY("pitchover_rate") {
-            SET data["pitchover_rate"] TO row["best"]["pitchover_rate"].
+        IF row["best"]:HASKEY("turn_speed") {
+            SET data["pitchover_speed"] TO row["best"]["turn_speed"].
         }
-        SET AOSO_ASCENT_OPT["applied_rate"] TO data["pitchover_rate"].
+        SET AOSO_ASCENT_OPT["applied_speed"] TO data["pitchover_speed"].
         SET AOSO_ASCENT_OPT["applied_mode"] TO "locked".
-        aoso_log_info("ASCENT_OPT", "Grid complete; locking rate=" + ROUND(data["pitchover_rate"], 2) + " deg/s.").
+        aoso_log_info("ASCENT_OPT", "Grid complete; locking start=" + ROUND(data["pitchover_speed"], 0) + " m/s.").
         RETURN.
     }
 
-    SET data["pitchover_rate"] TO next_rate.
-    SET row["next_rate"] TO next_rate.
+    SET data["pitchover_speed"] TO next_spd.
+    SET row["next_speed"] TO next_spd.
     SET row["trial_index"] TO row["trials"]:LENGTH + 1.
     aoso_ascent_opt_save().
-    SET AOSO_ASCENT_OPT["applied_rate"] TO next_rate.
+    SET AOSO_ASCENT_OPT["applied_speed"] TO next_spd.
     SET AOSO_ASCENT_OPT["applied_mode"] TO "trial".
-    aoso_log_info("ASCENT_OPT", "Trial " + row["trial_index"] + "/" + max_n + " rate=" + ROUND(next_rate, 2) + " deg/s (heuristic would be " + ROUND(heuristic, 2) + "). Revert to pad between trials; leftover LF ranks them.").
+    aoso_log_info("ASCENT_OPT", "Trial " + row["trial_index"] + "/" + max_n + " start=" + ROUND(next_spd, 0) + " m/s (heuristic would be " + ROUND(heuristic, 0) + "). Revert to pad between trials; leftover LF ranks them.").
 }
 
 FUNCTION aoso_ascent_opt_reset_accum {
@@ -315,8 +344,14 @@ FUNCTION aoso_ascent_opt_sample {
 FUNCTION aoso_ascent_opt_desired_phase {
     LOCAL st IS AOSO_ASCENT["current"].
     IF st = "LIFTOFF" { RETURN "VERTICAL". }
-    IF st = "PITCHOVER" { RETURN "PITCHOVER". }
     IF st = "GRAVITY_TURN" {
+        LOCAL t0 IS 0.
+        LOCAL blend IS 12.
+        IF AOSO_ASCENT["data"]:HASKEY("turn_t0") { SET t0 TO AOSO_ASCENT["data"]["turn_t0"]. }
+        IF AOSO_ASCENT["data"]:HASKEY("turn_blend_s") { SET blend TO AOSO_ASCENT["data"]["turn_blend_s"]. }
+        IF t0 > 0 {
+            IF TIME:SECONDS - t0 < blend { RETURN "STARTTURN". }
+        }
         LOCAL dense_alt IS aoso_config_get("ASCENT_DENSE_ALT", 40000).
         IF ALTITUDE < dense_alt { RETURN "DENSE_AIR". }
         RETURN "UPPER_ATM".
@@ -329,7 +364,7 @@ FUNCTION aoso_ascent_opt_desired_phase {
 FUNCTION aoso_ascent_opt_begin {
     SET AOSO_ASCENT_OPT["phases"] TO LIST().
     SET AOSO_ASCENT_OPT["phase"] TO "".
-    SET AOSO_ASCENT_OPT["applied_rate"] TO -1.
+    SET AOSO_ASCENT_OPT["applied_speed"] TO -1.
     SET AOSO_ASCENT_OPT["applied_mode"] TO "heuristic".
     aoso_ascent_opt_reset_accum().
     aoso_ascent_opt_load().
@@ -356,10 +391,12 @@ FUNCTION aoso_ascent_opt_commit {
     LOCAL score IS aoso_ascent_opt_score(rec).
     SET rec["score"] TO score.
 
+    LOCAL spd IS 80.
+    IF rec:HASKEY("turn_speed") { SET spd TO rec["turn_speed"]. }
     LOCAL trial IS LEXICON(
         "ut", rec["ut"],
-        "pitchover_deg", rec["pitchover_deg"],
-        "pitchover_rate", 0.45,
+        "turn_speed", spd,
+        "turn_bias", 1.8,
         "orbit_lf", rec["orbit_lf"],
         "used_lf", rec["used_lf"],
         "circ_dv", rec["circ_dv"],
@@ -369,7 +406,7 @@ FUNCTION aoso_ascent_opt_commit {
         "stable", TRUE,
         "phases", rec["phases"]
     ).
-    IF rec:HASKEY("pitchover_rate") { SET trial["pitchover_rate"] TO rec["pitchover_rate"]. }
+    IF rec:HASKEY("turn_bias") { SET trial["turn_bias"] TO rec["turn_bias"]. }
     IF rec:HASKEY("stable") { SET trial["stable"] TO rec["stable"]. }
 
     row["trials"]:ADD(trial).
@@ -387,35 +424,36 @@ FUNCTION aoso_ascent_opt_commit {
     }
     IF is_best {
         SET row["best"] TO trial.
-        aoso_log_info("ASCENT_OPT", "NEW BEST rate=" + ROUND(trial["pitchover_rate"], 2) + " deg/s score=" + ROUND(score, 1) +
+        aoso_log_info("ASCENT_OPT", "NEW BEST start=" + ROUND(trial["turn_speed"], 0) + " m/s score=" + ROUND(score, 1) +
             " orbit_lf=" + ROUND(trial["orbit_lf"], 1) + " circ_dv=" + ROUND(trial["circ_dv"], 1) + " m/s.").
     } ELSE {
         LOCAL best_line IS "no stable best yet".
-        IF row["best"]:HASKEY("pitchover_rate") {
-            SET best_line TO "best r" + ROUND(row["best"]["pitchover_rate"], 2) +
+        IF row["best"]:HASKEY("turn_speed") {
+            SET best_line TO "best s" + ROUND(row["best"]["turn_speed"], 0) +
                 " LF=" + ROUND(row["best"]["orbit_lf"], 1) +
                 " circ=" + ROUND(row["best"]["circ_dv"], 1) +
                 " score=" + ROUND(row["best"]["score"], 1).
         }
-        aoso_log_info("ASCENT_OPT", "Trial rate=" + ROUND(trial["pitchover_rate"], 2) + " deg/s score=" + ROUND(score, 1) +
+        aoso_log_info("ASCENT_OPT", "Trial start=" + ROUND(trial["turn_speed"], 0) + " m/s score=" + ROUND(score, 1) +
             " (this " + ROUND(trial["orbit_lf"], 1) + " LF, circ " + ROUND(trial["circ_dv"], 1) + ") - " + best_line + ".").
     }
 
     LOCAL max_n IS aoso_config_get("ASCENT_OPT_MAX_TRIALS", 6).
     IF row["trials"]:LENGTH >= max_n {
         SET row["status"] TO "locked".
-        IF row["best"]:HASKEY("pitchover_rate") {
-            aoso_log_info("ASCENT_OPT", "Search complete after " + row["trials"]:LENGTH + " trial(s). Locked rate=" +
-                ROUND(row["best"]["pitchover_rate"], 2) + " deg/s. Set ASCENT_OPTIMIZE=false to freeze, or delete 0:/aoso_ascent_opt.json to restart.").
+        IF row["best"]:HASKEY("turn_speed") {
+            aoso_log_info("ASCENT_OPT", "Search complete after " + row["trials"]:LENGTH + " trial(s). Locked start=" +
+                ROUND(row["best"]["turn_speed"], 0) + " m/s. Set ASCENT_OPTIMIZE=false to freeze, or delete 0:/aoso_ascent_opt.json to restart.").
         } ELSE {
             aoso_log_warn("ASCENT_OPT", "Search complete but no stable orbit was recorded - leaving heuristic in charge.").
             SET row["status"] TO "searching".
         }
     } ELSE {
-        IF aoso_ascent_opt_pick_next_rate(row) < 0 {
+        LOCAL heuristic IS spd.
+        IF aoso_ascent_opt_pick_next_speed(row, heuristic) < 0 {
             SET row["status"] TO "locked".
-            IF row["best"]:HASKEY("pitchover_rate") {
-                aoso_log_info("ASCENT_OPT", "Grid exhausted. Locked rate=" + ROUND(row["best"]["pitchover_rate"], 2) + " deg/s.").
+            IF row["best"]:HASKEY("turn_speed") {
+                aoso_log_info("ASCENT_OPT", "Grid exhausted. Locked start=" + ROUND(row["best"]["turn_speed"], 0) + " m/s.").
             }
         } ELSE {
             SET row["status"] TO "searching".
