@@ -10,6 +10,8 @@
 // disabled task never pays the time compare (kOS AND always evaluates both
 // sides). The hot loop inlines CALL -- aoso_sched_invoke remains as a
 // wrapper for any external caller but is not used from run.
+// CPU HIGH/CRITICAL sheds HUD/profile/checkpoints/ISRU first; staging,
+// ascent, descent, parachutes, watchdog, mission, and power always run.
 
 GLOBAL AOSO_TASKS IS LIST().
 
@@ -52,19 +54,55 @@ FUNCTION aoso_sched_enable {
     }
 }
 
+FUNCTION aoso_sched_keep {
+    PARAMETER name.
+    LOCAL lvl IS 0.
+    IF DEFINED AOSO_CPU_LEVEL { SET lvl TO AOSO_CPU_LEVEL. }
+    IF lvl <= 1 { RETURN TRUE. }
+
+    // Never shed flight / staging / landing / watchdog.
+    IF name = "auto_staging" { RETURN TRUE. }
+    IF name = "ascent_guidance" { RETURN TRUE. }
+    IF name = "descent_guidance" { RETURN TRUE. }
+    IF name = "auto_parachute" { RETURN TRUE. }
+    IF name = "watchdog" { RETURN TRUE. }
+    IF name = "mission" { RETURN TRUE. }
+    IF name = "auto_power" { RETURN TRUE. }
+
+    IF name = "telemetry" {
+        IF DEFINED AOSO_POST_LEFT {
+            IF AOSO_POST_LEFT > 0 { RETURN TRUE. }
+        }
+        IF lvl >= 3 { RETURN FALSE. }
+        RETURN TRUE.
+    }
+    IF name = "hud" {
+        IF lvl >= 3 { RETURN FALSE. }
+        RETURN TRUE.
+    }
+    IF name = "vehicle_profile" { RETURN FALSE. }
+    IF name = "checkpoint_autosave" { RETURN FALSE. }
+    IF name = "refuel_isru" { RETURN FALSE. }
+    RETURN TRUE.
+}
+
 FUNCTION aoso_sched_run {
     LOCAL now IS TIME:SECONDS.
     FOR t IN AOSO_TASKS {
         IF t["enabled"] {
             IF now >= t["next_run"] {
-                SET t["next_run"] TO now + t["interval"].
-                SET t["run_count"] TO t["run_count"] + 1.
-                LOCAL t0 IS KUNIVERSE:REALTIME.
-                t["fn"]:CALL().
-                LOCAL dt IS KUNIVERSE:REALTIME - t0.
-                SET t["last_dt"] TO dt.
-                SET t["sum_dt"] TO t["sum_dt"] + dt.
-                IF dt > t["max_dt"] { SET t["max_dt"] TO dt. }
+                IF aoso_sched_keep(t["name"]) {
+                    SET t["next_run"] TO now + t["interval"].
+                    SET t["run_count"] TO t["run_count"] + 1.
+                    LOCAL t0 IS KUNIVERSE:REALTIME.
+                    t["fn"]:CALL().
+                    LOCAL dt IS KUNIVERSE:REALTIME - t0.
+                    SET t["last_dt"] TO dt.
+                    SET t["sum_dt"] TO t["sum_dt"] + dt.
+                    IF dt > t["max_dt"] { SET t["max_dt"] TO dt. }
+                } ELSE {
+                    SET t["next_run"] TO now + t["interval"].
+                }
             }
         }
     }

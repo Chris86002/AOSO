@@ -22,7 +22,7 @@ Every `run "AOSO/main".` rebuilds the mission plan and starts a brand-new log fi
 ### Flight log files
 Three separate streams, not one dump:
 - **Event log** (`0:/aoso_log.txt`) — human-readable PRINT + file, default INFO. Reset every boot.
-- **Telemetry** (`0:/aoso_telemetry.csv`) — timed CSV samples (AUTO rate by phase). Append-only.
+- **Telemetry** (`0:/aoso_telemetry.csv`) — timed CSV samples (AUTO rate by phase), RAM-buffered and flushed every few seconds or on STAGE/BURN/LAND. Append-only.
 - **Events + flight record** (`0:/aoso_events.csv`, `0:/aoso_flightrec.txt`) — structured decisions/anomalies and a pre-event ring dump around STAGE/BURN/LAND/ABORT, plus a few post samples. Append-only mission history.
 
 Ascent steering is MechJeb Classic's pitch-vs-altitude program (shape exponent, AoA-limited), not a prograde lead angle.

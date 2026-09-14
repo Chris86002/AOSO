@@ -249,6 +249,8 @@ FUNCTION aoso_maneuver_execute_next {
         LOCAL accel0 IS aoso_maneuver_current_accel().
         LOCAL t0 IS 0.
         IF accel0 > 0.05 { SET t0 TO remaining / accel0. }
+        aoso_observe_event("BURN", "INFO", "start", "dv=" + ROUND(remaining, 1) + " t=" + ROUND(t0, 1)).
+        aoso_decide("MANEUVER", "ignite", "burn", "node", "dv=" + ROUND(remaining, 1) + " t=" + ROUND(t0, 1)).
         IF t0 > AOSO_CONFIG["MANEUVER_FOLLOW_ABOVE_S"] {
             aoso_log_info("MANEUVER", "Burn started, following node, remaining=" + ROUND(remaining, 1) + " m/s.").
         } ELSE {

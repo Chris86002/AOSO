@@ -27,6 +27,7 @@ GLOBAL AOSO_CPU_OP0 IS 0.
 GLOBAL AOSO_CPU_RT0 IS 0.
 GLOBAL AOSO_CPU_SPILLS IS 0.
 GLOBAL AOSO_CPU_LAST_WALL IS 0.
+GLOBAL AOSO_TELEM_FLUSH_NOW IS FALSE.
 
 FUNCTION aoso_observe_init {
     SET AOSO_RING TO LIST().
@@ -46,6 +47,7 @@ FUNCTION aoso_observe_init {
     SET AOSO_PROF TO LEXICON().
     SET AOSO_PROF_NAME TO "".
     SET AOSO_OBS_TELEM_LAST TO 0.
+    SET AOSO_TELEM_FLUSH_NOW TO FALSE.
 
     SET AOSO_OBS_PHASE TO "BOOT".
     IF SHIP:STATUS = "PRELAUNCH" { SET AOSO_OBS_PHASE TO "PRELAUNCH". }
@@ -162,6 +164,7 @@ FUNCTION aoso_observe_event {
     IF dump {
         aoso_observe_dump_pre(etype + " " + message).
         SET AOSO_POST_LEFT TO 15.
+        SET AOSO_TELEM_FLUSH_NOW TO TRUE.
     }
 
     LOCAL must_flush IS FALSE.
@@ -337,11 +340,26 @@ FUNCTION aoso_observe_cpu_end {
 FUNCTION aoso_observe_fingerprint {
     LOCAL n_parts IS 0.
     LOCAL n_eng IS 0.
+    LOCAL n_tank IS 0.
+    LOCAL dv IS 0.
     IF DEFINED AOSO_VESSEL {
         IF AOSO_VESSEL:HASKEY("part_count") { SET n_parts TO AOSO_VESSEL["part_count"]. }
         IF AOSO_VESSEL:HASKEY("engine_count") { SET n_eng TO AOSO_VESSEL["engine_count"]. }
     }
-    RETURN SHIP:NAME + "|" + SHIP:BODY:NAME + "|" + n_parts + "|" + n_eng + "|" + STAGE:NUMBER + "|" + ROUND(SHIP:MASS, 2) + "|" + SHIP:STATUS.
+    IF DEFINED AOSO_PROFILE {
+        IF AOSO_PROFILE:HASKEY("snapshot") {
+            LOCAL snap IS AOSO_PROFILE["snapshot"].
+            IF snap:HASKEY("parts") { SET n_parts TO snap["parts"]. }
+            IF snap:HASKEY("engines") { SET n_eng TO snap["engines"]. }
+            IF snap:HASKEY("tanks") { SET n_tank TO snap["tanks"]. }
+        }
+        IF AOSO_PROFILE:HASKEY("propulsion") {
+            IF AOSO_PROFILE["propulsion"]:HASKEY("dv_total") {
+                SET dv TO AOSO_PROFILE["propulsion"]["dv_total"].
+            }
+        }
+    }
+    RETURN SHIP:NAME + "|" + SHIP:BODY:NAME + "|" + n_parts + "|" + n_eng + "|" + n_tank + "|" + STAGE:NUMBER + "|" + ROUND(SHIP:MASS, 2) + "|" + ROUND(dv, 0) + "|" + SHIP:STATUS.
 }
 
 FUNCTION aoso_observe_on_fingerprint {

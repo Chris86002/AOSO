@@ -3,10 +3,13 @@
 // from structured events / the flight record (core/observe.ks).
 // Scheduler interval is 0.1 s; this module internally skips so AUTO is
 // ~0.2 s in ASCENT/DESCENT/BURN/LANDING, ~1 s in cruise, ~5 s on the pad.
-// Do not open the file on skipped ticks. Do not LIST PARTS. One
+// Samples go to a RAM buffer and flush every ~8 rows / 2 s / important
+// event -- not a WRITELN every physics tick. Do not LIST PARTS. One
 // SHIP:RESOURCES loop for LF/OX/EC.
 
 GLOBAL AOSO_TELEMETRY_HEADER_WRITTEN IS FALSE.
+GLOBAL AOSO_TELEM_BUF IS LIST().
+GLOBAL AOSO_TELEM_LAST_FLUSH IS 0.
 
 FUNCTION aoso_telemetry_header {
     RETURN "ut,met,body,lat,lng,alt,radar,srf,orb,vs,hs,pitch,hdg,aoa,throt,thrust,mass,stg,lf,ox,ec,apo,pe,inc,ecc,etaap,phase,cpu".
@@ -73,11 +76,36 @@ FUNCTION aoso_telemetry_row {
         ROUND(ETA:APOAPSIS, 1) + "," + AOSO_OBS_PHASE + "," + AOSO_CPU_NAME.
 }
 
+FUNCTION aoso_telemetry_flush {
+    IF AOSO_TELEM_BUF:LENGTH = 0 {
+        SET AOSO_TELEM_LAST_FLUSH TO TIME:SECONDS.
+        SET AOSO_TELEM_FLUSH_NOW TO FALSE.
+        RETURN.
+    }
+    LOCAL file_path IS AOSO_CONST["TELEMETRY_FILE"].
+    IF NOT AOSO_TELEMETRY_HEADER_WRITTEN {
+        IF NOT EXISTS(file_path) {
+            LOCAL header_file IS CREATE(file_path).
+            header_file:WRITELN(aoso_telemetry_header()).
+        }
+        SET AOSO_TELEMETRY_HEADER_WRITTEN TO TRUE.
+    }
+    LOCAL f IS OPEN(file_path).
+    UNTIL AOSO_TELEM_BUF:LENGTH = 0 {
+        LOCAL line IS AOSO_TELEM_BUF[0].
+        AOSO_TELEM_BUF:REMOVE(0).
+        f:WRITELN(line).
+    }
+    SET AOSO_TELEM_LAST_FLUSH TO TIME:SECONDS.
+    SET AOSO_TELEM_FLUSH_NOW TO FALSE.
+}
+
 FUNCTION aoso_telemetry_tick {
     LOCAL now IS TIME:SECONDS.
     LOCAL interval IS aoso_telemetry_interval().
     LOCAL force IS FALSE.
     IF AOSO_POST_LEFT > 0 { SET force TO TRUE. }
+    IF AOSO_TELEM_FLUSH_NOW { SET force TO TRUE. }
     IF NOT force {
         IF now - AOSO_OBS_TELEM_LAST < interval { RETURN. }
     }
@@ -87,18 +115,15 @@ FUNCTION aoso_telemetry_tick {
     aoso_observe_ring_push(packed).
     IF AOSO_POST_LEFT > 0 { aoso_observe_post_sample(packed). }
 
-    LOCAL file_path IS AOSO_CONST["TELEMETRY_FILE"].
+    AOSO_TELEM_BUF:ADD(packed).
+    IF AOSO_TELEM_BUF:LENGTH > 40 { AOSO_TELEM_BUF:REMOVE(0). }
 
-    IF NOT AOSO_TELEMETRY_HEADER_WRITTEN {
-        IF NOT EXISTS(file_path) {
-            LOCAL header_file IS CREATE(file_path).
-            header_file:WRITELN(aoso_telemetry_header()).
-        }
-        SET AOSO_TELEMETRY_HEADER_WRITTEN TO TRUE.
-    }
-
-    LOCAL f IS OPEN(file_path).
-    f:WRITELN(packed).
+    LOCAL flush IS FALSE.
+    IF AOSO_TELEM_FLUSH_NOW { SET flush TO TRUE. }
+    IF AOSO_POST_LEFT > 0 { SET flush TO TRUE. }
+    IF AOSO_TELEM_BUF:LENGTH >= 8 { SET flush TO TRUE. }
+    IF (now - AOSO_TELEM_LAST_FLUSH) >= 2 { SET flush TO TRUE. }
+    IF flush { aoso_telemetry_flush(). }
 }
 
 FUNCTION aoso_telemetry_register_task {

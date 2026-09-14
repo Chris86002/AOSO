@@ -93,6 +93,7 @@ FUNCTION aoso_plan_log {
     IF AOSO_PLAN_LAST["orbit_only"]:LENGTH > 0 {
         aoso_log_info("PLAN", "Orbit only (no landing): " + orbit_txt + ".").
     }
+    aoso_decide("PLAN", "route", order_txt, aoso_classify_name(), "dv=" + ROUND(AOSO_PLAN_LAST["mission_dv"], 0) + " skip=" + skip_txt).
 }
 
 FUNCTION aoso_plan_targets {

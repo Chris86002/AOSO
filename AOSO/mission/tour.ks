@@ -289,6 +289,7 @@ FUNCTION aoso_tour_scan_entry {
         SET data["site_score"] TO result["score"].
         aoso_log_info("TOUR", "Landing site lat=" + ROUND(result["lat"], 2) + " lng=" + ROUND(result["lng"], 2) +
             " slope=" + ROUND(result["slope"], 1) + " deg.").
+        aoso_decide("TOUR", "site", ROUND(result["lat"], 2) + "/" + ROUND(result["lng"], 2), "scan", "score=" + ROUND(result["score"], 2) + " slope=" + ROUND(result["slope"], 1)).
     } ELSE {
         SET data["site_lat"] TO SHIP:GEOPOSITION:LAT.
         SET data["site_lng"] TO SHIP:GEOPOSITION:LNG.
@@ -534,6 +535,7 @@ FUNCTION aoso_tour_start {
     aoso_tour_define_states().
     SET AOSO_TOUR["data"] TO LEXICON("targets", targets, "index", 0, "site_lat", 0, "site_lng", 0, "site_score", -1, "deorbit_wait_since", 0).
     aoso_log_info("TOUR", "Grand tour armed: " + targets:LENGTH + " bodies (" + aoso_classify_name() + "), then KSC return.").
+    aoso_decide("TOUR", "arm", "" + targets:LENGTH, aoso_classify_name(), "n=" + targets:LENGTH).
     aoso_state_transition(AOSO_TOUR, "BOOT").
 }
 

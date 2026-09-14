@@ -17,9 +17,11 @@
 //      with an un-ignited engine still on the stack -- serial-stack relight.
 //   4. Spent BOOSTER subset can drop while the core keeps burning
 //      (vehicle/parts.ks aoso_parts_boosters_ready_to_jettison).
-// Empty stages are dropped even at throttle 0 so a coast / warp-to-node
-// does not carry dry tanks into the burn. Pad ignition is still
-// flight/ascent.ks LIFTOFF -- relight is gated on SHIP:STATUS.
+// Empty current-stage tanks still drop while other engines push (asparagus /
+// boosters). A no-thrust empty stage with ship LF remaining is a relight,
+// capped at STAGING_MAX_EXTRA so the lander is not walked. Dry ship (LF~0)
+// still dumps the spent stage at throttle 0 so a coast does not carry it
+// into the next node. Pad ignition is still flight/ascent.ks LIFTOFF.
 // Disabled outright when AOSO_CONFIG["SAFE_MODE"] is set.
 //
 // aoso_staging_sense() fills one snapshot per check (STAGE:RESOURCES +
@@ -293,24 +295,29 @@ FUNCTION aoso_staging_should_stage {
     // Drop a spent stage even with the throttle closed. The old
     // "commanded_throttle <= 0 -> FALSE" guard left Acacius coasting
     // at TWR 0 with a full unlit core (and missed the next burn).
-    // If STAGE:RESOURCES looks empty but the vessel still has LF, that is
-    // a relight/ignite (unlit next engines, not a dry stack). Do not walk
-    // to the lander.
     IF fuel_gone {
         IF airborne {
+            // Current-stage tanks are empty. If something is still making
+            // thrust (asparagus / boosters + live core), drop the empties --
+            // that is the whole reason empty-fuel exists (flameout lags).
+            // If nothing is making thrust, this is a relight: cap extras so
+            // unignited lander engines cannot walk the stack (Acacius 7->2).
+            LOCAL still_pushing IS FALSE.
+            IF AOSO_STG_THRUST > 0.05 {
+                IF AOSO_STG_LIT > 0 {
+                    IF AOSO_STG_FLAMED < AOSO_STG_LIT { SET still_pushing TO TRUE. }
+                }
+            }
+            IF still_pushing {
+                SET AOSO_STAGING_LAST_REASON TO "empty fuel".
+                RETURN TRUE.
+            }
             LOCAL ship_lf IS aoso_staging_ship_lf().
             IF ship_lf > 10 {
-                LOCAL can_relight IS FALSE.
-                IF AOSO_STG_LIT = 0 { SET can_relight TO TRUE. }
-                ELSE {
-                    IF AOSO_STG_FLAMED = AOSO_STG_LIT { SET can_relight TO TRUE. }
-                }
-                IF can_relight {
-                    LOCAL max_relight IS aoso_config_get("STAGING_MAX_EXTRA", 1).
-                    IF AOSO_STAGING_RELIGHT_ATTEMPTS < max_relight {
-                        SET AOSO_STAGING_LAST_REASON TO "relight".
-                        RETURN TRUE.
-                    }
+                LOCAL max_relight IS aoso_config_get("STAGING_MAX_EXTRA", 1).
+                IF AOSO_STAGING_RELIGHT_ATTEMPTS < max_relight {
+                    SET AOSO_STAGING_LAST_REASON TO "relight".
+                    RETURN TRUE.
                 }
             } ELSE {
                 SET AOSO_STAGING_LAST_REASON TO "empty fuel".
