@@ -509,6 +509,7 @@ FUNCTION aoso_ascent_liftoff_execute {
         IF STAGE:READY {
             aoso_log_info("ASCENT", "Liftoff ignition: staging (" + STAGE:NUMBER + ").").
             STAGE.
+            aoso_staging_after_stage().
             SET data["ignite_attempts"] TO data["ignite_attempts"] + 1.
         }
         RETURN.
@@ -520,6 +521,7 @@ FUNCTION aoso_ascent_liftoff_execute {
         IF STAGE:READY {
             aoso_log_warn("ASCENT", "Still PRELAUNCH " + ROUND(TIME:SECONDS - data["thrust_since"], 1) + "s after ignition - staging (" + STAGE:NUMBER + ") to clear holds.").
             STAGE.
+            aoso_staging_after_stage().
             SET data["ignite_attempts"] TO data["ignite_attempts"] + 1.
         }
         RETURN.
@@ -528,21 +530,23 @@ FUNCTION aoso_ascent_liftoff_execute {
     aoso_steer_heading_pitch(data["heading"], 90).
     aoso_throttle_set(1).
     aoso_staging_auto_check().
-    aoso_ascent_cache_stack_layout(data).
-    aoso_ascent_snapshot_pad(data).
+    IF SHIP:VELOCITY:SURFACE:MAG > 5 {
+        aoso_ascent_cache_stack_layout(data).
+        aoso_ascent_snapshot_pad(data).
 
-    SET data["pitchover_speed"] TO aoso_ascent_pitchover_speed(data["com_frac"], data["stack_length"]).
-    SET data["pitchover_min_alt"] TO aoso_ascent_pitchover_min_alt(data["com_frac"], data["stack_length"]).
-    SET data["turn_bias"] TO aoso_ascent_turn_bias(data["com_frac"]).
-    SET data["turn_blend_s"] TO aoso_ascent_turn_blend_s(data["stack_length"]).
-    SET data["turn_start_alt"] TO aoso_ascent_turn_start_alt(data["com_frac"], data["stack_length"]).
-    SET data["turn_end_alt"] TO aoso_ascent_turn_end_alt().
-    SET data["turn_shape"] TO aoso_ascent_turn_shape().
-    SET data["turn_end_angle"] TO aoso_config_get("ASCENT_TURN_END_ANGLE", 0).
-    IF AOSO_ASCENT_OPT["applied_speed"] < 0 {
-        aoso_ascent_opt_apply(data).
-    } ELSE {
-        SET data["pitchover_speed"] TO AOSO_ASCENT_OPT["applied_speed"].
+        SET data["pitchover_speed"] TO aoso_ascent_pitchover_speed(data["com_frac"], data["stack_length"]).
+        SET data["pitchover_min_alt"] TO aoso_ascent_pitchover_min_alt(data["com_frac"], data["stack_length"]).
+        SET data["turn_bias"] TO aoso_ascent_turn_bias(data["com_frac"]).
+        SET data["turn_blend_s"] TO aoso_ascent_turn_blend_s(data["stack_length"]).
+        SET data["turn_start_alt"] TO aoso_ascent_turn_start_alt(data["com_frac"], data["stack_length"]).
+        SET data["turn_end_alt"] TO aoso_ascent_turn_end_alt().
+        SET data["turn_shape"] TO aoso_ascent_turn_shape().
+        SET data["turn_end_angle"] TO aoso_config_get("ASCENT_TURN_END_ANGLE", 0).
+        IF AOSO_ASCENT_OPT["applied_speed"] < 0 {
+            aoso_ascent_opt_apply(data).
+        } ELSE {
+            SET data["pitchover_speed"] TO AOSO_ASCENT_OPT["applied_speed"].
+        }
     }
 
     IF SHIP:VELOCITY:SURFACE:MAG >= data["pitchover_speed"] {

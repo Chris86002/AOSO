@@ -27,12 +27,16 @@
 // aoso_staging_sense() fills one snapshot per check (STAGE:RESOURCES +
 // cached engines). aoso_staging_auto_check() refuses to run twice in the
 // same physics tick so ascent 0.1s + auto_staging 0.1s do not double-work.
+// Spool is a timestamp, not WAIT, so the main loop keeps steering.
 
 GLOBAL AOSO_STAGING_RELIGHT_ATTEMPTS IS 0.
 GLOBAL AOSO_STAGING_DEAD_SINCE IS 0.
 GLOBAL AOSO_STAGING_LAST_REASON IS "".
 GLOBAL AOSO_STAGING_TICK_UT IS -1.
 GLOBAL AOSO_STAGING_COOLDOWN_UNTIL IS 0.
+GLOBAL AOSO_STAGING_SPOOL_UNTIL IS 0.
+GLOBAL AOSO_STAGING_PENDING_RELIGHT IS FALSE.
+GLOBAL AOSO_STAGING_EXTRA_THIS IS 0.
 GLOBAL AOSO_STG_LIT IS 0.
 GLOBAL AOSO_STG_FLAMED IS 0.
 GLOBAL AOSO_STG_FLOWING IS 0.
@@ -57,10 +61,10 @@ FUNCTION aoso_staging_ship_lf {
 FUNCTION aoso_staging_after_stage {
     aoso_parts_cache_invalidate().
     LOCAL cool IS aoso_config_get("STAGING_COOLDOWN_S", 1.2).
-    SET AOSO_STAGING_COOLDOWN_UNTIL TO TIME:SECONDS + cool.
-    WAIT UNTIL STAGE:READY.
-    LOCAL spool IS aoso_config_get("STAGING_SPOOL_S", 0.45).
-    WAIT spool.
+    LOCAL spool IS aoso_config_get("STAGING_SPOOL_S", 0.8).
+    LOCAL now IS TIME:SECONDS.
+    SET AOSO_STAGING_COOLDOWN_UNTIL TO now + cool.
+    SET AOSO_STAGING_SPOOL_UNTIL TO now + spool.
 }
 
 FUNCTION aoso_staging_emit {
@@ -147,14 +151,41 @@ FUNCTION aoso_staging_fuel_empty {
     IF fuel["xe"] >= 0 { SET any_tank TO TRUE. }
     IF NOT any_tank { RETURN FALSE. }
 
-    IF aoso_staging_resource_gone(fuel["lf"], fuel["lf_cap"], thresh, pct) { RETURN TRUE. }
-    IF aoso_staging_resource_gone(fuel["ox"], fuel["ox_cap"], thresh, pct) { RETURN TRUE. }
-    IF fuel["lf"] < 0 {
-        IF fuel["ox"] < 0 {
-            IF aoso_staging_resource_gone(fuel["sf"], fuel["sf_cap"], thresh, pct) { RETURN TRUE. }
-            IF aoso_staging_resource_gone(fuel["xe"], fuel["xe_cap"], thresh, pct) { RETURN TRUE. }
+    LOCAL lf_gone IS aoso_staging_resource_gone(fuel["lf"], fuel["lf_cap"], thresh, pct).
+    LOCAL ox_gone IS aoso_staging_resource_gone(fuel["ox"], fuel["ox_cap"], thresh, pct).
+    LOCAL sf_gone IS aoso_staging_resource_gone(fuel["sf"], fuel["sf_cap"], thresh, pct).
+    LOCAL xe_gone IS aoso_staging_resource_gone(fuel["xe"], fuel["xe_cap"], thresh, pct).
+
+    // Mixed solid + LFO in the same KSP stage: only empty when EVERY present
+    // type is gone. Staging because SF hit 0 while LF tanks are still full
+    // is what dropped Acacius's booster early.
+    LOCAL lfo_dead IS TRUE.
+    IF fuel["lf"] >= 0 {
+        SET lfo_dead TO lf_gone.
+        IF fuel["ox"] >= 0 {
+            IF ox_gone { SET lfo_dead TO TRUE. }
+        }
+    } ELSE {
+        IF fuel["ox"] >= 0 { SET lfo_dead TO ox_gone. }
+    }
+    LOCAL sf_dead IS TRUE.
+    IF fuel["sf"] >= 0 { SET sf_dead TO sf_gone. }
+    LOCAL xe_dead IS TRUE.
+    IF fuel["xe"] >= 0 { SET xe_dead TO xe_gone. }
+    IF lfo_dead {
+        IF sf_dead {
+            IF xe_dead { RETURN TRUE. }
         }
     }
+    RETURN FALSE.
+}
+
+FUNCTION aoso_staging_stage_has_fuel {
+    LOCAL fuel IS aoso_staging_stage_fuel().
+    IF fuel["lf"] > 10 { RETURN TRUE. }
+    IF fuel["ox"] > 10 { RETURN TRUE. }
+    IF fuel["sf"] > 10 { RETURN TRUE. }
+    IF fuel["xe"] > 10 { RETURN TRUE. }
     RETURN FALSE.
 }
 
@@ -381,70 +412,55 @@ FUNCTION aoso_staging_should_stage {
     RETURN FALSE.
 }
 
-// After dropping a spent stage, keep staging until something burns again.
-// Serial stacks put "jettison empties" and "ignite next engines" in
-// different KSP stages; one STAGE() is not enough. Bounded to 1 extra
-// so we cannot dump the payload / lander (Acacius: unignited lander
-// engines made aoso_parts_has_unignited_engine stay TRUE).
-FUNCTION aoso_staging_relight_until_thrust {
-    LOCAL extra IS 0.
-    LOCAL max_extra IS aoso_config_get("STAGING_MAX_EXTRA", 1).
-    IF max_extra < 0 { SET max_extra TO 0. }
-    LOCAL keep_going IS TRUE.
-    IF SHIP:AVAILABLETHRUST > 0.05 { SET keep_going TO FALSE. }
-
-    UNTIL NOT keep_going {
-        IF extra >= max_extra {
-            SET keep_going TO FALSE.
-        } ELSE {
-            IF STAGE:NUMBER <= 0 {
-                SET keep_going TO FALSE.
-            } ELSE {
-                IF SHIP:AVAILABLETHRUST > 0.05 {
-                    SET keep_going TO FALSE.
-                } ELSE {
-                    IF NOT STAGE:READY { WAIT UNTIL STAGE:READY. }
-                    LOCAL prev IS STAGE:NUMBER.
-                    aoso_log_info("STAGING", "Relight: no thrust after staging, lighting next stage (" + prev + ").").
-                    aoso_observe_event("RELIGHT", "INFO", "relight", "stg=" + prev).
-                    STAGE.
-                    aoso_staging_after_stage().
-                    SET extra TO extra + 1.
-                    SET AOSO_STAGING_RELIGHT_ATTEMPTS TO AOSO_STAGING_RELIGHT_ATTEMPTS + 1.
-
-                    IF SHIP:AVAILABLETHRUST > 0.05 {
-                        SET keep_going TO FALSE.
-                    } ELSE {
-                        LOCAL ship_lf IS aoso_staging_ship_lf().
-                        IF ship_lf > 10 {
-                            IF extra >= 1 {
-                                aoso_log_warn("STAGING", "Relight: still no thrust after " + extra + " extra stage event(s) with LF remaining; not walking the stack.").
-                                SET keep_going TO FALSE.
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
+// After dropping a spent stage, one extra STAGE is allowed only if the
+// NEW current stage is also empty (jettison-then-ignite serial). Never
+// dump a stage that still has fuel -- that is how Acacius lost the booster.
+FUNCTION aoso_staging_finish_relight {
+    SET AOSO_STAGING_PENDING_RELIGHT TO FALSE.
     IF SHIP:AVAILABLETHRUST > 0.05 {
         SET AOSO_STAGING_RELIGHT_ATTEMPTS TO 0.
         SET AOSO_STAGING_DEAD_SINCE TO 0.
-        IF extra > 0 {
-            aoso_log_info("STAGING", "Relight: thrust restored after " + extra + " extra stage event(s).").
-        }
-    } ELSE {
-        IF extra > 0 {
-            aoso_log_warn("STAGING", "Relight: still no thrust after " + extra + " extra stage event(s).").
-        }
+        SET AOSO_STAGING_EXTRA_THIS TO 0.
+        RETURN.
     }
+    IF aoso_staging_stage_has_fuel() {
+        aoso_log_warn("STAGING", "No thrust after staging but current stage still has fuel - not dumping it.").
+        SET AOSO_STAGING_EXTRA_THIS TO 0.
+        RETURN.
+    }
+    LOCAL max_extra IS aoso_config_get("STAGING_MAX_EXTRA", 1).
+    IF max_extra < 0 { SET max_extra TO 0. }
+    IF AOSO_STAGING_EXTRA_THIS >= max_extra {
+        aoso_log_warn("STAGING", "Relight: still no thrust after " + AOSO_STAGING_EXTRA_THIS + " extra stage event(s) with LF remaining; not walking the stack.").
+        SET AOSO_STAGING_EXTRA_THIS TO 0.
+        RETURN.
+    }
+    IF STAGE:NUMBER <= 0 { RETURN. }
+    IF NOT STAGE:READY {
+        SET AOSO_STAGING_PENDING_RELIGHT TO TRUE.
+        RETURN.
+    }
+    LOCAL prev IS STAGE:NUMBER.
+    aoso_log_info("STAGING", "Relight: no thrust after staging, lighting next empty stage (" + prev + ").").
+    aoso_observe_event("RELIGHT", "INFO", "relight", "stg=" + prev).
+    STAGE.
+    aoso_staging_after_stage().
+    SET AOSO_STAGING_EXTRA_THIS TO AOSO_STAGING_EXTRA_THIS + 1.
+    SET AOSO_STAGING_RELIGHT_ATTEMPTS TO AOSO_STAGING_RELIGHT_ATTEMPTS + 1.
+    SET AOSO_STAGING_PENDING_RELIGHT TO TRUE.
 }
 
 FUNCTION aoso_staging_auto_check {
     LOCAL now IS TIME:SECONDS.
     IF now = AOSO_STAGING_TICK_UT { RETURN. }
     SET AOSO_STAGING_TICK_UT TO now.
+
+    IF now < AOSO_STAGING_SPOOL_UNTIL { RETURN. }
+
+    IF AOSO_STAGING_PENDING_RELIGHT {
+        aoso_staging_finish_relight().
+        RETURN.
+    }
 
     IF aoso_staging_should_stage() {
         LOCAL prev IS STAGE:NUMBER.
@@ -462,13 +478,8 @@ FUNCTION aoso_staging_auto_check {
 
         STAGE.
         aoso_staging_after_stage().
-
-        IF SHIP:AVAILABLETHRUST <= 0.05 {
-            aoso_staging_relight_until_thrust().
-        } ELSE {
-            SET AOSO_STAGING_RELIGHT_ATTEMPTS TO 0.
-            SET AOSO_STAGING_DEAD_SINCE TO 0.
-        }
+        SET AOSO_STAGING_EXTRA_THIS TO 0.
+        SET AOSO_STAGING_PENDING_RELIGHT TO TRUE.
 
         aoso_staging_emit(prev, reason, pred).
         SET AOSO_PROFILE_PENDING TO "staging".
@@ -513,12 +524,8 @@ FUNCTION aoso_staging_ensure_thrust {
     LOCAL pred IS aoso_capabilities_predict_next().
     STAGE.
     aoso_staging_after_stage().
-    IF SHIP:AVAILABLETHRUST <= 0.05 {
-        aoso_staging_relight_until_thrust().
-    } ELSE {
-        SET AOSO_STAGING_RELIGHT_ATTEMPTS TO 0.
-        SET AOSO_STAGING_DEAD_SINCE TO 0.
-    }
+    SET AOSO_STAGING_EXTRA_THIS TO 0.
+    SET AOSO_STAGING_PENDING_RELIGHT TO TRUE.
     aoso_staging_emit(prev, "relight", pred).
     SET AOSO_PROFILE_PENDING TO "ensure_thrust".
     RETURN SHIP:AVAILABLETHRUST > 0.05.

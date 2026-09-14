@@ -139,13 +139,16 @@ FUNCTION aoso_observe_event {
     }
 
     IF AOSO_CPU_LEVEL >= 3 {
-        IF severity <> "WARN" {
-            IF severity <> "ERROR" {
-                IF severity <> "FATAL" {
-                    RETURN.
-                }
-            }
-        }
+        LOCAL keep IS FALSE.
+        IF severity = "WARN" { SET keep TO TRUE. }
+        IF severity = "ERROR" { SET keep TO TRUE. }
+        IF severity = "FATAL" { SET keep TO TRUE. }
+        IF etype = "STAGE" { SET keep TO TRUE. }
+        IF etype = "RELIGHT" { SET keep TO TRUE. }
+        IF etype = "ABORT" { SET keep TO TRUE. }
+        IF etype = "ANOMALY" { SET keep TO TRUE. }
+        IF etype = "BURN" { SET keep TO TRUE. }
+        IF NOT keep { RETURN. }
     }
 
     LOCAL ut IS TIME:SECONDS.
@@ -160,11 +163,10 @@ FUNCTION aoso_observe_event {
     IF etype = "ANOMALY" { SET dump TO TRUE. }
     IF etype = "LAND" { SET dump TO TRUE. }
     IF etype = "TOUCHDOWN" { SET dump TO TRUE. }
-    IF etype = "DECIDE" { SET dump TO TRUE. }
     IF etype = "RELIGHT" { SET dump TO TRUE. }
     IF dump {
         aoso_observe_dump_pre(etype + " " + message).
-        SET AOSO_POST_LEFT TO 15.
+        SET AOSO_POST_LEFT TO 8.
         SET AOSO_TELEM_FLUSH_NOW TO TRUE.
     }
 

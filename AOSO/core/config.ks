@@ -40,9 +40,9 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "STAGING_FUEL_EMPTY_PCT", 1.5,      // % of stage tank capacity also treated as empty (big-tank residue)
 
     "STAGING_DEAD_S", 0.2,              // s of AVAILABLETHRUST~0 before a thrust-collapse stage
-    "STAGING_SPOOL_S", 0.45,            // s to wait after STAGE for engine spool (NOT 0.08)
+    "STAGING_SPOOL_S", 0.8,             // s after STAGE before we judge thrust (no WAIT; timestamp)
     "STAGING_COOLDOWN_S", 1.2,          // s after STAGE before another auto-stage (flameout still allowed)
-    "STAGING_MAX_EXTRA", 1,             // extra STAGE events in relight_until_thrust (serial = jettison + ignite)
+    "STAGING_MAX_EXTRA", 1,             // extra STAGE only if the NEW current stage is also empty
     "MANEUVER_NO_THRUST_TICKS", 20,     // execute_next retries staging this many ticks before declaring a burn dead
     "MANEUVER_FEATHER_S", 2,            // s, remaining burn-time window over which maneuver throttle fades to cut
     "MANEUVER_ALIGN_S", 120,            // s of physics time after warp, before ignition, to point the ship at the burn
@@ -141,6 +141,11 @@ FUNCTION aoso_config_load {
         }
         IF AOSO_CONFIG["ASCENT_TWR_LIMIT"] > 2.4 {
             SET AOSO_CONFIG["ASCENT_TWR_LIMIT"] TO 2.4.
+        }
+    }
+    IF AOSO_CONFIG:HASKEY("STAGING_SPOOL_S") {
+        IF AOSO_CONFIG["STAGING_SPOOL_S"] < 0.5 {
+            SET AOSO_CONFIG["STAGING_SPOOL_S"] TO 0.8.
         }
     }
     IF AOSO_CONFIG:HASKEY("ASCENT_TURN_SHAPE") {

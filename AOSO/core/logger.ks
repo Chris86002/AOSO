@@ -41,12 +41,8 @@ FUNCTION aoso_log {
     IF AOSO_LOG_LEVELS:HASKEY(level_name) { SET lvl TO AOSO_LOG_LEVELS[level_name]. }
     IF lvl < AOSO_LOG_MIN_LEVEL { RETURN. }
     IF DEFINED AOSO_CPU_LEVEL {
-        IF AOSO_CPU_LEVEL >= 2 {
-            IF lvl < 3 { RETURN. }
-        } ELSE {
-            IF AOSO_CPU_LEVEL >= 1 {
-                IF lvl < 2 { RETURN. }
-            }
+        IF AOSO_CPU_LEVEL >= 1 {
+            IF lvl < 2 { RETURN. }
         }
     }
 
