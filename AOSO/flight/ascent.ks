@@ -6,6 +6,8 @@
 // Vertical while alt < turnStart OR speed < turnStartSpeed. AoA limiter (default 7 deg)
 // around flight-path pitch so the nose does not yank. Out of atmosphere: orbital prograde.
 // Throttle still caps TWR (default 2.2) then holds ~45 s-to-AP after the path shallows.
+// Cut throttle and COAST as soon as apoapsis reaches ASCENT_TARGET_APO (80 km on Kerbin).
+// Callers that pass PARKING_ORBIT_ALT (100 km) do not keep the gravity-turn burn going.
 // Optimizer sweeps start speed; steering is this altitude program, not a prograde lead.
 //
 // Do not name locals `alt` -- that clobbers kOS's builtin ALT (ALT:RADAR).
@@ -327,13 +329,10 @@ FUNCTION aoso_ascent_turn_throttle {
     LOCAL twr_th IS aoso_ascent_twr_throttle().
     LOCAL target_apo IS AOSO_ASCENT["data"]["target_apo"].
 
-    IF APOAPSIS >= target_apo {
-        IF aoso_ascent_in_atmosphere() {
-            IF ALTITUDE < SHIP:BODY:ATM:HEIGHT * 0.9 { RETURN MIN(0.25, q_mult). }
-        }
-        IF APOAPSIS < target_apo * 1.005 { RETURN MIN(0.12, q_mult). }
-        RETURN 0.
-    }
+    // Hard cut at the ascent target. A 25% trickle until 0.9*atm was why
+    // Acacius rode 43 km apo at 38 km alt up to 476 km by the time it
+    // left dense air. Drag hold belongs in COAST, not here.
+    IF APOAPSIS >= target_apo { RETURN 0. }
 
     LOCAL fpa IS aoso_ascent_flight_path_pitch().
     // Steep + in air: TWR cap is the only loft lever. Full throttle here
@@ -594,10 +593,11 @@ FUNCTION aoso_ascent_turn_execute {
 
     IF APOAPSIS < data["target_apo"] { RETURN. }
 
-    IF aoso_ascent_in_atmosphere() {
-        IF ALTITUDE < SHIP:BODY:ATM:HEIGHT * 0.92 { RETURN. }
-    }
+    // Coast as soon as apo is at the target, even still in atmosphere.
+    // Waiting for 0.92*atm kept the gravity-turn burn alive and lofted
+    // apo from ~80 km to hundreds of km on the way out of the air.
     aoso_throttle_set(0).
+    aoso_log_info("ASCENT", "Apo " + ROUND(APOAPSIS, 0) + "m >= target " + ROUND(data["target_apo"], 0) + "m - cutting throttle, coasting (pitch program unchanged).").
     aoso_state_transition(AOSO_ASCENT, "COAST").
 }
 
@@ -615,9 +615,10 @@ FUNCTION aoso_ascent_coast_execute {
     aoso_staging_auto_check().
     IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
 
-    IF APOAPSIS < data["target_apo"] * 0.98 {
+    // Hold the ascent target against drag; never push apo past it.
+    IF APOAPSIS < data["target_apo"] {
         SET WARP TO 0.
-        aoso_throttle_set(0.2).
+        aoso_throttle_set(0.12).
     } ELSE {
         aoso_throttle_set(0).
     }
@@ -758,10 +759,27 @@ FUNCTION aoso_ascent_define_states {
     aoso_state_define(AOSO_ASCENT, "ABORTED", aoso_ascent_aborted_entry@, 0, 0).
 }
 
+FUNCTION aoso_ascent_resolve_target {
+    PARAMETER requested IS 0.
+    LOCAL apo_tgt IS aoso_config_get("ASCENT_TARGET_APO", 80000).
+    IF apo_tgt < 10000 { SET apo_tgt TO 80000. }
+
+    IF SHIP:BODY:ATM:EXISTS {
+        LOCAL floor_apo IS SHIP:BODY:ATM:HEIGHT + 10000.
+        IF apo_tgt < floor_apo { SET apo_tgt TO floor_apo. }
+        // Tour/goto pass PARKING_ORBIT_ALT (100 km). Atmospheric ascent
+        // burns to ASCENT_TARGET_APO (80 km on Kerbin), not parking.
+        RETURN apo_tgt.
+    }
+
+    IF requested > 0 { RETURN requested. }
+    RETURN apo_tgt.
+}
+
 FUNCTION aoso_ascent_start {
     PARAMETER launch_heading IS 90.
     PARAMETER target_apo IS 0.
-    IF target_apo <= 0 { SET target_apo TO aoso_config_get("ASCENT_TARGET_APO", 80000). }
+    SET target_apo TO aoso_ascent_resolve_target(target_apo).
 
     SET AOSO_ASCENT_MAX_Q_SEEN TO 0.
     aoso_ascent_opt_begin().
@@ -790,7 +808,7 @@ FUNCTION aoso_ascent_start {
     LOCAL end_a IS aoso_ascent_turn_end_alt().
     LOCAL max_aoa IS aoso_ascent_max_aoa().
     LOCAL twr_cap IS aoso_config_get("ASCENT_TWR_LIMIT", 2.2).
-    aoso_log_info("ASCENT", "Profile=" + aoso_ascent_profile_name() + " gravity-turn (MechJeb-classic pitch program, shape=" + ROUND(shape_now, 2) + ", startAlt=" + ROUND(start_a, 0) + ", endAlt=" + ROUND(end_a, 0) + ", maxAoA=" + ROUND(max_aoa, 1) + ", TWR cap=" + ROUND(twr_cap, 2) + ") holdAP=" + ROUND(aoso_config_get("ASCENT_HOLD_AP_S", 45), 0) + "s target=" + ROUND(target_apo, 0) + "m. If this line is missing, GameData still has the old ascent.").
+    aoso_log_info("ASCENT", "Profile=" + aoso_ascent_profile_name() + " gravity-turn (MechJeb-classic pitch program, shape=" + ROUND(shape_now, 2) + ", startAlt=" + ROUND(start_a, 0) + ", endAlt=" + ROUND(end_a, 0) + ", maxAoA=" + ROUND(max_aoa, 1) + ", TWR cap=" + ROUND(twr_cap, 2) + ") holdAP=" + ROUND(aoso_config_get("ASCENT_HOLD_AP_S", 45), 0) + "s target=" + ROUND(target_apo, 0) + "m (cut throttle here; parking is not the burn). If this line is missing, GameData still has the old ascent.").
     aoso_decide("ASCENT", "start", aoso_ascent_profile_name(), "start speed / shape", "spd=" + ROUND(AOSO_ASCENT["data"]["pitchover_speed"], 0) + " shape=" + ROUND(shape_now, 2) + " startAlt=" + ROUND(start_a, 0) + " endAlt=" + ROUND(end_a, 0)).
     aoso_state_transition(AOSO_ASCENT, "LIFTOFF").
 }
