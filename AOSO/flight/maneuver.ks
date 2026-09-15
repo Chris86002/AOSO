@@ -17,12 +17,29 @@ GLOBAL AOSO_MANEUVER_BURNING IS FALSE.
 GLOBAL AOSO_MANEUVER_LAST_REMAINING IS 0.
 GLOBAL AOSO_MANEUVER_RESULT IS "ok".
 GLOBAL AOSO_MANEUVER_NO_THRUST_TICKS IS 0.
+GLOBAL AOSO_MANEUVER_APO_CAP IS -1.
+GLOBAL AOSO_MANEUVER_CUT_BODY IS "".
 
 FUNCTION aoso_maneuver_reset_exec {
     SET AOSO_MANEUVER_BURNING TO FALSE.
     SET AOSO_MANEUVER_LOCK TO V(0, 0, 0).
     SET AOSO_MANEUVER_LAST_REMAINING TO 0.
     SET AOSO_MANEUVER_NO_THRUST_TICKS TO 0.
+}
+
+FUNCTION aoso_maneuver_set_apo_cap {
+    PARAMETER apo_alt.
+    SET AOSO_MANEUVER_APO_CAP TO apo_alt.
+}
+
+FUNCTION aoso_maneuver_set_cut_body {
+    PARAMETER body_name.
+    SET AOSO_MANEUVER_CUT_BODY TO body_name.
+}
+
+FUNCTION aoso_maneuver_clear_apo_cap {
+    SET AOSO_MANEUVER_APO_CAP TO -1.
+    SET AOSO_MANEUVER_CUT_BODY TO "".
 }
 
 FUNCTION aoso_maneuver_last_result {
@@ -165,6 +182,7 @@ FUNCTION aoso_maneuver_finish_node {
     aoso_steer_release().
     IF HASNODE { REMOVE nd. }
     aoso_maneuver_reset_exec().
+    aoso_maneuver_clear_apo_cap().
     IF reason = "missed" { SET AOSO_MANEUVER_RESULT TO "missed". }
     ELSE {
         IF reason = "no thrust" OR reason = "incomplete" { SET AOSO_MANEUVER_RESULT TO "incomplete". }
@@ -315,6 +333,40 @@ FUNCTION aoso_maneuver_execute_next {
     SET AOSO_MANEUVER_NO_THRUST_TICKS TO 0.
     aoso_staging_auto_check().
 
+    IF AOSO_MANEUVER_CUT_BODY <> "" {
+        LOCAL cur_orb IS SHIP:ORBIT.
+        LOCAL patch_i IS 0.
+        LOCAL got_patch IS FALSE.
+        UNTIL patch_i >= 4 {
+            IF NOT cur_orb:HASNEXTPATCH {
+                SET patch_i TO 4.
+            } ELSE {
+                SET cur_orb TO cur_orb:NEXTPATCH.
+                IF cur_orb:BODY:NAME = AOSO_MANEUVER_CUT_BODY { SET got_patch TO TRUE. }
+                SET patch_i TO patch_i + 1.
+            }
+        }
+        IF got_patch {
+            aoso_log_info("MANEUVER", "Intercept with " + AOSO_MANEUVER_CUT_BODY + " appeared - cutting so we keep it.").
+            aoso_maneuver_finish_node(nd, "intercept").
+            RETURN TRUE.
+        }
+    }
+
+    IF AOSO_MANEUVER_APO_CAP > 0 {
+        IF SHIP:ORBIT:ECCENTRICITY >= 0.995 {
+            aoso_log_warn("MANEUVER", "Eccentricity " + ROUND(SHIP:ORBIT:ECCENTRICITY, 3) + " - cutting before escape.").
+            aoso_maneuver_finish_node(nd, "apo cap").
+            RETURN TRUE.
+        }
+        LOCAL apo_now IS aoso_orbit_apoapsis_alt().
+        IF apo_now >= AOSO_MANEUVER_APO_CAP {
+            aoso_log_info("MANEUVER", "Apo " + ROUND(apo_now, 0) + "m reached target " + ROUND(AOSO_MANEUVER_APO_CAP, 0) + "m - cutting so we do not escape.").
+            aoso_maneuver_finish_node(nd, "apo cap").
+            RETURN TRUE.
+        }
+    }
+
     LOCAL accel IS aoso_maneuver_current_accel().
     LOCAL t_remain IS 0.
     IF accel > 0.05 { SET t_remain TO remaining / accel. }
@@ -355,4 +407,5 @@ FUNCTION aoso_maneuver_clear_all {
         REMOVE NEXTNODE.
     }
     aoso_maneuver_reset_exec().
+    aoso_maneuver_clear_apo_cap().
 }

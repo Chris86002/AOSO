@@ -68,6 +68,8 @@ FUNCTION aoso_plan_build {
         "mode", aoso_config_get("OPTIMIZATION_MODE", "BALANCED"),
         "from", SHIP:BODY:NAME,
         "mission_dv", aoso_budget_get("mission_dv", 0),
+        "full_tank_dv", aoso_feas_full_tank_dv(),
+        "isru", aoso_profile_capable("can_isru"),
         "provisional", provisional,
         "at", TIME:SECONDS
     ).
@@ -81,6 +83,11 @@ FUNCTION aoso_plan_log {
     LOCAL order_txt IS aoso_route_join(AOSO_PLAN_LAST["targets"]).
     LOCAL skip_txt IS aoso_route_join(AOSO_PLAN_LAST["skipped"]).
     LOCAL orbit_txt IS aoso_route_join(AOSO_PLAN_LAST["orbit_only"]).
+    IF AOSO_PLAN_LAST:HASKEY("isru") {
+        IF AOSO_PLAN_LAST["isru"] {
+            aoso_log_info("PLAN", "ISRU aboard: hops costed against a full tank after refuel (" + ROUND(AOSO_PLAN_LAST["full_tank_dv"], 0) + " m/s), not leftover from the previous burn.").
+        }
+    }
     IF AOSO_PLAN_LAST["skipped"]:LENGTH = 0 {
         aoso_log_info("PLAN", "Full tour feasible as " + aoso_classify_name() +
             ". Order: " + order_txt + " then KSC.").
@@ -89,6 +96,10 @@ FUNCTION aoso_plan_log {
             ", mission dV " + ROUND(AOSO_PLAN_LAST["mission_dv"], 0) + " m/s).").
         aoso_log_warn("PLAN", "Maximum achievable tour: " + order_txt + " then return.").
         aoso_log_warn("PLAN", "Skipped: " + skip_txt + ".").
+        FOR dest_name IN AOSO_PLAN_LAST["skipped"] {
+            LOCAL row IS aoso_matrix_get(dest_name).
+            aoso_log_warn("PLAN", "skip " + dest_name + ": " + row["reason"] + ".").
+        }
     }
     IF AOSO_PLAN_LAST["orbit_only"]:LENGTH > 0 {
         aoso_log_info("PLAN", "Orbit only (no landing): " + orbit_txt + ".").

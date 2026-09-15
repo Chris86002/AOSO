@@ -40,6 +40,7 @@ FUNCTION aoso_matrix_row {
     PARAMETER dest_name.
     LOCAL report IS aoso_feas_evaluate(dest_name).
     LOCAL have IS report["mission_dv"].
+    IF report:HASKEY("hop_budget") { SET have TO report["hop_budget"]. }
     LOCAL orbit_need IS report["transfer_dv"] + report["capture_dv"].
     LOCAL land_need IS orbit_need + report["land_dv"].
     LOCAL return_need IS report["return_dv"].
@@ -125,7 +126,7 @@ FUNCTION aoso_matrix_log {
             aoso_log_info("MATRIX", dest_name + "  orbit " + aoso_matrix_cell_txt(row["orbit"]) +
                 "  land " + aoso_matrix_cell_txt(row["land"]) +
                 "  return " + aoso_matrix_cell_txt(row["ret"]) +
-                "  " + row["result"]).
+                "  " + row["result"] + "  " + row["reason"]).
         }
     }
     aoso_log_info("MATRIX", "Summary: " + AOSO_MATRIX_LAST["feasible"] + " landable, " +

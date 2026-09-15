@@ -235,14 +235,23 @@ FUNCTION aoso_goto_plan_entry {
                 IF SHIP:ORBIT:HASNEXTPATCH {
                     IF SHIP:ORBIT:NEXTPATCH:BODY:NAME = hop:NAME {
                         SET data["burn_kind"] TO kind.
+                        SET data["retry_ut"] TO 0.
                         aoso_state_transition(AOSO_GOTO, "COAST").
                         RETURN.
                     }
                 }
-                aoso_state_abort(AOSO_GOTO).
+                LOCAL period IS aoso_orbit_period_s().
+                IF period < 90 { SET period TO 90. }
+                SET data["retry_ut"] TO TIME:SECONDS + period.
+                aoso_log_warn("GOTO", "No " + hop:NAME + " intercept this window - warping one orbit (" + ROUND(period, 0) + "s) and retrying. Will not burn a blind Hohmann.").
+                SET data["burn_kind"] TO "coast".
+                aoso_state_transition(AOSO_GOTO, "COAST").
                 RETURN.
             }
             SET data["burn_kind"] TO kind.
+            SET data["retry_ut"] TO 0.
+            aoso_maneuver_set_apo_cap(hop:ORBIT:APOAPSIS * 1.04).
+            aoso_maneuver_set_cut_body(hop:NAME).
             aoso_state_transition(AOSO_GOTO, "BURN").
             RETURN.
         }
@@ -348,6 +357,15 @@ FUNCTION aoso_goto_coast_entry {
     aoso_throttle_set(0).
     aoso_steer_release().
     SET data["coast_since"] TO TIME:SECONDS.
+    IF aoso_goto_patch_body_name() = "" {
+        IF data["retry_ut"] <= 0 {
+            LOCAL period IS aoso_orbit_period_s().
+            IF period < 90 { SET period TO 90. }
+            IF period > 180 { SET period TO 180. }
+            SET data["retry_ut"] TO TIME:SECONDS + period.
+            aoso_log_info("GOTO", "No patch after the burn - warping " + ROUND(period, 0) + "s then re-planning.").
+        }
+    }
 }
 
 FUNCTION aoso_goto_coast_execute {
@@ -373,6 +391,7 @@ FUNCTION aoso_goto_coast_execute {
 
     LOCAL np IS aoso_goto_patch_body_name().
     IF np <> "" {
+        SET data["retry_ut"] TO 0.
         LOCAL eta_p IS SHIP:ORBIT:NEXTPATCHETA.
         IF eta_p > 30 {
             LOCAL align_s IS aoso_maneuver_align_s().
@@ -381,6 +400,21 @@ FUNCTION aoso_goto_coast_execute {
             SET WARP TO 0.
         }
         RETURN.
+    }
+
+    IF data:HASKEY("retry_ut") {
+        IF data["retry_ut"] > 0 {
+            LOCAL retry_left IS data["retry_ut"] - TIME:SECONDS.
+            IF retry_left <= 8 {
+                SET WARP TO 0.
+                SET data["retry_ut"] TO 0.
+                aoso_log_info("GOTO", "Retry window reached - re-planning intercept.").
+                aoso_state_transition(AOSO_GOTO, "PLAN").
+                RETURN.
+            }
+            LOCAL wst2 IS aoso_warp_approach(retry_left, 20, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
+            RETURN.
+        }
     }
 
     LOCAL coasted IS TIME:SECONDS - data["coast_since"].
@@ -478,7 +512,7 @@ FUNCTION aoso_goto_define_states {
 FUNCTION aoso_goto_start {
     PARAMETER body_name.
     aoso_goto_define_states().
-    SET AOSO_GOTO["data"] TO LEXICON("goal", body_name, "hop", "", "burn_kind", "", "depart_body", SHIP:BODY:NAME, "window_ut", 0, "coast_since", 0).
+    SET AOSO_GOTO["data"] TO LEXICON("goal", body_name, "hop", "", "burn_kind", "", "depart_body", SHIP:BODY:NAME, "window_ut", 0, "coast_since", 0, "retry_ut", 0).
     aoso_log_info("GOTO", "Navigating to " + body_name + ".").
     aoso_state_transition(AOSO_GOTO, "PLAN").
 }

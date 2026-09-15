@@ -69,6 +69,19 @@ FUNCTION aoso_feas_return_cost {
     RETURN aoso_feas_body_stat(aoso_feas_planet_of(body_name), "return", 800).
 }
 
+FUNCTION aoso_feas_moon_from_parent {
+    PARAMETER moon_name.
+    LOCAL planet_name IS aoso_feas_planet_of(moon_name).
+    IF moon_name = planet_name { RETURN 0. }
+    LOCAL moon_lko IS aoso_feas_body_stat(moon_name, "transfer_from_lko", 400).
+    LOCAL planet_lko IS aoso_feas_body_stat(planet_name, "transfer_from_lko", 1500).
+    LOCAL hop IS moon_lko - planet_lko.
+    IF hop < 250 {
+        SET hop TO aoso_feas_body_stat(moon_name, "capture", 400) + 250.
+    }
+    RETURN hop.
+}
+
 FUNCTION aoso_feas_transfer_cost {
     PARAMETER from_name.
     PARAMETER to_name.
@@ -93,16 +106,74 @@ FUNCTION aoso_feas_transfer_cost {
         }
         IF to_name <> to_planet {
             SET cost TO cost + aoso_feas_body_stat(to_planet, "capture", 200).
-            SET cost TO cost + aoso_feas_body_stat(to_name, "transfer_from_lko", 400).
+            SET cost TO cost + aoso_feas_moon_from_parent(to_name).
         } ELSE {
             SET cost TO cost + aoso_feas_body_stat(to_name, "capture", 400).
         }
     } ELSE {
-        SET cost TO cost + aoso_feas_body_stat(to_name, "transfer_from_lko", 800).
-        SET cost TO cost + aoso_feas_body_stat(to_name, "capture", 200).
+        IF to_name <> to_planet {
+            SET cost TO cost + aoso_feas_moon_from_parent(to_name).
+            SET cost TO cost + aoso_feas_body_stat(to_name, "capture", 200).
+        } ELSE {
+            SET cost TO cost + aoso_feas_body_stat(to_name, "transfer_from_lko", 800).
+            SET cost TO cost + aoso_feas_body_stat(to_name, "capture", 200).
+        }
     }
 
     RETURN cost.
+}
+
+// Propellant mass in tonnes from live tank amounts or capacities.
+FUNCTION aoso_feas_propellant_mass {
+    PARAMETER use_capacity.
+    LOCAL mass_t IS 0.
+    FOR res_row IN SHIP:RESOURCES {
+        LOCAL n IS res_row:NAME.
+        LOCAL qty IS res_row:AMOUNT.
+        IF use_capacity { SET qty TO res_row:CAPACITY. }
+        IF n = "LiquidFuel" { SET mass_t TO mass_t + qty * 0.005. }
+        IF n = "Oxidizer" { SET mass_t TO mass_t + qty * 0.005. }
+        IF n = "MonoPropellant" { SET mass_t TO mass_t + qty * 0.004. }
+        IF n = "XenonGas" { SET mass_t TO mass_t + qty * 0.0001. }
+        IF n = "SolidFuel" { SET mass_t TO mass_t + qty * 0.0075. }
+    }
+    RETURN mass_t.
+}
+
+// Vacuum dV after ISRU fills tanks to REFUEL_TARGET_PCT. Scales the live
+// rocket-equation dV by ln(m_full/m_dry) / ln(m_now/m_dry).
+FUNCTION aoso_feas_full_tank_dv {
+    LOCAL vac_now IS aoso_caps_get("dv_total_vac", 0).
+    LOCAL fuel_now IS aoso_feas_propellant_mass(FALSE).
+    LOCAL fuel_cap IS aoso_feas_propellant_mass(TRUE).
+    IF fuel_now < 0.01 { RETURN vac_now. }
+    IF fuel_cap <= fuel_now * 1.02 { RETURN vac_now. }
+    LOCAL m_now IS SHIP:MASS.
+    LOCAL m_dry IS m_now - fuel_now.
+    IF m_dry < 0.1 { RETURN vac_now. }
+    LOCAL fill IS aoso_config_get("REFUEL_TARGET_PCT", 95) / 100.
+    LOCAL m_full IS m_dry + fuel_cap * fill.
+    IF m_now <= m_dry { RETURN vac_now. }
+    LOCAL ln_now IS LN(m_now / m_dry).
+    IF ln_now < 0.01 { RETURN vac_now. }
+    RETURN vac_now * LN(m_full / m_dry) / ln_now.
+}
+
+// TRUE when an ore body is cheap enough to reach with current mission dV
+// so later hops can be priced against a full tank.
+FUNCTION aoso_feas_can_refuel_enroute {
+    PARAMETER mission_dv.
+    PARAMETER margin.
+    IF NOT aoso_profile_capable("can_isru") { RETURN FALSE. }
+    IF aoso_world_has_ore(SHIP:BODY:NAME) { RETURN TRUE. }
+    LOCAL stops IS LIST("Minmus", "Mun", "Gilly", "Ike", "Dres", "Pol", "Bop", "Vall", "Eeloo").
+    FOR stop_name IN stops {
+        IF aoso_world_has_ore(stop_name) {
+            LOCAL c IS aoso_feas_transfer_cost(SHIP:BODY:NAME, stop_name) * margin.
+            IF c <= mission_dv { RETURN TRUE. }
+        }
+    }
+    RETURN FALSE.
 }
 
 FUNCTION aoso_feas_step {
@@ -168,7 +239,59 @@ FUNCTION aoso_feas_evaluate {
         IF dest_ref:ATM:EXISTS { SET dest_atmo TO TRUE. }
     }
 
-    LOCAL can_reach IS mission_dv >= transfer_dv.
+    LOCAL can_refuel IS FALSE.
+    IF has_isru {
+        IF aoso_world_has_ore(dest_name) { SET can_refuel TO TRUE. }
+    }
+
+    LOCAL full_tank IS aoso_feas_full_tank_dv().
+    LOCAL tank_mission IS full_tank - reserve_dv.
+    IF tank_mission < 0 { SET tank_mission TO 0. }
+    LOCAL hop_budget IS mission_dv.
+    LOCAL isru_enroute IS aoso_feas_can_refuel_enroute(mission_dv, margin).
+    IF isru_enroute {
+        IF tank_mission > hop_budget { SET hop_budget TO tank_mission. }
+    }
+    IF can_refuel {
+        IF tank_mission > hop_budget { SET hop_budget TO tank_mission. }
+    }
+
+    LOCAL parent_name IS aoso_feas_planet_of(dest_name).
+    LOCAL reach_note IS "".
+    LOCAL can_reach IS FALSE.
+    IF hop_budget >= transfer_dv {
+        SET can_reach TO TRUE.
+        IF isru_enroute {
+            SET reach_note TO "direct " + ROUND(transfer_dv, 0) + " <= tank " + ROUND(hop_budget, 0).
+        } ELSE {
+            SET reach_note TO "direct " + ROUND(transfer_dv, 0) + " <= mission " + ROUND(mission_dv, 0).
+        }
+    } ELSE {
+        IF dest_name <> parent_name {
+            IF has_isru {
+                LOCAL parent_xfer IS aoso_feas_transfer_cost(from_name, parent_name) * margin.
+                LOCAL moon_hop IS (aoso_feas_moon_from_parent(dest_name) + aoso_feas_body_stat(dest_name, "capture", 200)) * margin.
+                IF parent_xfer <= hop_budget {
+                    IF moon_hop <= hop_budget {
+                        SET can_reach TO TRUE.
+                        SET reach_note TO "via " + parent_name + " then ISRU hop " + ROUND(moon_hop, 0) + " <= tank " + ROUND(hop_budget, 0).
+                    } ELSE {
+                        SET reach_note TO "moon hop " + ROUND(moon_hop, 0) + " > tank " + ROUND(hop_budget, 0) + " even after ISRU at " + parent_name.
+                    }
+                } ELSE {
+                    SET reach_note TO "parent " + parent_name + " " + ROUND(parent_xfer, 0) + " > tank " + ROUND(hop_budget, 0) + " even after ISRU".
+                }
+            } ELSE {
+                SET reach_note TO "transfer " + ROUND(transfer_dv, 0) + " > mission dV " + ROUND(mission_dv, 0) + " (no ISRU)".
+            }
+        } ELSE {
+            IF has_isru {
+                SET reach_note TO "transfer " + ROUND(transfer_dv, 0) + " > ISRU tank " + ROUND(hop_budget, 0).
+            } ELSE {
+                SET reach_note TO "transfer " + ROUND(transfer_dv, 0) + " > mission dV " + ROUND(mission_dv, 0).
+            }
+        }
+    }
     LOCAL can_orbit IS FALSE.
     IF can_reach { SET can_orbit TO TRUE. }
     IF from_name = dest_name { SET can_reach TO TRUE. SET can_orbit TO TRUE. }
@@ -203,34 +326,31 @@ FUNCTION aoso_feas_evaluate {
     }
     IF can_land { SET land_note TO "TWR " + ROUND(surface_twr, 2). }
 
+    LOCAL takeoff_budget IS mission_dv.
+    IF can_refuel {
+        IF hop_budget > takeoff_budget { SET takeoff_budget TO hop_budget. }
+    }
     LOCAL can_takeoff IS FALSE.
     LOCAL takeoff_note IS "".
     IF dest_name = "Jool" OR dest_name = "Sun" {
         SET takeoff_note TO "no surface".
     } ELSE IF surface_twr < min_twr {
         SET takeoff_note TO "surface TWR " + ROUND(surface_twr, 2) + " < " + min_twr.
-    } ELSE IF takeoff_dv > mission_dv AND from_name <> dest_name {
-        // takeoff is funded after landing; compare against remaining after
-        // getting there, not the full mission_dv. Approximate: leftover
-        // after transfer.
-        LOCAL leftover IS mission_dv - transfer_dv.
-        IF leftover < takeoff_dv {
-            SET takeoff_note TO "takeoff " + ROUND(takeoff_dv, 0) + " > leftover " + ROUND(leftover, 0).
-        } ELSE {
-            SET can_takeoff TO TRUE.
-            SET takeoff_note TO "TWR " + ROUND(surface_twr, 2).
-        }
+    } ELSE IF takeoff_dv > takeoff_budget {
+        SET takeoff_note TO "takeoff " + ROUND(takeoff_dv, 0) + " > budget " + ROUND(takeoff_budget, 0).
+        IF can_refuel { SET takeoff_note TO takeoff_note + " even after ISRU". }
     } ELSE {
         SET can_takeoff TO TRUE.
         SET takeoff_note TO "TWR " + ROUND(surface_twr, 2).
+        IF can_refuel { SET takeoff_note TO takeoff_note + " ISRU tank". }
     }
 
-    LOCAL can_refuel IS FALSE.
-    IF has_isru {
-        IF aoso_world_has_ore(dest_name) { SET can_refuel TO TRUE. }
+    LOCAL return_budget IS mission_dv.
+    IF can_refuel {
+        IF hop_budget > return_budget { SET return_budget TO hop_budget. }
     }
-
-    LOCAL can_return IS mission_dv >= return_dv.
+    LOCAL can_return IS FALSE.
+    IF return_budget >= return_dv { SET can_return TO TRUE. }
     IF dest_name = home_name { SET can_return TO TRUE. }
 
     LOCAL can_abort IS aoso_budget_get("abort_dv", 0) > 0.
@@ -239,10 +359,11 @@ FUNCTION aoso_feas_evaluate {
     LOCAL reason IS "".
     IF NOT can_reach {
         SET result_name TO "SKIP".
-        SET reason TO "transfer " + ROUND(transfer_dv, 0) + " > mission dV " + ROUND(mission_dv, 0).
+        SET reason TO reach_note.
     } ELSE IF can_land AND can_takeoff {
         SET result_name TO "FEASIBLE".
         SET reason TO "land+takeoff ok".
+        IF can_refuel { SET reason TO reason + ", ISRU refuel to full tank". }
     } ELSE {
         SET result_name TO "ORBIT_ONLY".
         IF NOT can_land {
@@ -253,13 +374,13 @@ FUNCTION aoso_feas_evaluate {
     }
 
     LOCAL steps IS LIST().
-    steps:ADD(aoso_feas_step("TRANSFER", transfer_dv, mission_dv, can_reach, "")).
-    steps:ADD(aoso_feas_step("CAPTURE", capture_dv, mission_dv, can_orbit, "")).
-    steps:ADD(aoso_feas_step("LAND", land_dv, mission_dv, can_land, land_note)).
-    steps:ADD(aoso_feas_step("TAKEOFF", takeoff_dv, mission_dv, can_takeoff, takeoff_note)).
-    steps:ADD(aoso_feas_step("REFUEL", 0, mission_dv, can_refuel, "")).
-    steps:ADD(aoso_feas_step("RETURN", return_dv, mission_dv, can_return, "")).
-    steps:ADD(aoso_feas_step("RESERVE", reserve_dv, mission_dv, mission_dv >= 0, "")).
+    steps:ADD(aoso_feas_step("TRANSFER", transfer_dv, hop_budget, can_reach, reach_note)).
+    steps:ADD(aoso_feas_step("CAPTURE", capture_dv, hop_budget, can_orbit, "")).
+    steps:ADD(aoso_feas_step("LAND", land_dv, hop_budget, can_land, land_note)).
+    steps:ADD(aoso_feas_step("TAKEOFF", takeoff_dv, takeoff_budget, can_takeoff, takeoff_note)).
+    steps:ADD(aoso_feas_step("REFUEL", 0, hop_budget, can_refuel, "")).
+    steps:ADD(aoso_feas_step("RETURN", return_dv, return_budget, can_return, "")).
+    steps:ADD(aoso_feas_step("RESERVE", reserve_dv, hop_budget, hop_budget >= 0, "")).
 
     LOCAL report IS LEXICON(
         "body", dest_name,
@@ -280,6 +401,9 @@ FUNCTION aoso_feas_evaluate {
         "return_dv", return_dv,
         "reserve_dv", reserve_dv,
         "mission_dv", mission_dv,
+        "full_tank_dv", full_tank,
+        "hop_budget", hop_budget,
+        "isru_enroute", isru_enroute,
         "surface_twr", surface_twr,
         "steps", steps,
         "at", TIME:SECONDS
