@@ -169,6 +169,7 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
 
     LOCAL nd IS NODE(TIME:SECONDS + node_wait, 0, 0, dv).
     ADD nd.
+    aoso_planechange_apply_to_node(nd, target_orbitable).
 
     LOCAL hit IS aoso_rendezvous_seek_encounter(nd, target_orbitable, 40, 48).
     IF NOT hit {

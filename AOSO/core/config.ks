@@ -45,7 +45,8 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "STAGING_MAX_EXTRA", 1,             // extra STAGE only if the NEW current stage is also empty
     "MANEUVER_NO_THRUST_TICKS", 20,     // execute_next retries staging this many ticks before declaring a burn dead
     "MANEUVER_FEATHER_S", 2,            // s, remaining burn-time window over which maneuver throttle fades to cut
-    "MANEUVER_ALIGN_S", 120,            // s of physics time after warp, before ignition, to point the ship at the burn
+    "MANEUVER_ALIGN_S", 120,            // s of physics time after rails warp, before ignition, to point the ship
+    "MANEUVER_PHYSICS_UNTIL_S", 10,     // s of 1x remaining when physics warp drops before ignition
     "MANEUVER_FOLLOW_ABOVE_S", 8,       // s of remaining burn-time above which we follow the live node instead of locking
     "TOUR_REFUEL_BELOW_PCT", 60,        // % LiquidFuel at/below which the grand tour will land and ISRU-refuel
     "TOUR_MIN_LAND_TWR", 1.4,           // surface TWR required before the grand tour will attempt a landing

@@ -43,6 +43,47 @@ FUNCTION aoso_maneuver_can_warp {
     RETURN TRUE.
 }
 
+// Rails warp down to rails_lead_s, then physics warp until physics_until_s
+// before the event so SAS can keep pointing. Drops to 1x for the last
+// MANEUVER_PHYSICS_UNTIL_S seconds. Returns "rails" / "physics" / "now" / "hold".
+FUNCTION aoso_warp_approach {
+    PARAMETER eta_s.
+    PARAMETER rails_lead_s.
+    PARAMETER physics_until_s IS -1.
+
+    IF physics_until_s < 0 {
+        SET physics_until_s TO aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10).
+    }
+    IF eta_s <= physics_until_s {
+        SET WARP TO 0.
+        RETURN "now".
+    }
+    IF NOT aoso_maneuver_can_warp() {
+        SET WARP TO 0.
+        RETURN "hold".
+    }
+    IF eta_s > rails_lead_s + 5 {
+        IF WARPMODE <> "RAILS" {
+            SET WARP TO 0.
+            SET WARPMODE TO "RAILS".
+        }
+        IF WARP = 0 {
+            WARPTO(TIME:SECONDS + eta_s - rails_lead_s).
+        }
+        RETURN "rails".
+    }
+    IF WARPMODE <> "PHYSICS" {
+        SET WARP TO 0.
+        SET WARPMODE TO "PHYSICS".
+    }
+    LOCAL phys IS 3.
+    LOCAL cap IS aoso_config_get("MAX_WARP_FACTOR", 3).
+    IF phys > cap { SET phys TO cap. }
+    IF phys < 1 { SET phys TO 1. }
+    IF WARP <> phys { SET WARP TO phys. }
+    RETURN "physics".
+}
+
 // Delta-v (m/s, signed) needed at the current apoapsis to circularize:
 // target circular speed minus the vessel's actual speed there, derived from
 // the current orbit's semi-major axis via vis-viva.
@@ -182,17 +223,15 @@ FUNCTION aoso_maneuver_execute_next {
         LOCAL ignite_lead IS burn_time / 2.
         LOCAL align_s IS aoso_maneuver_align_s().
         LOCAL warp_lead IS ignite_lead + align_s.
+        LOCAL physics_until IS ignite_lead + aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10).
 
-        IF WARP > 0 {
-            IF nd:ETA <= warp_lead + 8 { SET WARP TO 0. }
+        LOCAL wstate IS aoso_warp_approach(nd:ETA, warp_lead, physics_until).
+        IF wstate = "rails" {
             aoso_throttle_set(0).
             RETURN FALSE.
         }
-
-        IF nd:ETA > warp_lead + 5 {
-            IF aoso_maneuver_can_warp() {
-                WARPTO(TIME:SECONDS + nd:ETA - warp_lead).
-            }
+        IF wstate = "physics" {
+            aoso_steer_to_vector(remaining_vec).
             aoso_throttle_set(0).
             RETURN FALSE.
         }

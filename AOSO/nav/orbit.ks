@@ -56,6 +56,24 @@ FUNCTION aoso_orbit_relative_inclination_deg {
     RETURN VANG(aoso_orbit_normal_now(orbitable_a), aoso_orbit_normal_now(orbitable_b)).
 }
 
+// Angle (deg, 0-180) between two Orbit structures using inclination + LAN.
+// NODE:ORBIT after a trial burn is the ground truth for "did this normal
+// actually close the plane?" - VCRS vs kOS NODE:NORMAL disagree in sign
+// (KSP's orbit normal is v cross r; VCRS(r,v) is r cross v), which is why
+// the Minmus 6 deg burn went to 12 deg.
+FUNCTION aoso_orbit_rel_inc_from_orbit {
+    PARAMETER orb.
+    PARAMETER other.
+    LOCAL i1 IS orb:INCLINATION.
+    LOCAL lan1 IS orb:LAN.
+    LOCAL i2 IS other:ORBIT:INCLINATION.
+    LOCAL lan2 IS other:ORBIT:LAN.
+    LOCAL ci IS COS(i1) * COS(i2) + SIN(i1) * SIN(i2) * COS(lan1 - lan2).
+    IF ci > 1 { SET ci TO 1. }
+    IF ci < -1 { SET ci TO -1. }
+    RETURN ARCCOS(ci).
+}
+
 // Vis-viva speed (m/s) an orbitable would have at body-centered radius r if
 // it kept its current semi-major axis. Used by hohmann.ks/rendezvous.ks
 // instead of duplicating the vis-viva formula per call site.
@@ -103,7 +121,7 @@ FUNCTION aoso_orbit_time_to_soi_change {
 
 // Finds up to two upcoming times (seconds from now) at which orbitable_a
 // crosses the orbital plane of orbitable_b -- i.e. the relative ascending
-// and descending nodes -- within one period of orbitable_a. Rather than
+// and descending nodes -- within two periods of orbitable_a. Rather than
 // solving Kepler's equation for an analytic true-anomaly-of-node (fragile to
 // get right without in-game verification), this samples the predicted
 // position against the target plane's normal and bisects any sign change,
@@ -118,13 +136,14 @@ FUNCTION aoso_orbit_relative_node_etas {
     IF period <= 0 { RETURN LIST(). }
     LOCAL now IS TIME:SECONDS.
     LOCAL dt IS period / samples.
+    LOCAL n_samples IS samples * 2.
 
     LOCAL etas IS LIST().
     LOCAL prev_t IS 0.
     LOCAL prev_val IS VDOT(aoso_orbit_position_at(orbitable_a, now), nb).
 
     LOCAL i IS 1.
-    UNTIL i > samples OR etas:LENGTH >= 2 {
+    UNTIL i > n_samples OR etas:LENGTH >= 2 {
         LOCAL t IS i * dt.
         LOCAL val IS VDOT(aoso_orbit_position_at(orbitable_a, now + t), nb).
 
@@ -155,12 +174,11 @@ FUNCTION aoso_orbit_relative_node_etas {
 }
 
 // Near-circular fallback when the sample bisection misses the relative
-// node (Acacius equatorial vs Minmus 6 deg returned no crossing). LAN
-// difference is the AN true anomaly on a low-ecc orbit around the same body.
-FUNCTION aoso_orbit_lan_node_eta {
+// node. Returns AN and DN from LAN difference as seconds-from-now.
+FUNCTION aoso_orbit_lan_node_etas {
     PARAMETER target_orbitable.
     LOCAL period IS aoso_orbit_period_s().
-    IF period <= 0 { RETURN -1. }
+    IF period <= 0 { RETURN LIST(). }
     LOCAL ta_an IS target_orbitable:ORBIT:LAN - SHIP:ORBIT:LAN - SHIP:ORBIT:ARGUMENTOFPERIAPSIS.
     LOCAL dta IS ta_an - SHIP:ORBIT:TRUEANOMALY.
     UNTIL dta >= 8 {
@@ -169,7 +187,26 @@ FUNCTION aoso_orbit_lan_node_eta {
     UNTIL dta < 368 {
         SET dta TO dta - 360.
     }
-    RETURN period * dta / 360.
+    LOCAL out IS LIST().
+    LOCAL eta_an IS period * dta / 360.
+    IF eta_an > 20 { out:ADD(eta_an). }
+    LOCAL dta_dn IS dta + 180.
+    UNTIL dta_dn >= 8 {
+        SET dta_dn TO dta_dn + 360.
+    }
+    UNTIL dta_dn < 368 {
+        SET dta_dn TO dta_dn - 360.
+    }
+    LOCAL eta_dn IS period * dta_dn / 360.
+    IF eta_dn > 20 { out:ADD(eta_dn). }
+    RETURN out.
+}
+
+FUNCTION aoso_orbit_lan_node_eta {
+    PARAMETER target_orbitable.
+    LOCAL both IS aoso_orbit_lan_node_etas(target_orbitable).
+    IF both:LENGTH = 0 { RETURN -1. }
+    RETURN both[0].
 }
 
 // Upcoming times (seconds from now) at which orbitable crosses the body's

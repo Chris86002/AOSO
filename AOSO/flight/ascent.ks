@@ -642,11 +642,7 @@ FUNCTION aoso_ascent_coast_execute {
     LOCAL align_s IS aoso_maneuver_align_s().
 
     IF ETA:APOAPSIS > (lead_s + align_s + 5) {
-        IF WARP = 0 {
-            IF aoso_maneuver_can_warp() {
-                WARPTO(TIME:SECONDS + ETA:APOAPSIS - (lead_s + align_s)).
-            }
-        }
+        LOCAL wst IS aoso_warp_approach(ETA:APOAPSIS, lead_s + align_s, lead_s + aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
         RETURN.
     }
     SET WARP TO 0.
