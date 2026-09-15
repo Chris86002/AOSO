@@ -247,8 +247,10 @@ FUNCTION aoso_capture_add_pe_adjust {
 }
 
 FUNCTION aoso_capture_want_polar {
-    IF NOT DEFINED AOSO_WANT_POLAR { RETURN FALSE. }
-    RETURN AOSO_WANT_POLAR.
+    IF DEFINED AOSO_WANT_POLAR {
+        RETURN AOSO_WANT_POLAR.
+    }
+    RETURN FALSE.
 }
 
 FUNCTION aoso_capture_polar_err {
