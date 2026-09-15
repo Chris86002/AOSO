@@ -26,6 +26,7 @@ FUNCTION aoso_plan_compress {
 FUNCTION aoso_plan_build {
     aoso_log_info("PLAN", "Building mission plan for " + SHIP:NAME + " from " + SHIP:BODY:NAME +
         " (mode=" + aoso_config_get("OPTIMIZATION_MODE", "BALANCED") + ").").
+    aoso_ui_pulse("Planning tour", "Classifying " + SHIP:NAME).
 
     aoso_classify_refresh().
     aoso_budget_refresh().
@@ -105,6 +106,7 @@ FUNCTION aoso_plan_log {
         aoso_log_info("PLAN", "Orbit only (no landing): " + orbit_txt + ".").
     }
     aoso_decide("PLAN", "route", order_txt, aoso_classify_name(), "dv=" + ROUND(AOSO_PLAN_LAST["mission_dv"], 0) + " skip=" + skip_txt).
+    aoso_ui_clear().
 }
 
 FUNCTION aoso_plan_targets {

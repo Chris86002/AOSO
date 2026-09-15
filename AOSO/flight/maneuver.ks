@@ -347,8 +347,18 @@ FUNCTION aoso_maneuver_execute_next {
             }
         }
         IF got_patch {
-            aoso_log_info("MANEUVER", "Intercept with " + AOSO_MANEUVER_CUT_BODY + " appeared - cutting so we keep it.").
-            aoso_maneuver_finish_node(nd, "intercept").
+            LOCAL cut_now IS FALSE.
+            IF remaining < 20 { SET cut_now TO TRUE. }
+            IF SHIP:ORBIT:ECCENTRICITY > 0.98 { SET cut_now TO TRUE. }
+            IF cut_now {
+                aoso_log_info("MANEUVER", "Intercept with " + AOSO_MANEUVER_CUT_BODY + " locked in - cutting so we keep it.").
+                aoso_maneuver_finish_node(nd, "intercept").
+                RETURN TRUE.
+            }
+        }
+        IF SHIP:ORBIT:ECCENTRICITY >= 0.995 {
+            aoso_log_warn("MANEUVER", "Eccentricity " + ROUND(SHIP:ORBIT:ECCENTRICITY, 3) + " - cutting before escape.").
+            aoso_maneuver_finish_node(nd, "apo cap").
             RETURN TRUE.
         }
     }

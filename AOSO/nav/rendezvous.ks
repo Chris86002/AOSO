@@ -132,12 +132,8 @@ FUNCTION aoso_rendezvous_dv_max {
     RETURN dv_max.
 }
 
-// Walk departure time around the Hohmann window. kOS patched conics on a
-// NODE do not update until the next physics tick, so every trial does
-// WAIT 0. Never bump dV past 98% of escape - Acacius's 1.15x Minmus
-// Hohmann was 1045 m/s vs Kerbin escape ~941 and dumped the ship on a
-// solar hyperbola. A real Minmus Hohmann is ~920, just under escape, so
-// 0.90 was too tight.
+// Keep the *best* patched PE, not the first clip. First-hit at T+219s
+// was a 61 km Minmus graze; the Hohmann window (~15 km PE) was later.
 FUNCTION aoso_rendezvous_search_intercept {
     PARAMETER nd.
     PARAMETER hop.
@@ -148,38 +144,221 @@ FUNCTION aoso_rendezvous_search_intercept {
     LOCAL dv_max IS aoso_rendezvous_dv_max(radius).
     LOCAL dv_use IS dv0.
     IF dv_use > dv_max { SET dv_use TO dv_max. }
+    IF dv_use < 0 { SET dv_use TO 0. }
 
-    WAIT 0.
-    IF aoso_rendezvous_node_hits_body(nd, hop) { RETURN TRUE. }
-
+    LOCAL desired IS aoso_rendezvous_desired_pe(hop).
     LOCAL period IS aoso_orbit_period_s().
     IF period < 80 { SET period TO 600. }
     LOCAL t_center IS TIME:SECONDS + nd:ETA.
-    LOCAL t_lo IS t_center - period.
-    IF t_lo < TIME:SECONDS + 40 { SET t_lo TO TIME:SECONDS + 40. }
-    LOCAL t_hi IS t_center + period.
+    aoso_ui_pulse("Searching " + hop:NAME + " intercept", "Hohmann window first, then best PE").
 
-    LOCAL scales IS LIST(1, 0.99, 1.01).
+    LOCAL best_sc IS 1000000000000.
+    LOCAL best_ut IS t_center.
+    LOCAL best_pg IS dv_use.
+    LOCAL found IS FALSE.
+    LOCAL n_chk IS 0.
+
+    LOCAL scales IS LIST(1).
+    IF ABS(dv_use) >= 8 {
+        SET scales TO LIST(1, 0.99, 1.01).
+    }
     LOCAL si IS 0.
     UNTIL si >= scales:LENGTH {
-        LOCAL dv_try IS dv_use * scales[si].
-        IF dv_try > dv_max { SET dv_try TO dv_max. }
-        SET nd:PROGRADE TO dv_try.
-        LOCAL t_ut IS t_lo.
-        LOCAL step_s IS 20.
-        IF si > 0 { SET step_s TO 35. }
-        UNTIL t_ut > t_hi {
-            SET nd:ETA TO t_ut - TIME:SECONDS.
-            IF nd:ETA < 25 { SET nd:ETA TO 25. }
-            WAIT 0.
-            IF aoso_rendezvous_node_hits_body(nd, hop) { RETURN TRUE. }
-            SET t_ut TO t_ut + step_s.
+        IF found {
+            IF best_sc < desired * 1.5 { SET si TO scales:LENGTH. }
         }
-        SET si TO si + 1.
+        IF si < scales:LENGTH {
+            LOCAL dv_try IS dv_use * scales[si].
+            IF dv_try > dv_max { SET dv_try TO dv_max. }
+            SET nd:PROGRADE TO dv_try.
+            LOCAL step_s IS 25.
+            IF si > 0 { SET step_s TO 40. }
+            LOCAL delta IS 0.
+            UNTIL delta > period {
+                LOCAL t_ut IS t_center + delta.
+                IF t_ut > TIME:SECONDS + 25 {
+                    SET nd:ETA TO t_ut - TIME:SECONDS.
+                    WAIT 0.
+                    IF aoso_rendezvous_node_hits_body(nd, hop) {
+                        LOCAL sc IS aoso_rendezvous_pe_score(nd, hop, desired).
+                        IF sc < best_sc {
+                            SET best_sc TO sc.
+                            SET best_ut TO TIME:SECONDS + nd:ETA.
+                            SET best_pg TO nd:PROGRADE.
+                            SET found TO TRUE.
+                        }
+                    }
+                    SET n_chk TO n_chk + 1.
+                }
+                IF delta > 0 {
+                    SET t_ut TO t_center - delta.
+                    IF t_ut > TIME:SECONDS + 25 {
+                        SET nd:ETA TO t_ut - TIME:SECONDS.
+                        WAIT 0.
+                        IF aoso_rendezvous_node_hits_body(nd, hop) {
+                            LOCAL sc2 IS aoso_rendezvous_pe_score(nd, hop, desired).
+                            IF sc2 < best_sc {
+                                SET best_sc TO sc2.
+                                SET best_ut TO TIME:SECONDS + nd:ETA.
+                                SET best_pg TO nd:PROGRADE.
+                                SET found TO TRUE.
+                            }
+                        }
+                        SET n_chk TO n_chk + 1.
+                    }
+                }
+                SET delta TO delta + step_s.
+                IF n_chk >= 8 {
+                    LOCAL pe_txt IS "none yet".
+                    IF found { SET pe_txt TO ROUND(best_sc, 0) + " score". }
+                    aoso_ui_pulse("Searching " + hop:NAME + " intercept", "window ±" + ROUND(delta, 0) + "s  best " + pe_txt).
+                    SET n_chk TO 0.
+                }
+            }
+            SET si TO si + 1.
+        }
+    }
+
+    IF found {
+        SET nd:PROGRADE TO best_pg.
+        SET nd:ETA TO best_ut - TIME:SECONDS.
+        IF nd:ETA < 25 { SET nd:ETA TO 25. }
+        WAIT 0.
+        aoso_rendezvous_refine_intercept(nd, hop, dv_use).
+        RETURN TRUE.
     }
     SET nd:PROGRADE TO dv_use.
     SET nd:ETA TO t_center - TIME:SECONDS.
     IF nd:ETA < 25 { SET nd:ETA TO 25. }
+    RETURN FALSE.
+}
+
+// 5 s time walk + small prograde/radial around the coarse hit so PE
+// lands at parking (15 km Minmus) instead of the first SOI clip (61 km).
+FUNCTION aoso_rendezvous_refine_intercept {
+    PARAMETER nd.
+    PARAMETER hop.
+    PARAMETER dv0.
+
+    LOCAL desired IS aoso_rendezvous_desired_pe(hop).
+    LOCAL best_sc IS aoso_rendezvous_pe_score(nd, hop, desired).
+    LOCAL best_ut IS TIME:SECONDS + nd:ETA.
+    LOCAL best_pg IS nd:PROGRADE.
+    LOCAL best_rad IS nd:RADIALOUT.
+    LOCAL n_ref IS 0.
+
+    LOCAL dt IS -80.
+    UNTIL dt > 80 {
+        SET nd:ETA TO (best_ut + dt) - TIME:SECONDS.
+        IF nd:ETA >= 25 {
+            WAIT 0.
+            IF aoso_rendezvous_node_hits_body(nd, hop) {
+                LOCAL sc IS aoso_rendezvous_pe_score(nd, hop, desired).
+                IF sc < best_sc {
+                    SET best_sc TO sc.
+                    SET best_ut TO TIME:SECONDS + nd:ETA.
+                    SET best_pg TO nd:PROGRADE.
+                    SET best_rad TO nd:RADIALOUT.
+                }
+            }
+            SET n_ref TO n_ref + 1.
+            IF n_ref >= 8 {
+                aoso_ui_pulse("Refining " + hop:NAME + " intercept", "PE score " + ROUND(best_sc, 0) + "  want " + ROUND(desired, 0) + "m").
+                SET n_ref TO 0.
+            }
+        }
+        SET dt TO dt + 5.
+    }
+
+    LOCAL extras IS LIST(-0.03 * ABS(dv0), 0.03 * ABS(dv0), -15, 15, -8, 8).
+    LOCAL ei IS 0.
+    UNTIL ei >= extras:LENGTH {
+        SET nd:PROGRADE TO best_pg + extras[ei].
+        aoso_rendezvous_clamp_prograde(nd).
+        SET nd:RADIALOUT TO best_rad.
+        SET nd:ETA TO best_ut - TIME:SECONDS.
+        IF nd:ETA < 25 { SET nd:ETA TO 25. }
+        WAIT 0.
+        IF aoso_rendezvous_node_hits_body(nd, hop) {
+            LOCAL sc2 IS aoso_rendezvous_pe_score(nd, hop, desired).
+            IF sc2 < best_sc {
+                SET best_sc TO sc2.
+                SET best_ut TO TIME:SECONDS + nd:ETA.
+                SET best_pg TO nd:PROGRADE.
+                SET best_rad TO nd:RADIALOUT.
+            }
+        }
+        SET nd:PROGRADE TO best_pg.
+        SET nd:RADIALOUT TO best_rad + extras[ei] * 0.4.
+        SET nd:ETA TO best_ut - TIME:SECONDS.
+        IF nd:ETA < 25 { SET nd:ETA TO 25. }
+        WAIT 0.
+        IF aoso_rendezvous_node_hits_body(nd, hop) {
+            LOCAL sc3 IS aoso_rendezvous_pe_score(nd, hop, desired).
+            IF sc3 < best_sc {
+                SET best_sc TO sc3.
+                SET best_ut TO TIME:SECONDS + nd:ETA.
+                SET best_pg TO nd:PROGRADE.
+                SET best_rad TO nd:RADIALOUT.
+            }
+        }
+        SET ei TO ei + 1.
+    }
+
+    SET nd:PROGRADE TO best_pg.
+    SET nd:RADIALOUT TO best_rad.
+    SET nd:ETA TO best_ut - TIME:SECONDS.
+    IF nd:ETA < 25 { SET nd:ETA TO 25. }
+    WAIT 0.
+}
+
+// Already on a transfer-like ellipse (apo near the moon): wait at apoapsis
+// passages with a *small* correction. Do not fire another full Hohmann at
+// periapsis — that is how a 80×49 000 km miss becomes a solar escape.
+FUNCTION aoso_rendezvous_search_apo_passages {
+    PARAMETER nd.
+    PARAMETER hop.
+
+    LOCAL desired IS aoso_rendezvous_desired_pe(hop).
+    LOCAL period IS aoso_orbit_period_s().
+    IF period < 80 { RETURN FALSE. }
+    LOCAL apo_eta IS ETA:APOAPSIS.
+    IF apo_eta < 40 { SET apo_eta TO apo_eta + period. }
+    LOCAL t0 IS TIME:SECONDS + apo_eta.
+    LOCAL dvs IS LIST(0, 20, -20, 40, -40).
+    LOCAL best_sc IS 1000000000000.
+    LOCAL best_ut IS t0.
+    LOCAL best_pg IS 0.
+    LOCAL found IS FALSE.
+    LOCAL k IS 0.
+    UNTIL k >= 8 {
+        LOCAL di IS 0.
+        UNTIL di >= dvs:LENGTH {
+            SET nd:PROGRADE TO dvs[di].
+            SET nd:ETA TO (t0 + k * period) - TIME:SECONDS.
+            IF nd:ETA < 25 { SET nd:ETA TO 25. }
+            WAIT 0.
+            IF aoso_rendezvous_node_hits_body(nd, hop) {
+                LOCAL sc IS aoso_rendezvous_pe_score(nd, hop, desired).
+                IF sc < best_sc {
+                    SET best_sc TO sc.
+                    SET best_ut TO TIME:SECONDS + nd:ETA.
+                    SET best_pg TO nd:PROGRADE.
+                    SET found TO TRUE.
+                }
+            }
+            SET di TO di + 1.
+        }
+        aoso_ui_pulse("Phasing to " + hop:NAME, "apoapsis pass " + (k + 1) + "/8").
+        SET k TO k + 1.
+    }
+    IF found {
+        SET nd:PROGRADE TO best_pg.
+        SET nd:ETA TO best_ut - TIME:SECONDS.
+        IF nd:ETA < 25 { SET nd:ETA TO 25. }
+        WAIT 0.
+        RETURN TRUE.
+    }
     RETURN FALSE.
 }
 
@@ -209,18 +388,27 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
     }
 
     IF already {
-        SET r1 TO SHIP:BODY:RADIUS + MAX(PERIAPSIS, 1000).
-        SET node_wait TO ETA:PERIAPSIS.
-        IF node_wait < 30 { SET node_wait TO node_wait + MAX(60, aoso_orbit_period_s()). }
-        aoso_log_info("RENDEZVOUS", "Already near " + target_orbitable:NAME + " altitude (AP=" + ROUND(APOAPSIS, 0) + " m) - correcting at periapsis instead of a new Hohmann.").
-    } ELSE {
-        LOCAL wait_s IS aoso_rendezvous_wait_time_to_transfer_s(target_orbitable).
-        IF wait_s < 0 {
-            aoso_log_warn("RENDEZVOUS", "Ship and target periods match; no transfer window exists.").
-            RETURN 0.
+        aoso_log_info("RENDEZVOUS", "Already near " + target_orbitable:NAME + " altitude (AP=" + ROUND(APOAPSIS, 0) + " m) - phasing at apoapsis, not another Hohmann.").
+        LOCAL nd_a IS NODE(TIME:SECONDS + MAX(40, ETA:APOAPSIS), 0, 0, 0).
+        ADD nd_a.
+        LOCAL hit_a IS aoso_rendezvous_search_apo_passages(nd_a, target_orbitable).
+        IF hit_a {
+            aoso_rendezvous_tune_pe(nd_a, target_orbitable).
+            LOCAL pe_a IS aoso_rendezvous_orbit_pe(nd_a:ORBIT, target_orbitable).
+            aoso_log_info("RENDEZVOUS", "Encounter with " + target_orbitable:NAME + " in " + ROUND(nd_a:ETA, 0) + "s dv=" + ROUND(nd_a:PROGRADE, 1) + " m/s patchPE=" + ROUND(pe_a, 0) + " m.").
+            RETURN nd_a.
         }
-        SET node_wait TO wait_s.
+        aoso_log_warn("RENDEZVOUS", "No " + target_orbitable:NAME + " patch on this ellipse this synodic - not burning a second Hohmann. Will wait.").
+        REMOVE nd_a.
+        RETURN 0.
     }
+
+    LOCAL wait_s IS aoso_rendezvous_wait_time_to_transfer_s(target_orbitable).
+    IF wait_s < 0 {
+        aoso_log_warn("RENDEZVOUS", "Ship and target periods match; no transfer window exists.").
+        RETURN 0.
+    }
+    SET node_wait TO wait_s.
 
     LOCAL sma_t IS (r1 + r2) / 2.
     LOCAL v_now IS aoso_orbit_speed_at_radius(SHIP, r1).
@@ -249,42 +437,56 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
     LOCAL nd IS NODE(TIME:SECONDS + node_wait, 0, 0, dv).
     ADD nd.
     aoso_log_info("RENDEZVOUS", "Searching " + target_orbitable:NAME + " intercept at Hohmann dv=" + ROUND(dv, 1) + " m/s (escape " + ROUND(dv_esc, 1) + ") in " + ROUND(node_wait, 0) + "s.").
+    aoso_ui_set("Searching " + target_orbitable:NAME + " intercept", "Hohmann " + ROUND(dv, 0) + " m/s  window " + ROUND(node_wait, 0) + "s").
 
     LOCAL hit IS aoso_rendezvous_search_intercept(nd, target_orbitable, dv).
-    IF already {
-        IF NOT hit {
-            LOCAL dv_try IS -80.
-            UNTIL hit OR dv_try > 160 {
-                SET nd:PROGRADE TO dv_try.
-                SET nd:ETA TO node_wait.
-                SET hit TO aoso_rendezvous_search_intercept(nd, target_orbitable, dv_try).
-                SET dv_try TO dv_try + 40.
-            }
-        }
-    }
 
     IF hit {
-        aoso_planechange_apply_to_node(nd, target_orbitable).
-        WAIT 0.
-        IF NOT aoso_rendezvous_node_hits_body(nd, target_orbitable) {
-            aoso_log_warn("RENDEZVOUS", "Plane-change fold lost the " + target_orbitable:NAME + " patch - restoring prograde-only intercept.").
-            SET nd:NORMAL TO 0.
-            SET nd:RADIALOUT TO 0.
+        LOCAL rel_now IS aoso_orbit_rel_inc_from_orbit(nd:ORBIT, target_orbitable).
+        IF rel_now >= 0.15 {
+            LOCAL sc_before IS aoso_rendezvous_pe_score(nd, target_orbitable, aoso_rendezvous_desired_pe(target_orbitable)).
+            LOCAL pg_keep IS nd:PROGRADE.
+            LOCAL nml_keep IS nd:NORMAL.
+            LOCAL rad_keep IS nd:RADIALOUT.
+            aoso_planechange_apply_to_node(nd, target_orbitable).
             WAIT 0.
+            LOCAL fold_ok IS FALSE.
+            IF aoso_rendezvous_node_hits_body(nd, target_orbitable) {
+                LOCAL sc_after IS aoso_rendezvous_pe_score(nd, target_orbitable, aoso_rendezvous_desired_pe(target_orbitable)).
+                IF sc_after <= sc_before * 1.15 { SET fold_ok TO TRUE. }
+            }
+            IF NOT fold_ok {
+                aoso_log_warn("RENDEZVOUS", "Plane-change fold lost or worsened the " + target_orbitable:NAME + " patch - restoring prograde-only intercept.").
+                SET nd:PROGRADE TO pg_keep.
+                SET nd:NORMAL TO nml_keep.
+                SET nd:RADIALOUT TO rad_keep.
+                WAIT 0.
+            }
         }
         aoso_rendezvous_tune_pe(nd, target_orbitable).
+        LOCAL pe_now IS aoso_rendezvous_orbit_pe(nd:ORBIT, target_orbitable).
+        LOCAL want_pe IS aoso_rendezvous_desired_pe(target_orbitable).
         LOCAL pe_txt IS "".
-        IF nd:ORBIT:HASNEXTPATCH {
-            SET pe_txt TO " patchPE=" + ROUND(aoso_rendezvous_orbit_pe(nd:ORBIT, target_orbitable), 0) + " m".
+        IF pe_now >= 0 { SET pe_txt TO " patchPE=" + ROUND(pe_now, 0) + " m want=" + ROUND(want_pe, 0) + "m". }
+        IF pe_now >= 0 {
+            IF ABS(pe_now - want_pe) > want_pe * 0.8 {
+                aoso_log_warn("RENDEZVOUS", "Encounter with " + target_orbitable:NAME + " in " + ROUND(nd:ETA, 0) + "s dv=" + ROUND(nd:PROGRADE, 1) + " m/s" + pe_txt + " - will mid-course if the PE stays a graze.").
+            } ELSE {
+                aoso_log_info("RENDEZVOUS", "Encounter with " + target_orbitable:NAME + " in " + ROUND(nd:ETA, 0) + "s dv=" + ROUND(nd:PROGRADE, 1) + " m/s" + pe_txt + ".").
+            }
+        } ELSE {
+            aoso_log_info("RENDEZVOUS", "Encounter with " + target_orbitable:NAME + " in " + ROUND(nd:ETA, 0) + "s dv=" + ROUND(nd:PROGRADE, 1) + " m/s" + pe_txt + ".").
         }
-        aoso_log_info("RENDEZVOUS", "Encounter with " + target_orbitable:NAME + " in " + ROUND(nd:ETA, 0) + "s dv=" + ROUND(nd:PROGRADE, 1) + " m/s" + pe_txt + ".").
+        aoso_ui_clear().
         RETURN nd.
     }
 
     aoso_log_warn("RENDEZVOUS", "No patched encounter this window - not burning a blind Hohmann (that escaped Kerbin last time). Will retry next orbit.").
+    aoso_ui_clear().
     REMOVE nd.
     RETURN 0.
 }
+
 
 // Parking-like periapsis we want at the hop body so capture is cheap
 // (not a SOI-graze). Matches goto parking without calling goto at load.
@@ -387,10 +589,10 @@ FUNCTION aoso_rendezvous_tune_pe {
     LOCAL best IS aoso_rendezvous_pe_score(nd, hop, desired).
     IF best < desired * 0.35 { RETURN TRUE. }
 
-    LOCAL step_t IS 240.
-    LOCAL step_dv IS 20.
+    LOCAL step_t IS 40.
+    LOCAL step_dv IS 8.
     LOCAL rounds IS 0.
-    UNTIL rounds >= 7 {
+    UNTIL rounds >= 10 {
         LOCAL improved IS FALSE.
 
         LOCAL orig_eta IS nd:ETA.
@@ -413,6 +615,7 @@ FUNCTION aoso_rendezvous_tune_pe {
                     SET improved TO TRUE.
                 } ELSE {
                     SET nd:ETA TO orig_eta.
+                    WAIT 0.
                 }
             }
         }
@@ -458,21 +661,24 @@ FUNCTION aoso_rendezvous_tune_pe {
         }
 
         LOCAL orig_n IS nd:NORMAL.
-        SET nd:NORMAL TO orig_n + step_dv.
-        WAIT 0.
-        SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
-        IF s < best {
-            SET best TO s.
-            SET improved TO TRUE.
-        } ELSE {
-            SET nd:NORMAL TO orig_n - step_dv.
+        LOCAL rel_left IS aoso_orbit_rel_inc_from_orbit(nd:ORBIT, hop).
+        IF rel_left >= 0.4 {
+            SET nd:NORMAL TO orig_n + step_dv.
             WAIT 0.
             SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
             IF s < best {
                 SET best TO s.
                 SET improved TO TRUE.
             } ELSE {
-                SET nd:NORMAL TO orig_n.
+                SET nd:NORMAL TO orig_n - step_dv.
+                WAIT 0.
+                SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
+                IF s < best {
+                    SET best TO s.
+                    SET improved TO TRUE.
+                } ELSE {
+                    SET nd:NORMAL TO orig_n.
+                }
             }
         }
 

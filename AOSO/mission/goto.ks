@@ -71,15 +71,22 @@ FUNCTION aoso_goto_orbit_is_parked {
     RETURN TRUE.
 }
 
-// TRUE when we should circularize/capture around the body we are in now,
-// rather than keep going. Intentional ejections (ESCAPING with a patch to
-// the parent) must NOT capture -- that was eating Kerbin->Duna transfers.
-// At the goal, a grazing 2000 km Minmus ellipse is NOT parked.
+// TRUE when we should circularize/capture around the body we are in now.
+// Never recapture the *departure* body after a moon-transfer burn — that
+// turned a 80×49 000 km Minmus miss into a 2.5-day warp to raise Kerbin PE
+// by 0.5 m/s. Capture at the hop/goal after the SOI change, at periapsis.
 FUNCTION aoso_goto_should_capture {
     PARAMETER data.
 
     IF SHIP:STATUS = "LANDED" OR SHIP:STATUS = "PRELAUNCH" { RETURN FALSE. }
     IF SHIP:BODY:NAME = SUN:NAME { RETURN FALSE. }
+
+    IF data:HASKEY("depart_body") {
+        IF SHIP:BODY:NAME = data["depart_body"] {
+            IF PERIAPSIS < 0 { RETURN TRUE. }
+            RETURN FALSE.
+        }
+    }
 
     LOCAL should_stop IS FALSE.
     IF SHIP:BODY:NAME = data["goal"] {
@@ -121,9 +128,9 @@ FUNCTION aoso_goto_plan_entry {
     SET WARP TO 0.
     aoso_throttle_set(0).
     aoso_maneuver_clear_all().
+    aoso_ui_pulse("Planning hop", "Next body toward " + data["goal"]).
 
     LOCAL goal IS BODY(data["goal"]).
-    SET data["depart_body"] TO SHIP:BODY:NAME.
 
     IF SHIP:BODY:NAME = goal:NAME {
         IF aoso_goto_should_capture(data) {
@@ -148,6 +155,8 @@ FUNCTION aoso_goto_plan_entry {
         RETURN.
     }
 
+    SET data["depart_body"] TO SHIP:BODY:NAME.
+
     LOCAL hop IS aoso_goto_next_hop_body(goal).
     SET data["hop"] TO hop:NAME.
     aoso_log_info("GOTO", "Next hop " + SHIP:BODY:NAME + " -> " + hop:NAME + " (goal " + goal:NAME + ").").
@@ -160,6 +169,7 @@ FUNCTION aoso_goto_plan_entry {
         IF patch_ours {
             LOCAL hop_b IS BODY(np).
             IF aoso_rendezvous_orbit_needs_correct(SHIP:ORBIT, hop_b) {
+                SET data["corrected"] TO TRUE.
                 LOCAL ndc IS aoso_rendezvous_add_correction_node(hop_b).
                 IF ndc <> 0 {
                     aoso_log_info("GOTO", "Patch to " + np + " has a poor PE - mid-course correction.").
@@ -250,7 +260,7 @@ FUNCTION aoso_goto_plan_entry {
             }
             SET data["burn_kind"] TO kind.
             SET data["retry_ut"] TO 0.
-            aoso_maneuver_set_apo_cap(hop:ORBIT:APOAPSIS * 1.04).
+            aoso_maneuver_clear_apo_cap().
             aoso_maneuver_set_cut_body(hop:NAME).
             aoso_state_transition(AOSO_GOTO, "BURN").
             RETURN.
@@ -384,6 +394,7 @@ FUNCTION aoso_goto_coast_execute {
 
     IF SHIP:BODY:NAME <> data["depart_body"] {
         SET WARP TO 0.
+        SET data["corrected"] TO FALSE.
         aoso_log_info("GOTO", "SOI change: " + data["depart_body"] + " -> " + SHIP:BODY:NAME + ".").
         aoso_state_transition(AOSO_GOTO, "PLAN").
         RETURN.
@@ -392,6 +403,21 @@ FUNCTION aoso_goto_coast_execute {
     LOCAL np IS aoso_goto_patch_body_name().
     IF np <> "" {
         SET data["retry_ut"] TO 0.
+        LOCAL already_corr IS FALSE.
+        IF data:HASKEY("corrected") {
+            IF data["corrected"] { SET already_corr TO TRUE. }
+        }
+        IF NOT already_corr {
+            LOCAL hop_check IS BODY(np).
+            IF aoso_rendezvous_orbit_needs_correct(SHIP:ORBIT, hop_check) {
+                IF SHIP:ORBIT:NEXTPATCHETA > 150 {
+                    SET WARP TO 0.
+                    aoso_log_info("GOTO", "Patch PE is not a capture altitude - mid-course correction.").
+                    aoso_state_transition(AOSO_GOTO, "PLAN").
+                    RETURN.
+                }
+            }
+        }
         LOCAL eta_p IS SHIP:ORBIT:NEXTPATCHETA.
         IF eta_p > 30 {
             LOCAL align_s IS aoso_maneuver_align_s().
@@ -434,6 +460,8 @@ FUNCTION aoso_goto_capture_entry {
     SET WARP TO 0.
     aoso_throttle_set(0).
     LOCAL park IS aoso_goto_parking_alt(SHIP:BODY).
+    aoso_log_info("GOTO", "Capturing at " + SHIP:BODY:NAME + " periapsis (Oberth) park=" + ROUND(park, 0) + "m PE=" + ROUND(PERIAPSIS, 0) + "m.").
+    aoso_ui_set("Capture at periapsis", SHIP:BODY:NAME + " park " + ROUND(park, 0) + "m").
     LOCAL nd IS aoso_interplanetary_add_capture_node(park).
     IF nd = 0 {
         aoso_log_warn("GOTO", "No capture node; continuing from current orbit.").
@@ -512,7 +540,7 @@ FUNCTION aoso_goto_define_states {
 FUNCTION aoso_goto_start {
     PARAMETER body_name.
     aoso_goto_define_states().
-    SET AOSO_GOTO["data"] TO LEXICON("goal", body_name, "hop", "", "burn_kind", "", "depart_body", SHIP:BODY:NAME, "window_ut", 0, "coast_since", 0, "retry_ut", 0).
+    SET AOSO_GOTO["data"] TO LEXICON("goal", body_name, "hop", "", "burn_kind", "", "depart_body", SHIP:BODY:NAME, "window_ut", 0, "coast_since", 0, "retry_ut", 0, "corrected", FALSE).
     aoso_log_info("GOTO", "Navigating to " + body_name + ".").
     aoso_state_transition(AOSO_GOTO, "PLAN").
 }

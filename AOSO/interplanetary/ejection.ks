@@ -196,6 +196,13 @@ FUNCTION aoso_capture_pe_too_high {
 FUNCTION aoso_capture_add_pe_adjust {
     PARAMETER target_pe.
     LOCAL eta_b IS 40.
+    IF ETA:PERIAPSIS > 25 {
+        SET eta_b TO ETA:PERIAPSIS * 0.25.
+        IF eta_b < 20 { SET eta_b TO 20. }
+        IF eta_b > 90 { SET eta_b TO 90. }
+    } ELSE {
+        SET eta_b TO 15.
+    }
     IF HASNODE { RETURN 0. }
     LOCAL nd IS NODE(TIME:SECONDS + eta_b, 0, 0, 0).
     ADD nd.
@@ -205,11 +212,13 @@ FUNCTION aoso_capture_add_pe_adjust {
     UNTIL round_i >= 12 {
         LOCAL orig IS nd:PROGRADE.
         SET nd:PROGRADE TO orig - step.
+        WAIT 0.
         LOCAL err IS ABS(nd:ORBIT:PERIAPSIS - target_pe).
         IF err < best_err {
             SET best_err TO err.
         } ELSE {
             SET nd:PROGRADE TO orig + step.
+            WAIT 0.
             SET err TO ABS(nd:ORBIT:PERIAPSIS - target_pe).
             IF err < best_err {
                 SET best_err TO err.
@@ -259,10 +268,30 @@ FUNCTION aoso_interplanetary_add_capture_node {
         RETURN aoso_hohmann_add_periapsis_change(min_pe).
     }
     IF aoso_capture_pe_too_high(min_pe) {
-        aoso_log_info("EJECTION", "Capture at " + SHIP:BODY:NAME + ": lowering periapsis from " + ROUND(PERIAPSIS, 0) + "m to " + ROUND(min_pe, 0) + "m before circularizing.").
+        aoso_log_info("EJECTION", "Capture at " + SHIP:BODY:NAME + ": lowering periapsis from " + ROUND(PERIAPSIS, 0) + "m to " + ROUND(min_pe, 0) + "m (Oberth is cheaper at a low PE).").
         LOCAL nd_pe IS aoso_capture_add_pe_adjust(min_pe).
         IF nd_pe <> 0 { RETURN nd_pe. }
     }
-    aoso_log_info("EJECTION", "Capture at " + SHIP:BODY:NAME + ": circularizing at periapsis " + ROUND(PERIAPSIS, 0) + "m.").
+
+    LOCAL circ_dv IS aoso_hohmann_circularize_dv_at_periapsis().
+    LOCAL burn_t IS aoso_perf_burn_time_for_dv(ABS(circ_dv)).
+    IF burn_t > 45 {
+        LOCAL soi_a IS SHIP:BODY:SOIRADIUS - SHIP:BODY:RADIUS.
+        LOCAL cap_ap IS min_pe * 6.
+        IF cap_ap < min_pe * 2 { SET cap_ap TO min_pe * 2. }
+        IF cap_ap > soi_a * 0.35 { SET cap_ap TO soi_a * 0.35. }
+        LOCAL need_bind IS FALSE.
+        IF aoso_orbit_is_hyperbolic() { SET need_bind TO TRUE. }
+        IF NOT need_bind {
+            IF SHIP:ORBIT:ECCENTRICITY > 0.45 {
+                IF aoso_orbit_apoapsis_alt() > cap_ap * 1.2 { SET need_bind TO TRUE. }
+            }
+        }
+        IF need_bind {
+            aoso_log_info("EJECTION", "Oberth capture at " + SHIP:BODY:NAME + " PE: binding AP to " + ROUND(cap_ap, 0) + "m first (full circularize would take " + ROUND(burn_t, 0) + "s and miss the PE peak).").
+            RETURN aoso_hohmann_add_apoapsis_change(cap_ap).
+        }
+    }
+    aoso_log_info("EJECTION", "Capture at " + SHIP:BODY:NAME + ": circularizing at periapsis " + ROUND(PERIAPSIS, 0) + "m (Oberth - cheapest insertion).").
     RETURN aoso_hohmann_add_circularize_at_periapsis().
 }
