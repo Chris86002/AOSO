@@ -45,11 +45,16 @@ FUNCTION aoso_hud_eta {
     RETURN ROUND(secs / 21600, 1) + " d".
 }
 
+// Always add widgets on the host that was just created. The global
+// AOSO_PANEL starts as scalar 0; calling :ADDLABEL on it is the boot crash
+// ("suffix ADDLABEL not found on object 0").
 FUNCTION aoso_panel_add_line {
+    PARAMETER host.
     PARAMETER key_name.
     PARAMETER start_text.
-    LOCAL w IS AOSO_PANEL:ADDLABEL(start_text).
+    LOCAL w IS host:ADDLABEL(start_text).
     SET w:STYLE:FONTSIZE TO 12.
+    SET w:STYLE:HSTRETCH TO TRUE.
     SET w:STYLE:MARGIN:TOP TO 1.
     SET w:STYLE:MARGIN:BOTTOM TO 1.
     SET AOSO_PANEL_LBL[key_name] TO w.
@@ -59,47 +64,52 @@ FUNCTION aoso_panel_add_line {
 FUNCTION aoso_panel_ensure {
     IF AOSO_PANEL_READY { RETURN. }
 
-    LOCAL panel IS GUI(400).
-    SET panel:X TO 20.
-    SET panel:Y TO 70.
+    LOCAL g IS GUI(400).
+    SET g:X TO 20.
+    SET g:Y TO 70.
+    SET AOSO_PANEL TO g.
 
-    LOCAL title IS panel:ADDLABEL("<b><size=16><color=#7EC8FF>AOSO</color></size></b>").
+    LOCAL title IS g:ADDLABEL("<b><size=16><color=#7EC8FF>AOSO</color></size></b>").
     SET title:STYLE:ALIGN TO "CENTER".
+    SET title:STYLE:HSTRETCH TO TRUE.
     SET AOSO_PANEL_LBL["title"] TO title.
 
-    LOCAL ship_l IS panel:ADDLABEL(SHIP:NAME).
+    LOCAL ship_l IS g:ADDLABEL(SHIP:NAME).
     SET ship_l:STYLE:ALIGN TO "CENTER".
     SET ship_l:STYLE:FONTSIZE TO 12.
+    SET ship_l:STYLE:HSTRETCH TO TRUE.
     SET AOSO_PANEL_LBL["ship"] TO ship_l.
 
-    panel:ADDSPACING(6).
-    LOCAL doing IS panel:ADDLABEL("<b>Starting…</b>").
+    g:ADDSPACING(6).
+    LOCAL doing IS g:ADDLABEL("<b>Starting...</b>").
     SET doing:STYLE:FONTSIZE TO 13.
     SET doing:STYLE:ALIGN TO "CENTER".
+    SET doing:STYLE:HSTRETCH TO TRUE.
     SET AOSO_PANEL_LBL["doing"] TO doing.
 
-    LOCAL detail IS panel:ADDLABEL("").
+    LOCAL detail IS g:ADDLABEL("").
     SET detail:STYLE:FONTSIZE TO 11.
     SET detail:STYLE:ALIGN TO "CENTER".
+    SET detail:STYLE:HSTRETCH TO TRUE.
     SET AOSO_PANEL_LBL["detail"] TO detail.
 
-    panel:ADDSPACING(4).
-    aoso_panel_add_line("target", "Target  —").
-    aoso_panel_add_line("orbit", "Orbit   —").
-    aoso_panel_add_line("node", "Node    —").
-    aoso_panel_add_line("enc", "Encounter  —").
-    aoso_panel_add_line("fuel", "Fuel    —").
-    aoso_panel_add_line("tour", "Tour    —").
-    aoso_panel_add_line("skip", "Skip    —").
+    g:ADDSPACING(4).
+    aoso_panel_add_line(g, "target", "Target  -").
+    aoso_panel_add_line(g, "orbit", "Orbit   -").
+    aoso_panel_add_line(g, "node", "Node    -").
+    aoso_panel_add_line(g, "enc", "Encounter  -").
+    aoso_panel_add_line(g, "fuel", "Fuel    -").
+    aoso_panel_add_line(g, "tour", "Tour    -").
+    aoso_panel_add_line(g, "skip", "Skip    -").
 
-    SET AOSO_PANEL TO panel.
     SET AOSO_PANEL_READY TO TRUE.
-    panel:SHOW().
+    g:SHOW().
 }
 
 FUNCTION aoso_hud_set_line {
     PARAMETER key_name.
     PARAMETER text.
+    IF NOT AOSO_PANEL_READY { RETURN. }
     IF AOSO_PANEL_LBL:HASKEY(key_name) {
         SET AOSO_PANEL_LBL[key_name]:TEXT TO text.
     }
@@ -153,7 +163,7 @@ FUNCTION aoso_hud_live_doing {
             IF SHIP:ORBIT:HASNEXTPATCH {
                 RETURN LEXICON("doing", "<b>Coasting to " + SHIP:ORBIT:NEXTPATCH:BODY:NAME + "</b>", "detail", "SOI in " + aoso_hud_eta(SHIP:ORBIT:NEXTPATCHETA)).
             }
-            RETURN LEXICON("doing", "<b>Coasting</b> — no patch yet", "detail", "Will retry the intercept rather than recircularize.").
+            RETURN LEXICON("doing", "<b>Coasting</b> - no patch yet", "detail", "Will retry the intercept rather than recircularize.").
         }
         IF AOSO_GOTO["current"] = "WAIT" {
             RETURN LEXICON("doing", "<b>Waiting on transfer window</b>", "detail", AOSO_UI["detail"]).
@@ -187,7 +197,7 @@ FUNCTION aoso_hud_encounter_text {
             SET cur TO cur:NEXTPATCH.
             LOCAL bit IS cur:BODY:NAME + " PE " + aoso_hud_km(cur:PERIAPSIS).
             IF names = "" { SET names TO bit. }
-            ELSE { SET names TO names + " → " + bit. }
+            ELSE { SET names TO names + " -> " + bit. }
             SET n TO n + 1.
         }
     }
@@ -214,13 +224,13 @@ FUNCTION aoso_hud_draw {
     LOCAL tgt_line IS "Target  " + SHIP:BODY:NAME.
     IF tgt <> "" { SET tgt_line TO "Target  " + tgt. }
     IF hop <> "" {
-        IF hop <> tgt { SET tgt_line TO tgt_line + "   hop " + SHIP:BODY:NAME + " → " + hop. }
+        IF hop <> tgt { SET tgt_line TO tgt_line + "   hop " + SHIP:BODY:NAME + " -> " + hop. }
     }
     aoso_hud_set_line("target", tgt_line).
 
     LOCAL ap_txt IS aoso_hud_km(aoso_orbit_apoapsis_alt()).
     IF SHIP:ORBIT:ECCENTRICITY >= 1 { SET ap_txt TO "hyperbolic". }
-    aoso_hud_set_line("orbit", "Orbit   " + ap_txt + " × " + aoso_hud_km(PERIAPSIS) + "   e=" + ROUND(SHIP:ORBIT:ECCENTRICITY, 3) + "   " + SHIP:BODY:NAME).
+    aoso_hud_set_line("orbit", "Orbit   " + ap_txt + " x " + aoso_hud_km(PERIAPSIS) + "   e=" + ROUND(SHIP:ORBIT:ECCENTRICITY, 3) + "   " + SHIP:BODY:NAME).
 
     IF HASNODE {
         LOCAL nd IS NEXTNODE.
