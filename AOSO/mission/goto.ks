@@ -11,6 +11,7 @@
 // burn geometry, it does not pick the pass. Never capture around the Sun.
 
 GLOBAL AOSO_GOTO IS aoso_state_new_machine().
+GLOBAL AOSO_WANT_POLAR IS FALSE.
 
 FUNCTION aoso_goto_parking_alt {
     PARAMETER b.
@@ -461,7 +462,12 @@ FUNCTION aoso_goto_capture_entry {
     aoso_throttle_set(0).
     LOCAL park IS aoso_goto_parking_alt(SHIP:BODY).
     aoso_log_info("GOTO", "Capturing at " + SHIP:BODY:NAME + " periapsis (Oberth) park=" + ROUND(park, 0) + "m PE=" + ROUND(PERIAPSIS, 0) + "m.").
-    aoso_ui_set("Capture at periapsis", SHIP:BODY:NAME + " park " + ROUND(park, 0) + "m").
+    IF AOSO_WANT_POLAR {
+        aoso_log_info("GOTO", "Landing planned - capture will go polar (inc now " + ROUND(SHIP:ORBIT:INCLINATION, 1) + " deg) instead of a later circular plane-change.").
+        aoso_ui_set("Polar capture at PE", SHIP:BODY:NAME + " inc " + ROUND(SHIP:ORBIT:INCLINATION, 1) + " -> 90").
+    } ELSE {
+        aoso_ui_set("Capture at periapsis", SHIP:BODY:NAME + " park " + ROUND(park, 0) + "m").
+    }
     LOCAL nd IS aoso_interplanetary_add_capture_node(park).
     IF nd = 0 {
         aoso_log_warn("GOTO", "No capture node; continuing from current orbit.").
@@ -508,6 +514,11 @@ FUNCTION aoso_goto_capture_execute {
             RETURN.
         }
         aoso_state_transition(AOSO_GOTO, "PLAN").
+    } ELSE {
+        IF HASNODE {
+            LOCAL ndc IS NEXTNODE.
+            aoso_ui_set("Capture burn T-" + aoso_hud_eta(ndc:ETA), ROUND(ndc:DELTAV:MAG, 1) + " m/s  " + aoso_hud_warp_txt()).
+        }
     }
 }
 

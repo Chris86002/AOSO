@@ -60,6 +60,24 @@ FUNCTION aoso_maneuver_can_warp {
     RETURN TRUE.
 }
 
+// kOS will not switch RAILS/PHYSICS while WARP>0, and WARPTO is a no-op
+// in physics warp. Drop to 0, wait a tick, then set the mode.
+FUNCTION aoso_warp_force_rails {
+    IF WARPMODE = "RAILS" { RETURN. }
+    SET WARP TO 0.
+    WAIT 0.
+    SET WARPMODE TO "RAILS".
+    WAIT 0.
+}
+
+FUNCTION aoso_warp_force_physics {
+    IF WARPMODE = "PHYSICS" { RETURN. }
+    SET WARP TO 0.
+    WAIT 0.
+    SET WARPMODE TO "PHYSICS".
+    WAIT 0.
+}
+
 // Rails warp down to rails_lead_s, then physics warp until physics_until_s
 // before the event so SAS can keep pointing. Drops to 1x for the last
 // MANEUVER_PHYSICS_UNTIL_S seconds. Returns "rails" / "physics" / "now" / "hold".
@@ -80,19 +98,13 @@ FUNCTION aoso_warp_approach {
         RETURN "hold".
     }
     IF eta_s > rails_lead_s + 5 {
-        IF WARPMODE <> "RAILS" {
-            SET WARP TO 0.
-            SET WARPMODE TO "RAILS".
-        }
+        aoso_warp_force_rails().
         IF WARP = 0 {
             WARPTO(TIME:SECONDS + eta_s - rails_lead_s).
         }
         RETURN "rails".
     }
-    IF WARPMODE <> "PHYSICS" {
-        SET WARP TO 0.
-        SET WARPMODE TO "PHYSICS".
-    }
+    aoso_warp_force_physics().
     LOCAL phys IS 3.
     LOCAL cap IS aoso_config_get("MAX_WARP_FACTOR", 3).
     IF phys > cap { SET phys TO cap. }
@@ -178,6 +190,8 @@ FUNCTION aoso_maneuver_finish_node {
     PARAMETER reason.
     LOCAL left IS AOSO_MANEUVER_LAST_REMAINING.
     SET WARP TO 0.
+    WAIT 0.
+    SET WARPMODE TO "RAILS".
     aoso_throttle_set(0).
     aoso_steer_release().
     IF HASNODE { REMOVE nd. }
@@ -308,7 +322,14 @@ FUNCTION aoso_maneuver_execute_next {
         IF accel0 > 0.05 { SET t0 TO remaining / accel0. }
         aoso_observe_event("BURN", "INFO", "start", "dv=" + ROUND(remaining, 1) + " t=" + ROUND(t0, 1)).
         aoso_decide("MANEUVER", "ignite", "burn", "node", "dv=" + ROUND(remaining, 1) + " t=" + ROUND(t0, 1)).
-        IF t0 > AOSO_CONFIG["MANEUVER_FOLLOW_ABOVE_S"] {
+        LOCAL follow IS FALSE.
+        IF t0 > AOSO_CONFIG["MANEUVER_FOLLOW_ABOVE_S"] { SET follow TO TRUE. }
+        // Pure-normal / huge-vs-orbital-speed burns must lock. Following the
+        // live marker on the 142 m/s Minmus polar (v=143 m/s) turned 15x15 km
+        // into 980x15 km and only reached 74 deg.
+        IF ABS(nd:NORMAL) > ABS(nd:PROGRADE) + ABS(nd:RADIALOUT) + 5 { SET follow TO FALSE. }
+        IF remaining > SHIP:VELOCITY:ORBIT:MAG * 0.35 { SET follow TO FALSE. }
+        IF follow {
             aoso_log_info("MANEUVER", "Burn started, following node, remaining=" + ROUND(remaining, 1) + " m/s.").
         } ELSE {
             SET AOSO_MANEUVER_LOCK TO SHIP:FACING:FOREVECTOR.
@@ -381,8 +402,12 @@ FUNCTION aoso_maneuver_execute_next {
     LOCAL t_remain IS 0.
     IF accel > 0.05 { SET t_remain TO remaining / accel. }
     LOCAL follow_s IS AOSO_CONFIG["MANEUVER_FOLLOW_ABOVE_S"].
+    LOCAL follow IS FALSE.
+    IF t_remain > follow_s { SET follow TO TRUE. }
+    IF ABS(nd:NORMAL) > ABS(nd:PROGRADE) + ABS(nd:RADIALOUT) + 5 { SET follow TO FALSE. }
+    IF remaining > SHIP:VELOCITY:ORBIT:MAG * 0.35 { SET follow TO FALSE. }
 
-    IF t_remain > follow_s {
+    IF follow {
         SET AOSO_MANEUVER_LOCK TO remaining_vec.
         aoso_steer_to_vector(remaining_vec).
     } ELSE {

@@ -180,9 +180,7 @@ FUNCTION aoso_descent_freefall_execute {
         IF tti < 45 {
             SET WARP TO 0.
         } ELSE {
-            IF WARP = 0 {
-                IF aoso_maneuver_can_warp() { SET WARP TO 3. }
-            }
+            aoso_warp_approach(tti, 45, 15).
         }
     }
 }

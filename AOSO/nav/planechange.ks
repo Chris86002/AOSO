@@ -161,6 +161,7 @@ FUNCTION aoso_planechange_add_node_for_inclination {
     LOCAL best_eta IS 0.
     LOCAL best_normal IS 0.
     LOCAL best_err IS err.
+    LOCAL best_spd IS 1000000000.
     LOCAL found IS FALSE.
     LOCAL ei IS 0.
     UNTIL ei >= etas:LENGTH {
@@ -186,10 +187,19 @@ FUNCTION aoso_planechange_add_node_for_inclination {
                 SET use_n TO -dv_mag.
                 SET use_err TO err_m.
             }
-            IF use_err < best_err {
+            LOCAL better IS FALSE.
+            IF NOT found { SET better TO TRUE. }
+            IF use_err < best_err - 1 { SET better TO TRUE. }
+            IF NOT better {
+                IF use_err <= best_err + 2 {
+                    IF v_vec:MAG < best_spd - 1 { SET better TO TRUE. }
+                }
+            }
+            IF better {
                 SET best_err TO use_err.
                 SET best_eta TO burn_eta.
                 SET best_normal TO use_n.
+                SET best_spd TO v_vec:MAG.
                 SET found TO TRUE.
             }
         }
@@ -200,7 +210,9 @@ FUNCTION aoso_planechange_add_node_for_inclination {
 
     LOCAL nd IS NODE(TIME:SECONDS + best_eta, 0, best_normal, 0).
     ADD nd.
+    WAIT 0.
     aoso_log_info("PLANECHANGE", "Inclination node added: dv=" + ROUND(best_normal, 1) +
-        " m/s normal, " + ROUND(inc_now, 1) + " -> " + ROUND(target_inc_deg, 0) + " deg.").
+        " m/s normal at v=" + ROUND(best_spd, 1) + " m/s, " + ROUND(inc_now, 1) + " -> pred " +
+        ROUND(nd:ORBIT:INCLINATION, 1) + " deg (want " + ROUND(target_inc_deg, 0) + ").").
     RETURN nd.
 }

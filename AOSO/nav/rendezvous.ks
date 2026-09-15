@@ -468,6 +468,8 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
         LOCAL want_pe IS aoso_rendezvous_desired_pe(target_orbitable).
         LOCAL pe_txt IS "".
         IF pe_now >= 0 { SET pe_txt TO " patchPE=" + ROUND(pe_now, 0) + " m want=" + ROUND(want_pe, 0) + "m". }
+        LOCAL inc_p IS aoso_rendezvous_orbit_inc(nd:ORBIT, target_orbitable).
+        IF inc_p >= 0 { SET pe_txt TO pe_txt + " patchInc=" + ROUND(inc_p, 1) + "deg". }
         IF pe_now >= 0 {
             IF ABS(pe_now - want_pe) > want_pe * 0.8 {
                 aoso_log_warn("RENDEZVOUS", "Encounter with " + target_orbitable:NAME + " in " + ROUND(nd:ETA, 0) + "s dv=" + ROUND(nd:PROGRADE, 1) + " m/s" + pe_txt + " - will mid-course if the PE stays a graze.").
@@ -525,6 +527,20 @@ FUNCTION aoso_rendezvous_orbit_pe {
     RETURN -1.
 }
 
+FUNCTION aoso_rendezvous_orbit_inc {
+    PARAMETER orb.
+    PARAMETER hop.
+    LOCAL cur IS orb.
+    LOCAL n IS 0.
+    UNTIL n >= 5 {
+        IF NOT cur:HASNEXTPATCH { RETURN -1. }
+        SET cur TO cur:NEXTPATCH.
+        IF cur:BODY:NAME = hop:NAME { RETURN cur:INCLINATION. }
+        SET n TO n + 1.
+    }
+    RETURN -1.
+}
+
 FUNCTION aoso_rendezvous_pe_min {
     PARAMETER hop.
     PARAMETER desired_pe.
@@ -549,7 +565,17 @@ FUNCTION aoso_rendezvous_pe_score {
     IF pe < min_pe { RETURN 5000000000 + (min_pe - pe). }
     LOCAL graze IS aoso_rendezvous_soi_alt(hop) * 0.35.
     IF pe > graze { RETURN 100000000 + (pe - desired_pe). }
-    RETURN ABS(pe - desired_pe).
+    LOCAL sc IS ABS(pe - desired_pe).
+    IF DEFINED AOSO_WANT_POLAR {
+        IF AOSO_WANT_POLAR {
+            LOCAL inc_p IS aoso_rendezvous_orbit_inc(nd:ORBIT, hop).
+            IF inc_p >= 0 {
+                LOCAL tgt_i IS aoso_config_get("TOUR_POLAR_INCLINATION", 90).
+                SET sc TO sc + ABS(inc_p - tgt_i) * 120.
+            }
+        }
+    }
+    RETURN sc.
 }
 
 FUNCTION aoso_rendezvous_pe_ok_value {

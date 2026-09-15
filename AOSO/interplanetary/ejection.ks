@@ -246,10 +246,33 @@ FUNCTION aoso_capture_add_pe_adjust {
     RETURN nd.
 }
 
+FUNCTION aoso_capture_want_polar {
+    IF NOT DEFINED AOSO_WANT_POLAR { RETURN FALSE. }
+    RETURN AOSO_WANT_POLAR.
+}
+
+FUNCTION aoso_capture_polar_err {
+    RETURN ABS(SHIP:ORBIT:INCLINATION - aoso_config_get("TOUR_POLAR_INCLINATION", 90)).
+}
+
+FUNCTION aoso_capture_high_ap {
+    PARAMETER park.
+    LOCAL soi_a IS SHIP:BODY:SOIRADIUS - SHIP:BODY:RADIUS.
+    LOCAL hi IS park * 18.
+    IF hi < park * 8 { SET hi TO park * 8. }
+    IF hi > soi_a * 0.28 { SET hi TO soi_a * 0.28. }
+    RETURN hi.
+}
+
 // Capture/insertion once inside arr_body's SOI. A grazing flyby
 // (Minmus patchPE at the SOI edge) must LOWER periapsis first; circularizing
 // there leaves a barely-bound orbit. Hyperbolas have no apoapsis, so PE is
 // set with a near-term vis-viva node, then we circularize at PE.
+//
+// If the tour will land, polar is done HERE rather than as a 140 m/s
+// normal after circularizing at 15 km (that was 142 m/s at v=143 and
+// wrecked the orbit). Cheap path: bind a high ellipse at PE (Oberth),
+// plane-change at the slow AN/DN near AP, then circularize.
 FUNCTION aoso_interplanetary_add_capture_node {
     PARAMETER target_apo_alt.
     LOCAL min_pe IS target_apo_alt.
@@ -271,6 +294,26 @@ FUNCTION aoso_interplanetary_add_capture_node {
         aoso_log_info("EJECTION", "Capture at " + SHIP:BODY:NAME + ": lowering periapsis from " + ROUND(PERIAPSIS, 0) + "m to " + ROUND(min_pe, 0) + "m (Oberth is cheaper at a low PE).").
         LOCAL nd_pe IS aoso_capture_add_pe_adjust(min_pe).
         IF nd_pe <> 0 { RETURN nd_pe. }
+    }
+
+    LOCAL want_polar IS aoso_capture_want_polar().
+    LOCAL polar_err IS aoso_capture_polar_err().
+    LOCAL polar_tol IS aoso_config_get("TOUR_POLAR_TOLERANCE_DEG", 15).
+    LOCAL high_ap IS aoso_capture_high_ap(min_pe).
+
+    IF want_polar {
+        IF polar_err > polar_tol {
+            LOCAL have_high_ap IS FALSE.
+            IF NOT aoso_orbit_is_hyperbolic() {
+                IF aoso_orbit_apoapsis_alt() >= high_ap * 0.7 { SET have_high_ap TO TRUE. }
+            }
+            IF have_high_ap {
+                aoso_log_info("EJECTION", "Polar capture at " + SHIP:BODY:NAME + ": plane-changing at the slow AN/DN (inc=" + ROUND(SHIP:ORBIT:INCLINATION, 1) + " e=" + ROUND(SHIP:ORBIT:ECCENTRICITY, 2) + ").").
+                RETURN aoso_planechange_add_node_for_inclination(aoso_config_get("TOUR_POLAR_INCLINATION", 90), polar_tol).
+            }
+            aoso_log_info("EJECTION", "Polar capture at " + SHIP:BODY:NAME + " PE: binding AP to " + ROUND(high_ap, 0) + "m first so the plane change is cheap at apoapsis (inc=" + ROUND(SHIP:ORBIT:INCLINATION, 1) + ").").
+            RETURN aoso_hohmann_add_apoapsis_change(high_ap).
+        }
     }
 
     LOCAL circ_dv IS aoso_hohmann_circularize_dv_at_periapsis().
