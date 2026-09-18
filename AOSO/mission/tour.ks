@@ -10,10 +10,12 @@
 // Built on core/state.ks as AOSO_TOUR, driving the existing goto / ascent /
 // polar / scan / deorbit / descent / refuel / return / kscreturn machines as
 // sub-steps the same way mission/mission.ks drives aoso_ascent_*.
-// Landings go polar -> ground-track scan (landing/site.ks) -> deorbit to a
+// Landings go polar -> ground-track scan (landing/site.ks, then two
+// confirm orbits) -> wait until the site is opposite -> deorbit to a
 // periapsis above the highlands -> surface-velocity suicide burn. The old
 // GOTO-capture -> PE=0 deorbit -> immediate descent skipped the scan and
-// lithobraked into Mun.
+// lithobraked into Mun. A one-tick scan plus a 120 s deorbit node dropped
+// onto 100000x rails overshot Minmus by 360 s and never descended.
 //
 // Gas giants (Jool) and the Sun are orbited, not landed. High-g / thick-
 // atmosphere bodies the ship cannot leave (Eve, Tylo with TWR ~1) are
@@ -324,11 +326,55 @@ FUNCTION aoso_tour_scan_entry {
             ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) + ".").
         SET data["site_score"] TO 0.
     }
-    SET data["deorbit_wait_since"] TO TIME:SECONDS.
+
+    LOCAL orbits IS aoso_config_get("LANDING_SCAN_ORBITS", 2).
+    IF orbits < 1 { SET orbits TO 1. }
+    IF orbits > 4 { SET orbits TO 4. }
+    LOCAL period IS aoso_orbit_period_s().
+    IF period <= 0 { SET period TO 600. }
+    SET data["scan_until"] TO TIME:SECONDS + (period * orbits).
+    SET data["scan_next_sample"] TO TIME:SECONDS.
+    SET data["scan_orbits"] TO orbits.
+    aoso_log_info("TOUR", "Warping " + orbits + " orbit(s) over the ground track to confirm the site (kOS terrain is global; live samples can still beat the prediction).").
 }
 
 FUNCTION aoso_tour_scan_execute {
     PARAMETER data.
+    LOCAL now IS TIME:SECONDS.
+    IF data:HASKEY("scan_until") {
+        IF now < data["scan_until"] {
+            IF now >= data["scan_next_sample"] {
+                LOCAL geo IS SHIP:GEOPOSITION.
+                LOCAL sc IS aoso_landing_site_score(geo).
+                IF sc >= 0 {
+                    LOCAL beat IS FALSE.
+                    IF NOT data:HASKEY("site_score") {
+                        SET beat TO TRUE.
+                    } ELSE {
+                        IF sc < data["site_score"] { SET beat TO TRUE. }
+                    }
+                    IF beat {
+                        SET data["site_lat"] TO geo:LAT.
+                        SET data["site_lng"] TO geo:LNG.
+                        SET data["site_score"] TO sc.
+                        aoso_log_info("TOUR", "Live overflight beat the prediction: lat=" + ROUND(geo:LAT, 2) +
+                            " lng=" + ROUND(geo:LNG, 2) + " score=" + ROUND(sc, 2) + ".").
+                    }
+                }
+                SET data["scan_next_sample"] TO now + 25.
+            }
+            LOCAL left IS data["scan_until"] - now.
+            aoso_ui_set("Scanning landing sites", aoso_hud_eta(left) + "  " + data["scan_orbits"] + " orbit confirm  " + aoso_hud_warp_txt()).
+            aoso_steer_release().
+            aoso_warp_approach(left, 15, 8).
+            RETURN.
+        }
+    }
+    IF WARP > 0 {
+        SET WARP TO 0.
+        RETURN.
+    }
+    SET data["deorbit_wait_since"] TO TIME:SECONDS.
     aoso_state_transition(AOSO_TOUR, "DEORBIT").
 }
 
@@ -381,20 +427,29 @@ FUNCTION aoso_tour_deorbit_execute {
 
     IF have_site {
         IF NOT opposite {
-            IF waited < period {
-                LOCAL left IS period - waited.
-                aoso_ui_set("Waiting for site over horizon", aoso_hud_eta(left) + "  rails warp").
+            IF waited < period * 2 {
+                LOCAL guess IS period * 0.4.
+                IF guess < 40 { SET guess TO 40. }
+                aoso_ui_set("Waiting for site over horizon", aoso_hud_eta(period - waited) + "  rails warp").
                 IF NOT data:HASKEY("deorbit_warp_logged") {
-                    aoso_log_info("TOUR", "Rails-warping ~" + ROUND(left, 0) + "s until the landing site is opposite before deorbit.").
+                    aoso_log_info("TOUR", "Rails-warping until the landing site is opposite before deorbit (up to ~" + ROUND(period, 0) + "s).").
                     SET data["deorbit_warp_logged"] TO TRUE.
                 }
-                aoso_warp_approach(left, 15, 8).
+                aoso_steer_release().
+                aoso_warp_approach(guess, 20, 10).
                 RETURN.
             }
         }
     }
 
-    SET WARP TO 0.
+    // Dropping out of 100000x rails onto a 120 s node overshoots by
+    // minutes (Acacius missed the first Minmus deorbit by 360 s). Stay
+    // here until warp is actually idle, then place the node.
+    IF WARP > 0 {
+        SET WARP TO 0.
+        RETURN.
+    }
+
     LOCAL eta_s IS -1.
     IF opposite { SET eta_s TO aoso_maneuver_align_s(). }
     LOCAL nd IS aoso_deorbit_add_node(0, FALSE, eta_s).
@@ -564,7 +619,7 @@ FUNCTION aoso_tour_start {
     }
 
     aoso_tour_define_states().
-    SET AOSO_TOUR["data"] TO LEXICON("targets", targets, "index", 0, "site_lat", 0, "site_lng", 0, "site_score", -1, "deorbit_wait_since", 0, "polar_warp_logged", FALSE).
+    SET AOSO_TOUR["data"] TO LEXICON("targets", targets, "index", 0, "site_lat", 0, "site_lng", 0, "site_score", -1, "deorbit_wait_since", 0, "polar_warp_logged", FALSE, "scan_until", 0, "scan_next_sample", 0, "scan_orbits", 2).
     aoso_log_info("TOUR", "Grand tour armed: " + targets:LENGTH + " bodies (" + aoso_classify_name() + "), then KSC return.").
     aoso_decide("TOUR", "arm", "" + targets:LENGTH, aoso_classify_name(), "n=" + targets:LENGTH).
     aoso_state_transition(AOSO_TOUR, "BOOT").

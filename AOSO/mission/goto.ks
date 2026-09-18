@@ -170,13 +170,18 @@ FUNCTION aoso_goto_plan_entry {
         IF patch_ours {
             LOCAL hop_b IS BODY(np).
             IF aoso_rendezvous_orbit_needs_correct(SHIP:ORBIT, hop_b) {
-                SET data["corrected"] TO TRUE.
-                LOCAL ndc IS aoso_rendezvous_add_correction_node(hop_b).
-                IF ndc <> 0 {
-                    aoso_log_info("GOTO", "Patch to " + np + " has a poor PE - mid-course correction.").
-                    SET data["burn_kind"] TO "correct".
-                    aoso_state_transition(AOSO_GOTO, "BURN").
-                    RETURN.
+                LOCAL ncorr IS 0.
+                IF data:HASKEY("correct_count") { SET ncorr TO data["correct_count"]. }
+                IF ncorr < 3 {
+                    SET data["corrected"] TO TRUE.
+                    SET data["correct_count"] TO ncorr + 1.
+                    LOCAL ndc IS aoso_rendezvous_add_correction_node(hop_b).
+                    IF ndc <> 0 {
+                        aoso_log_info("GOTO", "Patch to " + np + " has a poor PE - mid-course correction " + data["correct_count"] + "/3.").
+                        SET data["burn_kind"] TO "correct".
+                        aoso_state_transition(AOSO_GOTO, "BURN").
+                        RETURN.
+                    }
                 }
             }
             aoso_log_info("GOTO", "Existing patch to " + np + " - coasting.").
@@ -402,6 +407,8 @@ FUNCTION aoso_goto_coast_execute {
     IF SHIP:BODY:NAME <> data["depart_body"] {
         SET WARP TO 0.
         SET data["corrected"] TO FALSE.
+        SET data["correct_count"] TO 0.
+        SET data["last_patch_ut"] TO 0.
         aoso_log_info("GOTO", "SOI change: " + data["depart_body"] + " -> " + SHIP:BODY:NAME + ".").
         aoso_state_transition(AOSO_GOTO, "PLAN").
         RETURN.
@@ -410,14 +417,13 @@ FUNCTION aoso_goto_coast_execute {
     LOCAL np IS aoso_goto_patch_body_name().
     IF np <> "" {
         SET data["retry_ut"] TO 0.
-        LOCAL already_corr IS FALSE.
-        IF data:HASKEY("corrected") {
-            IF data["corrected"] { SET already_corr TO TRUE. }
-        }
-        IF NOT already_corr {
-            LOCAL hop_check IS BODY(np).
-            IF aoso_rendezvous_orbit_needs_correct(SHIP:ORBIT, hop_check) {
-                IF SHIP:ORBIT:NEXTPATCHETA > 150 {
+        SET data["last_patch_ut"] TO TIME:SECONDS.
+        LOCAL ncorr IS 0.
+        IF data:HASKEY("correct_count") { SET ncorr TO data["correct_count"]. }
+        LOCAL hop_check IS BODY(np).
+        IF aoso_rendezvous_orbit_needs_correct(SHIP:ORBIT, hop_check) {
+            IF SHIP:ORBIT:NEXTPATCHETA > 150 {
+                IF ncorr < 3 {
                     SET WARP TO 0.
                     aoso_log_info("GOTO", "Patch PE is not a capture altitude - mid-course correction.").
                     aoso_state_transition(AOSO_GOTO, "PLAN").
@@ -428,11 +434,25 @@ FUNCTION aoso_goto_coast_execute {
         LOCAL eta_p IS SHIP:ORBIT:NEXTPATCHETA.
         IF eta_p > 30 {
             LOCAL align_s IS aoso_maneuver_align_s().
+            aoso_steer_release().
             LOCAL wst IS aoso_warp_approach(eta_p, align_s, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 45)).
         } ELSE {
             SET WARP TO 0.
         }
         RETURN.
+    }
+
+    // Patched conics flicker off at high rails on a graze. Drop to 1x
+    // for a few seconds and let the patch come back before replanning
+    // (Acacius lost Minmus after 36 h of coast, then immediately replanned).
+    IF data:HASKEY("last_patch_ut") {
+        IF data["last_patch_ut"] > 0 {
+            IF TIME:SECONDS - data["last_patch_ut"] < 25 {
+                SET WARP TO 0.
+                aoso_ui_set("Re-checking patch", "warp dropped so conics can catch up").
+                RETURN.
+            }
+        }
     }
 
     IF data:HASKEY("retry_ut") {
@@ -557,7 +577,7 @@ FUNCTION aoso_goto_define_states {
 FUNCTION aoso_goto_start {
     PARAMETER body_name.
     aoso_goto_define_states().
-    SET AOSO_GOTO["data"] TO LEXICON("goal", body_name, "hop", "", "burn_kind", "", "depart_body", SHIP:BODY:NAME, "window_ut", 0, "coast_since", 0, "retry_ut", 0, "corrected", FALSE).
+    SET AOSO_GOTO["data"] TO LEXICON("goal", body_name, "hop", "", "burn_kind", "", "depart_body", SHIP:BODY:NAME, "window_ut", 0, "coast_since", 0, "retry_ut", 0, "corrected", FALSE, "correct_count", 0, "last_patch_ut", 0).
     aoso_log_info("GOTO", "Navigating to " + body_name + ".").
     aoso_state_transition(AOSO_GOTO, "PLAN").
 }

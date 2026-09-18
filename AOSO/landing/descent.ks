@@ -145,7 +145,22 @@ FUNCTION aoso_descent_freefall_execute {
     PARAMETER data.
     aoso_parachute_auto_check().
 
-    IF VERTICALSPEED >= 0 { RETURN. }
+    // After a deorbit the ship is still at apoapsis with VS≈0 for minutes
+    // (Minmus 16x8 km). Using radar/speed as TTI then LOCK SRFRETROGRADE
+    // makes WARPTO a no-op, so warp starts and dies every tick and the
+    // suicide burn never arrives. Warp to periapsis on rails first;
+    // only point surface-retro when we are actually falling onto the PE.
+    LOCAL pe_eta IS 0.
+    IF NOT aoso_orbit_is_hyperbolic() {
+        SET pe_eta TO ETA:PERIAPSIS.
+    }
+    IF VERTICALSPEED >= 0 {
+        IF pe_eta > 25 {
+            aoso_steer_release().
+            aoso_warp_approach(pe_eta, 25, 12).
+        }
+        RETURN.
+    }
 
     // Atmospheric bodies: wait for air/chutes to do the first half. A
     // TWR~1 stack cannot hoverslam from 70 km on Kerbin.
@@ -155,14 +170,13 @@ FUNCTION aoso_descent_freefall_execute {
         }
     }
 
-    aoso_steer_srf_retrograde().
-
     LOCAL trigger IS aoso_descent_burn_trigger_alt().
     LOCAL radar IS aoso_descent_true_radar().
     LOCAL speed_ms IS SHIP:VELOCITY:SURFACE:MAG.
 
     IF radar <= trigger {
         SET WARP TO 0.
+        aoso_steer_srf_retrograde().
         aoso_log_info("DESCENT", "Suicide burn now: radar=" + ROUND(radar, 0) + " m trigger=" + ROUND(trigger, 0) +
             " m vSrf=" + ROUND(speed_ms, 1) + " m/s vVert=" + ROUND(VERTICALSPEED, 1) +
             " m/s decel=" + ROUND(aoso_descent_max_deceleration(), 2) + " m/s^2.").
@@ -172,15 +186,24 @@ FUNCTION aoso_descent_freefall_execute {
         RETURN.
     }
 
+    LOCAL coast_eta IS pe_eta.
     LOCAL tti IS 9E9.
     IF speed_ms > 1 { SET tti TO radar / speed_ms. }
+    IF coast_eta > tti { SET coast_eta TO tti. }
+    IF PERIAPSIS < ALTITUDE - 400 {
+        IF pe_eta > coast_eta { SET coast_eta TO pe_eta. }
+    }
+
     IF radar < (trigger * 2) {
         SET WARP TO 0.
+        aoso_steer_srf_retrograde().
     } ELSE {
-        IF tti < 45 {
+        IF coast_eta < 45 {
             SET WARP TO 0.
+            aoso_steer_srf_retrograde().
         } ELSE {
-            aoso_warp_approach(tti, 45, 15).
+            aoso_steer_release().
+            aoso_warp_approach(coast_eta, 45, 15).
         }
     }
 }

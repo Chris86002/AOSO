@@ -725,6 +725,10 @@ FUNCTION aoso_rendezvous_add_correction_node {
 
     LOCAL eta_p IS SHIP:ORBIT:NEXTPATCHETA.
     IF eta_p < 150 { RETURN 0. }
+    // ~30% of the remaining coast: early enough to turn a SOI-graze into
+    // a real encounter before a long rails warp, late enough that a few
+    // m/s still moves PE. (A 0.3 placement on Minmus was 18 h out; that
+    // only looked idle because LOCK STEERING blocked rails WARPTO.)
     LOCAL t_corr IS eta_p * 0.3.
     IF t_corr > eta_p - 180 { SET t_corr TO eta_p - 180. }
     IF t_corr < 45 { SET t_corr TO 45. }
