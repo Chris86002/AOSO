@@ -4,11 +4,12 @@
 // actually consumed until now. core/state.ks's own per-state
 // timeout_s/on_timeout only fires for states that opt into it; this
 // watchdog instead watches whichever machine is actually driving the
-// mission right now (mission/mission.ks's AOSO_MISSION) for *any* progress
-// -- its own "history" list (one entry per transition) growing -- and,
-// combined with a genuinely critical vehicle condition (stage propellant at
-// vehicle/resources.ks's ABORT_FUEL_PCT, or ElectricCharge critical), forces
-// a safe abort rather than letting a wedged step burn propellant/time
+// mission right now -- AOSO_MISSION plus nested tour/goto/ascent state,
+// current body, and STATUS -- not just the mission-plan history list
+// (which stays at length 1 for the default grand tour). Combined with a
+// genuinely critical vehicle condition (stage propellant at
+// vehicle/resources.ks's ABORT_FUEL_PCT, or ElectricCharge critical), it
+// forces a safe abort rather than letting a wedged step burn propellant
 // indefinitely.
 //
 // A critical condition alone is not enough to trip the watchdog -- a short
@@ -30,13 +31,34 @@ GLOBAL AOSO_WATCHDOG IS LEXICON(
     "tripped", FALSE
 ).
 
-// A cheap "did anything happen" fingerprint: AOSO_MISSION's own history
-// length while the mission layer is active, or -1 (never stalled) if it
-// isn't running at all.
+// Fingerprint of "the ship is still doing something": mission step, nested
+// tour/goto/flight state, body, and STATUS. History length alone is useless
+// for the default grand tour (one plan step for hours).
 FUNCTION aoso_watchdog_progress_marker {
     IF DEFINED AOSO_MISSION {
         IF AOSO_MISSION["current"] <> "" {
-            RETURN AOSO_MISSION["history"]:LENGTH.
+            LOCAL m IS AOSO_MISSION["current"] + "|" + AOSO_MISSION["history"]:LENGTH.
+            IF AOSO_MISSION:HASKEY("data") {
+                IF AOSO_MISSION["data"]:HASKEY("index") {
+                    SET m TO m + "|" + AOSO_MISSION["data"]["index"].
+                }
+            }
+            IF DEFINED AOSO_TOUR {
+                SET m TO m + "|T:" + AOSO_TOUR["current"].
+                IF AOSO_TOUR:HASKEY("data") {
+                    IF AOSO_TOUR["data"]:HASKEY("index") {
+                        SET m TO m + "|" + AOSO_TOUR["data"]["index"].
+                    }
+                }
+            }
+            IF DEFINED AOSO_GOTO { SET m TO m + "|G:" + AOSO_GOTO["current"]. }
+            IF DEFINED AOSO_ASCENT { SET m TO m + "|A:" + AOSO_ASCENT["current"]. }
+            IF DEFINED AOSO_DESCENT { SET m TO m + "|D:" + AOSO_DESCENT["current"]. }
+            IF DEFINED AOSO_REFUEL { SET m TO m + "|F:" + AOSO_REFUEL["current"]. }
+            IF DEFINED AOSO_RETURN { SET m TO m + "|R:" + AOSO_RETURN["current"]. }
+            IF DEFINED AOSO_PRECISION { SET m TO m + "|K:" + AOSO_PRECISION["current"]. }
+            SET m TO m + "|" + SHIP:BODY:NAME + "|" + SHIP:STATUS.
+            RETURN m.
         }
     }
     RETURN -1.
@@ -89,7 +111,7 @@ FUNCTION aoso_watchdog_tick {
         SET AOSO_WATCHDOG["last_progress_at"] TO TIME:SECONDS.
         RETURN.
     }
-    IF marker < 0 { RETURN. } // no mission layer running - nothing to watch
+    IF marker = -1 { RETURN. } // no mission layer running - nothing to watch
 
     LOCAL stalled_s IS TIME:SECONDS - AOSO_WATCHDOG["last_progress_at"].
     IF stalled_s < AOSO_CONFIG["WATCHDOG_TIMEOUT"] { RETURN. }

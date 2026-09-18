@@ -470,7 +470,8 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
 
 
 // Parking-like periapsis we want at the hop body so capture is cheap
-// (not a SOI-graze). Matches goto parking without calling goto at load.
+// (not a SOI-graze). Airless floor matches aoso_world_parking_alt; the
+// atmospheric floor is 80 km (intercept / capture), not PARKING_ORBIT_ALT.
 FUNCTION aoso_rendezvous_desired_pe {
     PARAMETER hop.
     IF hop:ATM:EXISTS {

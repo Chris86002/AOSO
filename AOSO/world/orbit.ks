@@ -2,6 +2,12 @@
 // World-model snapshot of the ship's current orbit around the current
 // body. Does not duplicate nav/orbit.ks's Lambert/node math -- this is
 // "where am I?" for the planner, not "how do I get there?"
+//
+// aoso_world_parking_alt is the single parking-altitude policy:
+//   atmosphere: max(PARKING_ORBIT_ALT, atm height + 15 km)
+//   airless:    max(15 km, 0.08 * body radius)
+// ASCENT_TARGET_APO is a different contract (gravity-turn cut, ~80 km on
+// Kerbin) and must not be folded into this.
 
 FUNCTION aoso_world_parking_alt {
     PARAMETER body_name IS SHIP:BODY:NAME.

@@ -10,12 +10,10 @@
 // exact only outside the atmosphere (see that file's header), so this
 // module only ever tries to steer the *entry-interface* ground track close
 // to the target, using two levers that are both cheap, reusable burns:
-//   - a plane-align burn (nav/planechange.ks's dv formula, retargeted at
-//     the body's equatorial plane instead of another orbitable) so the
-//     ground track actually passes near the target latitude at all -- in
-//     scope for near-equatorial targets like the stock KSC, same
-//     "assumes near-circular orbits" style simplification
-//     nav/rendezvous.ks documents for its own scope.
+//   - a plane-align burn via aoso_planechange_add_node_for_inclination
+//     (trial-NODE sign on nd:ORBIT, target 0° or 180°) so the ground track
+//     actually passes near the target latitude -- in scope for near-
+//     equatorial targets like the stock KSC
 //   - choosing *which* apoapsis pass to burn the deorbit node at: delaying
 //     the same deorbit burn by whole orbits doesn't change its dv or its
 //     physical burn point (an unperturbed ellipse's apoapsis is a fixed
@@ -45,64 +43,13 @@ FUNCTION aoso_kscreturn_needs_plane_align {
     RETURN aoso_kscreturn_equatorial_offset_deg() > aoso_config_get("PRECISION_INCLINATION_TOLERANCE_DEG", 1).
 }
 
-// Finds up to two upcoming times (seconds from now) at which SHIP crosses
-// HOME_BODY's equatorial plane, mirroring nav/orbit.ks's
-// aoso_orbit_relative_node_etas bisection exactly, except the reference
-// plane's normal here is fixed (the body's own rotation axis,
-// BODY:ANGULARVEL) instead of being derived from a second orbitable's
-// live position/velocity.
-FUNCTION aoso_kscreturn_equatorial_node_etas {
-    PARAMETER samples IS 360.
-
-    LOCAL nb IS SHIP:BODY:ANGULARVEL:NORMALIZED.
-    LOCAL period IS aoso_orbit_period_s().
-    IF period <= 0 { RETURN LIST(). }
-    LOCAL now IS TIME:SECONDS.
-    LOCAL dt IS period / samples.
-
-    LOCAL etas IS LIST().
-    LOCAL prev_t IS 0.
-    LOCAL prev_val IS VDOT(aoso_orbit_position_at(SHIP, now), nb).
-
-    LOCAL i IS 1.
-    UNTIL i > samples OR etas:LENGTH >= 2 {
-        LOCAL t IS i * dt.
-        LOCAL val IS VDOT(aoso_orbit_position_at(SHIP, now + t), nb).
-
-        IF (val >= 0 AND prev_val < 0) OR (val < 0 AND prev_val >= 0) {
-            LOCAL lo IS prev_t.
-            LOCAL hi IS t.
-            LOCAL lo_val IS prev_val.
-            LOCAL iter IS 0.
-            UNTIL iter >= 20 {
-                LOCAL mid IS (lo + hi) / 2.
-                LOCAL mid_val IS VDOT(aoso_orbit_position_at(SHIP, now + mid), nb).
-                IF (mid_val >= 0 AND lo_val < 0) OR (mid_val < 0 AND lo_val >= 0) {
-                    SET hi TO mid.
-                } ELSE {
-                    SET lo TO mid.
-                    SET lo_val TO mid_val.
-                }
-                SET iter TO iter + 1.
-            }
-            etas:ADD((lo + hi) / 2).
-        }
-
-        SET prev_t TO t.
-        SET prev_val TO val.
-        SET i TO i + 1.
-    }
-    RETURN etas.
-}
-
-// Adds a normal-direction node at the chosen equatorial crossing that
-// rotates the ship's plane toward HOME_BODY's equator (prograde-equatorial,
-// i.e. inclination -> 0 -- the sign resolution below always prefers that
-// side, the same deterministic simplification nav/planechange.ks documents
-// for its own numeric sign resolution). Returns 0 if already within
-// tolerance_deg, or if no equatorial crossing was found within one orbit.
+// Adds a normal-direction node at an equatorial crossing that rotates the
+// ship's plane toward HOME_BODY's equator. Sign comes from
+// aoso_planechange_add_node_for_inclination's trial-NODE (nd:ORBIT), the
+// method that replaced VCRS after the Minmus 6°→12° bug. Target is 0°
+// (prograde equatorial) or 180° (retrograde equatorial) so a 175° orbit
+// is a 5° tweak, not a 175° flip to prograde.
 FUNCTION aoso_kscreturn_add_plane_align_node {
-    PARAMETER node_index IS 0.
     PARAMETER tolerance_deg IS 0.
     IF tolerance_deg <= 0 { SET tolerance_deg TO aoso_config_get("PRECISION_INCLINATION_TOLERANCE_DEG", 1). }
 
@@ -112,31 +59,9 @@ FUNCTION aoso_kscreturn_add_plane_align_node {
         RETURN 0.
     }
 
-    LOCAL etas IS aoso_kscreturn_equatorial_node_etas().
-    IF etas:LENGTH = 0 OR node_index >= etas:LENGTH {
-        aoso_log_warn("KSCRETURN", "No equatorial crossing found within one orbit.").
-        RETURN 0.
-    }
-
-    LOCAL burn_eta IS etas[node_index].
-    LOCAL t IS TIME:SECONDS + burn_eta.
-    LOCAL r_vec IS aoso_orbit_position_at(SHIP, t).
-    LOCAL v_vec IS aoso_orbit_velocity_at(SHIP, t).
-    LOCAL na IS VCRS(r_vec, v_vec):NORMALIZED.
-    LOCAL nb IS SHIP:BODY:ANGULARVEL:NORMALIZED.
-
-    LOCAL dv_mag IS aoso_planechange_dv_for_angle(offset, v_vec:MAG).
-
-    LOCAL na_plus IS VCRS(r_vec, v_vec + na * dv_mag):NORMALIZED.
-    LOCAL na_minus IS VCRS(r_vec, v_vec - na * dv_mag):NORMALIZED.
-    LOCAL sign IS 1.
-    IF VANG(na_minus, nb) < VANG(na_plus, nb) { SET sign TO -1. }
-
-    LOCAL nd IS NODE(t, 0, sign * dv_mag, 0).
-    ADD nd.
-    aoso_log_info("KSCRETURN", "Plane-align node added: dv=" + ROUND(sign * dv_mag, 1) +
-        " m/s normal, closing " + ROUND(offset, 2) + " deg to equatorial.").
-    RETURN nd.
+    LOCAL target_inc IS 0.
+    IF SHIP:ORBIT:INCLINATION > 90 { SET target_inc TO 180. }
+    RETURN aoso_planechange_add_node_for_inclination(target_inc, tolerance_deg).
 }
 
 // Predicted ground-track miss distance (m) from target_geo at the

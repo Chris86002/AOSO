@@ -8,14 +8,7 @@
 
 FUNCTION aoso_assist_safe_pe {
     PARAMETER b.
-    IF b:ATM:EXISTS {
-        LOCAL pe_a IS b:ATM:HEIGHT + 15000.
-        IF pe_a < 80000 { SET pe_a TO 80000. }
-        RETURN pe_a.
-    }
-    LOCAL pe_b IS b:RADIUS * 0.08.
-    IF pe_b < 15000 { SET pe_b TO 15000. }
-    RETURN pe_b.
+    RETURN aoso_rendezvous_desired_pe(b).
 }
 
 FUNCTION aoso_assist_hohmann_dv {

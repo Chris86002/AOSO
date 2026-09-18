@@ -15,10 +15,7 @@ GLOBAL AOSO_WANT_POLAR IS FALSE.
 
 FUNCTION aoso_goto_parking_alt {
     PARAMETER b.
-    IF b:ATM:EXISTS {
-        RETURN MAX(aoso_config_get("PARKING_ORBIT_ALT", 100000), b:ATM:HEIGHT + 15000).
-    }
-    RETURN MAX(15000, b:RADIUS * 0.08).
+    RETURN aoso_world_parking_alt(b:NAME).
 }
 
 // Next body to travel toward: the current body's parent, a moon of here,
