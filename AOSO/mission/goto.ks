@@ -333,7 +333,7 @@ FUNCTION aoso_goto_wait_execute {
         RETURN.
     }
     LOCAL wait_eta IS data["window_ut"] - TIME:SECONDS.
-    LOCAL wst IS aoso_warp_approach(wait_eta, align_s, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
+    LOCAL wst IS aoso_warp_approach(wait_eta, align_s, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 45)).
 }
 
 FUNCTION aoso_goto_launch_execute {
@@ -428,7 +428,7 @@ FUNCTION aoso_goto_coast_execute {
         LOCAL eta_p IS SHIP:ORBIT:NEXTPATCHETA.
         IF eta_p > 30 {
             LOCAL align_s IS aoso_maneuver_align_s().
-            LOCAL wst IS aoso_warp_approach(eta_p, align_s, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
+            LOCAL wst IS aoso_warp_approach(eta_p, align_s, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 45)).
         } ELSE {
             SET WARP TO 0.
         }
@@ -445,7 +445,7 @@ FUNCTION aoso_goto_coast_execute {
                 aoso_state_transition(AOSO_GOTO, "PLAN").
                 RETURN.
             }
-            LOCAL wst2 IS aoso_warp_approach(retry_left, 20, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
+            LOCAL wst2 IS aoso_warp_approach(retry_left, 20, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 45)).
             RETURN.
         }
     }
