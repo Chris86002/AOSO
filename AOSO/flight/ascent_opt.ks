@@ -159,11 +159,11 @@ FUNCTION aoso_ascent_opt_pick_next_speed {
         }
     }
     LOCAL grid IS aoso_ascent_opt_grid().
-    LOCAL ceiling IS 999.
-    IF row:HASKEY("speed_ceiling") { SET ceiling TO row["speed_ceiling"]. }
+    LOCAL spd_cap IS 999.
+    IF row:HASKEY("speed_ceiling") { SET spd_cap TO row["speed_ceiling"]. }
     FOR d IN grid {
         IF d >= floor_spd {
-            IF d < ceiling {
+            IF d < spd_cap {
                 LOCAL key IS aoso_ascent_opt_speed_key(d).
                 IF NOT used:HASKEY(key) { RETURN d. }
             }
@@ -174,12 +174,12 @@ FUNCTION aoso_ascent_opt_pick_next_speed {
     IF row["best"]:HASKEY("turn_speed") { SET best_spd TO row["best"]["turn_speed"]. }
     IF best_spd > 0 {
         IF best_spd <= 75 {
-            IF ceiling > 60 {
+            IF spd_cap > 60 {
                 IF NOT used:HASKEY("60") { RETURN 60. }
             }
         }
         IF best_spd >= 125 {
-            IF 145 < ceiling {
+            IF 145 < spd_cap {
                 IF NOT used:HASKEY("145") { RETURN 145. }
             }
         }
