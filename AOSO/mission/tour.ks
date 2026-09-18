@@ -429,11 +429,11 @@ FUNCTION aoso_tour_deorbit_execute {
     }
 
     LOCAL opposite IS FALSE.
-    LOCAL vang IS 0.
+    LOCAL site_ang IS 0.
     LOCAL opp_txt IS "NO".
     IF have_site {
-        SET vang TO aoso_tour_site_vang(data["site_lat"], data["site_lng"]).
-        IF vang >= 140 {
+        SET site_ang TO aoso_tour_site_vang(data["site_lat"], data["site_lng"]).
+        IF site_ang >= 140 {
             SET opposite TO TRUE.
             SET opp_txt TO "YES".
         }
@@ -452,10 +452,10 @@ FUNCTION aoso_tour_deorbit_execute {
                 IF NOT data:HASKEY("deorbit_warp_logged") {
                     aoso_log_info("TOUR", "Rails-warping until the landing site is opposite before deorbit (up to ~" + ROUND(period, 0) + "s). site lat=" +
                         ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) + " ship lat=" +
-                        ROUND(SHIP:GEOPOSITION:LAT, 2) + " lng=" + ROUND(SHIP:GEOPOSITION:LNG, 2) + " vang=" + ROUND(vang, 0) + " deg.").
+                        ROUND(SHIP:GEOPOSITION:LAT, 2) + " lng=" + ROUND(SHIP:GEOPOSITION:LNG, 2) + " ang=" + ROUND(site_ang, 0) + " deg.").
                     SET data["deorbit_warp_logged"] TO TRUE.
                 }
-                aoso_log_every(45, "TOUR", "Deorbit wait opposite=NO vang=" + ROUND(vang, 0) + " deg ship=" +
+                aoso_log_every(45, "TOUR", "Deorbit wait opposite=NO ang=" + ROUND(site_ang, 0) + " deg ship=" +
                     ROUND(SHIP:GEOPOSITION:LAT, 1) + "/" + ROUND(SHIP:GEOPOSITION:LNG, 1) + " site=" +
                     ROUND(data["site_lat"], 1) + "/" + ROUND(data["site_lng"], 1) + " waited=" + ROUND(waited, 0) +
                     "s period=" + ROUND(period, 0) + "s " + aoso_warp_diag_txt() + ".").
@@ -470,14 +470,14 @@ FUNCTION aoso_tour_deorbit_execute {
     // minutes (Acacius missed the first Minmus deorbit by 360 s). Stay
     // here until warp is actually idle, then place the node.
     IF WARP > 0 {
-        aoso_log_every(8, "TOUR", "Deorbit settling " + aoso_warp_diag_txt() + " opposite=" + opp_txt + " vang=" + ROUND(vang, 0) + " deg before placing node.").
+        aoso_log_every(8, "TOUR", "Deorbit settling " + aoso_warp_diag_txt() + " opposite=" + opp_txt + " ang=" + ROUND(site_ang, 0) + " deg before placing node.").
         SET WARP TO 0.
         RETURN.
     }
 
     LOCAL eta_s IS -1.
     IF opposite { SET eta_s TO aoso_maneuver_align_s(). }
-    aoso_log_info("TOUR", "Placing deorbit node opposite=" + opp_txt + " vang=" + ROUND(vang, 0) +
+    aoso_log_info("TOUR", "Placing deorbit node opposite=" + opp_txt + " ang=" + ROUND(site_ang, 0) +
         " deg eta=" + ROUND(eta_s, 0) + "s AP=" + ROUND(APOAPSIS, 0) + " PE=" + ROUND(PERIAPSIS, 0) +
         " " + aoso_warp_diag_txt() + ".").
     LOCAL nd IS aoso_deorbit_add_node(0, FALSE, eta_s).
