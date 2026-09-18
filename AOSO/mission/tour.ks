@@ -106,7 +106,7 @@ FUNCTION aoso_tour_site_vang {
 FUNCTION aoso_tour_opposite_site {
     PARAMETER lat.
     PARAMETER lng.
-    RETURN aoso_tour_site_vang(lat, lng) >= 140.
+    RETURN aoso_tour_site_vang(lat, lng) >= 115.
 }
 
 FUNCTION aoso_tour_on_abort {
@@ -341,7 +341,7 @@ FUNCTION aoso_tour_scan_entry {
     SET data["scan_until"] TO TIME:SECONDS + (period * orbits).
     SET data["scan_next_sample"] TO TIME:SECONDS.
     SET data["scan_orbits"] TO orbits.
-    aoso_log_info("TOUR", "Warping " + orbits + " orbit(s) over the ground track to confirm the site (kOS terrain is global; live samples can still beat the prediction).").
+    aoso_log_info("TOUR", "Warping " + orbits + " orbit(s) over the ground track to confirm the predicted site (live samples are logged, they do not replace it).").
 }
 
 FUNCTION aoso_tour_scan_execute {
@@ -353,19 +353,8 @@ FUNCTION aoso_tour_scan_execute {
                 LOCAL geo IS SHIP:GEOPOSITION.
                 LOCAL sc IS aoso_landing_site_score(geo).
                 IF sc >= 0 {
-                    LOCAL beat IS FALSE.
-                    IF NOT data:HASKEY("site_score") {
-                        SET beat TO TRUE.
-                    } ELSE {
-                        IF sc < data["site_score"] { SET beat TO TRUE. }
-                    }
-                    IF beat {
-                        SET data["site_lat"] TO geo:LAT.
-                        SET data["site_lng"] TO geo:LNG.
-                        SET data["site_score"] TO sc.
-                        aoso_log_info("TOUR", "Live overflight beat the prediction: lat=" + ROUND(geo:LAT, 2) +
-                            " lng=" + ROUND(geo:LNG, 2) + " score=" + ROUND(sc, 2) + ".").
-                    }
+                    aoso_log_every(80, "TOUR", "Overflight sample lat=" + ROUND(geo:LAT, 2) + " lng=" + ROUND(geo:LNG, 2) +
+                        " score=" + ROUND(sc, 2) + " (keeping predicted site).").
                 }
                 SET data["scan_next_sample"] TO now + 25.
             }
@@ -433,36 +422,53 @@ FUNCTION aoso_tour_deorbit_execute {
     LOCAL opp_txt IS "NO".
     IF have_site {
         SET site_ang TO aoso_tour_site_vang(data["site_lat"], data["site_lng"]).
-        IF site_ang >= 140 {
+        IF NOT data:HASKEY("deorbit_ang_peak") { SET data["deorbit_ang_peak"] TO site_ang. }
+        IF site_ang > data["deorbit_ang_peak"] { SET data["deorbit_ang_peak"] TO site_ang. }
+        LOCAL falling IS FALSE.
+        IF data:HASKEY("deorbit_ang_last") {
+            IF site_ang < data["deorbit_ang_last"] - 1.5 {
+                IF data["deorbit_ang_peak"] >= 115 { SET falling TO TRUE. }
+            }
+        }
+        SET data["deorbit_ang_last"] TO site_ang.
+        IF site_ang >= 115 {
             SET opposite TO TRUE.
             SET opp_txt TO "YES".
+        }
+        IF falling {
+            SET opposite TO TRUE.
+            SET opp_txt TO "PEAK".
         }
     }
 
     LOCAL waited IS TIME:SECONDS - data["deorbit_wait_since"].
     LOCAL period IS aoso_orbit_period_s().
     IF period <= 0 { SET period TO 600. }
+    IF waited >= period * 1.05 {
+        SET opposite TO TRUE.
+        SET opp_txt TO "TIMEOUT".
+    }
 
     IF have_site {
         IF NOT opposite {
-            IF waited < period * 2 {
-                LOCAL guess IS period * 0.4.
-                IF guess < 40 { SET guess TO 40. }
-                aoso_ui_set("Waiting for site over horizon", aoso_hud_eta(period - waited) + "  " + aoso_hud_warp_txt()).
-                IF NOT data:HASKEY("deorbit_warp_logged") {
-                    aoso_log_info("TOUR", "Rails-warping until the landing site is opposite before deorbit (up to ~" + ROUND(period, 0) + "s). site lat=" +
-                        ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) + " ship lat=" +
-                        ROUND(SHIP:GEOPOSITION:LAT, 2) + " lng=" + ROUND(SHIP:GEOPOSITION:LNG, 2) + " ang=" + ROUND(site_ang, 0) + " deg.").
-                    SET data["deorbit_warp_logged"] TO TRUE.
-                }
-                aoso_log_every(45, "TOUR", "Deorbit wait opposite=NO ang=" + ROUND(site_ang, 0) + " deg ship=" +
-                    ROUND(SHIP:GEOPOSITION:LAT, 1) + "/" + ROUND(SHIP:GEOPOSITION:LNG, 1) + " site=" +
-                    ROUND(data["site_lat"], 1) + "/" + ROUND(data["site_lng"], 1) + " waited=" + ROUND(waited, 0) +
-                    "s period=" + ROUND(period, 0) + "s " + aoso_warp_diag_txt() + ".").
-                aoso_steer_release().
-                aoso_warp_approach(guess, 20, 10).
-                RETURN.
+            LOCAL guess IS period * 0.2.
+            IF site_ang >= 90 { SET guess TO period * 0.08. }
+            IF site_ang >= 110 { SET guess TO 25. }
+            IF guess < 20 { SET guess TO 20. }
+            aoso_ui_set("Waiting for site over horizon", "ang=" + ROUND(site_ang, 0) + "  " + aoso_hud_warp_txt()).
+            IF NOT data:HASKEY("deorbit_warp_logged") {
+                aoso_log_info("TOUR", "Rails-warping until the landing site is opposite before deorbit (up to ~" + ROUND(period, 0) + "s). site lat=" +
+                    ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) + " ship lat=" +
+                    ROUND(SHIP:GEOPOSITION:LAT, 2) + " lng=" + ROUND(SHIP:GEOPOSITION:LNG, 2) + " ang=" + ROUND(site_ang, 0) + " deg.").
+                SET data["deorbit_warp_logged"] TO TRUE.
             }
+            aoso_log_every(45, "TOUR", "Deorbit wait opposite=NO ang=" + ROUND(site_ang, 0) + " deg peak=" + ROUND(data["deorbit_ang_peak"], 0) + " ship=" +
+                ROUND(SHIP:GEOPOSITION:LAT, 1) + "/" + ROUND(SHIP:GEOPOSITION:LNG, 1) + " site=" +
+                ROUND(data["site_lat"], 1) + "/" + ROUND(data["site_lng"], 1) + " waited=" + ROUND(waited, 0) +
+                "s period=" + ROUND(period, 0) + "s " + aoso_warp_diag_txt() + ".").
+            aoso_steer_release().
+            aoso_warp_approach(guess, 20, 10).
+            RETURN.
         }
     }
 

@@ -387,6 +387,22 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
         RETURN 0.
     }
 
+    // Astrogator is the intercept planner when installed. AOSO Hohmann
+    // phasing produced 400 km Minmus grazes; mid-course (goto COAST)
+    // still retunes PE the regular way after the burn. Polar landing is a
+    // Minmus-SOI plane-change after capture, not a graze from Kerbin.
+    LOCAL nd_ag IS aoso_addon_astrogator_add_transfer(target_orbitable, TRUE).
+    IF nd_ag <> 0 {
+        WAIT 0.
+        LOCAL pe_ag IS aoso_rendezvous_orbit_pe(nd_ag:ORBIT, target_orbitable).
+        LOCAL pe_txt IS "".
+        IF pe_ag >= 0 { SET pe_txt TO " patchPE=" + ROUND(pe_ag, 0) + "m". }
+        aoso_log_info("RENDEZVOUS", "Astrogator intercept with " + target_orbitable:NAME + " in " + ROUND(nd_ag:ETA, 0) + "s dv=" + ROUND(nd_ag:DELTAV:MAG, 1) + " m/s" + pe_txt + " (mid-course will retune PE).").
+        aoso_ui_clear().
+        RETURN nd_ag.
+    }
+    aoso_log_info("RENDEZVOUS", "Astrogator unavailable or returned no node - falling back to Hohmann search.").
+
     LOCAL wait_s IS aoso_rendezvous_wait_time_to_transfer_s(target_orbitable).
     IF wait_s < 0 {
         aoso_log_warn("RENDEZVOUS", "Ship and target periods match; no transfer window exists.").
@@ -473,45 +489,9 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
         RETURN nd.
     }
 
-    REMOVE nd.
-
-    // Our Hohmann phasing assumes a near-circular park. After an incomplete
-    // transfer (Acacius 687x81 km) that search never finds a patch. Astrogator
-    // uses the live orbit and is installed on this save.
-    LOCAL polar_hop IS FALSE.
-    IF DEFINED AOSO_WANT_POLAR {
-        IF AOSO_WANT_POLAR { SET polar_hop TO TRUE. }
-    }
-    LOCAL want_plane IS TRUE.
-    IF polar_hop { SET want_plane TO FALSE. }
-    LOCAL nd_ag IS aoso_addon_astrogator_add_transfer(target_orbitable, want_plane).
-    IF nd_ag <> 0 {
-        WAIT 0.
-        LOCAL hit_ag IS aoso_rendezvous_node_hits_body(nd_ag, target_orbitable).
-        IF NOT hit_ag {
-            aoso_rendezvous_tune_pe(nd_ag, target_orbitable).
-            SET hit_ag TO aoso_rendezvous_node_hits_body(nd_ag, target_orbitable).
-        }
-        IF hit_ag {
-            LOCAL pe_ag IS aoso_rendezvous_orbit_pe(nd_ag:ORBIT, target_orbitable).
-            aoso_log_info("RENDEZVOUS", "Astrogator intercept with " + target_orbitable:NAME + " in " + ROUND(nd_ag:ETA, 0) + "s dv=" + ROUND(nd_ag:DELTAV:MAG, 1) + " m/s patchPE=" + ROUND(pe_ag, 0) + "m.").
-            aoso_ui_clear().
-            RETURN nd_ag.
-        }
-        LOCAL pe_here IS nd_ag:ORBIT:PERIAPSIS.
-        LOCAL floor_pe IS 5000.
-        IF SHIP:BODY:ATM:EXISTS { SET floor_pe TO SHIP:BODY:ATM:HEIGHT + 5000. }
-        IF pe_here > floor_pe {
-            aoso_log_info("RENDEZVOUS", "Astrogator node to " + target_orbitable:NAME + " (no live patch yet) eta=" + ROUND(nd_ag:ETA, 0) + "s dv=" + ROUND(nd_ag:DELTAV:MAG, 1) + " m/s - trusting it; KSP often hides the intercept until closer.").
-            aoso_ui_clear().
-            RETURN nd_ag.
-        }
-        aoso_log_warn("RENDEZVOUS", "Astrogator node would drop PE to " + ROUND(pe_here, 0) + "m - discarding.").
-        aoso_maneuver_clear_all().
-    }
-
     aoso_log_warn("RENDEZVOUS", "No patched encounter this window - not burning a blind Hohmann (that escaped Kerbin last time). Will retry next orbit.").
     aoso_ui_clear().
+    REMOVE nd.
     RETURN 0.
 }
 

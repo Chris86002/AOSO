@@ -255,6 +255,7 @@ FUNCTION aoso_goto_plan_entry {
     LOCAL rel_incl IS aoso_orbit_relative_inclination_deg(SHIP, hop).
     LOCAL match_plane IS TRUE.
     IF AOSO_WANT_POLAR { SET match_plane TO FALSE. }
+    IF aoso_addon_available("ASTROGATOR") { SET match_plane TO FALSE. }
     IF rel_incl > 2 {
         IF match_plane {
             LOCAL nd_pc IS aoso_planechange_add_node_for_target(hop).
@@ -264,7 +265,9 @@ FUNCTION aoso_goto_plan_entry {
                 RETURN.
             }
         } ELSE {
-            aoso_log_info("GOTO", "Skipping " + ROUND(rel_incl, 1) + " deg plane-match to " + hop:NAME + " so the intercept can arrive polar.").
+            LOCAL why IS "polar arrival".
+            IF aoso_addon_available("ASTROGATOR") { SET why TO "Astrogator will own the intercept/plane". }
+            aoso_log_info("GOTO", "Skipping " + ROUND(rel_incl, 1) + " deg plane-match to " + hop:NAME + " (" + why + ").").
         }
     }
 
@@ -435,6 +438,12 @@ FUNCTION aoso_goto_burn_execute {
         IF data["burn_kind"] = "plane" OR data["burn_kind"] = "circ" {
             aoso_state_transition(AOSO_GOTO, "PLAN").
         } ELSE {
+            IF HASNODE {
+                aoso_log_info("GOTO", "Astrogator left a follow-up node - burning it before coast.").
+                SET data["burn_kind"] TO "plane".
+                aoso_state_transition(AOSO_GOTO, "BURN").
+                RETURN.
+            }
             LOCAL npb IS aoso_goto_patch_body_name().
             IF npb <> "" {
                 aoso_goto_remember_patch(data, npb, SHIP:ORBIT:NEXTPATCHETA).

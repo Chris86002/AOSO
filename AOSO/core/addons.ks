@@ -150,11 +150,10 @@ FUNCTION aoso_addon_mj_aoa {
 }
 
 // ---------------------------------------------------------------------
-// Astrogator (optional). Detected at boot but historically never called.
-// addons:astrogator:create(body) / calculateBurns(body) produce the same
-// ejection (+ optional plane-change) nodes as the Astrogator UI. Used as
-// a fallback when AOSO's own Hohmann search cannot find a patched
-// encounter (Acacius 687x81 km after an incomplete Minmus burn).
+// Astrogator (optional). Primary intercept planner when installed:
+// addons:astrogator:create(body) / calculateBurns(body). Mid-course PE
+// retune after the burn stays in AOSO (goto COAST). Hohmann search is
+// the fallback if the addon is missing or returns no node.
 // ---------------------------------------------------------------------
 
 FUNCTION aoso_addon_astrogator_obj {
