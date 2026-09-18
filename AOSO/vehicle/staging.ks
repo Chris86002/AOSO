@@ -408,6 +408,26 @@ FUNCTION aoso_staging_should_stage {
     RETURN FALSE.
 }
 
+FUNCTION aoso_staging_light_unlit {
+    LOCAL lit_n IS 0.
+    LOCAL engs IS LIST().
+    LIST ENGINES IN engs.
+    FOR e IN engs {
+        IF e:MAXTHRUST > 0.05 {
+            IF NOT e:FLAMEOUT {
+                IF NOT e:IGNITION {
+                    e:ACTIVATE.
+                    SET lit_n TO lit_n + 1.
+                }
+            }
+        }
+    }
+    IF lit_n > 0 {
+        aoso_log_info("STAGING", "Activated " + lit_n + " unlit engine(s) without staging.").
+    }
+    RETURN lit_n.
+}
+
 // After dropping a spent stage, one extra STAGE is allowed only if the
 // NEW current stage is also empty (jettison-then-ignite serial). Never
 // dump a stage that still has fuel -- that is how Acacius lost the booster.
@@ -426,6 +446,8 @@ FUNCTION aoso_staging_finish_relight {
         RETURN.
     }
     IF aoso_staging_stage_has_fuel() {
+        LOCAL nlit IS aoso_staging_light_unlit().
+        IF nlit > 0 { RETURN. }
         aoso_log_warn("STAGING", "No thrust after staging but current stage still has fuel - not dumping it.").
         SET AOSO_STAGING_EXTRA_THIS TO 0.
         RETURN.
@@ -433,6 +455,8 @@ FUNCTION aoso_staging_finish_relight {
     LOCAL max_extra IS aoso_config_get("STAGING_MAX_EXTRA", 1).
     IF max_extra < 0 { SET max_extra TO 0. }
     IF AOSO_STAGING_EXTRA_THIS >= max_extra {
+        LOCAL nlit2 IS aoso_staging_light_unlit().
+        IF nlit2 > 0 { RETURN. }
         aoso_log_warn("STAGING", "Relight: still no thrust after " + AOSO_STAGING_EXTRA_THIS + " extra stage event(s) with LF remaining; not walking the stack.").
         SET AOSO_STAGING_EXTRA_THIS TO 0.
         RETURN.
@@ -500,6 +524,10 @@ FUNCTION aoso_staging_register_task {
 FUNCTION aoso_staging_ensure_thrust {
     aoso_staging_sense(1).
     IF AOSO_STG_THRUST > 0.05 { RETURN TRUE. }
+    LOCAL nlit0 IS aoso_staging_light_unlit().
+    IF nlit0 > 0 {
+        IF SHIP:AVAILABLETHRUST > 0.05 { RETURN TRUE. }
+    }
     IF NOT AOSO_STG_AIRBORNE { RETURN FALSE. }
     IF AOSO_CONFIG["SAFE_MODE"] { RETURN FALSE. }
     IF STAGE:NUMBER <= 0 { RETURN FALSE. }

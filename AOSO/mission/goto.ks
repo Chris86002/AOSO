@@ -409,11 +409,30 @@ FUNCTION aoso_goto_burn_execute {
     IF aoso_maneuver_execute_next() {
         LOCAL burn_res IS aoso_maneuver_last_result().
         IF burn_res = "missed" OR burn_res = "incomplete" {
+            IF data["burn_kind"] = "transfer" OR data["burn_kind"] = "assist" OR data["burn_kind"] = "correct" {
+                IF NOT aoso_orbit_is_hyperbolic() {
+                    IF SHIP:ORBIT:ECCENTRICITY > 0.08 {
+                        IF NOT aoso_goto_orbit_is_parked() {
+                            LOCAL floor_pe IS 8000.
+                            IF SHIP:BODY:ATM:EXISTS { SET floor_pe TO SHIP:BODY:ATM:HEIGHT + 5000. }
+                            IF PERIAPSIS > floor_pe {
+                                aoso_log_warn("GOTO", "Burn " + burn_res + " left e=" + ROUND(SHIP:ORBIT:ECCENTRICITY, 3) + " AP=" + ROUND(APOAPSIS, 0) + "m - circularizing at apo before retrying intercept.").
+                                LOCAL nd_fix IS aoso_maneuver_add_circularize_at_apoapsis().
+                                IF nd_fix <> 0 {
+                                    SET data["burn_kind"] TO "circ".
+                                    aoso_state_transition(AOSO_GOTO, "BURN").
+                                    RETURN.
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             aoso_log_warn("GOTO", "Burn " + burn_res + " - re-planning for the next pass.").
             aoso_state_transition(AOSO_GOTO, "PLAN").
             RETURN.
         }
-        IF data["burn_kind"] = "plane" {
+        IF data["burn_kind"] = "plane" OR data["burn_kind"] = "circ" {
             aoso_state_transition(AOSO_GOTO, "PLAN").
         } ELSE {
             LOCAL npb IS aoso_goto_patch_body_name().
