@@ -17,7 +17,7 @@ Double-click `Watch-AOSO.bat` and leave that window open. It checks GitHub every
 
 `.../Kerbal Space Program/Ships/Script/AOSO/`
 
-Updates run even if KSP is open. Close the window (or Ctrl+C) to stop.
+Updates run even if KSP is open. Every file from GitHub is written, including `mission_plan.ks` when that file is in the repo. Close the window (or Ctrl+C) to stop.
 
 For a single update instead, double-click `Update-AOSO.bat`. If Windows blocks writing under Program Files, right-click the `.bat` and choose **Run as administrator**.
 
