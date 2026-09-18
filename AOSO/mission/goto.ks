@@ -81,6 +81,9 @@ FUNCTION aoso_goto_should_capture {
 
     IF SHIP:STATUS = "LANDED" OR SHIP:STATUS = "PRELAUNCH" { RETURN FALSE. }
     IF SHIP:BODY:NAME = SUN:NAME { RETURN FALSE. }
+    IF data:HASKEY("skip_capture") {
+        IF data["skip_capture"] { RETURN FALSE. }
+    }
 
     IF data:HASKEY("depart_body") {
         IF SHIP:BODY:NAME = data["depart_body"] {
@@ -501,6 +504,8 @@ FUNCTION aoso_goto_coast_execute {
         SET data["expect_body"] TO "".
         SET data["expect_ut"] TO 0.
         SET data["patch_lost_ut"] TO 0.
+        SET data["capture_fails"] TO 0.
+        SET data["skip_capture"] TO FALSE.
         aoso_log_info("GOTO", "SOI change: " + data["depart_body"] + " -> " + SHIP:BODY:NAME + ".").
         aoso_state_transition(AOSO_GOTO, "PLAN").
         RETURN.
@@ -625,7 +630,21 @@ FUNCTION aoso_goto_capture_entry {
     }
     LOCAL nd IS aoso_interplanetary_add_capture_node(park).
     IF nd = 0 {
-        aoso_log_warn("GOTO", "No capture node; continuing from current orbit.").
+        LOCAL fails IS 0.
+        IF data:HASKEY("capture_fails") { SET fails TO data["capture_fails"]. }
+        SET data["capture_fails"] TO fails + 1.
+        aoso_log_warn("GOTO", "No capture node (try " + data["capture_fails"] + "/3); continuing from current orbit.").
+        IF data["capture_fails"] >= 3 {
+            SET data["skip_capture"] TO TRUE.
+            IF SHIP:BODY:NAME = data["goal"] {
+                aoso_log_warn("GOTO", "Capture failed 3x at goal " + data["goal"] + " - marking arrived.").
+                aoso_state_transition(AOSO_GOTO, "DONE").
+            } ELSE {
+                aoso_log_warn("GOTO", "Capture failed 3x at " + SHIP:BODY:NAME + " - skipping capture and re-planning the hop.").
+                aoso_state_transition(AOSO_GOTO, "PLAN").
+            }
+            RETURN.
+        }
         IF aoso_goto_orbit_is_parked() {
             IF SHIP:BODY:NAME = data["goal"] {
                 aoso_state_transition(AOSO_GOTO, "DONE").
@@ -706,7 +725,7 @@ FUNCTION aoso_goto_define_states {
 FUNCTION aoso_goto_start {
     PARAMETER body_name.
     aoso_goto_define_states().
-    SET AOSO_GOTO["data"] TO LEXICON("goal", body_name, "hop", "", "burn_kind", "", "depart_body", SHIP:BODY:NAME, "window_ut", 0, "coast_since", 0, "retry_ut", 0, "corrected", FALSE, "correct_count", 0, "last_patch_ut", 0, "expect_body", "", "expect_ut", 0, "patch_lost_ut", 0).
+    SET AOSO_GOTO["data"] TO LEXICON("goal", body_name, "hop", "", "burn_kind", "", "depart_body", SHIP:BODY:NAME, "window_ut", 0, "coast_since", 0, "retry_ut", 0, "corrected", FALSE, "correct_count", 0, "last_patch_ut", 0, "expect_body", "", "expect_ut", 0, "patch_lost_ut", 0, "capture_fails", 0, "skip_capture", FALSE).
     aoso_log_info("GOTO", "Navigating to " + body_name + ".").
     aoso_state_transition(AOSO_GOTO, "PLAN").
 }

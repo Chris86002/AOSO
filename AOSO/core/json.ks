@@ -7,12 +7,15 @@
 
 FUNCTION aoso_json_encode {
     PARAMETER value.
+    PARAMETER depth IS 0.
+
+    IF depth > 24 { RETURN """too-deep""". }
 
     IF value:ISTYPE("Lexicon") {
         LOCAL parts IS LIST().
         LOCAL ks IS value:KEYS.
         FOR k IN ks {
-            parts:ADD("""" + aoso_json_escape(k) + """:" + aoso_json_encode(value[k])).
+            parts:ADD("""" + aoso_json_escape(k) + """:" + aoso_json_encode(value[k], depth + 1)).
         }
         LOCAL s IS "{".
         FOR i IN RANGE(0, parts:LENGTH) {
@@ -23,7 +26,7 @@ FUNCTION aoso_json_encode {
     } ELSE IF value:ISTYPE("List") {
         LOCAL parts IS LIST().
         FOR item IN value {
-            parts:ADD(aoso_json_encode(item)).
+            parts:ADD(aoso_json_encode(item, depth + 1)).
         }
         LOCAL s IS "[".
         FOR i IN RANGE(0, parts:LENGTH) {
