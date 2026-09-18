@@ -12,33 +12,6 @@ FUNCTION aoso_perf_twr {
     RETURN SHIP:AVAILABLETHRUST / (SHIP:MASS * g).
 }
 
-FUNCTION aoso_perf_time_to_apoapsis {
-    RETURN aoso_orbit_eta_apoapsis().
-}
-
-FUNCTION aoso_perf_time_to_periapsis {
-    RETURN ETA:PERIAPSIS.
-}
-
-// Seconds until the current stage's tracked propellant (everything but
-// ElectricCharge pooled to this stage) is exhausted at the current mass flow
-// rate of the ignited, non-flamed-out engines. Returns 0 if nothing is
-// burning.
-FUNCTION aoso_perf_stage_burn_time_remaining {
-    LOCAL elist IS aoso_parts_engines().
-    LOCAL total_flow IS 0.
-    FOR e IN elist {
-        IF e:IGNITION AND NOT e:FLAMEOUT { SET total_flow TO total_flow + e:MASSFLOW. }
-    }
-    IF total_flow <= 0 { RETURN 0. }
-
-    LOCAL propellant_mass IS 0.
-    FOR r IN STAGE:RESOURCES {
-        IF r:NAME <> "ElectricCharge" { SET propellant_mass TO propellant_mass + (r:AMOUNT * r:DENSITY). }
-    }
-    RETURN propellant_mass / total_flow.
-}
-
 // Estimated burn time (s) to achieve a given delta-v with the currently
 // ignited engines, via the constant-thrust rocket equation:
 //   t = (m0 * Isp * g0 / F) * (1 - e^(-dv / (Isp * g0)))

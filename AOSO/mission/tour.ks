@@ -36,11 +36,6 @@ FUNCTION aoso_tour_default_targets {
     RETURN out.
 }
 
-FUNCTION aoso_tour_surface_twr {
-    PARAMETER body_name.
-    RETURN aoso_profile_surface_twr(body_name).
-}
-
 FUNCTION aoso_tour_landable {
     PARAMETER body_name.
     IF body_name = "Jool" OR body_name = "Sun" { RETURN FALSE. }

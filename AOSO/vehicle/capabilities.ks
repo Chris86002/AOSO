@@ -42,32 +42,6 @@ FUNCTION aoso_capabilities_engine_thrust {
     RETURN 0.
 }
 
-// Live thrust for TWR: ignited engines if any are running, otherwise the
-// next-to-fire layer (highest DECOUPLEDIN) via possible thrust. Counts
-// only that layer so a 400 t stack is not given TWR 5 from unlit uppers.
-FUNCTION aoso_capabilities_live_thrust {
-    LOCAL elist IS aoso_parts_engines().
-    LOCAL ignited IS 0.
-    FOR eng IN elist {
-        IF eng:IGNITION AND NOT eng:FLAMEOUT { SET ignited TO ignited + eng:MAXTHRUST. }
-    }
-    IF ignited > 0 { RETURN ignited. }
-
-    LOCAL best_d IS -999.
-    FOR eng IN elist {
-        IF eng:DECOUPLEDIN > best_d { SET best_d TO eng:DECOUPLEDIN. }
-    }
-    LOCAL pressure_atm IS 0.
-    IF SHIP:BODY:ATM:EXISTS { SET pressure_atm TO SHIP:BODY:ATM:ALTITUDEPRESSURE(ALTITUDE). }
-    LOCAL possible IS 0.
-    FOR eng IN elist {
-        IF eng:DECOUPLEDIN = best_d {
-            IF NOT eng:FLAMEOUT { SET possible TO possible + aoso_capabilities_engine_thrust(eng, pressure_atm). }
-        }
-    }
-    RETURN possible.
-}
-
 FUNCTION aoso_capabilities_refresh {
     LOCAL elist IS aoso_parts_engines().
     LOCAL plist IS aoso_parts_list().

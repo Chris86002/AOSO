@@ -99,59 +99,6 @@ FUNCTION aoso_ascent_restore_steering {
     }
 }
 
-// Small lead below the flight path. Starts at 1 deg (invisible kick) and
-// eases to the target over blend_s. If the path is still too steep after
-// a few seconds, add a little extra -- still a few degrees, not 13.
-FUNCTION aoso_ascent_live_bias {
-    PARAMETER data.
-    LOCAL target IS 3.2.
-    IF data:HASKEY("turn_bias") { SET target TO data["turn_bias"]. }
-    IF target < 1 { SET target TO 1. }
-    IF target > 4.5 { SET target TO 4.5. }
-
-    LOCAL t0 IS 0.
-    IF data:HASKEY("turn_t0") { SET t0 TO data["turn_t0"]. }
-    IF t0 <= 0 { RETURN target. }
-
-    LOCAL blend IS 8.
-    IF data:HASKEY("turn_blend_s") { SET blend TO data["turn_blend_s"]. }
-    IF blend < 5 { SET blend TO 5. }
-    IF blend > 12 { SET blend TO 12. }
-
-    LOCAL elapsed IS TIME:SECONDS - t0.
-    IF elapsed <= 0 { RETURN 1. }
-    LOCAL frac IS elapsed / blend.
-    IF frac > 1 { SET frac TO 1. }
-    LOCAL s IS 0.5 * (1 - COS(frac * 180)).
-    LOCAL bias IS 1 + ((target - 1) * s).
-
-    IF elapsed > 12 {
-        LOCAL fpa IS aoso_ascent_flight_path_pitch().
-        IF fpa > 75 {
-            SET bias TO bias + MIN(2.0, (fpa - 75) * 0.25).
-        } ELSE {
-            IF fpa > 62 {
-                SET bias TO bias + MIN(1.0, (fpa - 62) * 0.08).
-            }
-        }
-    }
-    IF bias > 5 { SET bias TO 5. }
-    RETURN bias.
-}
-
-FUNCTION aoso_ascent_turn_bias {
-    PARAMETER com_frac IS 0.5.
-    LOCAL twr IS aoso_perf_twr().
-    LOCAL bias IS aoso_config_get("ASCENT_TURN_BIAS_DEG", 3.2).
-    IF twr >= 1.8 { SET bias TO bias + 0.3. }
-    IF twr >= 2.2 { SET bias TO bias + 0.4. }
-    IF twr < 1.3 { SET bias TO bias - 0.5. }
-    IF com_frac > 0.55 { SET bias TO bias - 0.4. }
-    IF bias < 1.6 { SET bias TO 1.6. }
-    IF bias > 4.5 { SET bias TO 4.5. }
-    RETURN bias.
-}
-
 FUNCTION aoso_ascent_turn_blend_s {
     PARAMETER stack_len IS 0.
     LOCAL blend IS aoso_config_get("ASCENT_TURN_BLEND_S", 8).
@@ -159,13 +106,6 @@ FUNCTION aoso_ascent_turn_blend_s {
     IF blend < 6 { SET blend TO 6. }
     IF blend > 12 { SET blend TO 12. }
     RETURN blend.
-}
-
-// Surface prograde + small lead was the old atmospheric law. Kept so
-// callers still compile; steering is now the MJ classic pitch program.
-FUNCTION aoso_ascent_follow_prograde {
-    PARAMETER data.
-    aoso_ascent_steer(data).
 }
 
 FUNCTION aoso_ascent_turn_start_alt {
@@ -403,7 +343,6 @@ FUNCTION aoso_ascent_persist_run {
         "circ_dv", circ_dv,
         "com_frac", data["com_frac"],
         "turn_speed", data["pitchover_speed"],
-        "turn_bias", data["turn_bias"],
         "turn_blend_s", data["turn_blend_s"],
         "mass", SHIP:MASS
     ).
@@ -483,7 +422,6 @@ FUNCTION aoso_ascent_liftoff_entry {
     SET data["stack_length"] TO 0.
     SET data["pitchover_speed"] TO aoso_config_get("ASCENT_PITCHOVER_SPEED", 80).
     SET data["pitchover_min_alt"] TO aoso_config_get("ASCENT_PITCHOVER_MIN_ALT", 200).
-    SET data["turn_bias"] TO aoso_config_get("ASCENT_TURN_BIAS_DEG", 3.2).
     SET data["turn_blend_s"] TO aoso_config_get("ASCENT_TURN_BLEND_S", 8).
     SET data["turn_start_alt"] TO aoso_config_get("ASCENT_TURN_START_ALT", 1000).
     SET data["turn_end_alt"] TO aoso_ascent_turn_end_alt().
@@ -535,7 +473,6 @@ FUNCTION aoso_ascent_liftoff_execute {
 
         SET data["pitchover_speed"] TO aoso_ascent_pitchover_speed(data["com_frac"], data["stack_length"]).
         SET data["pitchover_min_alt"] TO aoso_ascent_pitchover_min_alt(data["com_frac"], data["stack_length"]).
-        SET data["turn_bias"] TO aoso_ascent_turn_bias(data["com_frac"]).
         SET data["turn_blend_s"] TO aoso_ascent_turn_blend_s(data["stack_length"]).
         SET data["turn_start_alt"] TO aoso_ascent_turn_start_alt(data["com_frac"], data["stack_length"]).
         SET data["turn_end_alt"] TO aoso_ascent_turn_end_alt().
@@ -731,7 +668,6 @@ FUNCTION aoso_ascent_aborted_entry {
             "apo", APOAPSIS,
             "peri", PERIAPSIS,
             "turn_speed", data["pitchover_speed"],
-            "turn_bias", data["turn_bias"],
             "turn_blend_s", data["turn_blend_s"],
             "stable", FALSE
         ).
@@ -785,7 +721,6 @@ FUNCTION aoso_ascent_start {
         "target_apo", target_apo,
         "pitchover_speed", 80,
         "pitchover_min_alt", 200,
-        "turn_bias", 3.2,
         "turn_blend_s", 8,
         "turn_t0", 0,
         "turn_alt0", 0,
@@ -812,11 +747,6 @@ FUNCTION aoso_ascent_start {
 FUNCTION aoso_ascent_update {
     aoso_ascent_opt_tick().
     aoso_state_update(AOSO_ASCENT).
-}
-
-FUNCTION aoso_ascent_register_task {
-    PARAMETER interval_s IS 0.1.
-    aoso_sched_add("ascent_guidance", interval_s, aoso_ascent_update@).
 }
 
 FUNCTION aoso_ascent_is_done {

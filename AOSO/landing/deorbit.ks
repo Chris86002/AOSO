@@ -53,11 +53,3 @@ FUNCTION aoso_deorbit_add_node {
     aoso_log_info("DEORBIT", "Deorbit node added: target periapsis=" + ROUND(target_pe_alt, 0) + "m, dv=" + ROUND(dv, 1) + " m/s, in " + ROUND(burn_eta, 0) + "s.").
     RETURN nd.
 }
-
-// Non-blocking burn executor, kept as its own named wrapper (rather than
-// having callers hit flight/maneuver.ks directly) so a later phase can
-// insert deorbit-specific bookkeeping (e.g. mission-state transitions)
-// without touching every call site.
-FUNCTION aoso_deorbit_execute {
-    RETURN aoso_maneuver_execute_next().
-}

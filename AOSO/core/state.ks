@@ -24,8 +24,6 @@ FUNCTION aoso_state_new_machine {
     ).
 }
 
-GLOBAL AOSO_STATE IS aoso_state_new_machine().
-
 FUNCTION aoso_state_define {
     PARAMETER machine.
     PARAMETER name.
@@ -107,33 +105,4 @@ FUNCTION aoso_state_abort {
     }
     aoso_log_warn("STATE", "Abort requested in " + machine["current"]).
     aoso_observe_event("ABORT", "WARN", machine["current"], "abort").
-}
-
-// --- Persistence: survive a reload/scene-change/resume ------------------
-
-FUNCTION aoso_state_save {
-    PARAMETER machine.
-    PARAMETER file_path IS "".
-    IF file_path = "" { SET file_path TO AOSO_CONST["STATE_FILE"]. }
-    LOCAL snapshot IS LEXICON(
-        "current", machine["current"],
-        "previous", machine["previous"],
-        "data", machine["data"]
-    ).
-    aoso_json_write(file_path, snapshot).
-}
-
-FUNCTION aoso_state_load {
-    PARAMETER machine.
-    PARAMETER file_path IS "".
-    IF file_path = "" { SET file_path TO AOSO_CONST["STATE_FILE"]. }
-    LOCAL snapshot IS aoso_json_read(file_path, LEXICON()).
-    IF snapshot:ISTYPE("Lexicon") AND snapshot:HASKEY("current") {
-        IF machine["states"]:HASKEY(snapshot["current"]) {
-            IF snapshot:HASKEY("data") { SET machine["data"] TO snapshot["data"]. }
-            aoso_state_transition(machine, snapshot["current"]).
-            RETURN TRUE.
-        }
-    }
-    RETURN FALSE.
 }

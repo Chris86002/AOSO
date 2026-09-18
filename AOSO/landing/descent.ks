@@ -284,8 +284,3 @@ FUNCTION aoso_descent_start {
 FUNCTION aoso_descent_tick {
     aoso_state_update(AOSO_DESCENT).
 }
-
-FUNCTION aoso_descent_register_task {
-    PARAMETER interval_s IS 0.1.
-    aoso_sched_add("descent_guidance", interval_s, aoso_descent_tick@).
-}

@@ -225,8 +225,7 @@ FUNCTION aoso_docking_define_states {
 
 // Entry point: TARGET must already be set to the docking port to approach
 // (aoso_docking_available() checks this plus a free own port) before
-// calling. Drive the machine every tick with aoso_docking_update()
-// (directly, or via aoso_docking_register_task()).
+// calling. Drive the machine every tick with aoso_docking_update().
 FUNCTION aoso_docking_start {
     aoso_docking_define_states().
 
@@ -244,11 +243,6 @@ FUNCTION aoso_docking_start {
 
 FUNCTION aoso_docking_update {
     aoso_state_update(AOSO_DOCKING).
-}
-
-FUNCTION aoso_docking_register_task {
-    PARAMETER interval_s IS 0.05.
-    aoso_sched_add("docking", interval_s, aoso_docking_update@).
 }
 
 FUNCTION aoso_docking_is_done {

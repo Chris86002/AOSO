@@ -22,11 +22,6 @@ FUNCTION aoso_power_ec_pct {
     RETURN aoso_resource_pct("ElectricCharge").
 }
 
-// TRUE if EC has dropped to/below the configured low-power threshold.
-FUNCTION aoso_power_ec_low {
-    RETURN aoso_power_ec_pct() <= AOSO_CONFIG["LOW_EC_PCT"].
-}
-
 // Tracks whether we've already commanded the panels out this deploy cycle so
 // the per-panel extend action isn't re-fired every tick. Reset on retract.
 GLOBAL AOSO_POWER_PANELS_DEPLOYED IS FALSE.

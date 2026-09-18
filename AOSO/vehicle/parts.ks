@@ -33,9 +33,9 @@
 // a part's decouple-stage index and the live staging counter.
 //
 // The scanned summary is JSON-safe (only strings/numbers/lists/lexicons) and
-// persisted to PART_DB_FILE so a reload/scene-change can inspect the last
-// known stack without a rescan. The live decision helpers below instead read
-// current engine state directly, since flameout/ignition change tick to tick.
+// dumped to PART_DB_FILE as an operator snapshot; boot always rescans. Live
+// decision helpers below read current engine state directly, since
+// flameout/ignition change tick to tick.
 //
 // LIST ENGINES / LIST PARTS / LIST DOCKINGPORTS is expensive. Engine structure
 // refs stay live for IGNITION/FLAMEOUT/MASSFLOW, so we cache until STAGE:NUMBER
@@ -189,15 +189,6 @@ FUNCTION aoso_parts_get {
 
 FUNCTION aoso_parts_save {
     aoso_json_write(AOSO_CONST["PART_DB_FILE"], AOSO_PARTS).
-}
-
-FUNCTION aoso_parts_load {
-    LOCAL loaded IS aoso_json_read(AOSO_CONST["PART_DB_FILE"], LEXICON()).
-    IF loaded:ISTYPE("Lexicon") AND loaded:HASKEY("scanned_at") {
-        SET AOSO_PARTS TO loaded.
-        RETURN TRUE.
-    }
-    RETURN FALSE.
 }
 
 // --- Live decision helpers (read current engine state, not the snapshot) ---

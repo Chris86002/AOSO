@@ -57,22 +57,8 @@ FUNCTION aoso_steer_prograde {
     SET AOSO_STEER_MODE TO "PROGRADE".
 }
 
-FUNCTION aoso_steer_retrograde {
-    IF AOSO_STEER_MODE = "RETROGRADE" { RETURN. }
-    LOCK STEERING TO SHIP:RETROGRADE.
-    SET AOSO_STEER_MODE TO "RETROGRADE".
-}
-
-// Surface-relative counterparts. Orbital PROGRADE/RETROGRADE point along
-// the body-centered velocity vector, which is wrong for a landing burn that
-// needs to cancel velocity relative to the ground, and for the atmospheric
-// half of a gravity turn (zero AoA means surface prograde, not orbital).
-FUNCTION aoso_steer_srf_prograde {
-    IF AOSO_STEER_MODE = "SRF_PROGRADE" { RETURN. }
-    LOCK STEERING TO SHIP:SRFPROGRADE.
-    SET AOSO_STEER_MODE TO "SRF_PROGRADE".
-}
-
+// Surface-relative retrograde: landing burns cancel velocity relative to
+// the ground, not the body-centered orbital velocity vector.
 FUNCTION aoso_steer_srf_retrograde {
     IF AOSO_STEER_MODE = "SRF_RETROGRADE" { RETURN. }
     LOCK STEERING TO SHIP:SRFRETROGRADE.
@@ -86,14 +72,6 @@ FUNCTION aoso_steer_up {
     IF AOSO_STEER_MODE = "UP" { RETURN. }
     LOCK STEERING TO SHIP:UP.
     SET AOSO_STEER_MODE TO "UP".
-}
-
-// Actively damps angular velocity toward zero without commanding a facing,
-// mirroring the stock "Kill Rotation" SAS mode.
-FUNCTION aoso_steer_kill_rotation {
-    IF AOSO_STEER_MODE = "KILL" { RETURN. }
-    LOCK STEERING TO "KILL".
-    SET AOSO_STEER_MODE TO "KILL".
 }
 
 FUNCTION aoso_steer_release {

@@ -177,8 +177,7 @@ FUNCTION aoso_return_define_states {
 }
 
 // Entry point: call once to arm the return sequence, then drive it every
-// tick with aoso_return_update() (directly, or via
-// aoso_return_register_task()). Once aoso_return_is_done() is TRUE, the ship
+// tick with aoso_return_update(). Once aoso_return_is_done() is TRUE, the ship
 // is inside the home body's SOI (and, for a direct moon-of-home departure,
 // already lined up for landing/deorbit.ks + landing/descent.ks to finish the
 // job with little or no further burn needed).
@@ -190,11 +189,6 @@ FUNCTION aoso_return_start {
 
 FUNCTION aoso_return_update {
     aoso_state_update(AOSO_RETURN).
-}
-
-FUNCTION aoso_return_register_task {
-    PARAMETER interval_s IS 0.1.
-    aoso_sched_add("return_guidance", interval_s, aoso_return_update@).
 }
 
 FUNCTION aoso_return_is_done {

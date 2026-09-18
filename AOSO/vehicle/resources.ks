@@ -52,10 +52,6 @@ FUNCTION aoso_stage_propellant_pct {
     RETURN min_pct.
 }
 
-FUNCTION aoso_fuel_reserve_ok {
-    RETURN aoso_stage_propellant_pct() > aoso_config_get("FUEL_RESERVE_PCT", 10).
-}
-
 // Returns TRUE only when the active stage's propellant has dropped to/below
 // the configured abort threshold AND there is no way to recover thrust. A low
 // active-stage reading is normal mid-ascent: lower stages and spent boosters

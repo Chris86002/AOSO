@@ -8,10 +8,9 @@
 //
 // next_run (init 0) makes the first dispatch immediate. Nested IF so a
 // disabled task never pays the time compare (kOS AND always evaluates both
-// sides). The hot loop inlines CALL -- aoso_sched_invoke remains as a
-// wrapper for any external caller but is not used from run.
-// CPU HIGH/CRITICAL sheds HUD/profile/checkpoints/ISRU first; staging,
-// ascent, descent, parachutes, watchdog, mission, and power always run.
+// sides). The hot loop inlines CALL.
+// CPU HIGH/CRITICAL sheds HUD/profile/checkpoints first; staging,
+// watchdog, mission, and power always run.
 
 GLOBAL AOSO_TASKS IS LIST().
 
@@ -46,14 +45,6 @@ FUNCTION aoso_sched_remove {
     IF idx >= 0 { AOSO_TASKS:REMOVE(idx). }
 }
 
-FUNCTION aoso_sched_enable {
-    PARAMETER task_name.
-    PARAMETER enabled.
-    FOR t IN AOSO_TASKS {
-        IF t["name"] = task_name { SET t["enabled"] TO enabled. }
-    }
-}
-
 FUNCTION aoso_sched_keep {
     PARAMETER name.
     LOCAL lvl IS 0.
@@ -62,9 +53,6 @@ FUNCTION aoso_sched_keep {
 
     // Never shed flight / staging / landing / watchdog.
     IF name = "auto_staging" { RETURN TRUE. }
-    IF name = "ascent_guidance" { RETURN TRUE. }
-    IF name = "descent_guidance" { RETURN TRUE. }
-    IF name = "auto_parachute" { RETURN TRUE. }
     IF name = "watchdog" { RETURN TRUE. }
     IF name = "mission" { RETURN TRUE. }
     IF name = "auto_power" { RETURN TRUE. }
@@ -82,7 +70,6 @@ FUNCTION aoso_sched_keep {
     }
     IF name = "vehicle_profile" { RETURN FALSE. }
     IF name = "checkpoint_autosave" { RETURN FALSE. }
-    IF name = "refuel_isru" { RETURN FALSE. }
     RETURN TRUE.
 }
 
@@ -106,19 +93,4 @@ FUNCTION aoso_sched_run {
             }
         }
     }
-}
-
-// Isolated so a single misbehaving task cannot silently take down the whole
-// loop; failures are logged and the task is left enabled for the next tick.
-FUNCTION aoso_sched_invoke {
-    PARAMETER t.
-    t["fn"]:CALL().
-}
-
-FUNCTION aoso_sched_status {
-    LOCAL out IS LIST().
-    FOR t IN AOSO_TASKS {
-        out:ADD(t["name"] + ": every " + t["interval"] + "s, runs=" + t["run_count"] + (CHOOSE " (disabled)" IF NOT t["enabled"] ELSE "")).
-    }
-    RETURN out.
 }

@@ -60,18 +60,6 @@ FUNCTION aoso_landing_site_is_water {
     RETURN geo:TERRAINHEIGHT < 0.
 }
 
-// Overall safety check combining the water check with the configured
-// MAX_SLOPE_DEG cutoff (core/config.ks) -- the single predicate
-// landing/descent.ks and any future site-selection logic should call
-// instead of re-deriving the slope/water rules themselves.
-FUNCTION aoso_landing_site_is_safe {
-    PARAMETER geo.
-    PARAMETER sample_dist_m IS 50.
-
-    IF aoso_landing_site_is_water(geo) { RETURN FALSE. }
-    RETURN aoso_landing_site_slope_deg(geo, sample_dist_m) <= aoso_config_get("MAX_SLOPE_DEG", 15).
-}
-
 // Lower-is-better score for comparing candidate sites: disqualifies water
 // or over-slope sites outright (-1). Remaining terms: slope (safety),
 // latitude (solar / equatorial departure), terrain altitude (takeoff dV
@@ -173,10 +161,4 @@ FUNCTION aoso_landing_site_scan_orbit {
         "slope", slope,
         "alt", best_geo:TERRAINHEIGHT
     ).
-}
-
-FUNCTION aoso_landing_site_from_latlng {
-    PARAMETER lat.
-    PARAMETER lng.
-    RETURN LATLNG(lat, lng).
 }

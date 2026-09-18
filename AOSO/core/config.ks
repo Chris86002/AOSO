@@ -32,7 +32,6 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "ASCENT_TWR_LIMIT", 2.2,            // hold TWR here while the flight path is still steep so gravity can turn
     "ASCENT_HOLD_AP_S", 45,             // s, time-to-apoapsis the gravity-turn throttle holds AFTER the path shallows
     "ASCENT_TARGET_APO", 80000,         // m, gravity-turn cuts here; Kerbin 80 km
-    "ASCENT_FULL_THROTTLE_ALT", 45000,  // m, kept for old configs; TWR cap now shapes dense air
     "ASCENT_DENSE_ALT", 40000,          // m, splits DENSE_AIR vs UPPER_ATM phase records in flight/ascent_opt.ks
     "ASCENT_OPTIMIZE", TRUE,            // try a grid of turn *start speeds* across pad reverts; lock the leftover-LF winner
     "ASCENT_OPT_MAX_TRIALS", 6,         // pad flights in the start-speed search (5 grid points + 1 optional edge refine)
