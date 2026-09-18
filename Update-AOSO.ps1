@@ -3,13 +3,18 @@
 # Repository: https://github.com/Chris86002/AOSO
 #
 # Usage:
-#   Double-click Update-AOSO.bat
-#   or: powershell -NoProfile -ExecutionPolicy Bypass -File .\Update-AOSO.ps1
+#   Double-click Update-AOSO.bat          (one-time update)
+#   Double-click Watch-AOSO.bat           (leave running; auto-updates)
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\Update-AOSO.ps1
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\Update-AOSO.ps1 -Watch
 #
 # If KSP is not in the default Steam folder, create kos-root.txt next to this
 # script and put the full path to your kOS Script folder on the first line.
-# Example:
-#   C:\Program Files (x86)\Steam\steamapps\common\Kerbal Space Program\Ships\Script
+
+param(
+    [switch]$Watch,
+    [int]$IntervalMinutes = 10
+)
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
@@ -31,11 +36,25 @@ $GitHubHeaders = @{
     "X-GitHub-Api-Version" = "2022-11-28"
 }
 
-# Files the player may keep next to AOSO that the repo does not ship.
 $PreserveNames = @(
     "mission_plan.ks",
     ".aoso-version"
 )
+
+$UpdaterFileNames = @(
+    "Update-AOSO.ps1",
+    "Update-AOSO.bat",
+    "Watch-AOSO.bat"
+)
+
+function Write-Stamp {
+    param(
+        [string]$Message,
+        [string]$Color = "Gray"
+    )
+    $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    Write-Host "[$stamp] $Message" -ForegroundColor $Color
+}
 
 function Get-GitHubJson {
     param(
@@ -57,8 +76,8 @@ function Get-KosScriptFolder {
     }
 
     $candidates = New-Object System.Collections.Generic.List[string]
-
     $steamRoots = New-Object System.Collections.Generic.List[string]
+
     foreach ($root in @(
             "${env:ProgramFiles(x86)}\Steam",
             "$env:ProgramFiles\Steam"
@@ -140,25 +159,35 @@ function Get-RelativePath {
     return $itemFull
 }
 
-try {
-    Write-Host ""
-    Write-Host "========================================" -ForegroundColor Cyan
-    Write-Host "             AOSO UPDATER" -ForegroundColor Cyan
-    Write-Host "========================================" -ForegroundColor Cyan
-    Write-Host ""
+function Test-KspRunning {
+    return [bool](Get-Process -Name "KSP_x64", "KSP" -ErrorAction SilentlyContinue)
+}
+
+function Get-InstalledCommit {
+    param([string]$VersionFile)
+
+    if (Test-Path -LiteralPath $VersionFile) {
+        return (Get-Content -LiteralPath $VersionFile -Raw).Trim()
+    }
+    return ""
+}
+
+function Invoke-AosoUpdate {
+    param(
+        [switch]$Auto
+    )
 
     $KOS_ROOT = Get-KosScriptFolder
     $AOSO_ROOT = Join-Path $KOS_ROOT "AOSO"
     $VERSION_FILE = Join-Path $AOSO_ROOT ".aoso-version"
-
-    Write-Host "kOS Script folder: $KOS_ROOT" -ForegroundColor Gray
+    $tempRoot = $null
 
     if (-not (Test-Path -LiteralPath $KOS_ROOT)) {
         throw @"
 kOS Script folder was not found:
   $KOS_ROOT
 
-Create kos-root.txt next to Update-AOSO.bat and put the full path to
+Create kos-root.txt next to Watch-AOSO.bat and put the full path to
 your Kerbal Space Program\Ships\Script folder on the first line.
 "@
     }
@@ -168,179 +197,292 @@ your Kerbal Space Program\Ships\Script folder on the first line.
 Cannot write to:
   $KOS_ROOT
 
-Right-click Update-AOSO.bat and choose Run as administrator.
+Right-click the .bat and choose Run as administrator.
 Steam installs KSP under Program Files, which Windows protects.
 "@
     }
 
-    $ksp = Get-Process -Name "KSP_x64", "KSP" -ErrorAction SilentlyContinue
-    if ($ksp) {
+    $apiBase = "https://api.github.com/repos/$RepoOwner/$RepoName"
+    if (-not $Auto) {
+        Write-Host "Checking GitHub..." -ForegroundColor Gray
+    }
+
+    $commitInfo = Get-GitHubJson "$apiBase/commits/$Branch"
+    $latestCommit = [string]$commitInfo.sha
+    $latestMessage = ([string]$commitInfo.commit.message -split "`r?`n")[0]
+    $short = $latestCommit.Substring(0, 7)
+    $installedCommit = Get-InstalledCommit -VersionFile $VERSION_FILE
+
+    if ($installedCommit -and ($installedCommit -eq $latestCommit)) {
+        return @{
+            Status  = "Current"
+            Message = "AOSO is current ($short)."
+            Commit  = $latestCommit
+        }
+    }
+
+    $kspRunning = Test-KspRunning
+    if ($kspRunning -and $Auto) {
+        return @{
+            Status  = "SkippedKsp"
+            Message = "New commit $short is ready. Waiting until Kerbal Space Program is closed."
+            Commit  = $latestCommit
+        }
+    }
+
+    if ($kspRunning -and -not $Auto) {
         Write-Host "WARNING: Kerbal Space Program appears to be running." -ForegroundColor Yellow
         Write-Host "Close KSP before updating AOSO so kOS is not using the files." -ForegroundColor Yellow
         Write-Host ""
         $answer = Read-Host "Continue anyway? (Y/N)"
         if ($answer -notmatch '^[Yy]$') {
-            Write-Host "Update cancelled."
-            Read-Host "Press Enter to exit"
-            exit 0
+            return @{
+                Status  = "Cancelled"
+                Message = "Update cancelled."
+            }
         }
     }
 
-    $apiBase = "https://api.github.com/repos/$RepoOwner/$RepoName"
-
-    Write-Host "Checking GitHub..." -ForegroundColor Gray
-
-    $commitInfo = Get-GitHubJson "$apiBase/commits/$Branch"
-    $latestCommit = [string]$commitInfo.sha
-    $latestMessage = ([string]$commitInfo.commit.message -split "`r?`n")[0]
-
-    Write-Host "Latest commit : $latestCommit" -ForegroundColor Green
-    Write-Host "Commit message: $latestMessage" -ForegroundColor Gray
-    Write-Host ""
-
-    $installedCommit = ""
-    if (Test-Path -LiteralPath $VERSION_FILE) {
-        $installedCommit = (Get-Content -LiteralPath $VERSION_FILE -Raw).Trim()
-    }
-
-    if ($installedCommit -and ($installedCommit -eq $latestCommit)) {
-        Write-Host "AOSO is already up to date." -ForegroundColor Green
+    if (-not $Auto) {
+        Write-Host "Latest commit : $latestCommit" -ForegroundColor Green
+        Write-Host "Commit message: $latestMessage" -ForegroundColor Gray
         Write-Host ""
-        Read-Host "Press Enter to exit"
-        exit 0
-    }
-
-    if ($installedCommit) {
-        Write-Host "Local commit  : $installedCommit" -ForegroundColor Gray
+        if ($installedCommit) {
+            Write-Host "Local commit  : $installedCommit" -ForegroundColor Gray
+        } else {
+            Write-Host "Local commit  : (none - first install)" -ForegroundColor Gray
+        }
+        Write-Host "New commit    : $latestCommit" -ForegroundColor Green
+        Write-Host ""
     } else {
-        Write-Host "Local commit  : (none - first install)" -ForegroundColor Gray
-    }
-    Write-Host "New commit    : $latestCommit" -ForegroundColor Green
-    Write-Host ""
-
-    if (Test-Path -LiteralPath $AOSO_ROOT) {
-        $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-        $backupRoot = Join-Path $KOS_ROOT "_AOSO_Backups"
-        $backupPath = Join-Path $backupRoot "AOSO-$timestamp"
-
-        Write-Host "Creating backup..." -ForegroundColor Yellow
-        New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
-        Copy-Item -LiteralPath $AOSO_ROOT -Destination $backupPath -Recurse -Force
-        Write-Host "Backup: $backupPath" -ForegroundColor Gray
-        Write-Host ""
+        Write-Stamp "New commit $short - $latestMessage" "Cyan"
     }
 
-    $tempRoot = Join-Path $env:TEMP ("AOSO-update-" + [guid]::NewGuid().ToString("N"))
-    $zipPath = Join-Path $tempRoot "aoso.zip"
-    $extractRoot = Join-Path $tempRoot "extract"
-    New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
+    try {
+        if (Test-Path -LiteralPath $AOSO_ROOT) {
+            $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+            $backupRoot = Join-Path $KOS_ROOT "_AOSO_Backups"
+            $backupPath = Join-Path $backupRoot "AOSO-$timestamp"
 
-    $zipUrls = @(
-        "https://codeload.github.com/$RepoOwner/$RepoName/zip/$latestCommit",
-        "https://github.com/$RepoOwner/$RepoName/archive/$latestCommit.zip"
-    )
+            Write-Host "Creating backup..." -ForegroundColor Yellow
+            New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
+            Copy-Item -LiteralPath $AOSO_ROOT -Destination $backupPath -Recurse -Force
+            Write-Host "Backup: $backupPath" -ForegroundColor Gray
+            Write-Host ""
 
-    $downloaded = $false
-    foreach ($zipUrl in $zipUrls) {
-        Write-Host "Downloading AOSO $Branch ($($latestCommit.Substring(0, 7)))..." -ForegroundColor Cyan
-        try {
-            Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -UseBasicParsing -Headers @{ "User-Agent" = $UserAgent }
-            if ((Test-Path -LiteralPath $zipPath) -and (Get-Item -LiteralPath $zipPath).Length -ge 100) {
-                $downloaded = $true
-                break
-            }
-        } catch {
-            Write-Host "  Download from $zipUrl failed, trying a fallback..." -ForegroundColor Yellow
-        }
-    }
-
-    if (-not $downloaded) {
-        throw "Could not download the AOSO zip from GitHub."
-    }
-
-    Write-Host "Extracting..." -ForegroundColor Gray
-    Expand-Archive -LiteralPath $zipPath -DestinationPath $extractRoot -Force
-
-    $sourceAoso = Get-ChildItem -LiteralPath $extractRoot -Directory |
-        ForEach-Object { Join-Path $_.FullName "AOSO" } |
-        Where-Object { Test-Path -LiteralPath $_ } |
-        Select-Object -First 1
-
-    if (-not $sourceAoso) {
-        throw "The GitHub zip did not contain an AOSO folder."
-    }
-
-    $sourceFiles = @(Get-ChildItem -LiteralPath $sourceAoso -Recurse -File)
-    if ($sourceFiles.Count -eq 0) {
-        throw "No files were found under AOSO/ in the GitHub zip."
-    }
-
-    New-Item -ItemType Directory -Path $AOSO_ROOT -Force | Out-Null
-
-    $expectedRelative = @{}
-    $updated = 0
-
-    Write-Host ""
-    Write-Host "Installing $($sourceFiles.Count) files..." -ForegroundColor Cyan
-    Write-Host ""
-
-    foreach ($file in $sourceFiles) {
-        $relative = Get-RelativePath -Root $sourceAoso -FullName $file.FullName
-        $expectedRelative[$relative] = $true
-        $destination = Join-Path $AOSO_ROOT $relative
-        $parent = Split-Path -Parent $destination
-        if (-not (Test-Path -LiteralPath $parent)) {
-            New-Item -ItemType Directory -Path $parent -Force | Out-Null
-        }
-        Copy-Item -LiteralPath $file.FullName -Destination $destination -Force
-        $updated++
-        Write-Host "  $relative" -ForegroundColor White
-    }
-
-    $removed = 0
-    $localKsFiles = @()
-    if (Test-Path -LiteralPath $AOSO_ROOT) {
-        $localKsFiles = @(Get-ChildItem -LiteralPath $AOSO_ROOT -Filter "*.ks" -File -Recurse)
-    }
-
-    foreach ($localFile in $localKsFiles) {
-        $relative = Get-RelativePath -Root $AOSO_ROOT -FullName $localFile.FullName
-        $baseName = [IO.Path]::GetFileName($relative)
-        if ($expectedRelative.ContainsKey($relative)) { continue }
-        if ($PreserveNames -contains $baseName) { continue }
-
-        Write-Host "Removing obsolete: $relative" -ForegroundColor Yellow
-        Remove-Item -LiteralPath $localFile.FullName -Force
-        $removed++
-    }
-
-    $latestCommit | Set-Content -LiteralPath $VERSION_FILE -Encoding ASCII
-
-    # Refresh the updater itself from this same commit, if the zip includes it.
-    $zipRoot = Get-ChildItem -LiteralPath $extractRoot -Directory | Select-Object -First 1
-    if ($zipRoot) {
-        foreach ($name in @("Update-AOSO.ps1", "Update-AOSO.bat")) {
-            $src = Join-Path $zipRoot.FullName $name
-            if (Test-Path -LiteralPath $src) {
-                Copy-Item -LiteralPath $src -Destination (Join-Path $PSScriptRoot $name) -Force
+            $oldBackups = @(Get-ChildItem -LiteralPath $backupRoot -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending)
+            if ($oldBackups.Count -gt 8) {
+                $oldBackups | Select-Object -Skip 8 | ForEach-Object {
+                    Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+                }
             }
         }
+
+        $tempRoot = Join-Path $env:TEMP ("AOSO-update-" + [guid]::NewGuid().ToString("N"))
+        $zipPath = Join-Path $tempRoot "aoso.zip"
+        $extractRoot = Join-Path $tempRoot "extract"
+        New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
+
+        $zipUrls = @(
+            "https://codeload.github.com/$RepoOwner/$RepoName/zip/$latestCommit",
+            "https://github.com/$RepoOwner/$RepoName/archive/$latestCommit.zip"
+        )
+
+        $downloaded = $false
+        foreach ($zipUrl in $zipUrls) {
+            Write-Host "Downloading AOSO $Branch ($short)..." -ForegroundColor Cyan
+            try {
+                Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -UseBasicParsing -Headers @{ "User-Agent" = $UserAgent }
+                if ((Test-Path -LiteralPath $zipPath) -and (Get-Item -LiteralPath $zipPath).Length -ge 100) {
+                    $downloaded = $true
+                    break
+                }
+            } catch {
+                Write-Host "  Download from $zipUrl failed, trying a fallback..." -ForegroundColor Yellow
+            }
+        }
+
+        if (-not $downloaded) {
+            throw "Could not download the AOSO zip from GitHub."
+        }
+
+        Write-Host "Extracting..." -ForegroundColor Gray
+        Expand-Archive -LiteralPath $zipPath -DestinationPath $extractRoot -Force
+
+        $sourceAoso = Get-ChildItem -LiteralPath $extractRoot -Directory |
+            ForEach-Object { Join-Path $_.FullName "AOSO" } |
+            Where-Object { Test-Path -LiteralPath $_ } |
+            Select-Object -First 1
+
+        if (-not $sourceAoso) {
+            throw "The GitHub zip did not contain an AOSO folder."
+        }
+
+        $sourceFiles = @(Get-ChildItem -LiteralPath $sourceAoso -Recurse -File)
+        if ($sourceFiles.Count -eq 0) {
+            throw "No files were found under AOSO/ in the GitHub zip."
+        }
+
+        New-Item -ItemType Directory -Path $AOSO_ROOT -Force | Out-Null
+
+        $expectedRelative = @{}
+        $updated = 0
+
+        Write-Host "Installing $($sourceFiles.Count) files..." -ForegroundColor Cyan
+
+        foreach ($file in $sourceFiles) {
+            $relative = Get-RelativePath -Root $sourceAoso -FullName $file.FullName
+            $expectedRelative[$relative] = $true
+            $destination = Join-Path $AOSO_ROOT $relative
+            $parent = Split-Path -Parent $destination
+            if (-not (Test-Path -LiteralPath $parent)) {
+                New-Item -ItemType Directory -Path $parent -Force | Out-Null
+            }
+            Copy-Item -LiteralPath $file.FullName -Destination $destination -Force
+            $updated++
+            if (-not $Auto) {
+                Write-Host "  $relative" -ForegroundColor White
+            }
+        }
+
+        $removed = 0
+        $localKsFiles = @()
+        if (Test-Path -LiteralPath $AOSO_ROOT) {
+            $localKsFiles = @(Get-ChildItem -LiteralPath $AOSO_ROOT -Filter "*.ks" -File -Recurse)
+        }
+
+        foreach ($localFile in $localKsFiles) {
+            $relative = Get-RelativePath -Root $AOSO_ROOT -FullName $localFile.FullName
+            $baseName = [IO.Path]::GetFileName($relative)
+            if ($expectedRelative.ContainsKey($relative)) { continue }
+            if ($PreserveNames -contains $baseName) { continue }
+
+            Write-Host "Removing obsolete: $relative" -ForegroundColor Yellow
+            Remove-Item -LiteralPath $localFile.FullName -Force
+            $removed++
+        }
+
+        $latestCommit | Set-Content -LiteralPath $VERSION_FILE -Encoding ASCII
+
+        $zipRoot = Get-ChildItem -LiteralPath $extractRoot -Directory | Select-Object -First 1
+        if ($zipRoot) {
+            foreach ($name in $UpdaterFileNames) {
+                $src = Join-Path $zipRoot.FullName $name
+                if (Test-Path -LiteralPath $src) {
+                    Copy-Item -LiteralPath $src -Destination (Join-Path $PSScriptRoot $name) -Force
+                }
+            }
+        }
+
+        $summary = "Installed $updated files (removed $removed) at $short."
+        if (-not $Auto) {
+            Write-Host ""
+            Write-Host "========================================" -ForegroundColor Green
+            Write-Host "        AOSO UPDATE COMPLETE" -ForegroundColor Green
+            Write-Host "========================================" -ForegroundColor Green
+            Write-Host ""
+            Write-Host "Files installed  : $updated" -ForegroundColor Green
+            Write-Host "Files removed    : $removed" -ForegroundColor Yellow
+            Write-Host "Installed commit : $latestCommit" -ForegroundColor Gray
+            Write-Host "Install location : $AOSO_ROOT" -ForegroundColor Gray
+            Write-Host ""
+            Write-Host "Custom files such as mission_plan.ks are left in place." -ForegroundColor Gray
+            Write-Host ""
+        }
+
+        return @{
+            Status  = "Updated"
+            Message = $summary
+            Commit  = $latestCommit
+        }
     }
+    finally {
+        if ($tempRoot -and (Test-Path -LiteralPath $tempRoot)) {
+            Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Show-Banner {
+    param([string]$Title)
 
     Write-Host ""
-    Write-Host "========================================" -ForegroundColor Green
-    Write-Host "        AOSO UPDATE COMPLETE" -ForegroundColor Green
-    Write-Host "========================================" -ForegroundColor Green
-    Write-Host ""
-    Write-Host "Files installed  : $updated" -ForegroundColor Green
-    Write-Host "Files removed    : $removed" -ForegroundColor Yellow
-    Write-Host "Installed commit : $latestCommit" -ForegroundColor Gray
-    Write-Host "Install location : $AOSO_ROOT" -ForegroundColor Gray
-    Write-Host ""
-    Write-Host "Custom files such as mission_plan.ks are left in place." -ForegroundColor Gray
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host $Title -ForegroundColor Cyan
+    Write-Host "========================================" -ForegroundColor Cyan
     Write-Host ""
 }
-catch {
+
+$KOS_ROOT = Get-KosScriptFolder
+Write-Host "kOS Script folder: $KOS_ROOT" -ForegroundColor Gray
+Write-Host ""
+
+if ($Watch) {
+    try {
+        $Host.UI.RawUI.WindowTitle = "AOSO Watcher"
+    } catch {
+    }
+
+    Show-Banner "          AOSO WATCHER"
+    Write-Host "Leave this window open. AOSO will update itself from GitHub." -ForegroundColor Green
+    Write-Host "Checks every $IntervalMinutes minute(s). Close the window to stop." -ForegroundColor Gray
+    Write-Host "If KSP is running, the watcher waits until you quit the game." -ForegroundColor Gray
+    Write-Host "Press Ctrl+C to stop." -ForegroundColor DarkGray
+    Write-Host ""
+
+    while ($true) {
+        try {
+            $result = Invoke-AosoUpdate -Auto
+            switch ($result.Status) {
+                "Current" {
+                    Write-Stamp $result.Message "Green"
+                    $sleepSeconds = $IntervalMinutes * 60
+                }
+                "Updated" {
+                    Write-Stamp $result.Message "Green"
+                    $sleepSeconds = $IntervalMinutes * 60
+                }
+                "SkippedKsp" {
+                    Write-Stamp $result.Message "Yellow"
+                    $sleepSeconds = 120
+                }
+                default {
+                    Write-Stamp $result.Message "Gray"
+                    $sleepSeconds = $IntervalMinutes * 60
+                }
+            }
+        } catch {
+            Write-Stamp ("Check failed: " + $_.Exception.Message) "Red"
+            $sleepSeconds = $IntervalMinutes * 60
+        }
+
+        $next = (Get-Date).AddSeconds($sleepSeconds).ToString("HH:mm:ss")
+        Write-Host "               Next check at $next" -ForegroundColor DarkGray
+        Start-Sleep -Seconds $sleepSeconds
+    }
+}
+
+Show-Banner "             AOSO UPDATER"
+
+$exitCode = 0
+try {
+    $result = Invoke-AosoUpdate
+    switch ($result.Status) {
+        "Current" {
+            Write-Host $result.Message -ForegroundColor Green
+            Write-Host ""
+        }
+        "Cancelled" {
+            Write-Host $result.Message
+            Write-Host ""
+        }
+        "Updated" { }
+        default {
+            Write-Host $result.Message
+            Write-Host ""
+        }
+    }
+} catch {
     Write-Host ""
     Write-Host "========================================" -ForegroundColor Red
     Write-Host "          AOSO UPDATE FAILED" -ForegroundColor Red
@@ -348,21 +490,10 @@ catch {
     Write-Host ""
     Write-Host $_.Exception.Message -ForegroundColor Red
     Write-Host ""
-    if ($_.Exception.Response) {
-        try {
-            $status = [int]$_.Exception.Response.StatusCode
-            Write-Host "HTTP status: $status" -ForegroundColor DarkGray
-        } catch {
-        }
-    }
     Write-Host "A backup was created before files were changed, if one already existed." -ForegroundColor Gray
     Write-Host ""
-    exit 1
-}
-finally {
-    if ($tempRoot -and (Test-Path -LiteralPath $tempRoot)) {
-        Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
-    }
+    $exitCode = 1
 }
 
 Read-Host "Press Enter to exit"
+exit $exitCode

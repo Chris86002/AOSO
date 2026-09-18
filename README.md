@@ -7,20 +7,23 @@ A modular, autonomous spacecraft operating system for Kerbal Space Program, writ
 
 ## Install
 
-**Recommended: use the updater.** Download these two files from the repo root and keep them together (Desktop is fine):
+**Recommended: use the updater.** Keep these files together (Desktop is fine):
 
-- `Update-AOSO.bat`
+- `Watch-AOSO.bat` — leave this window open; it auto-updates
+- `Update-AOSO.bat` — one-time update
 - `Update-AOSO.ps1`
 
-Double-click `Update-AOSO.bat`. It pulls the latest `main` commit from GitHub and syncs the `AOSO/` scripts into your kOS Script folder:
+Double-click `Watch-AOSO.bat` and leave that window open. It checks GitHub every 10 minutes and syncs `AOSO/` into:
 
 `.../Kerbal Space Program/Ships/Script/AOSO/`
 
-Close KSP first when you can, so kOS is not using the files. If Windows blocks writing under Program Files, right-click the `.bat` and choose **Run as administrator**.
+If KSP is running, it waits until you quit, then installs. Close the window (or Ctrl+C) to stop.
+
+For a single update instead, double-click `Update-AOSO.bat`. If Windows blocks writing under Program Files, right-click the `.bat` and choose **Run as administrator**.
 
 If KSP is not in the default Steam folder, create `kos-root.txt` next to the updater and put the full path to `Ships\Script` on the first line.
 
-The updater also replaces itself from GitHub, so you can keep running the same `.bat` after future commits.
+The updater also replaces itself from GitHub.
 
 ### Manual copy
 1. Copy the `AOSO/` folder into `.../Kerbal Space Program/Ships/Script/` (kOS archive) or `.../Kerbal Space Program/GameData/`.
