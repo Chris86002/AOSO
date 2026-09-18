@@ -402,8 +402,7 @@ FUNCTION aoso_ascent_opt_commit {
         "apo", rec["apo"],
         "peri", rec["peri"],
         "score", score,
-        "stable", TRUE,
-        "phases", rec["phases"]
+        "stable", TRUE
     ).
     IF rec:HASKEY("turn_bias") { SET trial["turn_bias"] TO rec["turn_bias"]. }
     IF rec:HASKEY("stable") { SET trial["stable"] TO rec["stable"]. }
@@ -458,6 +457,18 @@ FUNCTION aoso_ascent_opt_commit {
             SET row["status"] TO "searching".
             aoso_log_info("ASCENT_OPT", "Revert to the pad for trial " + (row["trials"]:LENGTH + 1) + "/" + max_n + ".").
         }
+    }
+    // Per-phase samples are already in the kOS log. Encoding 8 trials × 6
+    // fat phase lexicons with the pure-kOS JSON writer stalls the CPU for
+    // thousands of seconds after circularization (Acacius sat silent from
+    // "Search complete" until LEARN). Strip them before the write.
+    FOR t IN row["trials"] {
+        IF t:ISTYPE("Lexicon") {
+            IF t:HASKEY("phases") { t:REMOVE("phases"). }
+        }
+    }
+    IF row["best"]:ISTYPE("Lexicon") {
+        IF row["best"]:HASKEY("phases") { row["best"]:REMOVE("phases"). }
     }
     aoso_ascent_opt_save().
 }

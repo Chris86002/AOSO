@@ -399,6 +399,20 @@ FUNCTION aoso_ascent_persist_run {
     }
 
     aoso_ascent_opt_commit(rec).
+    IF rec:HASKEY("phases") { rec:REMOVE("phases"). }
+    FOR r IN store["runs"] {
+        IF r:ISTYPE("Lexicon") {
+            IF r:HASKEY("phases") { r:REMOVE("phases"). }
+        }
+    }
+    IF store["best"]:ISTYPE("Lexicon") {
+        FOR bk IN store["best"]:KEYS {
+            LOCAL b IS store["best"][bk].
+            IF b:ISTYPE("Lexicon") {
+                IF b:HASKEY("phases") { b:REMOVE("phases"). }
+            }
+        }
+    }
     aoso_json_write_persistent(runs_path, AOSO_CONST["ASCENT_RUNS_ARCHIVE_FILE"], store).
     aoso_learn_record_ascent(rec).
     aoso_log_info("ASCENT", "Fuel-to-orbit profile=" + profile + " pad_lf=" + ROUND(pad_lf, 1) +

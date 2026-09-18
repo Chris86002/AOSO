@@ -52,8 +52,10 @@ FUNCTION aoso_power_panels_should_retract {
         // A Kerbin gravity turn is 100x55 until circularization; treating
         // that as "deorbit, retract" left the airstream shell on and the
         // batteries died on the coast to AP. Only stow on the way back in.
+        // VERTICALSPEED flickers negative at apoapsis (~0 m/s) during the
+        // circularization burn — that is not reentry. Require a real descent.
         IF PERIAPSIS > SHIP:BODY:ATM:HEIGHT { RETURN FALSE. }
-        IF VERTICALSPEED >= 0 { RETURN FALSE. }
+        IF VERTICALSPEED > -40 { RETURN FALSE. }
         RETURN ALTITUDE < (SHIP:BODY:ATM:HEIGHT + 15000).
     }
     RETURN SHIP:AIRSPEED > AOSO_CONFIG["PANEL_MAX_AIRSPEED"].
