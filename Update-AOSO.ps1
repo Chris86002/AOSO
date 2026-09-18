@@ -36,11 +36,6 @@ $GitHubHeaders = @{
     "X-GitHub-Api-Version" = "2022-11-28"
 }
 
-$PreserveNames = @(
-    "mission_plan.ks",
-    ".aoso-version"
-)
-
 $UpdaterFileNames = @(
     "Update-AOSO.ps1",
     "Update-AOSO.bat",
@@ -159,10 +154,6 @@ function Get-RelativePath {
     return $itemFull
 }
 
-function Test-KspRunning {
-    return [bool](Get-Process -Name "KSP_x64", "KSP" -ErrorAction SilentlyContinue)
-}
-
 function Get-InstalledCommit {
     param([string]$VersionFile)
 
@@ -218,28 +209,6 @@ Steam installs KSP under Program Files, which Windows protects.
             Status  = "Current"
             Message = "AOSO is current ($short)."
             Commit  = $latestCommit
-        }
-    }
-
-    $kspRunning = Test-KspRunning
-    if ($kspRunning -and $Auto) {
-        return @{
-            Status  = "SkippedKsp"
-            Message = "New commit $short is ready. Waiting until Kerbal Space Program is closed."
-            Commit  = $latestCommit
-        }
-    }
-
-    if ($kspRunning -and -not $Auto) {
-        Write-Host "WARNING: Kerbal Space Program appears to be running." -ForegroundColor Yellow
-        Write-Host "Close KSP before updating AOSO so kOS is not using the files." -ForegroundColor Yellow
-        Write-Host ""
-        $answer = Read-Host "Continue anyway? (Y/N)"
-        if ($answer -notmatch '^[Yy]$') {
-            return @{
-                Status  = "Cancelled"
-                Message = "Update cancelled."
-            }
         }
     }
 
@@ -338,6 +307,13 @@ Steam installs KSP under Program Files, which Windows protects.
             if (-not (Test-Path -LiteralPath $parent)) {
                 New-Item -ItemType Directory -Path $parent -Force | Out-Null
             }
+            if (Test-Path -LiteralPath $destination) {
+                try {
+                    $existing = Get-Item -LiteralPath $destination
+                    if ($existing.IsReadOnly) { $existing.IsReadOnly = $false }
+                } catch {
+                }
+            }
             Copy-Item -LiteralPath $file.FullName -Destination $destination -Force
             $updated++
             if (-not $Auto) {
@@ -353,9 +329,7 @@ Steam installs KSP under Program Files, which Windows protects.
 
         foreach ($localFile in $localKsFiles) {
             $relative = Get-RelativePath -Root $AOSO_ROOT -FullName $localFile.FullName
-            $baseName = [IO.Path]::GetFileName($relative)
             if ($expectedRelative.ContainsKey($relative)) { continue }
-            if ($PreserveNames -contains $baseName) { continue }
 
             Write-Host "Removing obsolete: $relative" -ForegroundColor Yellow
             Remove-Item -LiteralPath $localFile.FullName -Force
@@ -386,7 +360,7 @@ Steam installs KSP under Program Files, which Windows protects.
             Write-Host "Installed commit : $latestCommit" -ForegroundColor Gray
             Write-Host "Install location : $AOSO_ROOT" -ForegroundColor Gray
             Write-Host ""
-            Write-Host "Custom files such as mission_plan.ks are left in place." -ForegroundColor Gray
+            Write-Host "Every AOSO file from GitHub was written, including mission_plan.ks if it is in the repo." -ForegroundColor Gray
             Write-Host ""
         }
 
@@ -426,7 +400,7 @@ if ($Watch) {
     Show-Banner "          AOSO WATCHER"
     Write-Host "Leave this window open. AOSO will update itself from GitHub." -ForegroundColor Green
     Write-Host "Checks every $IntervalMinutes minute(s). Close the window to stop." -ForegroundColor Gray
-    Write-Host "If KSP is running, the watcher waits until you quit the game." -ForegroundColor Gray
+    Write-Host "Updates run even if Kerbal Space Program is open." -ForegroundColor Gray
     Write-Host "Press Ctrl+C to stop." -ForegroundColor DarkGray
     Write-Host ""
 
@@ -441,10 +415,6 @@ if ($Watch) {
                 "Updated" {
                     Write-Stamp $result.Message "Green"
                     $sleepSeconds = $IntervalMinutes * 60
-                }
-                "SkippedKsp" {
-                    Write-Stamp $result.Message "Yellow"
-                    $sleepSeconds = 120
                 }
                 default {
                     Write-Stamp $result.Message "Gray"
