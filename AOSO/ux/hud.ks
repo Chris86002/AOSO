@@ -60,9 +60,7 @@ FUNCTION aoso_hud_eta {
 }
 
 FUNCTION aoso_hud_warp_txt {
-    IF WARP <= 0 { RETURN "1x". }
-    IF WARPMODE = "PHYSICS" { RETURN "PHYS x" + WARP. }
-    RETURN "RAILS x" + WARP.
+    RETURN aoso_warp_diag_txt().
 }
 
 FUNCTION aoso_hud_doing_text {

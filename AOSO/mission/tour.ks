@@ -94,13 +94,19 @@ FUNCTION aoso_tour_is_impacting {
     RETURN FALSE.
 }
 
-FUNCTION aoso_tour_opposite_site {
+FUNCTION aoso_tour_site_vang {
     PARAMETER lat.
     PARAMETER lng.
     LOCAL geo IS LATLNG(lat, lng).
     LOCAL ship_r IS SHIP:POSITION - SHIP:BODY:POSITION.
     LOCAL site_r IS geo:POSITION - SHIP:BODY:POSITION.
-    RETURN VANG(ship_r, site_r) >= 140.
+    RETURN VANG(ship_r, site_r).
+}
+
+FUNCTION aoso_tour_opposite_site {
+    PARAMETER lat.
+    PARAMETER lng.
+    RETURN aoso_tour_site_vang(lat, lng) >= 140.
 }
 
 FUNCTION aoso_tour_on_abort {
@@ -375,6 +381,9 @@ FUNCTION aoso_tour_scan_execute {
         RETURN.
     }
     SET data["deorbit_wait_since"] TO TIME:SECONDS.
+    aoso_log_info("TOUR", "Scan confirm done. Site lat=" + ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) +
+        " score=" + ROUND(data["site_score"], 2) + " AP=" + ROUND(APOAPSIS, 0) + " PE=" + ROUND(PERIAPSIS, 0) +
+        " inc=" + ROUND(SHIP:ORBIT:INCLINATION, 1) + " - deorbit next.").
     aoso_state_transition(AOSO_TOUR, "DEORBIT").
 }
 
@@ -402,9 +411,12 @@ FUNCTION aoso_tour_deorbit_execute {
         IF aoso_maneuver_execute_next() {
             LOCAL burn_res IS aoso_maneuver_last_result().
             IF burn_res = "missed" OR burn_res = "incomplete" {
-                aoso_log_warn("TOUR", "Deorbit " + burn_res + " - retrying.").
+                aoso_log_warn("TOUR", "Deorbit " + burn_res + " - retrying. AP=" + ROUND(APOAPSIS, 0) + " PE=" + ROUND(PERIAPSIS, 0) +
+                    " alt=" + ROUND(ALTITUDE, 0) + " " + aoso_warp_diag_txt() + ".").
                 RETURN.
             }
+            aoso_log_info("TOUR", "Deorbit complete. AP=" + ROUND(APOAPSIS, 0) + " PE=" + ROUND(PERIAPSIS, 0) +
+                " alt=" + ROUND(ALTITUDE, 0) + " vs=" + ROUND(VERTICALSPEED, 1) + " - handing to descent.").
             aoso_descent_start().
             aoso_state_transition(AOSO_TOUR, "DESCEND").
         }
@@ -417,8 +429,14 @@ FUNCTION aoso_tour_deorbit_execute {
     }
 
     LOCAL opposite IS FALSE.
+    LOCAL vang IS 0.
+    LOCAL opp_txt IS "NO".
     IF have_site {
-        SET opposite TO aoso_tour_opposite_site(data["site_lat"], data["site_lng"]).
+        SET vang TO aoso_tour_site_vang(data["site_lat"], data["site_lng"]).
+        IF vang >= 140 {
+            SET opposite TO TRUE.
+            SET opp_txt TO "YES".
+        }
     }
 
     LOCAL waited IS TIME:SECONDS - data["deorbit_wait_since"].
@@ -430,11 +448,17 @@ FUNCTION aoso_tour_deorbit_execute {
             IF waited < period * 2 {
                 LOCAL guess IS period * 0.4.
                 IF guess < 40 { SET guess TO 40. }
-                aoso_ui_set("Waiting for site over horizon", aoso_hud_eta(period - waited) + "  rails warp").
+                aoso_ui_set("Waiting for site over horizon", aoso_hud_eta(period - waited) + "  " + aoso_hud_warp_txt()).
                 IF NOT data:HASKEY("deorbit_warp_logged") {
-                    aoso_log_info("TOUR", "Rails-warping until the landing site is opposite before deorbit (up to ~" + ROUND(period, 0) + "s).").
+                    aoso_log_info("TOUR", "Rails-warping until the landing site is opposite before deorbit (up to ~" + ROUND(period, 0) + "s). site lat=" +
+                        ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) + " ship lat=" +
+                        ROUND(SHIP:GEOPOSITION:LAT, 2) + " lng=" + ROUND(SHIP:GEOPOSITION:LNG, 2) + " vang=" + ROUND(vang, 0) + " deg.").
                     SET data["deorbit_warp_logged"] TO TRUE.
                 }
+                aoso_log_every(45, "TOUR", "Deorbit wait opposite=NO vang=" + ROUND(vang, 0) + " deg ship=" +
+                    ROUND(SHIP:GEOPOSITION:LAT, 1) + "/" + ROUND(SHIP:GEOPOSITION:LNG, 1) + " site=" +
+                    ROUND(data["site_lat"], 1) + "/" + ROUND(data["site_lng"], 1) + " waited=" + ROUND(waited, 0) +
+                    "s period=" + ROUND(period, 0) + "s " + aoso_warp_diag_txt() + ".").
                 aoso_steer_release().
                 aoso_warp_approach(guess, 20, 10).
                 RETURN.
@@ -446,14 +470,19 @@ FUNCTION aoso_tour_deorbit_execute {
     // minutes (Acacius missed the first Minmus deorbit by 360 s). Stay
     // here until warp is actually idle, then place the node.
     IF WARP > 0 {
+        aoso_log_every(8, "TOUR", "Deorbit settling " + aoso_warp_diag_txt() + " opposite=" + opp_txt + " vang=" + ROUND(vang, 0) + " deg before placing node.").
         SET WARP TO 0.
         RETURN.
     }
 
     LOCAL eta_s IS -1.
     IF opposite { SET eta_s TO aoso_maneuver_align_s(). }
+    aoso_log_info("TOUR", "Placing deorbit node opposite=" + opp_txt + " vang=" + ROUND(vang, 0) +
+        " deg eta=" + ROUND(eta_s, 0) + "s AP=" + ROUND(APOAPSIS, 0) + " PE=" + ROUND(PERIAPSIS, 0) +
+        " " + aoso_warp_diag_txt() + ".").
     LOCAL nd IS aoso_deorbit_add_node(0, FALSE, eta_s).
     IF nd = 0 {
+        aoso_log_info("TOUR", "No deorbit burn needed (PE already " + ROUND(PERIAPSIS, 0) + "m) - descent now.").
         aoso_descent_start().
         aoso_state_transition(AOSO_TOUR, "DESCEND").
     }

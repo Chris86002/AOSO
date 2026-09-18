@@ -90,6 +90,20 @@ FUNCTION aoso_warp_force_physics {
     WAIT 0.
 }
 
+FUNCTION aoso_warp_diag_txt {
+    LOCAL w IS "1x".
+    IF WARP > 0 {
+        IF WARPMODE = "PHYSICS" {
+            SET w TO "PHYS x" + WARP.
+        } ELSE {
+            SET w TO "RAILS x" + WARP.
+        }
+    }
+    LOCAL steer IS "OFF".
+    IF DEFINED AOSO_STEER_MODE { SET steer TO AOSO_STEER_MODE. }
+    RETURN w + " steer=" + steer.
+}
+
 // Rails warp down to rails_lead_s, then stay at 1x so SAS can actually
 // point. Physics warp 3 (4x) during the align window made Acacius (44 m,
 // no RCS, lander-can wheels) oscillate 40 deg off the circularization
@@ -109,10 +123,12 @@ FUNCTION aoso_warp_approach {
     }
     IF eta_s <= physics_until_s {
         SET WARP TO 0.
+        aoso_log_every(45, "WARP", "Holding 1x eta=" + ROUND(eta_s, 0) + "s until=" + ROUND(physics_until_s, 0) + "s " + aoso_warp_diag_txt() + ".").
         RETURN "now".
     }
     IF NOT aoso_maneuver_can_warp() {
         SET WARP TO 0.
+        aoso_log_every(45, "WARP", "Warp hold (atm/landed) eta=" + ROUND(eta_s, 0) + "s " + aoso_warp_diag_txt() + ".").
         RETURN "hold".
     }
     IF eta_s > rails_lead_s + 5 {
@@ -125,10 +141,14 @@ FUNCTION aoso_warp_approach {
         }
         IF WARP = 0 {
             WARPTO(TIME:SECONDS + eta_s - rails_lead_s).
+            aoso_log_every(45, "WARP", "WARPTO rails eta=" + ROUND(eta_s, 0) + "s lead=" + ROUND(rails_lead_s, 0) + "s " + aoso_warp_diag_txt() + ".").
+        } ELSE {
+            aoso_log_every(60, "WARP", "Rails coast eta=" + ROUND(eta_s, 0) + "s " + aoso_warp_diag_txt() + ".").
         }
         RETURN "rails".
     }
     SET WARP TO 0.
+    aoso_log_every(45, "WARP", "Align window eta=" + ROUND(eta_s, 0) + "s lead=" + ROUND(rails_lead_s, 0) + "s " + aoso_warp_diag_txt() + ".").
     RETURN "now".
 }
 
