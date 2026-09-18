@@ -84,7 +84,6 @@ FUNCTION aoso_log_flush {
     SET AOSO_LOG_LAST_FLUSH TO TIME:SECONDS.
 }
 
-FUNCTION aoso_log_trace { PARAMETER tag. PARAMETER msg. aoso_log("TRACE", tag, msg). }
 FUNCTION aoso_log_debug { PARAMETER tag. PARAMETER msg. aoso_log("DEBUG", tag, msg). }
 FUNCTION aoso_log_info  { PARAMETER tag. PARAMETER msg. aoso_log("INFO", tag, msg). }
 FUNCTION aoso_log_warn  { PARAMETER tag. PARAMETER msg. aoso_log("WARN", tag, msg). }

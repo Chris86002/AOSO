@@ -61,12 +61,6 @@ FUNCTION aoso_profile_snapshot {
     ).
 }
 
-FUNCTION aoso_profile_fingerprint {
-    LOCAL snap IS aoso_profile_snapshot().
-    RETURN snap["parts"] + "|" + snap["engines"] + "|" + snap["tanks"] + "|" + snap["stages"] + "|" +
-        snap["docking"] + "|" + snap["drills"] + "|" + snap["solar"] + "|" + snap["status"] + "|" + snap["control"].
-}
-
 FUNCTION aoso_profile_flag {
     PARAMETER capable.
     PARAMETER confidence.
@@ -475,27 +469,12 @@ FUNCTION aoso_profile_maybe_refresh {
     }
 }
 
-FUNCTION aoso_profile_get {
-    PARAMETER key.
-    PARAMETER default_value IS 0.
-    IF AOSO_PROFILE:HASKEY(key) { RETURN AOSO_PROFILE[key]. }
-    RETURN default_value.
-}
-
 FUNCTION aoso_profile_capable {
     PARAMETER cap_name.
     IF NOT AOSO_PROFILE:HASKEY("capabilities") { RETURN FALSE. }
     LOCAL caps IS AOSO_PROFILE["capabilities"].
     IF NOT caps:HASKEY(cap_name) { RETURN FALSE. }
     RETURN caps[cap_name]["capable"].
-}
-
-FUNCTION aoso_profile_confidence {
-    PARAMETER cap_name.
-    IF NOT AOSO_PROFILE:HASKEY("capabilities") { RETURN 0. }
-    LOCAL caps IS AOSO_PROFILE["capabilities"].
-    IF NOT caps:HASKEY(cap_name) { RETURN 0. }
-    RETURN caps[cap_name]["confidence"].
 }
 
 FUNCTION aoso_profile_save {

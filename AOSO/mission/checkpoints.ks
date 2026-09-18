@@ -6,9 +6,7 @@
 // step's start/update/is_done/is_aborted callbacks) can't itself survive a
 // JSON round trip (core/json.ks only supports scalar/LIST/LEXICON values),
 // so this deliberately never tries to persist the plan itself -- only the
-// index into whatever plan the caller rebuilds identically on resume, the
-// same "caller rebuilds, we just remember where" contract core/state.ks's
-// own aoso_state_save/aoso_state_load documents for its "data" lexicon.
+// index into whatever plan the caller rebuilds identically on resume.
 //
 // core/boot.ks already conditionally calls aoso_checkpoints_load() on every
 // boot (`IF DEFINED aoso_checkpoints_load`); it only loads the last

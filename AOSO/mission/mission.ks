@@ -2,9 +2,7 @@
 // Phase 10 (Mission layer): the top-level orchestrator that chains every
 // previous phase's independent subsystem into a single autonomous mission,
 // exactly what flight/ascent.ks's own header calls "the mission-level
-// machine a later phase adds" and landing/deorbit.ks's aoso_deorbit_execute
-// wrapper was left in place for -- a later phase inserting mission-state
-// transitions without touching every call site.
+// machine a later phase adds".
 //
 // A mission is just an ordered LIST of "steps" (AOSO_MISSION_PLAN), each a
 // small lexicon of callbacks: start/update/is_done/is_aborted(optional).

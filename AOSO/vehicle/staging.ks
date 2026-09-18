@@ -265,42 +265,6 @@ FUNCTION aoso_staging_sense {
     SET AOSO_STG_DROP_FLOWING TO drop_flowing.
 }
 
-FUNCTION aoso_staging_engine_counts {
-    LOCAL elist IS aoso_parts_engines().
-    LOCAL lit IS 0.
-    LOCAL flamed IS 0.
-    LOCAL flowing IS 0.
-    FOR e IN elist {
-        IF e:IGNITION {
-            SET lit TO lit + 1.
-            IF e:FLAMEOUT {
-                SET flamed TO flamed + 1.
-            } ELSE {
-                IF e:MASSFLOW > 0.0001 { SET flowing TO flowing + 1. }
-            }
-        }
-    }
-    RETURN LEXICON("lit", lit, "flamed", flamed, "flowing", flowing).
-}
-
-// Engines that were lit are now useless: all flamed out, or throttle is
-// open and none of them are actually flowing mass. MASSFLOW is 0 at
-// throttle 0 even with full tanks, so the flow check is gated on throttle.
-FUNCTION aoso_staging_engines_spent {
-    PARAMETER commanded_throttle IS THROTTLE.
-    IF AOSO_STG_LIT <= 0 {
-        IF AOSO_STG_FLAMED <= 0 {
-            aoso_staging_sense(commanded_throttle).
-        }
-    }
-    IF AOSO_STG_LIT <= 0 { RETURN FALSE. }
-    IF AOSO_STG_FLAMED = AOSO_STG_LIT { RETURN TRUE. }
-    IF commanded_throttle > 0.12 {
-        IF AOSO_STG_FLOWING <= 0 { RETURN TRUE. }
-    }
-    RETURN FALSE.
-}
-
 FUNCTION aoso_staging_thrust_dead {
     IF AOSO_STG_THRUST > 0.05 {
         SET AOSO_STAGING_DEAD_SINCE TO 0.

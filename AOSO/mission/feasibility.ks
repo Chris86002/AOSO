@@ -439,9 +439,3 @@ FUNCTION aoso_feas_log_report {
             "  have=" + ROUND(row["available"], 0) + "  " + mark + extra).
     }
 }
-
-FUNCTION aoso_feas_result {
-    PARAMETER dest_name.
-    LOCAL report IS aoso_feas_evaluate(dest_name).
-    RETURN report["result"].
-}

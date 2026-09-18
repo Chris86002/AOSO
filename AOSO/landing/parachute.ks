@@ -24,9 +24,8 @@ FUNCTION aoso_parachute_should_arm {
 
 // Arms every parachute that can currently be deployed safely, once inside
 // an atmosphere. Idempotent -- CHUTESSAFE ON is a no-op for chutes that are
-// already armed/deployed. Call once per scheduler tick (or from
-// landing/descent.ks's BURN/FINAL_APPROACH states) via
-// aoso_parachute_register_task().
+// already armed/deployed. Call from landing/descent.ks's BURN/FINAL_APPROACH
+// states via aoso_parachute_auto_check().
 FUNCTION aoso_parachute_auto_check {
     IF NOT aoso_parachute_should_arm() { RETURN. }
     IF CHUTESSAFE { RETURN. } // already armed
@@ -34,11 +33,4 @@ FUNCTION aoso_parachute_auto_check {
     SET CHUTESSAFE TO TRUE.
     aoso_log_info("PARACHUTE", "CHUTESSAFE armed at altitude=" + ROUND(ALTITUDE, 0) +
         "m, airspeed=" + ROUND(SHIP:AIRSPEED, 1) + " m/s.").
-}
-
-// Wires the parachute check into core/scheduler.ks, mirroring
-// vehicle/staging.ks's aoso_staging_register_task().
-FUNCTION aoso_parachute_register_task {
-    PARAMETER interval_s IS 0.5.
-    aoso_sched_add("auto_parachute", interval_s, aoso_parachute_auto_check@).
 }

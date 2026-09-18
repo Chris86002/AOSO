@@ -322,8 +322,7 @@ FUNCTION aoso_kscreturn_define_states {
 
 // Entry point: call once the ship is orbiting HOME_BODY (e.g. after
 // return/return.ks's aoso_return_is_done() is TRUE) to arm precision
-// return, then drive it every tick with aoso_kscreturn_update() (directly,
-// or via aoso_kscreturn_register_task()).
+// return, then drive it every tick with aoso_kscreturn_update().
 FUNCTION aoso_kscreturn_start {
     aoso_kscreturn_define_states().
     SET AOSO_PRECISION["data"] TO LEXICON().
@@ -332,11 +331,6 @@ FUNCTION aoso_kscreturn_start {
 
 FUNCTION aoso_kscreturn_update {
     aoso_state_update(AOSO_PRECISION).
-}
-
-FUNCTION aoso_kscreturn_register_task {
-    PARAMETER interval_s IS 0.1.
-    aoso_sched_add("precision_return", interval_s, aoso_kscreturn_update@).
 }
 
 FUNCTION aoso_kscreturn_is_done {

@@ -9,27 +9,6 @@
 // 11) once this has closed the gap; this file only covers the "get into
 // the same orbit, near the target" nav problem.
 
-FUNCTION aoso_rendezvous_available {
-    RETURN HASTARGET.
-}
-
-// TARGET:POSITION (and any orbitable's :POSITION) is already relative to the
-// active vessel, so no subtraction is needed to get ship-relative position.
-FUNCTION aoso_rendezvous_relative_position {
-    PARAMETER target_orbitable IS TARGET.
-    RETURN target_orbitable:POSITION.
-}
-
-FUNCTION aoso_rendezvous_distance {
-    PARAMETER target_orbitable IS TARGET.
-    RETURN aoso_rendezvous_relative_position(target_orbitable):MAG.
-}
-
-FUNCTION aoso_rendezvous_relative_speed {
-    PARAMETER target_orbitable IS TARGET.
-    RETURN (target_orbitable:VELOCITY:ORBIT - SHIP:VELOCITY:ORBIT):MAG.
-}
-
 // Signed phase angle (deg) from ship to target around the body, positive
 // when the target is ahead of the ship in the direction of the ship's
 // orbital motion.

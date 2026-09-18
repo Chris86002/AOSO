@@ -8,17 +8,6 @@ FUNCTION aoso_world_has_ore {
     RETURN aoso_world_body_stat(body_name, "has_ore", FALSE).
 }
 
-FUNCTION aoso_world_has_oxygen {
-    PARAMETER body_name IS SHIP:BODY:NAME.
-    RETURN aoso_world_body_stat(body_name, "has_oxygen", FALSE).
-}
-
-FUNCTION aoso_world_has_atmosphere {
-    PARAMETER body_name IS SHIP:BODY:NAME.
-    LOCAL described IS aoso_world_body(body_name).
-    RETURN described["atm"].
-}
-
 FUNCTION aoso_world_resources_summary {
     PARAMETER body_name IS SHIP:BODY:NAME.
     LOCAL described IS aoso_world_body(body_name).

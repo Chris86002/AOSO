@@ -12,8 +12,7 @@
 // that built-in throws "Specified argument was out of the range of valid
 // values" (a kOS/KSP-side ArgumentOutOfRangeException) while walking the
 // vessel's stage-separator parts, which would otherwise abort aoso_boot().
-// Persisted to VESSEL_FILE so a reload/scene-change can skip a redundant
-// scan until the caller asks for one.
+// Also dumped to VESSEL_FILE as an operator snapshot; boot always rescans.
 //
 // Phase 7 (Refuel & power) adds has_harvesters/has_converters/has_radiators
 // the same HASMODULE way: ModuleResourceHarvester and ModuleResourceConverter
@@ -119,13 +118,4 @@ FUNCTION aoso_vessel_get {
 
 FUNCTION aoso_vessel_save {
     aoso_json_write(AOSO_CONST["VESSEL_FILE"], AOSO_VESSEL).
-}
-
-FUNCTION aoso_vessel_load {
-    LOCAL loaded IS aoso_json_read(AOSO_CONST["VESSEL_FILE"], LEXICON()).
-    IF loaded:ISTYPE("Lexicon") AND loaded:HASKEY("scanned_at") {
-        SET AOSO_VESSEL TO loaded.
-        RETURN TRUE.
-    }
-    RETURN FALSE.
 }

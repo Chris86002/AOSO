@@ -46,7 +46,6 @@ RUN ONCE "AOSO/flight/steering".
 RUN ONCE "AOSO/flight/maneuver".
 RUN ONCE "AOSO/flight/ascent_opt".
 RUN ONCE "AOSO/flight/ascent".
-RUN ONCE "AOSO/flight/launch".
 
 // --- Orbital nav --------------------------------------------------------
 RUN ONCE "AOSO/nav/orbit".

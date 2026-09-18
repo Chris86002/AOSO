@@ -141,10 +141,3 @@ FUNCTION aoso_refuel_start {
 FUNCTION aoso_refuel_tick {
     aoso_state_update(AOSO_REFUEL).
 }
-
-// Wires the refuel tick into core/scheduler.ks, mirroring
-// landing/descent.ks's aoso_descent_register_task().
-FUNCTION aoso_refuel_register_task {
-    PARAMETER interval_s IS 1.
-    aoso_sched_add("refuel_isru", interval_s, aoso_refuel_tick@).
-}

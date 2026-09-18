@@ -14,15 +14,6 @@
 
 GLOBAL AOSO_PLAN_LAST IS LEXICON().
 
-FUNCTION aoso_plan_compress {
-    PARAMETER names.
-    // Adjacent moons of the same planet are already clustered. Compression
-    // here is: if the class prefers orbit-only, we still keep the body on
-    // the itinerary (the tour will not land) -- no extra Kerbin returns
-    // get inserted between cluster members.
-    RETURN names.
-}
-
 FUNCTION aoso_plan_build {
     aoso_log_info("PLAN", "Building mission plan for " + SHIP:NAME + " from " + SHIP:BODY:NAME +
         " (mode=" + aoso_config_get("OPTIMIZATION_MODE", "BALANCED") + ").").
@@ -36,7 +27,6 @@ FUNCTION aoso_plan_build {
 
     LOCAL order IS LIST().
     IF AOSO_ROUTE_LAST:HASKEY("order") { SET order TO AOSO_ROUTE_LAST["order"]. }
-    SET order TO aoso_plan_compress(order).
 
     LOCAL provisional IS FALSE.
     IF order:LENGTH = 0 {

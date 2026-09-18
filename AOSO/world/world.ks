@@ -45,15 +45,3 @@ FUNCTION aoso_world_refresh {
         " stable=" + AOSO_WORLD["orbit"]["stable"] + " (" + reason + ").").
     RETURN AOSO_WORLD.
 }
-
-FUNCTION aoso_world_get {
-    PARAMETER key.
-    PARAMETER default_value IS 0.
-    IF AOSO_WORLD:HASKEY(key) { RETURN AOSO_WORLD[key]. }
-    RETURN default_value.
-}
-
-FUNCTION aoso_world_here {
-    IF AOSO_WORLD:HASKEY("here") { RETURN AOSO_WORLD["here"]. }
-    RETURN aoso_world_body(SHIP:BODY:NAME).
-}

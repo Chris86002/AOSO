@@ -112,13 +112,6 @@ FUNCTION aoso_orbit_eta_apoapsis {
     RETURN ETA:APOAPSIS.
 }
 
-// Seconds until this orbit's next SOI transition, or -1 if none is patched.
-FUNCTION aoso_orbit_time_to_soi_change {
-    PARAMETER orbitable IS SHIP.
-    IF orbitable:ORBIT:HASNEXTPATCH { RETURN orbitable:ORBIT:NEXTPATCHETA. }
-    RETURN -1.
-}
-
 // Finds up to two upcoming times (seconds from now) at which orbitable_a
 // crosses the orbital plane of orbitable_b -- i.e. the relative ascending
 // and descending nodes -- within two periods of orbitable_a. Rather than
@@ -200,13 +193,6 @@ FUNCTION aoso_orbit_lan_node_etas {
     LOCAL eta_dn IS period * dta_dn / 360.
     IF eta_dn > 20 { out:ADD(eta_dn). }
     RETURN out.
-}
-
-FUNCTION aoso_orbit_lan_node_eta {
-    PARAMETER target_orbitable.
-    LOCAL both IS aoso_orbit_lan_node_etas(target_orbitable).
-    IF both:LENGTH = 0 { RETURN -1. }
-    RETURN both[0].
 }
 
 // Upcoming times (seconds from now) at which orbitable crosses the body's

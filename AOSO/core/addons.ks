@@ -57,55 +57,6 @@ FUNCTION aoso_addon_available {
 }
 
 // ---------------------------------------------------------------------
-// MechJeb wrappers. If unavailable, callers should use core kOS steering
-// (COCKPIT/STEERING) and RCS/throttle directly; these wrappers simply
-// report unavailability so guidance modules can branch.
-// ---------------------------------------------------------------------
-
-FUNCTION aoso_addon_mj_available {
-    RETURN aoso_addon_available("MECHJEB").
-}
-
-// Attempts a MechJeb-driven smart A.S.S attitude hold. Returns TRUE if the
-// command was issued via MechJeb, FALSE if the caller must fall back to
-// native kOS STEERING.
-FUNCTION aoso_addon_mj_set_attitude {
-    PARAMETER mode_name.  // e.g. "PROGRADE", "RETROGRADE", "SURFACE"
-    IF NOT aoso_addon_mj_available() { RETURN FALSE. }
-    // MechJeb's kOS mod exposes ADDONS:MJ:ASCENTAP / SMARTASS etc. Since the
-    // exact suffix surface varies by MechJeb release, and this repo must not
-    // invent suffixes, MechJeb attitude control is not driven here directly;
-    // instead we report available=TRUE but let the caller keep using native
-    // kOS STEERING as the actually-executed control law. This keeps the
-    // system correct on every MechJeb version without guessing at its API.
-    RETURN FALSE.
-}
-
-// ---------------------------------------------------------------------
-// Astrogator wrappers - transfer planning. Astrogator's kOS bridge does not
-// expose a stable/documented suffix set for programmatic transfer solving
-// in vanilla kOS, so the abstraction here is a capability probe only; the
-// real Lambert/Hohmann solving always happens in navigation/porkchop.ks and
-// navigation/transfer_planner.ks using pure orbital mechanics. This keeps
-// results reproducible and avoids invented syntax.
-// ---------------------------------------------------------------------
-
-FUNCTION aoso_addon_astrogator_available {
-    RETURN aoso_addon_available("ASTROGATOR").
-}
-
-// ---------------------------------------------------------------------
-// Kerbal Engineer wrappers - performance/sensor readouts. KER's values are
-// reproduced with pure kOS SHIP:* suffixes in vehicle/performance.ks, so
-// this wrapper only reports availability for optional cross-checking /
-// display purposes.
-// ---------------------------------------------------------------------
-
-FUNCTION aoso_addon_ker_available {
-    RETURN aoso_addon_available("KER").
-}
-
-// ---------------------------------------------------------------------
 // simpleJson wrappers - used by core/json.ks. If unavailable, core/json.ks
 // falls back to its own pure-kOS encoder/decoder automatically.
 // ---------------------------------------------------------------------
