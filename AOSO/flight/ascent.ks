@@ -562,7 +562,14 @@ FUNCTION aoso_ascent_coast_entry {
 
 FUNCTION aoso_ascent_coast_execute {
     PARAMETER data.
-    aoso_ascent_steer(data).
+    IF aoso_ascent_in_atmosphere() {
+        aoso_ascent_steer(data).
+    } ELSE {
+        // Circularization attitude: east and horizontal. Prograde while
+        // still climbing is pitched up; rails warp then freezes the wrong
+        // inertial facing. Point at the burn before we warp.
+        aoso_steer_heading_pitch(data["heading"], 0).
+    }
     aoso_staging_auto_check().
     IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
 
@@ -593,7 +600,7 @@ FUNCTION aoso_ascent_coast_execute {
     LOCAL align_s IS aoso_maneuver_align_s().
 
     IF ETA:APOAPSIS > (lead_s + align_s + 5) {
-        LOCAL wst IS aoso_warp_approach(ETA:APOAPSIS, lead_s + align_s, lead_s + aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
+        LOCAL wst IS aoso_warp_approach(ETA:APOAPSIS, lead_s + align_s, lead_s + aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 45)).
         RETURN.
     }
     SET WARP TO 0.
@@ -641,9 +648,19 @@ FUNCTION aoso_ascent_circularize_execute {
 
     IF aoso_maneuver_execute_next() {
         LOCAL circ_res IS aoso_maneuver_last_result().
+        LOCAL pe_ok IS TRUE.
+        IF SHIP:BODY:ATM:EXISTS {
+            IF PERIAPSIS < SHIP:BODY:ATM:HEIGHT + 2000 { SET pe_ok TO FALSE. }
+        }
         IF circ_res = "ok" {
-            aoso_state_transition(AOSO_ASCENT, "DONE").
-        } ELSE {
+            IF pe_ok {
+                aoso_state_transition(AOSO_ASCENT, "DONE").
+            } ELSE {
+                aoso_log_warn("ASCENT", "Circularization cut with peri still in atmosphere (apo=" + ROUND(APOAPSIS, 0) + " peri=" + ROUND(PERIAPSIS, 0) + ") - retrying.").
+                SET circ_res TO "incomplete".
+            }
+        }
+        IF circ_res <> "ok" {
             aoso_log_warn("ASCENT", "Circularization " + circ_res + " - retrying.").
             IF ETA:APOAPSIS > ETA:PERIAPSIS {
                 aoso_maneuver_add_circularize_here().

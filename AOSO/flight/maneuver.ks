@@ -11,6 +11,10 @@
 // Acacius's 104 s Mun burn locked at ignition, staged, and left the marker;
 // the intercept missed. Feathering used to start at 2 m/s remaining -- at
 // TWR ~1 that is a fraction of a tick -- so the cut always arrived late.
+// After rails warp we stay at 1x for the align window: physics warp 4x
+// left Acacius 40 deg off the circ node (no RCS, 44 m, lander-can wheels)
+// and four "missed" retries then an off-axis lock that feather-cut at
+// 28 m/s remaining (82x62 km, peri still in atmosphere).
 
 GLOBAL AOSO_MANEUVER_LOCK IS V(0, 0, 0).
 GLOBAL AOSO_MANEUVER_BURNING IS FALSE.
@@ -60,6 +64,14 @@ FUNCTION aoso_maneuver_can_warp {
     RETURN TRUE.
 }
 
+// TRUE when periapsis is still inside the atmosphere (plus an optional
+// margin). Circularization must not give up or feather-cut in that state.
+FUNCTION aoso_maneuver_peri_unsafe {
+    PARAMETER margin IS 0.
+    IF NOT SHIP:BODY:ATM:EXISTS { RETURN FALSE. }
+    RETURN PERIAPSIS < SHIP:BODY:ATM:HEIGHT + margin.
+}
+
 // kOS will not switch RAILS/PHYSICS while WARP>0, and WARPTO is a no-op
 // in physics warp. Drop to 0, wait a tick, then set the mode.
 FUNCTION aoso_warp_force_rails {
@@ -78,16 +90,17 @@ FUNCTION aoso_warp_force_physics {
     WAIT 0.
 }
 
-// Rails warp down to rails_lead_s, then physics warp until physics_until_s
-// before the event so SAS can keep pointing. Drops to 1x for the last
-// MANEUVER_PHYSICS_UNTIL_S seconds. Returns "rails" / "physics" / "now" / "hold".
+// Rails warp down to rails_lead_s, then stay at 1x so SAS can actually
+// point. Physics warp 3 (4x) during the align window made Acacius (44 m,
+// no RCS, lander-can wheels) oscillate 40 deg off the circularization
+// node and miss four times. Returns "rails" / "now" / "hold".
 FUNCTION aoso_warp_approach {
     PARAMETER eta_s.
     PARAMETER rails_lead_s.
     PARAMETER physics_until_s IS -1.
 
     IF physics_until_s < 0 {
-        SET physics_until_s TO aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10).
+        SET physics_until_s TO aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 45).
     }
     IF eta_s <= physics_until_s {
         SET WARP TO 0.
@@ -104,13 +117,8 @@ FUNCTION aoso_warp_approach {
         }
         RETURN "rails".
     }
-    aoso_warp_force_physics().
-    LOCAL phys IS 3.
-    LOCAL cap IS aoso_config_get("MAX_WARP_FACTOR", 3).
-    IF phys > cap { SET phys TO cap. }
-    IF phys < 1 { SET phys TO 1. }
-    IF WARP <> phys { SET WARP TO phys. }
-    RETURN "physics".
+    SET WARP TO 0.
+    RETURN "now".
 }
 
 // Delta-v (m/s, signed) needed at the current apoapsis to circularize:
@@ -150,7 +158,7 @@ FUNCTION aoso_maneuver_add_circularize_here {
     LOCAL v_circ IS SQRT(mu / radius).
     LOCAL v_now IS SQRT(MAX(0, mu * (2 / radius - 1 / sma))).
     LOCAL dv IS v_circ - v_now.
-    LOCAL nd IS NODE(TIME:SECONDS + 10, 0, 0, dv).
+    LOCAL nd IS NODE(TIME:SECONDS + 30, 0, 0, dv).
     ADD nd.
     aoso_log_info("MANEUVER", "Circularization node added: dv=" + ROUND(dv, 1) + " m/s now (past apoapsis).").
     RETURN nd.
@@ -193,6 +201,7 @@ FUNCTION aoso_maneuver_finish_node {
     WAIT 0.
     SET WARPMODE TO "RAILS".
     aoso_throttle_set(0).
+    RCS OFF.
     aoso_steer_release().
     IF HASNODE { REMOVE nd. }
     aoso_maneuver_reset_exec().
@@ -200,7 +209,12 @@ FUNCTION aoso_maneuver_finish_node {
     IF reason = "missed" { SET AOSO_MANEUVER_RESULT TO "missed". }
     ELSE {
         IF reason = "no thrust" OR reason = "incomplete" { SET AOSO_MANEUVER_RESULT TO "incomplete". }
-        ELSE { SET AOSO_MANEUVER_RESULT TO "ok". }
+        ELSE {
+            IF reason = "feather cut" {
+                IF aoso_maneuver_peri_unsafe(2000) { SET AOSO_MANEUVER_RESULT TO "incomplete". }
+                ELSE { SET AOSO_MANEUVER_RESULT TO "ok". }
+            } ELSE { SET AOSO_MANEUVER_RESULT TO "ok". }
+        }
     }
     aoso_log_info("MANEUVER", "Node executed (" + reason + ").").
     aoso_observe_event("BURN", "INFO", reason, "left=" + ROUND(left, 2)).
@@ -219,12 +233,15 @@ FUNCTION aoso_maneuver_finish_node {
 }
 
 // Non-blocking: call once per scheduler tick (or in a tight WAIT 0 loop).
-// Warps out with ~2 minutes of physics time to point the ship before
+// Warps out on rails, then stays at 1x with ~2 minutes to point before
 // ignition. Long burns follow the live node marker (Mun 840 m/s); short
-// burns lock facing at ignition so a TWR jump cannot hunt. Stage even if
-// throttle is already 0. If the node is already in the past, or the burn
-// dies with a lot of dv left, finish as missed/incomplete so the caller
-// can replan the next pass.
+// burns lock facing at ignition so a TWR jump cannot hunt — unless we
+// had to light off-axis, in which case we follow the marker so a 30 deg
+// error cannot zero remaining_along and feather-cut with 28 m/s left.
+// Stage even if throttle is already 0. If the node is already in the
+// past and periapsis is safe, finish as missed so the caller can replan.
+// A periapsis still in atmosphere never gives up: light off-axis and
+// keep burning until peri is out of the air.
 // Returns TRUE once there is no pending node left, FALSE while in progress.
 FUNCTION aoso_maneuver_execute_next {
     IF NOT HASNODE {
@@ -237,33 +254,36 @@ FUNCTION aoso_maneuver_execute_next {
     LOCAL remaining IS remaining_vec:MAG.
 
     IF remaining < 0.08 {
+        IF aoso_maneuver_peri_unsafe(2000) {
+            aoso_maneuver_finish_node(nd, "incomplete").
+            RETURN TRUE.
+        }
         aoso_maneuver_finish_node(nd, "complete").
         RETURN TRUE.
     }
 
     IF NOT AOSO_MANEUVER_BURNING {
         aoso_steer_prepare_for_burn().
+        RCS ON.
         aoso_steer_to_vector(remaining_vec).
 
+        LOCAL peri_unsafe IS aoso_maneuver_peri_unsafe(0).
         IF nd:ETA < -8 {
-            aoso_log_warn("MANEUVER", "Missed node (ETA=" + ROUND(nd:ETA, 1) + "s) - retry next pass.").
-            aoso_maneuver_finish_node(nd, "missed").
-            RETURN TRUE.
+            IF NOT peri_unsafe {
+                aoso_log_warn("MANEUVER", "Missed node (ETA=" + ROUND(nd:ETA, 1) + "s) - retry next pass.").
+                aoso_maneuver_finish_node(nd, "missed").
+                RETURN TRUE.
+            }
         }
 
         LOCAL burn_time IS aoso_perf_burn_time_for_dv(remaining).
         LOCAL ignite_lead IS burn_time / 2.
         LOCAL align_s IS aoso_maneuver_align_s().
         LOCAL warp_lead IS ignite_lead + align_s.
-        LOCAL physics_until IS ignite_lead + aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10).
+        LOCAL physics_until IS ignite_lead + aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 45).
 
         LOCAL wstate IS aoso_warp_approach(nd:ETA, warp_lead, physics_until).
         IF wstate = "rails" {
-            aoso_throttle_set(0).
-            RETURN FALSE.
-        }
-        IF wstate = "physics" {
-            aoso_steer_to_vector(remaining_vec).
             aoso_throttle_set(0).
             RETURN FALSE.
         }
@@ -272,41 +292,37 @@ FUNCTION aoso_maneuver_execute_next {
         aoso_staging_auto_check().
         IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
 
-        IF nd:ETA > ignite_lead + 1 {
-            aoso_throttle_set(0).
-            RETURN FALSE.
+        LOCAL must_burn IS FALSE.
+        IF peri_unsafe {
+            IF nd:ETA < 2 { SET must_burn TO TRUE. }
         }
 
-        IF NOT aoso_steer_is_aligned(remaining_vec, 8) {
-            LOCAL err_deg IS aoso_steer_error_deg(remaining_vec).
-            LOCAL must_burn IS FALSE.
-            IF SHIP:BODY:ATM:EXISTS {
-                IF PERIAPSIS < SHIP:BODY:ATM:HEIGHT {
-                    IF nd:ETA < 0 { SET must_burn TO TRUE. }
-                }
-            }
-            IF nd:ETA >= 0 {
+        IF nd:ETA > ignite_lead + 1 {
+            IF NOT must_burn {
                 aoso_throttle_set(0).
                 RETURN FALSE.
             }
-            IF err_deg > 20 {
-                IF must_burn {
-                    IF err_deg > 40 {
-                        aoso_log_warn("MANEUVER", "Never aligned in time - retry next pass.").
-                        aoso_maneuver_finish_node(nd, "missed").
-                        RETURN TRUE.
-                    }
-                    aoso_log_warn("MANEUVER", "Lighting off-axis (" + ROUND(err_deg, 0) + " deg) to keep periapsis out of atmosphere.").
-                } ELSE {
-                    IF nd:ETA < -8 {
-                        aoso_log_warn("MANEUVER", "Never aligned in time - retry next pass.").
-                        aoso_maneuver_finish_node(nd, "missed").
-                        RETURN TRUE.
-                    }
-                    aoso_throttle_set(0).
-                    RETURN FALSE.
+        }
+
+        LOCAL err_deg IS aoso_steer_error_deg(remaining_vec).
+        LOCAL off_axis IS FALSE.
+        IF NOT aoso_steer_is_aligned(remaining_vec, 8) {
+            IF NOT must_burn {
+                IF nd:ETA < -8 {
+                    aoso_log_warn("MANEUVER", "Never aligned in time - retry next pass.").
+                    aoso_maneuver_finish_node(nd, "missed").
+                    RETURN TRUE.
                 }
+                aoso_throttle_set(0).
+                RETURN FALSE.
             }
+            IF err_deg > 40 {
+                aoso_log_warn("MANEUVER", "Never aligned in time - retry next pass.").
+                aoso_maneuver_finish_node(nd, "missed").
+                RETURN TRUE.
+            }
+            SET off_axis TO TRUE.
+            aoso_log_warn("MANEUVER", "Lighting off-axis (" + ROUND(err_deg, 0) + " deg) to keep periapsis out of atmosphere.").
         }
 
         IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
@@ -329,6 +345,11 @@ FUNCTION aoso_maneuver_execute_next {
         // into 980x15 km and only reached 74 deg.
         IF ABS(nd:NORMAL) > ABS(nd:PROGRADE) + ABS(nd:RADIALOUT) + 5 { SET follow TO FALSE. }
         IF remaining > SHIP:VELOCITY:ORBIT:MAG * 0.35 { SET follow TO FALSE. }
+        // Off-axis circularization must follow the marker. Locking the 30 deg
+        // error zeroed remaining_along and feather-cut with 28 m/s left
+        // (Acacius 82x62 km, peri still in atmosphere).
+        IF off_axis { SET follow TO TRUE. }
+        IF peri_unsafe { SET follow TO TRUE. }
         IF follow {
             aoso_log_info("MANEUVER", "Burn started, following node, remaining=" + ROUND(remaining, 1) + " m/s.").
         } ELSE {
@@ -406,6 +427,7 @@ FUNCTION aoso_maneuver_execute_next {
     IF t_remain > follow_s { SET follow TO TRUE. }
     IF ABS(nd:NORMAL) > ABS(nd:PROGRADE) + ABS(nd:RADIALOUT) + 5 { SET follow TO FALSE. }
     IF remaining > SHIP:VELOCITY:ORBIT:MAG * 0.35 { SET follow TO FALSE. }
+    IF aoso_maneuver_peri_unsafe(0) { SET follow TO TRUE. }
 
     IF follow {
         SET AOSO_MANEUVER_LOCK TO remaining_vec.
@@ -420,6 +442,17 @@ FUNCTION aoso_maneuver_execute_next {
     LOCAL remaining_along IS VDOT(AOSO_MANEUVER_LOCK:NORMALIZED, remaining_vec).
 
     IF remaining_along < 0.08 {
+        IF aoso_maneuver_peri_unsafe(2000) {
+            SET AOSO_MANEUVER_LOCK TO remaining_vec.
+            aoso_steer_to_vector(remaining_vec).
+            IF remaining < 0.15 {
+                aoso_maneuver_finish_node(nd, "incomplete").
+                RETURN TRUE.
+            }
+            aoso_throttle_set(aoso_maneuver_throttle_for_dv(remaining)).
+            SET AOSO_MANEUVER_LAST_REMAINING TO remaining.
+            RETURN FALSE.
+        }
         aoso_maneuver_finish_node(nd, "feather cut").
         RETURN TRUE.
     }
