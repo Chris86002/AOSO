@@ -12,11 +12,12 @@
 // is mission-specific and left to the operator. Create an
 // "AOSO/mission_plan.ks" alongside this file with your own
 // aoso_mission_plan_add()/aoso_mission_step_*() calls followed by
-// aoso_mission_start(); main.ks RUNs it automatically if present. Without
-// one, AOSO still boots and arms hardening/UX/vehicle automation, then
-// starts the default grand tour (every stock planet and moon, ISRU refuel
-// where the ship can and needs to, then KSC return) from wherever the
-// vessel currently is -- pad, orbit, or another body.
+// aoso_mission_start(); main.ks RUNs it automatically if present and always
+// registers the mission scheduler task so a custom plan that only calls
+// start() still ticks. Without one, AOSO still boots and arms hardening/UX/
+// vehicle automation, then starts the default grand tour (every stock planet
+// and moon, ISRU refuel where the ship can and needs to, then KSC return)
+// from wherever the vessel currently is -- pad, orbit, or another body.
 
 // --- Core (order matters; see core/boot.ks) --------------------------------
 RUN ONCE "AOSO/core/constants".
@@ -106,9 +107,8 @@ RUN ONCE "AOSO/ux/telemetry".
 
 // Registers every subsystem's own automation task (auto-staging, power
 // management, checkpoint autosave) plus this phase's hardening/UX tasks.
-// Mission-layer/docking/descent/etc. tasks are step-specific and remain the
-// responsibility of whatever builds AOSO_MISSION_PLAN (or drives that FSM
-// directly), same as every prior phase.
+// Nested FSMs (ascent/goto/descent/...) are still ticked by the plan or
+// tour; the mission scheduler task itself is always armed in aoso_main().
 FUNCTION aoso_main_register_tasks {
     aoso_staging_register_task(0.1).
     aoso_profile_register_task().
@@ -137,9 +137,9 @@ FUNCTION aoso_main {
     } ELSE {
         aoso_log_info("MAIN", "No AOSO/mission_plan.ks found - defaulting to a grand tour of every stock body, ISRU refuel where needed, then KSC return.").
         aoso_mission_plan_add(aoso_mission_step_grand_tour()).
-        aoso_mission_register_task().
         aoso_mission_start().
     }
+    aoso_mission_register_task().
 
     aoso_log_info("MAIN", "Entering main loop.").
 

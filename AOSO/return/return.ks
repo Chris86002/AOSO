@@ -88,7 +88,7 @@ FUNCTION aoso_return_add_departure_node {
 
     // Moon of some other planet (e.g. Ike): first hop up to that planet's
     // parking orbit; the next PLAN cycle continues from there.
-    RETURN aoso_moonescape_add_escape_node(aoso_config_get("PARKING_ORBIT_ALT", 100000)).
+    RETURN aoso_moonescape_add_escape_node(aoso_world_parking_alt(SHIP:BODY:BODY:NAME)).
 }
 
 FUNCTION aoso_return_on_abort {

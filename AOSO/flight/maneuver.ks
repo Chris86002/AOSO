@@ -120,11 +120,8 @@ FUNCTION aoso_maneuver_circularize_dv_at_apoapsis {
     IF aoso_orbit_is_hyperbolic() { RETURN 0. }
     LOCAL mu IS SHIP:BODY:MU.
     LOCAL radius IS SHIP:BODY:RADIUS + APOAPSIS.
-    LOCAL sma IS SHIP:ORBIT:SEMIMAJORAXIS.
-
-    LOCAL v_circ IS SQRT(mu / radius).
-    LOCAL v_now IS SQRT(MAX(0, mu * (2 / radius - 1 / sma))).
-
+    LOCAL v_circ IS aoso_orbit_circular_speed(mu, radius).
+    LOCAL v_now IS aoso_orbit_speed_at_radius(SHIP, radius).
     RETURN v_circ - v_now.
 }
 
@@ -146,9 +143,8 @@ FUNCTION aoso_maneuver_add_circularize_at_apoapsis {
 FUNCTION aoso_maneuver_add_circularize_here {
     LOCAL mu IS SHIP:BODY:MU.
     LOCAL radius IS SHIP:BODY:RADIUS + ALTITUDE.
-    LOCAL sma IS SHIP:ORBIT:SEMIMAJORAXIS.
-    LOCAL v_circ IS SQRT(mu / radius).
-    LOCAL v_now IS SQRT(MAX(0, mu * (2 / radius - 1 / sma))).
+    LOCAL v_circ IS aoso_orbit_circular_speed(mu, radius).
+    LOCAL v_now IS aoso_orbit_speed_at_radius(SHIP, radius).
     LOCAL dv IS v_circ - v_now.
     LOCAL nd IS NODE(TIME:SECONDS + 10, 0, 0, dv).
     ADD nd.

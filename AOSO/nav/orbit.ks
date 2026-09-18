@@ -74,15 +74,30 @@ FUNCTION aoso_orbit_rel_inc_from_orbit {
     RETURN ARCCOS(ci).
 }
 
+// Circular orbital speed SQRT(mu/r). Separate from vis-viva so a circularize
+// burn can ask for the target speed without inventing a new SMA.
+FUNCTION aoso_orbit_circular_speed {
+    PARAMETER mu.
+    PARAMETER radius.
+    IF radius <= 0 { RETURN 0. }
+    RETURN SQRT(mu / radius).
+}
+
+// Vis-viva speed at body-centered radius for a given semi-major axis.
+FUNCTION aoso_orbit_vis_viva {
+    PARAMETER mu.
+    PARAMETER radius.
+    PARAMETER sma.
+    RETURN SQRT(MAX(0, mu * (2 / radius - 1 / sma))).
+}
+
 // Vis-viva speed (m/s) an orbitable would have at body-centered radius r if
 // it kept its current semi-major axis. Used by hohmann.ks/rendezvous.ks
 // instead of duplicating the vis-viva formula per call site.
 FUNCTION aoso_orbit_speed_at_radius {
     PARAMETER orbitable.
     PARAMETER radius.
-    LOCAL mu IS orbitable:BODY:MU.
-    LOCAL sma IS orbitable:ORBIT:SEMIMAJORAXIS.
-    RETURN SQRT(MAX(0, mu * (2 / radius - 1 / sma))).
+    RETURN aoso_orbit_vis_viva(orbitable:BODY:MU, radius, orbitable:ORBIT:SEMIMAJORAXIS).
 }
 
 FUNCTION aoso_orbit_is_hyperbolic {
