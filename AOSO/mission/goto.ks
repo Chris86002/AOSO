@@ -84,7 +84,22 @@ FUNCTION aoso_goto_should_capture {
 
     IF data:HASKEY("depart_body") {
         IF SHIP:BODY:NAME = data["depart_body"] {
-            IF PERIAPSIS < 0 { RETURN TRUE. }
+            // Negative PE on the departure body is often a patched-conics
+            // lie after a moon intercept (Acacius PE=-148 km at 33 000 km
+            // still 35 h from PE, then recaptured Kerbin and killed Minmus).
+            // Only recapture if we are actually about to hit the air.
+            IF PERIAPSIS < 0 {
+                IF data:HASKEY("expect_ut") {
+                    IF data["expect_ut"] > TIME:SECONDS + 60 { RETURN FALSE. }
+                }
+                LOCAL pe_eta IS 9E9.
+                IF NOT aoso_orbit_is_hyperbolic() { SET pe_eta TO ETA:PERIAPSIS. }
+                LOCAL danger IS 80000.
+                IF SHIP:BODY:ATM:EXISTS { SET danger TO SHIP:BODY:ATM:HEIGHT + 25000. }
+                IF pe_eta < 480 {
+                    IF ALTITUDE < danger { RETURN TRUE. }
+                }
+            }
             RETURN FALSE.
         }
     }
@@ -113,6 +128,26 @@ FUNCTION aoso_goto_should_capture {
 FUNCTION aoso_goto_patch_body_name {
     IF NOT SHIP:ORBIT:HASNEXTPATCH { RETURN "". }
     RETURN SHIP:ORBIT:NEXTPATCH:BODY:NAME.
+}
+
+FUNCTION aoso_goto_patch_is_ours {
+    PARAMETER data.
+    PARAMETER np.
+    IF np = "" { RETURN FALSE. }
+    IF np = data["goal"] { RETURN TRUE. }
+    IF np = data["hop"] { RETURN TRUE. }
+    RETURN FALSE.
+}
+
+FUNCTION aoso_goto_remember_patch {
+    PARAMETER data.
+    PARAMETER np.
+    PARAMETER eta_s.
+    IF NOT aoso_goto_patch_is_ours(data, np) { RETURN. }
+    SET data["expect_body"] TO np.
+    SET data["expect_ut"] TO TIME:SECONDS + eta_s.
+    SET data["patch_lost_ut"] TO 0.
+    SET data["last_patch_ut"] TO TIME:SECONDS.
 }
 
 FUNCTION aoso_goto_on_abort {
@@ -168,20 +203,32 @@ FUNCTION aoso_goto_plan_entry {
         IF np = goal:NAME { SET patch_ours TO TRUE. }
         IF np = hop:NAME { SET patch_ours TO TRUE. }
         IF patch_ours {
+            aoso_goto_remember_patch(data, np, SHIP:ORBIT:NEXTPATCHETA).
             LOCAL hop_b IS BODY(np).
             IF aoso_rendezvous_orbit_needs_correct(SHIP:ORBIT, hop_b) {
                 LOCAL ncorr IS 0.
                 IF data:HASKEY("correct_count") { SET ncorr TO data["correct_count"]. }
-                IF ncorr < 3 {
-                    SET data["corrected"] TO TRUE.
-                    SET data["correct_count"] TO ncorr + 1.
-                    LOCAL ndc IS aoso_rendezvous_add_correction_node(hop_b).
-                    IF ndc <> 0 {
-                        aoso_log_info("GOTO", "Patch to " + np + " has a poor PE - mid-course correction " + data["correct_count"] + "/3.").
-                        SET data["burn_kind"] TO "correct".
-                        aoso_state_transition(AOSO_GOTO, "BURN").
-                        RETURN.
+                LOCAL pe_now IS aoso_rendezvous_orbit_pe(SHIP:ORBIT, hop_b).
+                LOCAL eta_p IS SHIP:ORBIT:NEXTPATCHETA.
+                LOCAL do_corr IS FALSE.
+                IF pe_now < 0 { SET do_corr TO TRUE. }
+                ELSE {
+                    IF eta_p < aoso_config_get("GOTO_CORRECT_WITHIN_S", 28800) { SET do_corr TO TRUE. }
+                }
+                IF do_corr {
+                    IF ncorr < 3 {
+                        SET data["corrected"] TO TRUE.
+                        SET data["correct_count"] TO ncorr + 1.
+                        LOCAL ndc IS aoso_rendezvous_add_correction_node(hop_b).
+                        IF ndc <> 0 {
+                            aoso_log_info("GOTO", "Patch to " + np + " has a poor PE - mid-course correction " + data["correct_count"] + "/3.").
+                            SET data["burn_kind"] TO "correct".
+                            aoso_state_transition(AOSO_GOTO, "BURN").
+                            RETURN.
+                        }
                     }
+                } ELSE {
+                    aoso_log_info("GOTO", "Patch to " + np + " PE=" + ROUND(pe_now, 0) + "m is a far-out graze - coasting until " + ROUND(aoso_config_get("GOTO_CORRECT_WITHIN_S", 28800) / 3600, 1) + "h of SOI before correcting (conics lie at this range).").
                 }
             }
             aoso_log_info("GOTO", "Existing patch to " + np + " - coasting.").
@@ -369,6 +416,10 @@ FUNCTION aoso_goto_burn_execute {
         IF data["burn_kind"] = "plane" {
             aoso_state_transition(AOSO_GOTO, "PLAN").
         } ELSE {
+            LOCAL npb IS aoso_goto_patch_body_name().
+            IF npb <> "" {
+                aoso_goto_remember_patch(data, npb, SHIP:ORBIT:NEXTPATCHETA).
+            }
             aoso_state_transition(AOSO_GOTO, "COAST").
         }
     }
@@ -379,14 +430,24 @@ FUNCTION aoso_goto_coast_entry {
     aoso_throttle_set(0).
     aoso_steer_release().
     SET data["coast_since"] TO TIME:SECONDS.
-    IF aoso_goto_patch_body_name() = "" {
-        IF data["retry_ut"] <= 0 {
-            LOCAL period IS aoso_orbit_period_s().
-            IF period < 90 { SET period TO 90. }
-            IF period > 180 { SET period TO 180. }
-            SET data["retry_ut"] TO TIME:SECONDS + period.
-            aoso_log_info("GOTO", "No patch after the burn - warping " + ROUND(period, 0) + "s then re-planning.").
+    LOCAL np IS aoso_goto_patch_body_name().
+    IF np <> "" {
+        aoso_goto_remember_patch(data, np, SHIP:ORBIT:NEXTPATCHETA).
+        SET data["retry_ut"] TO 0.
+        RETURN.
+    }
+    IF data:HASKEY("expect_ut") {
+        IF data["expect_ut"] > TIME:SECONDS + 90 {
+            aoso_log_info("GOTO", "No live patch after the burn - trusting " + data["expect_body"] + " intercept in " + ROUND(data["expect_ut"] - TIME:SECONDS, 0) + "s (KSP conics often hide it until closer).").
+            RETURN.
         }
+    }
+    IF data["retry_ut"] <= 0 {
+        LOCAL period IS aoso_orbit_period_s().
+        IF period < 90 { SET period TO 90. }
+        IF period > 180 { SET period TO 180. }
+        SET data["retry_ut"] TO TIME:SECONDS + period.
+        aoso_log_info("GOTO", "No patch after the burn - warping " + ROUND(period, 0) + "s then re-planning.").
     }
 }
 
@@ -409,6 +470,9 @@ FUNCTION aoso_goto_coast_execute {
         SET data["corrected"] TO FALSE.
         SET data["correct_count"] TO 0.
         SET data["last_patch_ut"] TO 0.
+        SET data["expect_body"] TO "".
+        SET data["expect_ut"] TO 0.
+        SET data["patch_lost_ut"] TO 0.
         aoso_log_info("GOTO", "SOI change: " + data["depart_body"] + " -> " + SHIP:BODY:NAME + ".").
         aoso_state_transition(AOSO_GOTO, "PLAN").
         RETURN.
@@ -417,12 +481,27 @@ FUNCTION aoso_goto_coast_execute {
     LOCAL np IS aoso_goto_patch_body_name().
     IF np <> "" {
         SET data["retry_ut"] TO 0.
-        SET data["last_patch_ut"] TO TIME:SECONDS.
+        aoso_goto_remember_patch(data, np, SHIP:ORBIT:NEXTPATCHETA).
         LOCAL ncorr IS 0.
         IF data:HASKEY("correct_count") { SET ncorr TO data["correct_count"]. }
         LOCAL hop_check IS BODY(np).
-        IF aoso_rendezvous_orbit_needs_correct(SHIP:ORBIT, hop_check) {
-            IF SHIP:ORBIT:NEXTPATCHETA > 150 {
+        LOCAL eta_p IS SHIP:ORBIT:NEXTPATCHETA.
+        LOCAL want_correct IS FALSE.
+        IF aoso_goto_patch_is_ours(data, np) {
+            IF aoso_rendezvous_orbit_needs_correct(SHIP:ORBIT, hop_check) {
+                LOCAL pe_now IS aoso_rendezvous_orbit_pe(SHIP:ORBIT, hop_check).
+                LOCAL correct_within IS aoso_config_get("GOTO_CORRECT_WITHIN_S", 28800).
+                // Far-out grazes are a conics lie. Only correct a lithobrake
+                // immediately, or a graze once we are inside ~8 h of SOI.
+                IF pe_now < 0 {
+                    SET want_correct TO TRUE.
+                } ELSE {
+                    IF eta_p < correct_within { SET want_correct TO TRUE. }
+                }
+            }
+        }
+        IF want_correct {
+            IF eta_p > 150 {
                 IF ncorr < 3 {
                     SET WARP TO 0.
                     aoso_log_info("GOTO", "Patch PE is not a capture altitude - mid-course correction.").
@@ -431,27 +510,51 @@ FUNCTION aoso_goto_coast_execute {
                 }
             }
         }
-        LOCAL eta_p IS SHIP:ORBIT:NEXTPATCHETA.
         IF eta_p > 30 {
             LOCAL align_s IS aoso_maneuver_align_s().
             aoso_steer_release().
             LOCAL wst IS aoso_warp_approach(eta_p, align_s, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 45)).
+            aoso_ui_set("Coasting to " + np, "SOI " + aoso_hud_eta(eta_p) + "  " + aoso_hud_warp_txt()).
         } ELSE {
             SET WARP TO 0.
         }
         RETURN.
     }
 
-    // Patched conics flicker off at high rails on a graze. Drop to 1x
-    // for a few seconds and let the patch come back before replanning
-    // (Acacius lost Minmus after 36 h of coast, then immediately replanned).
-    IF data:HASKEY("last_patch_ut") {
-        IF data["last_patch_ut"] > 0 {
-            IF TIME:SECONDS - data["last_patch_ut"] < 25 {
+    // No live patch. KSP often hides a moon intercept until the ship is
+    // closer; a 25 s grace dies in one rails jump and then we recaptured
+    // Kerbin. If we already locked an intercept, keep flying to that UT.
+    LOCAL expect_body IS "".
+    LOCAL expect_ut IS 0.
+    IF data:HASKEY("expect_body") { SET expect_body TO data["expect_body"]. }
+    IF data:HASKEY("expect_ut") { SET expect_ut TO data["expect_ut"]. }
+    LOCAL now IS TIME:SECONDS.
+    LOCAL trust_after IS aoso_config_get("GOTO_PATCH_TRUST_S", 600).
+    IF expect_body <> "" {
+        IF expect_ut > now - trust_after {
+            IF NOT data:HASKEY("patch_lost_ut") { SET data["patch_lost_ut"] TO 0. }
+            IF data["patch_lost_ut"] <= 0 {
+                SET data["patch_lost_ut"] TO now.
+                aoso_log_info("GOTO", "Patch to " + expect_body + " dropped (KSP conics flicker) - trusting intercept in " + ROUND(expect_ut - now, 0) + "s.").
+            }
+            LOCAL lost_for IS now - data["patch_lost_ut"].
+            LOCAL flicker_s IS aoso_config_get("GOTO_PATCH_FLICKER_S", 45).
+            LOCAL eta_saved IS expect_ut - now.
+            IF lost_for < flicker_s {
                 SET WARP TO 0.
-                aoso_ui_set("Re-checking patch", "warp dropped so conics can catch up").
+                aoso_ui_set("Re-checking " + expect_body + " patch", "1x so conics can catch up  T-" + aoso_hud_eta(eta_saved)).
                 RETURN.
             }
+            IF eta_saved > 30 {
+                aoso_steer_release().
+                aoso_warp_approach(eta_saved, aoso_maneuver_align_s(), aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 45)).
+                aoso_log_every(60, "GOTO", "No live patch, trusting " + expect_body + " SOI in " + ROUND(eta_saved, 0) + "s " + aoso_warp_diag_txt() + ".").
+                aoso_ui_set("Trusting " + expect_body + " intercept", aoso_hud_eta(eta_saved) + "  " + aoso_hud_warp_txt()).
+            } ELSE {
+                SET WARP TO 0.
+                aoso_ui_set("Waiting on " + expect_body + " SOI", "conics still empty").
+            }
+            RETURN.
         }
     }
 
@@ -471,8 +574,6 @@ FUNCTION aoso_goto_coast_execute {
     }
 
     LOCAL coasted IS TIME:SECONDS - data["coast_since"].
-    // No patch after the burn means the intercept is wrong. Do not sit on
-    // a 12000x100 km ellipse for 24 h (Acacius after the missed Mun burn).
     IF coasted > 120 {
         SET WARP TO 0.
         aoso_log_warn("GOTO", "No encounter after burn - re-planning.").
@@ -577,7 +678,7 @@ FUNCTION aoso_goto_define_states {
 FUNCTION aoso_goto_start {
     PARAMETER body_name.
     aoso_goto_define_states().
-    SET AOSO_GOTO["data"] TO LEXICON("goal", body_name, "hop", "", "burn_kind", "", "depart_body", SHIP:BODY:NAME, "window_ut", 0, "coast_since", 0, "retry_ut", 0, "corrected", FALSE, "correct_count", 0, "last_patch_ut", 0).
+    SET AOSO_GOTO["data"] TO LEXICON("goal", body_name, "hop", "", "burn_kind", "", "depart_body", SHIP:BODY:NAME, "window_ut", 0, "coast_since", 0, "retry_ut", 0, "corrected", FALSE, "correct_count", 0, "last_patch_ut", 0, "expect_body", "", "expect_ut", 0, "patch_lost_ut", 0).
     aoso_log_info("GOTO", "Navigating to " + body_name + ".").
     aoso_state_transition(AOSO_GOTO, "PLAN").
 }

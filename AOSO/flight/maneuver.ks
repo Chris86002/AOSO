@@ -501,12 +501,16 @@ FUNCTION aoso_maneuver_execute_next {
         RETURN TRUE.
     }
     IF remaining > AOSO_MANEUVER_LAST_REMAINING + 0.4 {
-        IF remaining > 30 {
+        // Small mid-course burns (Acacius 11.3 m/s) had remaining jump as
+        // the Minmus patch flickered, "overshoot cut", and PE went negative.
+        IF remaining > 25 {
             aoso_maneuver_finish_node(nd, "incomplete").
-        } ELSE {
-            aoso_maneuver_finish_node(nd, "overshoot cut").
+            RETURN TRUE.
         }
-        RETURN TRUE.
+        IF remaining > AOSO_MANEUVER_LAST_REMAINING + 4 {
+            aoso_maneuver_finish_node(nd, "overshoot cut").
+            RETURN TRUE.
+        }
     }
 
     SET AOSO_MANEUVER_LAST_REMAINING TO remaining.

@@ -77,6 +77,12 @@ FUNCTION aoso_hud_doing_text {
             IF SHIP:ORBIT:HASNEXTPATCH {
                 RETURN "Coasting to " + SHIP:ORBIT:NEXTPATCH:BODY:NAME + "  SOI " + aoso_hud_eta(SHIP:ORBIT:NEXTPATCHETA).
             }
+            IF AOSO_GOTO["data"]:HASKEY("expect_body") {
+                IF AOSO_GOTO["data"]["expect_body"] <> "" {
+                    LOCAL left_e IS AOSO_GOTO["data"]["expect_ut"] - TIME:SECONDS.
+                    RETURN "Trusting " + AOSO_GOTO["data"]["expect_body"] + " intercept  " + aoso_hud_eta(left_e).
+                }
+            }
             RETURN "Coasting - no patch yet".
         }
         IF AOSO_GOTO["current"] = "CAPTURE" { RETURN "Capture at PE (Oberth / polar if landing)". }

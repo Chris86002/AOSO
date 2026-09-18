@@ -47,6 +47,9 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "MANEUVER_ALIGN_S", 120,            // s of 1x after rails warp, before ignition, to point the ship
     "MANEUVER_PHYSICS_UNTIL_S", 45,     // s of 1x remaining after rails; physics warp is not used (4x slew-missed Acacius circ)
     "MANEUVER_FOLLOW_ABOVE_S", 8,       // s of remaining burn-time above which we follow the live node instead of locking
+    "GOTO_CORRECT_WITHIN_S", 28800,     // s (~8 h): only mid-course a graze this close to SOI; lithobrake still corrects immediately
+    "GOTO_PATCH_FLICKER_S", 45,         // s at 1x after a patch vanishes, so conics can rebuild before we resume rails
+    "GOTO_PATCH_TRUST_S", 600,          // s past expected SOI before we give up on a vanished intercept
     "TOUR_REFUEL_BELOW_PCT", 60,        // % LiquidFuel at/below which the grand tour will land and ISRU-refuel
     "TOUR_MIN_LAND_TWR", 1.4,           // surface TWR required before the grand tour will attempt a landing
     "TOUR_POLAR_INCLINATION", 90,       // deg, parking inclination before a landing-site scan
