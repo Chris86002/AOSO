@@ -182,10 +182,8 @@ FUNCTION aoso_tour_goto_entry {
         } ELSE {
             SET AOSO_WANT_POLAR TO FALSE.
             IF report["can_land"] {
-                IF report["can_refuel"] {
-                    IF aoso_resource_pct("LiquidFuel") < aoso_config_get("TOUR_REFUEL_BELOW_PCT", 60) {
-                        SET AOSO_WANT_POLAR TO TRUE.
-                    }
+                IF report["result"] <> "ORBIT_ONLY" {
+                    SET AOSO_WANT_POLAR TO TRUE.
                 }
             }
             aoso_goto_start(name).

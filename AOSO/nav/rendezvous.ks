@@ -331,7 +331,7 @@ FUNCTION aoso_rendezvous_search_apo_passages {
     LOCAL best_pg IS 0.
     LOCAL found IS FALSE.
     LOCAL k IS 0.
-    UNTIL k >= 8 {
+    UNTIL k >= 3 {
         LOCAL di IS 0.
         UNTIL di >= dvs:LENGTH {
             SET nd:PROGRADE TO dvs[di].
@@ -340,16 +340,21 @@ FUNCTION aoso_rendezvous_search_apo_passages {
             WAIT 0.
             IF aoso_rendezvous_node_hits_body(nd, hop) {
                 LOCAL sc IS aoso_rendezvous_pe_score(nd, hop, desired).
+                LOCAL pe_try IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
                 IF sc < best_sc {
                     SET best_sc TO sc.
                     SET best_ut TO TIME:SECONDS + nd:ETA.
                     SET best_pg TO nd:PROGRADE.
                     SET found TO TRUE.
                 }
+                IF aoso_rendezvous_pe_ok_value(pe_try, hop) {
+                    aoso_ui_pulse("Phasing to " + hop:NAME, "accepting pass " + (k + 1) + " PE " + ROUND(pe_try, 0) + "m").
+                    RETURN TRUE.
+                }
             }
             SET di TO di + 1.
         }
-        aoso_ui_pulse("Phasing to " + hop:NAME, "apoapsis pass " + (k + 1) + "/8").
+        aoso_ui_pulse("Phasing to " + hop:NAME, "apoapsis pass " + (k + 1) + "/3").
         SET k TO k + 1.
     }
     IF found {
@@ -442,25 +447,31 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
     LOCAL hit IS aoso_rendezvous_search_intercept(nd, target_orbitable, dv).
 
     IF hit {
+        LOCAL polar_hop IS FALSE.
+        IF DEFINED AOSO_WANT_POLAR {
+            IF AOSO_WANT_POLAR { SET polar_hop TO TRUE. }
+        }
         LOCAL rel_now IS aoso_orbit_rel_inc_from_orbit(nd:ORBIT, target_orbitable).
         IF rel_now >= 0.15 {
-            LOCAL sc_before IS aoso_rendezvous_pe_score(nd, target_orbitable, aoso_rendezvous_desired_pe(target_orbitable)).
-            LOCAL pg_keep IS nd:PROGRADE.
-            LOCAL nml_keep IS nd:NORMAL.
-            LOCAL rad_keep IS nd:RADIALOUT.
-            aoso_planechange_apply_to_node(nd, target_orbitable).
-            WAIT 0.
-            LOCAL fold_ok IS FALSE.
-            IF aoso_rendezvous_node_hits_body(nd, target_orbitable) {
-                LOCAL sc_after IS aoso_rendezvous_pe_score(nd, target_orbitable, aoso_rendezvous_desired_pe(target_orbitable)).
-                IF sc_after <= sc_before * 1.15 { SET fold_ok TO TRUE. }
-            }
-            IF NOT fold_ok {
-                aoso_log_warn("RENDEZVOUS", "Plane-change fold lost or worsened the " + target_orbitable:NAME + " patch - restoring prograde-only intercept.").
-                SET nd:PROGRADE TO pg_keep.
-                SET nd:NORMAL TO nml_keep.
-                SET nd:RADIALOUT TO rad_keep.
+            IF NOT polar_hop {
+                LOCAL sc_before IS aoso_rendezvous_pe_score(nd, target_orbitable, aoso_rendezvous_desired_pe(target_orbitable)).
+                LOCAL pg_keep IS nd:PROGRADE.
+                LOCAL nml_keep IS nd:NORMAL.
+                LOCAL rad_keep IS nd:RADIALOUT.
+                aoso_planechange_apply_to_node(nd, target_orbitable).
                 WAIT 0.
+                LOCAL fold_ok IS FALSE.
+                IF aoso_rendezvous_node_hits_body(nd, target_orbitable) {
+                    LOCAL sc_after IS aoso_rendezvous_pe_score(nd, target_orbitable, aoso_rendezvous_desired_pe(target_orbitable)).
+                    IF sc_after <= sc_before * 1.15 { SET fold_ok TO TRUE. }
+                }
+                IF NOT fold_ok {
+                    aoso_log_warn("RENDEZVOUS", "Plane-change fold lost or worsened the " + target_orbitable:NAME + " patch - restoring prograde-only intercept.").
+                    SET nd:PROGRADE TO pg_keep.
+                    SET nd:NORMAL TO nml_keep.
+                    SET nd:RADIALOUT TO rad_keep.
+                    WAIT 0.
+                }
             }
         }
         aoso_rendezvous_tune_pe(nd, target_orbitable).
@@ -571,7 +582,7 @@ FUNCTION aoso_rendezvous_pe_score {
             LOCAL inc_p IS aoso_rendezvous_orbit_inc(nd:ORBIT, hop).
             IF inc_p >= 0 {
                 LOCAL tgt_i IS aoso_config_get("TOUR_POLAR_INCLINATION", 90).
-                SET sc TO sc + ABS(inc_p - tgt_i) * 120.
+                SET sc TO sc + ABS(inc_p - tgt_i) * 400.
             }
         }
     }
@@ -688,7 +699,12 @@ FUNCTION aoso_rendezvous_tune_pe {
 
         LOCAL orig_n IS nd:NORMAL.
         LOCAL rel_left IS aoso_orbit_rel_inc_from_orbit(nd:ORBIT, hop).
-        IF rel_left >= 0.4 {
+        LOCAL walk_n IS FALSE.
+        IF rel_left >= 0.4 { SET walk_n TO TRUE. }
+        IF DEFINED AOSO_WANT_POLAR {
+            IF AOSO_WANT_POLAR { SET walk_n TO TRUE. }
+        }
+        IF walk_n {
             SET nd:NORMAL TO orig_n + step_dv.
             WAIT 0.
             SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
@@ -737,6 +753,11 @@ FUNCTION aoso_rendezvous_add_correction_node {
     LOCAL nd IS NODE(TIME:SECONDS + t_corr, 0, 0, 0).
     ADD nd.
     aoso_rendezvous_tune_pe(nd, hop).
+    IF NOT aoso_rendezvous_node_hits_body(nd, hop) {
+        aoso_log_warn("RENDEZVOUS", "Mid-course tune lost the " + hop:NAME + " patch - leaving the coast as-is.").
+        REMOVE nd.
+        RETURN 0.
+    }
     IF nd:DELTAV:MAG < 0.8 {
         REMOVE nd.
         RETURN 0.

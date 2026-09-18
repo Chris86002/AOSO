@@ -201,12 +201,18 @@ FUNCTION aoso_goto_plan_entry {
     }
 
     LOCAL rel_incl IS aoso_orbit_relative_inclination_deg(SHIP, hop).
+    LOCAL match_plane IS TRUE.
+    IF AOSO_WANT_POLAR { SET match_plane TO FALSE. }
     IF rel_incl > 2 {
-        LOCAL nd_pc IS aoso_planechange_add_node_for_target(hop).
-        IF nd_pc <> 0 {
-            SET data["burn_kind"] TO "plane".
-            aoso_state_transition(AOSO_GOTO, "BURN").
-            RETURN.
+        IF match_plane {
+            LOCAL nd_pc IS aoso_planechange_add_node_for_target(hop).
+            IF nd_pc <> 0 {
+                SET data["burn_kind"] TO "plane".
+                aoso_state_transition(AOSO_GOTO, "BURN").
+                RETURN.
+            }
+        } ELSE {
+            aoso_log_info("GOTO", "Skipping " + ROUND(rel_incl, 1) + " deg plane-match to " + hop:NAME + " so the intercept can arrive polar.").
         }
     }
 
