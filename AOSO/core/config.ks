@@ -57,7 +57,8 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "WINDOW_MAX_WAIT_S", 3888000,       // s (~45 Kerbin days): planner treats longer waits as a reason to pick another cluster first
     "WINDOW_MIN_EFFICIENCY", 0.82,      // 0-1, current-phase vs Hohmann phase; below this the window is "poor"
     "PLANNER_MIN_SHOULD_SCORE", 30,     // 0-100, CAN destinations below this are not SHOULD
-    "LANDING_SCAN_SAMPLES", 24,         // ground-track samples scored before picking a landing site
+    "LANDING_SCAN_SAMPLES", 36,         // ground-track samples scored before picking a landing site
+    "LANDING_SCAN_ORBITS", 2,           // orbits to rails-warp while confirming the predicted site
     "MAX_Q_LIMIT_MULT", 1.0,            // throttle back factor near max-Q (1.0=off)
     "DESCENT_BURN_MARGIN_S", 4,         // s of surface-speed reaction time added to the suicide-burn trigger altitude
     "DESCENT_STOP_MARGIN", 1.2,         // extra multiplier on kinematic stop distance (elwanderer / MechJeb-style pad)

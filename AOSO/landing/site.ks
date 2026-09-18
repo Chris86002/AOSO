@@ -109,17 +109,22 @@ FUNCTION aoso_landing_site_score {
     RETURN score.
 }
 
-// Instant orbital scan: samples the ground track over the next ~one period
+// Instant orbital scan: samples the ground track over the next N periods
 // (kOS can query TERRAINHEIGHT of any lat/lng from anywhere, so this does
-// not require actually flying over the sites) and returns a lexicon with
+// not require actually flying over the sites). Tour still warps LANDING_SCAN_ORBITS
+// so a live overflight can beat the prediction. Returns a lexicon with
 // the lowest-score safe site, or 0 if none of the samples were landable.
 FUNCTION aoso_landing_site_scan_orbit {
     PARAMETER samples IS 0.
-    IF samples <= 0 { SET samples TO aoso_config_get("LANDING_SCAN_SAMPLES", 24). }
+    IF samples <= 0 { SET samples TO aoso_config_get("LANDING_SCAN_SAMPLES", 36). }
     IF samples < 4 { SET samples TO 4. }
 
     LOCAL period IS aoso_orbit_period_s().
     IF period <= 0 { SET period TO 600. }
+    LOCAL orbits IS aoso_config_get("LANDING_SCAN_ORBITS", 2).
+    IF orbits < 1 { SET orbits TO 1. }
+    IF orbits > 4 { SET orbits TO 4. }
+    LOCAL span IS period * orbits.
 
     LOCAL best_geo IS 0.
     LOCAL best_score IS 0.
@@ -127,7 +132,7 @@ FUNCTION aoso_landing_site_scan_orbit {
     LOCAL i IS 0.
     UNTIL i >= samples {
         LOCAL frac IS (i + 0.5) / samples.
-        LOCAL ut IS TIME:SECONDS + (frac * period).
+        LOCAL ut IS TIME:SECONDS + (frac * span).
         LOCAL geo IS SHIP:BODY:GEOPOSITIONOF(POSITIONAT(SHIP, ut)).
         LOCAL sc IS aoso_landing_site_score(geo).
         IF sc >= 0 {
@@ -153,7 +158,7 @@ FUNCTION aoso_landing_site_scan_orbit {
     LOCAL slope IS aoso_landing_site_slope_deg(best_geo).
     aoso_log_info("SITE", "Best landing site lat=" + ROUND(best_geo:LAT, 2) + " lng=" + ROUND(best_geo:LNG, 2) +
         " alt=" + ROUND(best_geo:TERRAINHEIGHT, 0) + "m slope=" + ROUND(slope, 1) +
-        " deg score=" + ROUND(best_score, 2) + " (" + samples + " samples).").
+        " deg score=" + ROUND(best_score, 2) + " (" + samples + " samples / " + orbits + " orbits).").
     RETURN LEXICON(
         "lat", best_geo:LAT,
         "lng", best_geo:LNG,

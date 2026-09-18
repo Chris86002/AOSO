@@ -7,6 +7,7 @@
 GLOBAL AOSO_LOG_BUFFER IS LIST().
 GLOBAL AOSO_LOG_MIN_LEVEL IS 2.          // INFO by default
 GLOBAL AOSO_LOG_LAST_FLUSH IS 0.
+GLOBAL AOSO_LOG_LAST IS LEXICON().
 
 FUNCTION aoso_log_set_level {
     PARAMETER level_name.
@@ -27,6 +28,7 @@ FUNCTION aoso_log_set_level {
 FUNCTION aoso_log_reset {
     SET AOSO_LOG_BUFFER TO LIST().
     SET AOSO_LOG_LAST_FLUSH TO 0.
+    SET AOSO_LOG_LAST TO LEXICON().
     IF EXISTS(AOSO_CONST["LOG_FILE"]) {
         DELETEPATH(AOSO_CONST["LOG_FILE"]).
     }
@@ -89,3 +91,19 @@ FUNCTION aoso_log_info  { PARAMETER tag. PARAMETER msg. aoso_log("INFO", tag, ms
 FUNCTION aoso_log_warn  { PARAMETER tag. PARAMETER msg. aoso_log("WARN", tag, msg). }
 FUNCTION aoso_log_error { PARAMETER tag. PARAMETER msg. aoso_log("ERROR", tag, msg). }
 FUNCTION aoso_log_fatal { PARAMETER tag. PARAMETER msg. aoso_log("FATAL", tag, msg). }
+
+// Rate-limited INFO. Same tag is silenced for interval_s so a 25 Hz
+// execute path can still leave a breadcrumb without flooding the log
+// (the Minmus descent stall was invisible because FREEFALL logged nothing
+// between "Radar offset" and "Suicide burn now").
+FUNCTION aoso_log_every {
+    PARAMETER interval_s.
+    PARAMETER tag.
+    PARAMETER msg.
+    LOCAL now IS TIME:SECONDS.
+    IF AOSO_LOG_LAST:HASKEY(tag) {
+        IF now - AOSO_LOG_LAST[tag] < interval_s { RETURN. }
+    }
+    SET AOSO_LOG_LAST[tag] TO now.
+    aoso_log_info(tag, msg).
+}
