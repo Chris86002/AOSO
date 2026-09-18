@@ -5,9 +5,26 @@ A modular, autonomous spacecraft operating system for Kerbal Space Program, writ
 > This repository is being built out by the Copilot coding agent across 12 ordered phases.
 > All scripts live under the `AOSO/` folder, intended to be copied into `GameData` and mounted as a kOS volume.
 
-## Install (once populated)
-1. Copy the `AOSO/` folder into `.../Kerbal Space Program/GameData/`.
-2. Mount it as a kOS volume (or copy to your archive).
+## Install
+
+**Recommended: use the updater.** Download these two files from the repo root and keep them together (Desktop is fine):
+
+- `Update-AOSO.bat`
+- `Update-AOSO.ps1`
+
+Double-click `Update-AOSO.bat`. It pulls the latest `main` commit from GitHub and syncs the `AOSO/` scripts into your kOS Script folder:
+
+`.../Kerbal Space Program/Ships/Script/AOSO/`
+
+Close KSP first when you can, so kOS is not using the files. If Windows blocks writing under Program Files, right-click the `.bat` and choose **Run as administrator**.
+
+If KSP is not in the default Steam folder, create `kos-root.txt` next to the updater and put the full path to `Ships\Script` on the first line.
+
+The updater also replaces itself from GitHub, so you can keep running the same `.bat` after future commits.
+
+### Manual copy
+1. Copy the `AOSO/` folder into `.../Kerbal Space Program/Ships/Script/` (kOS archive) or `.../Kerbal Space Program/GameData/`.
+2. Mount it as a kOS volume if you used GameData.
 3. From the kOS terminal: `run "AOSO/main".`
 
 By default (no `AOSO/mission_plan.ks`), AOSO runs a **grand tour**: launch (if still on the ground), visit every stock planet and moon the *vessel can actually finish*, land and ISRU-refuel where it can take off again and needs propellant, then return to Kerbin and land at KSC. The itinerary is planned, not hard-coded: a **vehicle class** (hopper, nuclear interplanetary, spaceplane, tug, mothership, …) changes priorities without forbidding destinations; a **capability matrix** scores each body as CAPABLE / MARGIN / CONFIDENCE for orbit, land, and return; **CAN vs SHOULD** opportunity scores plus transfer-window efficiency feed a **cluster-greedy route** (Jool’s moons are one interplanetary hop). If the stack cannot complete the full tour, AOSO logs the maximum achievable sequence instead of marching into a SKIP. Jool is orbited, not landed. High-g bodies the ship cannot leave (Eve, Tylo at low TWR) are visited in orbit only. Add an `AOSO/mission_plan.ks` alongside `main.ks` (using `aoso_mission_plan_add()`/`aoso_mission_step_*()` followed by `aoso_mission_start()`) to run a custom mission instead.
