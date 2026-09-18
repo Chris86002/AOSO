@@ -12,7 +12,7 @@ GLOBAL AOSO_TELEM_BUF IS LIST().
 GLOBAL AOSO_TELEM_LAST_FLUSH IS 0.
 
 FUNCTION aoso_telemetry_header {
-    RETURN "ut,met,body,lat,lng,alt,radar,srf,orb,vs,hs,pitch,hdg,aoa,throt,thrust,mass,stg,lf,ox,ec,apo,pe,inc,ecc,etaap,phase,cpu".
+    RETURN "ut,met,body,lat,lng,alt,radar,srf,orb,vs,hs,pitch,hdg,aoa,q,drag,throt,thrust,mass,stg,lf,ox,ec,apo,pe,inc,ecc,etaap,phase,cpu".
 }
 
 FUNCTION aoso_telemetry_interval {
@@ -69,6 +69,7 @@ FUNCTION aoso_telemetry_row {
         ROUND(srf, 2) + "," + ROUND(SHIP:VELOCITY:ORBIT:MAG, 2) + "," +
         ROUND(vs, 2) + "," + ROUND(hs, 2) + "," +
         ROUND(pitch, 2) + "," + ROUND(SHIP:FACING:YAW, 1) + "," + ROUND(aoa, 2) + "," +
+        ROUND(SHIP:Q, 4) + "," + ROUND(aoso_aero_drag_kn(), 2) + "," +
         ROUND(THROTTLE, 3) + "," + ROUND(SHIP:AVAILABLETHRUST, 2) + "," + ROUND(SHIP:MASS, 3) + "," +
         STAGE:NUMBER + "," + ROUND(lf_amt, 1) + "," + ROUND(ox_amt, 1) + "," + ROUND(ec_amt, 1) + "," +
         ROUND(APOAPSIS, 1) + "," + ROUND(PERIAPSIS, 1) + "," +

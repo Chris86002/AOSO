@@ -45,15 +45,15 @@ Three separate streams, not one dump:
 - **Telemetry** (`0:/aoso_telemetry.csv`) — timed CSV samples (AUTO rate by phase), RAM-buffered and flushed every few seconds or on STAGE/BURN/LAND. Append-only.
 - **Events + flight record** (`0:/aoso_events.csv`, `0:/aoso_flightrec.txt`) — structured decisions/anomalies and a pre-event ring dump around STAGE/BURN/LAND/ABORT, plus a few post samples. Append-only mission history.
 
-Ascent steering is MechJeb Classic's pitch-vs-altitude program (shape exponent, AoA-limited), not a prograde lead angle.
+Ascent steering is MechJeb Classic's pitch-vs-altitude program (shape exponent, AoA-limited), not a prograde lead angle. While in atmosphere the HUD shows `Q` (SHIP:Q, Kerbin atmospheres), AoA, and drag kN. Drag comes from MechJeb (`ADDONS:MJ:VESSEL:DRAG`) when the kOS.MechJeb2 addon is present, otherwise from an accelerometer residual, otherwise Q-only (no kN). A rising-Q throttle cap (`ASCENT_MAX_Q`, default 0.30 atm) pulls throttle before max-Q instead of after it. Leftover-LF still ranks pad-revert trials; a start that slams Q and AoA without beating the best LF is not followed by a *faster* start.
 
 ## Optional addons (all with pure-kOS fallbacks)
-- kOS.MechJeb2.Addon (MechJeb)
+- kOS.MechJeb2.Addon (MechJeb) — also live drag / Cd / AoA for ascent
 - kOS-Astrogator (transfer planning)
-- kOS-KerbalEngineer (performance/sensors)
+- kOS-KerbalEngineer (performance/sensors; no drag force)
 - kOS-simpleJson (persistence)
 
-No addon is a hard dependency — the system degrades gracefully if any are absent.
+No addon is a hard dependency — the system degrades gracefully if any are absent. Ferram (kOS-Ferram) is not used.
 
 ## Status
 Built across 12 ordered phases:

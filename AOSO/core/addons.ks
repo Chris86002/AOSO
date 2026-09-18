@@ -98,3 +98,53 @@ FUNCTION aoso_addon_simplejson_read {
     IF text:LENGTH = 0 { RETURN default_value. }
     RETURN aoso_json_decode(text).
 }
+
+// ---------------------------------------------------------------------
+// MechJeb aero (optional). Stock kOS has SHIP:Q and no drag force.
+// belpyro/kOS.MechJeb2.Addon exposes VESSEL:DRAG (kN), DRAGCOEF, AOA,
+// DYNAMICPRESSURE. KER / Astrogator / simpleJson do not. FAR is not an
+// AOSO addon. Callers must use these wrappers — never ADDONS:MJ directly.
+// Missing suffixes return -999 so an old MJ build cannot throw.
+// ---------------------------------------------------------------------
+
+FUNCTION aoso_addon_mj_obj {
+    IF NOT aoso_addon_available("MECHJEB") { RETURN 0. }
+    IF ADDONS:HASADDON("MJ") {
+        IF ADDONS:AVAILABLE("MJ") { RETURN ADDONS:MJ. }
+    }
+    IF ADDONS:HASADDON("MechJeb") {
+        IF ADDONS:AVAILABLE("MechJeb") { RETURN ADDONS:MechJeb. }
+    }
+    RETURN 0.
+}
+
+FUNCTION aoso_addon_mj_vessel {
+    LOCAL mj IS aoso_addon_mj_obj().
+    IF mj:ISTYPE("Scalar") { RETURN 0. }
+    IF mj:HASSUFFIX("VESSEL") { RETURN mj:VESSEL. }
+    IF mj:HASSUFFIX("VESSELINFO") { RETURN mj:VESSELINFO. }
+    RETURN 0.
+}
+
+FUNCTION aoso_addon_mj_drag_kn {
+    LOCAL wrap IS aoso_addon_mj_vessel().
+    IF wrap:ISTYPE("Scalar") { RETURN -1. }
+    IF wrap:HASSUFFIX("DRAG") { RETURN wrap:DRAG. }
+    IF wrap:HASSUFFIX("PUREDRAG") { RETURN wrap:PUREDRAG. }
+    RETURN -1.
+}
+
+FUNCTION aoso_addon_mj_cd {
+    LOCAL wrap IS aoso_addon_mj_vessel().
+    IF wrap:ISTYPE("Scalar") { RETURN -1. }
+    IF wrap:HASSUFFIX("DRAGCOEF") { RETURN wrap:DRAGCOEF. }
+    IF wrap:HASSUFFIX("CD") { RETURN wrap:CD. }
+    RETURN -1.
+}
+
+FUNCTION aoso_addon_mj_aoa {
+    LOCAL wrap IS aoso_addon_mj_vessel().
+    IF wrap:ISTYPE("Scalar") { RETURN -999. }
+    IF wrap:HASSUFFIX("AOA") { RETURN wrap:AOA. }
+    RETURN -999.
+}

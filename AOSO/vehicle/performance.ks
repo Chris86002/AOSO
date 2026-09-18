@@ -37,3 +37,44 @@ FUNCTION aoso_perf_burn_time_for_dv {
 
     RETURN (SHIP:MASS * ve / thrust_sum) * (1 - CONSTANT:E ^ (-dv / ve)).
 }
+
+// Live aero. SHIP:Q is always available (Kerbin-atm units). Drag force
+// prefers MechJeb VESSEL:DRAG (kN); else accelerometer residual minus
+// thrust. -1 means "unknown", not zero drag.
+FUNCTION aoso_aero_q {
+    RETURN SHIP:Q.
+}
+
+FUNCTION aoso_aero_aoa {
+    LOCAL mj_aoa IS aoso_addon_mj_aoa().
+    IF mj_aoa > -900 { RETURN mj_aoa. }
+    LOCAL pitch IS MAX(0, MIN(90, 90 - VANG(SHIP:UP:VECTOR, SHIP:FACING:FOREVECTOR))).
+    LOCAL fpa IS 90.
+    LOCAL vel IS SHIP:VELOCITY:SURFACE.
+    IF vel:MAG >= 1 {
+        SET fpa TO MAX(0, MIN(90, 90 - VANG(SHIP:UP:VECTOR, vel))).
+    }
+    RETURN pitch - fpa.
+}
+
+FUNCTION aoso_aero_drag_kn {
+    LOCAL mj_d IS aoso_addon_mj_drag_kn().
+    IF mj_d >= 0 { RETURN mj_d. }
+    LOCAL acc IS SHIP:SENSORS:ACC.
+    IF acc:MAG < 0.05 { RETURN -1. }
+    LOCAL mass_t IS SHIP:MASS.
+    IF mass_t <= 0 { RETURN -1. }
+    LOCAL thrust_now IS SHIP:THRUST.
+    LOCAL thrust_acc IS SHIP:FACING:FOREVECTOR * (thrust_now / mass_t).
+    LOCAL aero_acc IS acc - thrust_acc.
+    LOCAL vel IS SHIP:VELOCITY:SURFACE.
+    IF vel:MAG < 1 { RETURN aero_acc:MAG * mass_t. }
+    RETURN ABS(VDOT(aero_acc, vel:NORMALIZED)) * mass_t.
+}
+
+FUNCTION aoso_aero_drag_source {
+    LOCAL mj_d IS aoso_addon_mj_drag_kn().
+    IF mj_d >= 0 { RETURN "MechJeb". }
+    IF SHIP:SENSORS:ACC:MAG >= 0.05 { RETURN "accelerometer". }
+    RETURN "Q-only".
+}

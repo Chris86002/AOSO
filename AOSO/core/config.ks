@@ -59,7 +59,8 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "PLANNER_MIN_SHOULD_SCORE", 30,     // 0-100, CAN destinations below this are not SHOULD
     "LANDING_SCAN_SAMPLES", 36,         // ground-track samples scored before picking a landing site
     "LANDING_SCAN_ORBITS", 2,           // orbits to rails-warp while confirming the predicted site
-    "MAX_Q_LIMIT_MULT", 1.0,            // throttle back factor near max-Q (1.0=off)
+    "MAX_Q_LIMIT_MULT", 1.0,            // extra throttle cap near this-flight peak Q (1.0=off; ASCENT_MAX_Q is the real limiter)
+    "ASCENT_MAX_Q", 0.30,               // atm (SHIP:Q). Throttle down while Q is still rising above this. 0=off. 0.30≈30 kPa.
     "DESCENT_BURN_MARGIN_S", 4,         // s of surface-speed reaction time added to the suicide-burn trigger altitude
     "DESCENT_STOP_MARGIN", 1.2,         // extra multiplier on kinematic stop distance (elwanderer / MechJeb-style pad)
     "DESCENT_RADAR_OFFSET", 0,          // m, extra radar offset; 0 = measure from the lowest part at descent start

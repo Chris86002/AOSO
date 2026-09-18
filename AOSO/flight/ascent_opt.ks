@@ -34,7 +34,12 @@ GLOBAL AOSO_ASCENT_OPT IS LEXICON(
     "sum_pitch", 0,
     "sum_aoa", 0,
     "sum_q", 0,
+    "sum_drag", 0,
+    "drag_samples", 0,
     "max_q", 0,
+    "flight_max_q", 0,
+    "flight_mean_aoa_sum", 0,
+    "flight_aoa_n", 0,
     "samples", 0,
     "phases", LIST(),
     "applied_speed", -1,
@@ -154,10 +159,14 @@ FUNCTION aoso_ascent_opt_pick_next_speed {
         }
     }
     LOCAL grid IS aoso_ascent_opt_grid().
+    LOCAL ceiling IS 999.
+    IF row:HASKEY("speed_ceiling") { SET ceiling TO row["speed_ceiling"]. }
     FOR d IN grid {
         IF d >= floor_spd {
-            LOCAL key IS aoso_ascent_opt_speed_key(d).
-            IF NOT used:HASKEY(key) { RETURN d. }
+            IF d < ceiling {
+                LOCAL key IS aoso_ascent_opt_speed_key(d).
+                IF NOT used:HASKEY(key) { RETURN d. }
+            }
         }
     }
 
@@ -165,10 +174,14 @@ FUNCTION aoso_ascent_opt_pick_next_speed {
     IF row["best"]:HASKEY("turn_speed") { SET best_spd TO row["best"]["turn_speed"]. }
     IF best_spd > 0 {
         IF best_spd <= 75 {
-            IF NOT used:HASKEY("60") { RETURN 60. }
+            IF ceiling > 60 {
+                IF NOT used:HASKEY("60") { RETURN 60. }
+            }
         }
         IF best_spd >= 125 {
-            IF NOT used:HASKEY("145") { RETURN 145. }
+            IF 145 < ceiling {
+                IF NOT used:HASKEY("145") { RETURN 145. }
+            }
         }
     }
     RETURN -1.
@@ -187,7 +200,16 @@ FUNCTION aoso_ascent_opt_hud {
         }
     }
     IF spd < 0 { RETURN "Ascent opt " + row["status"] + " n=" + n + "/" + max_n + " best " + best_txt. }
-    RETURN "Ascent " + mode + " s" + ROUND(spd, 0) + "  " + n + "/" + max_n + " best " + best_txt.
+    LOCAL aero_txt IS "".
+    IF SHIP:BODY:ATM:EXISTS {
+        IF ALTITUDE < SHIP:BODY:ATM:HEIGHT {
+            LOCAL drag_kn IS aoso_aero_drag_kn().
+            LOCAL drag_txt IS "-".
+            IF drag_kn >= 0 { SET drag_txt TO ROUND(drag_kn, 1) + "kN". }
+            SET aero_txt TO "  Q=" + ROUND(SHIP:Q, 3) + " AoA=" + ROUND(aoso_aero_aoa(), 1) + " drag=" + drag_txt.
+        }
+    }
+    RETURN "Ascent " + mode + " s" + ROUND(spd, 0) + "  " + n + "/" + max_n + " best " + best_txt + aero_txt.
 }
 
 // Decide the start speed for this flight. Called from LIFTOFF after the
@@ -264,6 +286,8 @@ FUNCTION aoso_ascent_opt_reset_accum {
     SET AOSO_ASCENT_OPT["sum_pitch"] TO 0.
     SET AOSO_ASCENT_OPT["sum_aoa"] TO 0.
     SET AOSO_ASCENT_OPT["sum_q"] TO 0.
+    SET AOSO_ASCENT_OPT["sum_drag"] TO 0.
+    SET AOSO_ASCENT_OPT["drag_samples"] TO 0.
     SET AOSO_ASCENT_OPT["max_q"] TO 0.
     SET AOSO_ASCENT_OPT["samples"] TO 0.
 }
@@ -275,11 +299,15 @@ FUNCTION aoso_ascent_opt_phase_close {
     LOCAL mean_pitch IS 0.
     LOCAL mean_aoa IS 0.
     LOCAL mean_q IS 0.
+    LOCAL mean_drag IS -1.
     IF n > 0 {
         SET mean_twr TO AOSO_ASCENT_OPT["sum_twr"] / n.
         SET mean_pitch TO AOSO_ASCENT_OPT["sum_pitch"] / n.
         SET mean_aoa TO AOSO_ASCENT_OPT["sum_aoa"] / n.
         SET mean_q TO AOSO_ASCENT_OPT["sum_q"] / n.
+    }
+    IF AOSO_ASCENT_OPT["drag_samples"] > 0 {
+        SET mean_drag TO AOSO_ASCENT_OPT["sum_drag"] / AOSO_ASCENT_OPT["drag_samples"].
     }
     LOCAL dt IS TIME:SECONDS - AOSO_ASCENT_OPT["phase_t0"].
     LOCAL d_alt IS ALTITUDE - AOSO_ASCENT_OPT["phase_alt0"].
@@ -302,12 +330,16 @@ FUNCTION aoso_ascent_opt_phase_close {
         "mean_pitch", mean_pitch,
         "mean_aoa", mean_aoa,
         "mean_q", mean_q,
+        "mean_drag", mean_drag,
         "max_q", AOSO_ASCENT_OPT["max_q"]
     ).
     AOSO_ASCENT_OPT["phases"]:ADD(rec).
+    LOCAL drag_txt IS "-".
+    IF mean_drag >= 0 { SET drag_txt TO ROUND(mean_drag, 1) + " kN". }
     aoso_log_info("ASCENT_OPT", "Phase " + rec["name"] + " dt=" + ROUND(dt, 1) + "s dAlt=" + ROUND(d_alt, 0) +
         " dApo=" + ROUND(d_apo, 0) + " dLF=" + ROUND(d_lf, 1) + " meanTWR=" + ROUND(mean_twr, 2) +
-        " meanAoA=" + ROUND(mean_aoa, 1) + " deg meanQ=" + ROUND(mean_q, 3) + ".").
+        " meanAoA=" + ROUND(mean_aoa, 1) + " deg meanQ=" + ROUND(mean_q, 3) + " maxQ=" + ROUND(rec["max_q"], 3) +
+        " drag=" + drag_txt + ".").
     SET AOSO_ASCENT_OPT["phase"] TO "".
 }
 
@@ -329,14 +361,21 @@ FUNCTION aoso_ascent_opt_sample {
     IF AOSO_ASCENT_OPT["phase"] = "" { RETURN. }
     LOCAL twr IS aoso_perf_twr().
     LOCAL pitch IS aoso_ascent_facing_pitch().
-    LOCAL fpa IS aoso_ascent_flight_path_pitch().
-    LOCAL aoa IS pitch - fpa.
+    LOCAL aoa IS aoso_aero_aoa().
     LOCAL qnow IS SHIP:Q.
     SET AOSO_ASCENT_OPT["sum_twr"] TO AOSO_ASCENT_OPT["sum_twr"] + twr.
     SET AOSO_ASCENT_OPT["sum_pitch"] TO AOSO_ASCENT_OPT["sum_pitch"] + pitch.
     SET AOSO_ASCENT_OPT["sum_aoa"] TO AOSO_ASCENT_OPT["sum_aoa"] + aoa.
     SET AOSO_ASCENT_OPT["sum_q"] TO AOSO_ASCENT_OPT["sum_q"] + qnow.
     IF qnow > AOSO_ASCENT_OPT["max_q"] { SET AOSO_ASCENT_OPT["max_q"] TO qnow. }
+    IF qnow > AOSO_ASCENT_OPT["flight_max_q"] { SET AOSO_ASCENT_OPT["flight_max_q"] TO qnow. }
+    SET AOSO_ASCENT_OPT["flight_mean_aoa_sum"] TO AOSO_ASCENT_OPT["flight_mean_aoa_sum"] + aoa.
+    SET AOSO_ASCENT_OPT["flight_aoa_n"] TO AOSO_ASCENT_OPT["flight_aoa_n"] + 1.
+    LOCAL drag_kn IS aoso_aero_drag_kn().
+    IF drag_kn >= 0 {
+        SET AOSO_ASCENT_OPT["sum_drag"] TO AOSO_ASCENT_OPT["sum_drag"] + drag_kn.
+        SET AOSO_ASCENT_OPT["drag_samples"] TO AOSO_ASCENT_OPT["drag_samples"] + 1.
+    }
     SET AOSO_ASCENT_OPT["samples"] TO AOSO_ASCENT_OPT["samples"] + 1.
 }
 
@@ -365,6 +404,9 @@ FUNCTION aoso_ascent_opt_begin {
     SET AOSO_ASCENT_OPT["phase"] TO "".
     SET AOSO_ASCENT_OPT["applied_speed"] TO -1.
     SET AOSO_ASCENT_OPT["applied_mode"] TO "heuristic".
+    SET AOSO_ASCENT_OPT["flight_max_q"] TO 0.
+    SET AOSO_ASCENT_OPT["flight_mean_aoa_sum"] TO 0.
+    SET AOSO_ASCENT_OPT["flight_aoa_n"] TO 0.
     aoso_ascent_opt_reset_accum().
     aoso_ascent_opt_load().
 }
@@ -392,6 +434,10 @@ FUNCTION aoso_ascent_opt_commit {
 
     LOCAL spd IS 80.
     IF rec:HASKEY("turn_speed") { SET spd TO rec["turn_speed"]. }
+    LOCAL mean_aoa IS 0.
+    IF AOSO_ASCENT_OPT["flight_aoa_n"] > 0 {
+        SET mean_aoa TO AOSO_ASCENT_OPT["flight_mean_aoa_sum"] / AOSO_ASCENT_OPT["flight_aoa_n"].
+    }
     LOCAL trial IS LEXICON(
         "ut", rec["ut"],
         "turn_speed", spd,
@@ -402,7 +448,9 @@ FUNCTION aoso_ascent_opt_commit {
         "apo", rec["apo"],
         "peri", rec["peri"],
         "score", score,
-        "stable", TRUE
+        "stable", TRUE,
+        "max_q", AOSO_ASCENT_OPT["flight_max_q"],
+        "mean_aoa", mean_aoa
     ).
     IF rec:HASKEY("turn_bias") { SET trial["turn_bias"] TO rec["turn_bias"]. }
     IF rec:HASKEY("stable") { SET trial["stable"] TO rec["stable"]. }
@@ -410,6 +458,25 @@ FUNCTION aoso_ascent_opt_commit {
     row["trials"]:ADD(trial).
     UNTIL row["trials"]:LENGTH <= 20 {
         row["trials"]:REMOVE(0).
+    }
+
+    LOCAL cap_q IS aoso_config_get("ASCENT_MAX_Q", 0.30).
+    IF cap_q > 0 {
+        IF trial["max_q"] > cap_q {
+            IF mean_aoa > 6 {
+                LOCAL worse IS TRUE.
+                IF trial["stable"] {
+                    IF row["best"]:HASKEY("score") {
+                        IF score >= row["best"]["score"] { SET worse TO FALSE. }
+                    }
+                }
+                IF worse {
+                    SET row["speed_ceiling"] TO spd.
+                    aoso_log_info("ASCENT_OPT", "Dense-air slam start=" + ROUND(spd, 0) + " m/s maxQ=" + ROUND(trial["max_q"], 3) +
+                        " meanAoA=" + ROUND(mean_aoa, 1) + " deg - not trying faster starts.").
+                }
+            }
+        }
     }
 
     LOCAL is_best IS FALSE.

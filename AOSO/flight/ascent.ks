@@ -240,15 +240,31 @@ FUNCTION aoso_ascent_pitchover_min_alt {
 }
 
 FUNCTION aoso_ascent_throttle_for_q {
-    LOCAL mult IS AOSO_CONFIG["MAX_Q_LIMIT_MULT"].
-    IF mult >= 1.0 { RETURN 1.0. }
+    LOCAL cap IS aoso_config_get("ASCENT_MAX_Q", 0.30).
+    LOCAL qnow IS SHIP:Q.
+    IF qnow > AOSO_ASCENT_MAX_Q_SEEN { SET AOSO_ASCENT_MAX_Q_SEEN TO qnow. }
 
-    IF SHIP:Q > AOSO_ASCENT_MAX_Q_SEEN { SET AOSO_ASCENT_MAX_Q_SEEN TO SHIP:Q. }
-
-    IF AOSO_ASCENT_MAX_Q_SEEN > 0 AND SHIP:Q >= AOSO_ASCENT_MAX_Q_SEEN * 0.9 {
-        RETURN mult.
+    LOCAL th IS 1.
+    IF cap > 0 {
+        IF qnow > cap * 0.85 {
+            SET th TO cap / MAX(qnow, 0.001).
+            IF th < 0.35 { SET th TO 0.35. }
+            IF th > 1 { SET th TO 1. }
+            aoso_log_every(8, "ASCENT", "Max-Q throttle Q=" + ROUND(qnow, 3) + " cap=" + ROUND(cap, 3) +
+                " th=" + ROUND(th, 2) + " AoA=" + ROUND(aoso_aero_aoa(), 1) + " deg drag=" +
+                ROUND(aoso_aero_drag_kn(), 1) + " kN (" + aoso_aero_drag_source() + ").").
+        }
     }
-    RETURN 1.0.
+
+    LOCAL mult IS AOSO_CONFIG["MAX_Q_LIMIT_MULT"].
+    IF mult < 1.0 {
+        IF AOSO_ASCENT_MAX_Q_SEEN > 0 {
+            IF qnow >= AOSO_ASCENT_MAX_Q_SEEN * 0.9 {
+                IF th > mult { SET th TO mult. }
+            }
+        }
+    }
+    RETURN th.
 }
 
 // TWR cap so gravity can turn a high-thrust stack, then the 45 s-to-AP hold.
@@ -503,6 +519,9 @@ FUNCTION aoso_ascent_liftoff_execute {
         IF ALTITUDE > data["pitchover_min_alt"] {
             SET data["turn_alt0"] TO ALTITUDE.
             aoso_log_info("ASCENT", "Gravity turn at " + ROUND(SHIP:VELOCITY:SURFACE:MAG, 0) + " m/s, MJ-classic startAlt=" + ROUND(data["turn_start_alt"], 0) + " endAlt=" + ROUND(data["turn_end_alt"], 0) + " shape=" + ROUND(data["turn_shape"], 2) + " maxAoA=" + ROUND(aoso_ascent_max_aoa(), 1) + " TWR cap=" + ROUND(aoso_config_get("ASCENT_TWR_LIMIT", 2.2), 2) + ", TWR=" + ROUND(aoso_perf_twr(), 2) + ", CoM=" + ROUND(data["com_frac"], 2) + ", len=" + ROUND(data["stack_length"], 1) + " m.").
+            aoso_log_info("ASCENT", "Aero source=" + aoso_aero_drag_source() + " Q=" + ROUND(SHIP:Q, 3) +
+                " cap=" + ROUND(aoso_config_get("ASCENT_MAX_Q", 0.30), 3) + " AoA=" + ROUND(aoso_aero_aoa(), 1) +
+                " deg drag=" + ROUND(aoso_aero_drag_kn(), 1) + " kN.").
             aoso_state_transition(AOSO_ASCENT, "GRAVITY_TURN").
         }
     }
