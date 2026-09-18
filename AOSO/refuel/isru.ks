@@ -81,6 +81,7 @@ FUNCTION aoso_refuel_harvest_entry {
 
 FUNCTION aoso_refuel_harvest_execute {
     PARAMETER data.
+    aoso_warp_set_physics_cruise().
     IF aoso_refuel_ore_depleted() {
         aoso_log_warn("REFUEL", "Ore depleted before targets were full.").
         aoso_state_transition(AOSO_REFUEL, "STOW").

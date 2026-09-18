@@ -11,10 +11,10 @@
 // Acacius's 104 s Mun burn locked at ignition, staged, and left the marker;
 // the intercept missed. Feathering used to start at 2 m/s remaining -- at
 // TWR ~1 that is a fraction of a tick -- so the cut always arrived late.
-// After rails warp we stay at 1x for the align window: physics warp 4x
-// left Acacius 40 deg off the circ node (no RCS, 44 m, lander-can wheels)
-// and four "missed" retries then an off-axis lock that feather-cut at
-// 28 m/s remaining (82x62 km, peri still in atmosphere).
+// After rails warp we physics-2x through the align window, then 1x for
+// the last ~10 s. Physics 4x left Acacius 40 deg off the circ node (no RCS,
+// 44 m, lander-can wheels) and four "missed" retries then an off-axis lock
+// that feather-cut at 28 m/s remaining (82x62 km, peri still in atmosphere).
 
 GLOBAL AOSO_MANEUVER_LOCK IS V(0, 0, 0).
 GLOBAL AOSO_MANEUVER_BURNING IS FALSE.
@@ -51,8 +51,8 @@ FUNCTION aoso_maneuver_last_result {
 }
 
 FUNCTION aoso_maneuver_align_s {
-    LOCAL s IS aoso_config_get("MANEUVER_ALIGN_S", 120).
-    IF s < 120 { SET s TO 120. }
+    LOCAL s IS aoso_config_get("MANEUVER_ALIGN_S", 50).
+    IF s < 35 { SET s TO 35. }
     RETURN s.
 }
 
@@ -90,6 +90,29 @@ FUNCTION aoso_warp_force_physics {
     WAIT 0.
 }
 
+// kOS PHYSICS WARP: 1=2x, 2=3x, 3=4x. Config is the multiplier (2 = 2x).
+FUNCTION aoso_warp_physics_index {
+    LOCAL mult IS aoso_config_get("WARP_PHYSICS_CRUISE", 2).
+    LOCAL widx IS ROUND(mult, 0) - 1.
+    IF widx < 1 { SET widx TO 1. }
+    IF widx > 3 { SET widx TO 3. }
+    RETURN widx.
+}
+
+FUNCTION aoso_warp_set_physics_cruise {
+    IF SHIP:STATUS = "PRELAUNCH" {
+        SET WARP TO 0.
+        RETURN.
+    }
+    aoso_warp_force_physics().
+    LOCAL widx IS aoso_warp_physics_index().
+    IF WARP <> widx { SET WARP TO widx. }
+}
+
+FUNCTION aoso_warp_stop {
+    IF WARP > 0 { SET WARP TO 0. }
+}
+
 FUNCTION aoso_warp_diag_txt {
     LOCAL w IS "1x".
     IF WARP > 0 {
@@ -104,32 +127,36 @@ FUNCTION aoso_warp_diag_txt {
     RETURN w + " steer=" + steer.
 }
 
-// Rails warp down to rails_lead_s, then stay at 1x so SAS can actually
-// point. Physics warp 3 (4x) during the align window made Acacius (44 m,
-// no RCS, lander-can wheels) oscillate 40 deg off the circularization
-// node and miss four times.
-// LOCK STEERING (and physics warp already running) make WARPTO a no-op:
-// kOS will not rails-warp a steered ship. Release steering and drop
-// physics warp before WARPTO, otherwise the ship sits at 1x/4x for an
-// 18-hour Minmus mid-course and "never stays warping".
-// Returns "rails" / "now" / "hold".
+// Rails when the event is still far. Physics 2x while SAS points.
+// 1x only for the last WARP_CRUCIAL_S (burns, SOI, suicide). Physics 4x
+// (WARP=3) slewed Acacius 40 deg off a circ node; 2x is the cruise floor.
+// LOCK STEERING makes WARPTO a no-op — release before rails.
+// Returns "rails" / "physics" / "now" / "hold".
 FUNCTION aoso_warp_approach {
     PARAMETER eta_s.
     PARAMETER rails_lead_s.
     PARAMETER physics_until_s IS -1.
 
+    LOCAL crucial_s IS aoso_config_get("WARP_CRUCIAL_S", 10).
     IF physics_until_s < 0 {
-        SET physics_until_s TO aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 45).
+        SET physics_until_s TO aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10).
     }
+    IF physics_until_s < crucial_s { SET physics_until_s TO crucial_s. }
+
     IF eta_s <= physics_until_s {
         SET WARP TO 0.
         aoso_log_every(45, "WARP", "Holding 1x eta=" + ROUND(eta_s, 0) + "s until=" + ROUND(physics_until_s, 0) + "s " + aoso_warp_diag_txt() + ".").
         RETURN "now".
     }
     IF NOT aoso_maneuver_can_warp() {
-        SET WARP TO 0.
-        aoso_log_every(45, "WARP", "Warp hold (atm/landed) eta=" + ROUND(eta_s, 0) + "s " + aoso_warp_diag_txt() + ".").
-        RETURN "hold".
+        IF SHIP:STATUS = "PRELAUNCH" {
+            SET WARP TO 0.
+            aoso_log_every(45, "WARP", "Warp hold (pad) eta=" + ROUND(eta_s, 0) + "s " + aoso_warp_diag_txt() + ".").
+            RETURN "hold".
+        }
+        aoso_warp_set_physics_cruise().
+        aoso_log_every(45, "WARP", "Physics cruise (atm/landed) eta=" + ROUND(eta_s, 0) + "s " + aoso_warp_diag_txt() + ".").
+        RETURN "physics".
     }
     IF eta_s > rails_lead_s + 5 {
         IF AOSO_STEER_MODE <> "OFF" { aoso_steer_release(). }
@@ -147,9 +174,9 @@ FUNCTION aoso_warp_approach {
         }
         RETURN "rails".
     }
-    SET WARP TO 0.
-    aoso_log_every(45, "WARP", "Align window eta=" + ROUND(eta_s, 0) + "s lead=" + ROUND(rails_lead_s, 0) + "s " + aoso_warp_diag_txt() + ".").
-    RETURN "now".
+    aoso_warp_set_physics_cruise().
+    aoso_log_every(45, "WARP", "Align window physics eta=" + ROUND(eta_s, 0) + "s lead=" + ROUND(rails_lead_s, 0) + "s " + aoso_warp_diag_txt() + ".").
+    RETURN "physics".
 }
 
 // Delta-v (m/s, signed) needed at the current apoapsis to circularize:
@@ -307,7 +334,7 @@ FUNCTION aoso_maneuver_execute_next {
         LOCAL ignite_lead IS burn_time / 2.
         LOCAL align_s IS aoso_maneuver_align_s().
         LOCAL warp_lead IS ignite_lead + align_s.
-        LOCAL physics_until IS ignite_lead + aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 45).
+        LOCAL physics_until IS ignite_lead + aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10).
 
         // Do not LOCK STEERING until the align window. Rails WARPTO is a
         // no-op while steering is locked, which is why the 8 m/s Minmus
@@ -327,7 +354,7 @@ FUNCTION aoso_maneuver_execute_next {
         aoso_steer_to_vector(remaining_vec).
 
         LOCAL wstate IS aoso_warp_approach(nd:ETA, warp_lead, physics_until).
-        IF wstate = "rails" {
+        IF wstate = "rails" OR wstate = "physics" {
             aoso_throttle_set(0).
             RETURN FALSE.
         }

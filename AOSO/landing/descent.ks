@@ -209,12 +209,12 @@ FUNCTION aoso_descent_freefall_execute {
         SET WARP TO 0.
         aoso_steer_srf_retrograde().
     } ELSE {
-        IF coast_eta < 45 {
+        IF coast_eta < 12 {
             SET WARP TO 0.
             aoso_steer_srf_retrograde().
         } ELSE {
             aoso_steer_release().
-            aoso_warp_approach(coast_eta, 45, 15).
+            aoso_warp_approach(coast_eta, 25, 12).
         }
     }
 }

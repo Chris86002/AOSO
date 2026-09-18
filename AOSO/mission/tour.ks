@@ -297,7 +297,7 @@ FUNCTION aoso_tour_polar_execute {
     LOCAL nd IS NEXTNODE.
     aoso_ui_set("Polar / stabilize T-" + aoso_hud_eta(nd:ETA), ROUND(nd:DELTAV:MAG, 1) + " m/s  " + aoso_hud_warp_txt()).
     IF NOT data["polar_warp_logged"] {
-        aoso_log_info("TOUR", "Rails-warping " + ROUND(nd:ETA, 0) + "s to polar/stabilize burn (" + ROUND(nd:DELTAV:MAG, 1) + " m/s). Physics only the last 10 s.").
+        aoso_log_info("TOUR", "Rails-warping " + ROUND(nd:ETA, 0) + "s to polar/stabilize burn (" + ROUND(nd:DELTAV:MAG, 1) + " m/s). Physics 2x until 10 s, then 1x.").
         SET data["polar_warp_logged"] TO TRUE.
     }
     IF aoso_maneuver_execute_next() {

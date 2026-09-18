@@ -388,7 +388,7 @@ FUNCTION aoso_goto_wait_execute {
         RETURN.
     }
     LOCAL wait_eta IS data["window_ut"] - TIME:SECONDS.
-    LOCAL wst IS aoso_warp_approach(wait_eta, align_s, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 45)).
+    LOCAL wst IS aoso_warp_approach(wait_eta, align_s, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
 }
 
 FUNCTION aoso_goto_launch_execute {
@@ -541,7 +541,7 @@ FUNCTION aoso_goto_coast_execute {
         IF eta_p > 30 {
             LOCAL align_s IS aoso_maneuver_align_s().
             aoso_steer_release().
-            LOCAL wst IS aoso_warp_approach(eta_p, align_s, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 45)).
+            LOCAL wst IS aoso_warp_approach(eta_p, align_s, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
             aoso_ui_set("Coasting to " + np, "SOI " + aoso_hud_eta(eta_p) + "  " + aoso_hud_warp_txt()).
         } ELSE {
             SET WARP TO 0.
@@ -569,13 +569,13 @@ FUNCTION aoso_goto_coast_execute {
             LOCAL flicker_s IS aoso_config_get("GOTO_PATCH_FLICKER_S", 45).
             LOCAL eta_saved IS expect_ut - now.
             IF lost_for < flicker_s {
-                SET WARP TO 0.
-                aoso_ui_set("Re-checking " + expect_body + " patch", "1x so conics can catch up  T-" + aoso_hud_eta(eta_saved)).
+                aoso_warp_set_physics_cruise().
+                aoso_ui_set("Re-checking " + expect_body + " patch", "physics so conics can catch up  T-" + aoso_hud_eta(eta_saved)).
                 RETURN.
             }
             IF eta_saved > 30 {
                 aoso_steer_release().
-                aoso_warp_approach(eta_saved, aoso_maneuver_align_s(), aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 45)).
+                aoso_warp_approach(eta_saved, aoso_maneuver_align_s(), aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
                 aoso_log_every(60, "GOTO", "No live patch, trusting " + expect_body + " SOI in " + ROUND(eta_saved, 0) + "s " + aoso_warp_diag_txt() + ".").
                 aoso_ui_set("Trusting " + expect_body + " intercept", aoso_hud_eta(eta_saved) + "  " + aoso_hud_warp_txt()).
             } ELSE {
@@ -596,7 +596,7 @@ FUNCTION aoso_goto_coast_execute {
                 aoso_state_transition(AOSO_GOTO, "PLAN").
                 RETURN.
             }
-            LOCAL wst2 IS aoso_warp_approach(retry_left, 20, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 45)).
+            LOCAL wst2 IS aoso_warp_approach(retry_left, 20, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
             RETURN.
         }
     }

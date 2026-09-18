@@ -44,11 +44,13 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "STAGING_MAX_EXTRA", 1,             // extra STAGE only if the NEW current stage is also empty
     "MANEUVER_NO_THRUST_TICKS", 20,     // execute_next retries staging this many ticks before declaring a burn dead
     "MANEUVER_FEATHER_S", 2,            // s, remaining burn-time window over which maneuver throttle fades to cut
-    "MANEUVER_ALIGN_S", 120,            // s of 1x after rails warp, before ignition, to point the ship
-    "MANEUVER_PHYSICS_UNTIL_S", 45,     // s of 1x remaining after rails; physics warp is not used (4x slew-missed Acacius circ)
+    "MANEUVER_ALIGN_S", 50,             // s rails lead before ignition; physics 2x after that until WARP_CRUCIAL_S
+    "MANEUVER_PHYSICS_UNTIL_S", 10,     // s of 1x remaining (burns / SOI). Align uses physics 2x, not 4x (4x slewed Acacius)
+    "WARP_PHYSICS_CRUISE", 2,           // physics-warp multiplier while pointing / atm / ISRU. 2=2x, 3=3x. Never 1x for idle.
+    "WARP_CRUCIAL_S", 10,               // last N seconds always 1x (ignition, SOI, suicide)
     "MANEUVER_FOLLOW_ABOVE_S", 8,       // s of remaining burn-time above which we follow the live node instead of locking
     "GOTO_CORRECT_WITHIN_S", 28800,     // s (~8 h): only mid-course a graze this close to SOI; lithobrake still corrects immediately
-    "GOTO_PATCH_FLICKER_S", 45,         // s at 1x after a patch vanishes, so conics can rebuild before we resume rails
+    "GOTO_PATCH_FLICKER_S", 15,         // s of physics-2x after a patch vanishes, so conics can rebuild before we resume rails
     "GOTO_PATCH_TRUST_S", 600,          // s past expected SOI before we give up on a vanished intercept
     "TOUR_REFUEL_BELOW_PCT", 60,        // % LiquidFuel at/below which the grand tour will land and ISRU-refuel
     "TOUR_MIN_LAND_TWR", 1.4,           // surface TWR required before the grand tour will attempt a landing
@@ -167,6 +169,23 @@ FUNCTION aoso_config_load {
         }
         IF AOSO_CONFIG["ASCENT_MAX_AOA"] > 15 {
             SET AOSO_CONFIG["ASCENT_MAX_AOA"] TO 15.
+        }
+    }
+    // Old JSON sat 120 s at 1x after every rails drop. Cap those leftovers
+    // so physics-2x cruise actually runs.
+    IF AOSO_CONFIG:HASKEY("MANEUVER_ALIGN_S") {
+        IF AOSO_CONFIG["MANEUVER_ALIGN_S"] > 60 {
+            SET AOSO_CONFIG["MANEUVER_ALIGN_S"] TO 50.
+        }
+    }
+    IF AOSO_CONFIG:HASKEY("MANEUVER_PHYSICS_UNTIL_S") {
+        IF AOSO_CONFIG["MANEUVER_PHYSICS_UNTIL_S"] > 15 {
+            SET AOSO_CONFIG["MANEUVER_PHYSICS_UNTIL_S"] TO 10.
+        }
+    }
+    IF AOSO_CONFIG:HASKEY("GOTO_PATCH_FLICKER_S") {
+        IF AOSO_CONFIG["GOTO_PATCH_FLICKER_S"] > 20 {
+            SET AOSO_CONFIG["GOTO_PATCH_FLICKER_S"] TO 15.
         }
     }
     aoso_log_set_level(aoso_config_get("LOG_LEVEL", "INFO")).

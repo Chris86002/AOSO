@@ -583,12 +583,28 @@ FUNCTION aoso_ascent_coast_execute {
     PARAMETER data.
     IF aoso_ascent_in_atmosphere() {
         aoso_ascent_steer(data).
-    } ELSE {
-        // Circularization attitude: east and horizontal. Prograde while
-        // still climbing is pitched up; rails warp then freezes the wrong
-        // inertial facing. Point at the burn before we warp.
-        aoso_steer_heading_pitch(data["heading"], 0).
+        aoso_staging_auto_check().
+        IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
+        IF APOAPSIS < data["target_apo"] {
+            SET WARP TO 0.
+            aoso_throttle_set(0.12).
+        } ELSE {
+            aoso_throttle_set(0).
+            IF ALTITUDE > aoso_config_get("ASCENT_DENSE_ALT", 40000) {
+                aoso_warp_set_physics_cruise().
+            }
+        }
+        IF aoso_fuel_abort_check() {
+            aoso_state_abort(AOSO_ASCENT).
+            RETURN.
+        }
+        RETURN.
     }
+
+    // Circularization attitude: east and horizontal. Prograde while
+    // still climbing is pitched up; rails warp then freezes the wrong
+    // inertial facing. Point at the burn before we warp.
+    aoso_steer_heading_pitch(data["heading"], 0).
     aoso_staging_auto_check().
     IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
 
@@ -605,8 +621,6 @@ FUNCTION aoso_ascent_coast_execute {
         RETURN.
     }
 
-    IF aoso_ascent_in_atmosphere() { RETURN. }
-
     IF ETA:APOAPSIS > ETA:PERIAPSIS {
         SET data["circ_now"] TO TRUE.
         aoso_throttle_set(0).
@@ -619,7 +633,7 @@ FUNCTION aoso_ascent_coast_execute {
     LOCAL align_s IS aoso_maneuver_align_s().
 
     IF ETA:APOAPSIS > (lead_s + align_s + 5) {
-        LOCAL wst IS aoso_warp_approach(ETA:APOAPSIS, lead_s + align_s, lead_s + aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 45)).
+        LOCAL wst IS aoso_warp_approach(ETA:APOAPSIS, lead_s + align_s, lead_s + aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
         RETURN.
     }
     SET WARP TO 0.
