@@ -15,6 +15,9 @@ GLOBAL AOSO_UI IS LEXICON("doing", "", "detail", "").
 GLOBAL AOSO_HUD_MODE IS "COMPUTER".
 GLOBAL AOSO_HUD_READY IS FALSE.
 GLOBAL AOSO_HUD_LAST_DUMP IS 0.
+GLOBAL AOSO_HUD_BUS_LAST IS "".
+GLOBAL AOSO_HUD_BUS_UT IS 0.
+GLOBAL AOSO_HUD_PEER IS FALSE.
 
 FUNCTION aoso_ui_set {
     PARAMETER doing.
@@ -216,8 +219,54 @@ FUNCTION aoso_hud_tick {
     }
 }
 
+FUNCTION aoso_hud_bus_line {
+    LOCAL doing IS aoso_hud_doing_fast().
+    LOCAL sysr IS "NOMINAL".
+    IF AOSO_HUD_DATA["systems"]:HASKEY("rollup") { SET sysr TO AOSO_HUD_DATA["systems"]["rollup"]. }
+    LOCAL cpu_n IS "NORMAL".
+    IF DEFINED AOSO_CPU_NAME { SET cpu_n TO AOSO_CPU_NAME. }
+    RETURN doing + "|" + AOSO_UI["detail"] + "|" + sysr + "|" + cpu_n + "|" + AOSO_HUD_PAGE + "|" + ROUND(ALTITUDE, 0) + "|" + ROUND(VERTICALSPEED, 1).
+}
+
+FUNCTION aoso_hud_bus_write {
+    IF NOT AOSO_HUD_PEER { RETURN. }
+    IF TIME:SECONDS - AOSO_HUD_BUS_UT < 0.25 { RETURN. }
+    LOCAL line IS aoso_hud_bus_line().
+    IF line = AOSO_HUD_BUS_LAST { RETURN. }
+    SET AOSO_HUD_BUS_LAST TO line.
+    SET AOSO_HUD_BUS_UT TO TIME:SECONDS.
+    LOCAL pth IS "0:/aoso_hud_bus.txt".
+    IF EXISTS(pth) {
+        LOCAL f IS OPEN(pth).
+        f:CLEAR().
+        f:WRITELN(line).
+    } ELSE {
+        LOCAL f2 IS CREATE(pth).
+        f2:WRITELN(line).
+    }
+}
+
+FUNCTION aoso_hud_fast_tick {
+    IF NOT AOSO_HUD_READY { RETURN. }
+    aoso_hud_collect_fast().
+    aoso_hud_gui_fast().
+    aoso_hud_bus_write().
+}
+
 FUNCTION aoso_hud_draw {
     aoso_hud_tick().
+}
+
+FUNCTION aoso_hud_peer_note {
+    LOCAL n IS 0.
+    LIST PROCESSORS IN procs.
+    FOR p IN procs { SET n TO n + 1. }
+    IF n <= 1 {
+        aoso_log_info("HUD", "One kOS CPU. Live FLT numbers paint first each physics frame, then burns/staging use the rest of IPU. A second processor tagged HUD running AOSO/ux/hud_cpu.ks is the only way to get a full extra IPU for the glass cockpit.").
+        RETURN.
+    }
+    SET AOSO_HUD_PEER TO TRUE.
+    aoso_log_info("HUD", n + " kOS CPUs. Tag a spare core HUD and set its boot file to AOSO/ux/hud_cpu.ks for a second IPU. This core will keep flying.").
 }
 
 FUNCTION aoso_hud_init {
@@ -234,10 +283,11 @@ FUNCTION aoso_hud_init {
     aoso_hud_event_push("INFO", "HUD online  IPU " + CONFIG:IPU).
     aoso_hud_trace_log("HUD online IPU=" + CONFIG:IPU).
     aoso_hud_alert("boot", "OK", "AOSO HUD ONLINE", 8, 3).
+    aoso_hud_peer_note().
 }
 
 FUNCTION aoso_hud_register_task {
-    PARAMETER interval_s IS 0.1.
+    PARAMETER interval_s IS 0.25.
     aoso_hud_init().
     aoso_sched_add("hud", interval_s, aoso_hud_tick@).
 }

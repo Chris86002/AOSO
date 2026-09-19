@@ -809,6 +809,14 @@ FUNCTION aoso_ascent_start {
 }
 
 FUNCTION aoso_ascent_update {
+    LOCAL st IS AOSO_ASCENT["current"].
+    IF st <> "" {
+        IF st <> "DONE" {
+            IF st <> "ABORTED" {
+                aoso_ui_set("Ascent  " + st, "ap " + ROUND(APOAPSIS, 0) + "  pe " + ROUND(PERIAPSIS, 0)).
+            }
+        }
+    }
     aoso_ascent_opt_tick().
     aoso_state_update(AOSO_ASCENT).
 }

@@ -3,10 +3,54 @@
 // High/medium/low rate gates so the HUD never walks PARTS or replans.
 
 GLOBAL AOSO_HUD_DATA IS LEXICON().
+GLOBAL AOSO_HUD_FAST_UT IS -1.
 GLOBAL AOSO_HUD_LAST_HI IS 0.
 GLOBAL AOSO_HUD_LAST_MD IS 0.
 GLOBAL AOSO_HUD_LAST_LO IS 0.
 GLOBAL AOSO_HUD_CTX IS "IDLE".
+
+FUNCTION aoso_hud_collect_fast {
+    LOCAL f IS AOSO_HUD_DATA["flight"].
+    SET f["alt"] TO ALTITUDE.
+    SET f["vs"] TO VERTICALSPEED.
+    SET f["gs"] TO SHIP:GROUNDSPEED.
+    SET f["srf"] TO SHIP:VELOCITY:SURFACE:MAG.
+    SET f["orb"] TO SHIP:VELOCITY:ORBIT:MAG.
+    SET f["throttle"] TO THROTTLE.
+    SET f["mass"] TO SHIP:MASS.
+    SET f["thrust"] TO SHIP:AVAILABLETHRUST.
+    SET f["stage"] TO STAGE:NUMBER.
+    SET f["body"] TO SHIP:BODY:NAME.
+    SET f["status"] TO SHIP:STATUS.
+    SET f["doing"] TO AOSO_UI["doing"].
+    SET f["detail"] TO AOSO_UI["detail"].
+    LOCAL rad IS SHIP:BODY:RADIUS + ALTITUDE.
+    LOCAL g IS 9.81.
+    IF rad > 0 { SET g TO SHIP:BODY:MU / (rad * rad). }
+    LOCAL twr IS 0.
+    IF SHIP:MASS > 0 {
+        IF g > 0 { SET twr TO SHIP:AVAILABLETHRUST / (SHIP:MASS * g). }
+    }
+    SET f["twr"] TO twr.
+    SET f["in_atm"] TO FALSE.
+    IF SHIP:BODY:ATM:EXISTS {
+        IF ALTITUDE < SHIP:BODY:ATM:HEIGHT { SET f["in_atm"] TO TRUE. }
+    }
+    LOCAL o IS AOSO_HUD_DATA["orbit"].
+    SET o["ap"] TO APOAPSIS.
+    SET o["pe"] TO PERIAPSIS.
+    SET o["node"] TO HASNODE.
+    SET o["node_dv"] TO 0.
+    SET o["node_eta"] TO 0.
+    SET o["burning"] TO FALSE.
+    IF DEFINED AOSO_MANEUVER_BURNING { SET o["burning"] TO AOSO_MANEUVER_BURNING. }
+    IF HASNODE {
+        LOCAL nd IS NEXTNODE.
+        SET o["node_dv"] TO nd:DELTAV:MAG.
+        SET o["node_eta"] TO nd:ETA.
+    }
+    SET AOSO_HUD_FAST_UT TO TIME:SECONDS.
+}
 
 FUNCTION aoso_hud_data_init {
     SET AOSO_HUD_DATA TO LEXICON(
@@ -587,7 +631,7 @@ FUNCTION aoso_hud_collect {
         SET AOSO_HUD_LAST_LO TO now.
         RETURN rates.
     }
-    aoso_hud_collect_flight().
+    IF now <> AOSO_HUD_FAST_UT { aoso_hud_collect_flight(). }
     LOCAL pg IS AOSO_HUD_PAGE.
     IF pg = "FLT" OR pg = "NAV" OR pg = "DBG" {
         aoso_hud_collect_orbit().

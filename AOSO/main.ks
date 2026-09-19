@@ -154,6 +154,7 @@ FUNCTION aoso_main {
         SET AOSO_CPU_UT0 TO TIME:SECONDS.
         SET AOSO_CPU_OP0 TO OPCODESLEFT.
         SET AOSO_CPU_RT0 TO KUNIVERSE:REALTIME.
+        aoso_hud_fast_tick().
         aoso_sched_run().
         aoso_observe_cpu_end().
         WAIT 0.

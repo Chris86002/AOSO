@@ -39,7 +39,7 @@ FUNCTION aoso_sched_floor_of {
     IF name = "auto_staging" { RETURN 40. }
     IF name = "watchdog" { RETURN 40. }
     IF name = "mission" { RETURN 80. }
-    IF name = "hud" { RETURN 280. }
+    IF name = "hud" { RETURN 160. }
     IF name = "auto_power" { RETURN 80. }
     IF name = "telemetry" { RETURN 160. }
     IF name = "vehicle_profile" { RETURN 280. }
