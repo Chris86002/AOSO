@@ -41,27 +41,28 @@ FUNCTION aoso_xp_save {
 }
 
 FUNCTION aoso_xp_migrate_learn {
-    IF NOT DEFINED AOSO_LEARN { RETURN. }
-    LOCAL learn_store IS aoso_learn_load().
-    IF NOT learn_store:HASKEY("stats") { RETURN. }
-    LOCAL stats IS learn_store["stats"].
-    FOR skey IN stats:KEYS {
-        LOCAL row IS stats[skey].
-        IF row:ISTYPE("Lexicon") {
-            IF row:HASKEY("count") {
-                IF row["count"] >= 1 {
-                    IF row:HASKEY("sum_circ_dv") {
-                        LOCAL parts IS skey:SPLIT("|").
-                        LOCAL body_n IS SHIP:BODY:NAME.
-                        IF parts:LENGTH >= 2 { SET body_n TO parts[1]. }
-                        LOCAL mk IS aoso_xp_key("CIRCULARIZATION", body_n).
-                        LOCAL models IS AOSO_XP["store"]["models"].
-                        IF NOT models:HASKEY(mk) {
-                            LOCAL n IS row["count"].
-                            LOCAL avg IS row["sum_circ_dv"] / n.
-                            LOCAL ratio IS 1.
-                            IF avg > 40 { SET ratio TO MIN(1.4, MAX(0.7, avg / 58)). }
-                            SET models[mk] TO aoso_xp_blank(n, ratio).
+    IF DEFINED AOSO_LEARN {
+        LOCAL learn_store IS aoso_learn_load().
+        IF NOT learn_store:HASKEY("stats") { RETURN. }
+        LOCAL stats IS learn_store["stats"].
+        FOR skey IN stats:KEYS {
+            LOCAL row IS stats[skey].
+            IF row:ISTYPE("Lexicon") {
+                IF row:HASKEY("count") {
+                    IF row["count"] >= 1 {
+                        IF row:HASKEY("sum_circ_dv") {
+                            LOCAL parts IS skey:SPLIT("|").
+                            LOCAL body_n IS SHIP:BODY:NAME.
+                            IF parts:LENGTH >= 2 { SET body_n TO parts[1]. }
+                            LOCAL mk IS aoso_xp_key("CIRCULARIZATION", body_n).
+                            LOCAL models IS AOSO_XP["store"]["models"].
+                            IF NOT models:HASKEY(mk) {
+                                LOCAL n IS row["count"].
+                                LOCAL avg IS row["sum_circ_dv"] / n.
+                                LOCAL ratio IS 1.
+                                IF avg > 40 { SET ratio TO MIN(1.4, MAX(0.7, avg / 58)). }
+                                SET models[mk] TO aoso_xp_blank(n, ratio).
+                            }
                         }
                     }
                 }

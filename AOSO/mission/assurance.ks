@@ -7,19 +7,22 @@ GLOBAL AOSO_ASSURE_LAST IS LEXICON().
 FUNCTION aoso_assure_weakest {
     LOCAL weakest IS "".
     LOCAL worst IS 99999.
-    IF NOT DEFINED AOSO_PLAN_LAST { RETURN LEXICON("body", "", "margin", 0). }
-    IF NOT AOSO_PLAN_LAST:HASKEY("targets") { RETURN LEXICON("body", "", "margin", 0). }
-    LOCAL hop IS aoso_budget_get("mission_dv", 0).
-    FOR dest_name IN AOSO_PLAN_LAST["targets"] {
-        LOCAL row IS aoso_matrix_get(dest_name).
-        LOCAL need IS row["transfer_dv"].
-        LOCAL margin IS hop - need.
-        IF margin < worst {
-            SET worst TO margin.
-            SET weakest TO dest_name.
+    IF DEFINED AOSO_PLAN_LAST {
+        IF AOSO_PLAN_LAST:HASKEY("targets") {
+            LOCAL hop IS aoso_budget_get("mission_dv", 0).
+            FOR dest_name IN AOSO_PLAN_LAST["targets"] {
+                LOCAL row IS aoso_matrix_get(dest_name).
+                LOCAL need IS row["transfer_dv"].
+                LOCAL margin IS hop - need.
+                IF margin < worst {
+                    SET worst TO margin.
+                    SET weakest TO dest_name.
+                }
+            }
+            RETURN LEXICON("body", weakest, "margin", worst).
         }
     }
-    RETURN LEXICON("body", weakest, "margin", worst).
+    RETURN LEXICON("body", "", "margin", 0).
 }
 
 FUNCTION aoso_depart_certify {

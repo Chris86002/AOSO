@@ -104,28 +104,29 @@ FUNCTION aoso_brain_consider_replan {
 
 FUNCTION aoso_brain_do_replan {
     PARAMETER reason.
-    IF NOT DEFINED AOSO_PLAN_LAST { RETURN. }
-    IF DEFINED AOSO_CPU_LEVEL {
-        IF AOSO_CPU_LEVEL >= 2 {
-            IF NOT aoso_brain_is_quiet() { RETURN. }
+    IF DEFINED AOSO_PLAN_LAST {
+        IF DEFINED AOSO_CPU_LEVEL {
+            IF AOSO_CPU_LEVEL >= 2 {
+                IF NOT aoso_brain_is_quiet() { RETURN. }
+            }
         }
+        IF NOT aoso_brain_think_ok() { RETURN. }
+        aoso_log_info("BRAIN", "Replanning (" + reason + ").").
+        aoso_ui_set("Replanning", reason).
+        aoso_profile_refresh("brain_" + reason).
+        aoso_budget_refresh().
+        aoso_plan_build().
+        SET AOSO_BRAIN["last_replan"] TO TIME:SECONDS.
+        SET AOSO_BRAIN["replan_reason"] TO reason.
+        SET AOSO_BRAIN["pending_replan"] TO "".
+        aoso_ctx_clear_dirty("dirty_plan").
+        aoso_ctx_clear_dirty("dirty_feas").
+        aoso_ctx_clear_dirty("dirty_opp").
+        aoso_ctx_clear_dirty("dirty_route").
+        aoso_ctx_mark_plan().
+        aoso_event_publish("PLAN_UPDATED", "brain", reason).
+        aoso_decide("BRAIN", "replan", reason, AOSO_BRAIN["replan_reason"], "dv=" + ROUND(aoso_budget_get("mission_dv", 0), 0)).
     }
-    IF NOT aoso_brain_think_ok() { RETURN. }
-    aoso_log_info("BRAIN", "Replanning (" + reason + ").").
-    aoso_ui_set("Replanning", reason).
-    aoso_profile_refresh("brain_" + reason).
-    aoso_budget_refresh().
-    aoso_plan_build().
-    SET AOSO_BRAIN["last_replan"] TO TIME:SECONDS.
-    SET AOSO_BRAIN["replan_reason"] TO reason.
-    SET AOSO_BRAIN["pending_replan"] TO "".
-    aoso_ctx_clear_dirty("dirty_plan").
-    aoso_ctx_clear_dirty("dirty_feas").
-    aoso_ctx_clear_dirty("dirty_opp").
-    aoso_ctx_clear_dirty("dirty_route").
-    aoso_ctx_mark_plan().
-    aoso_event_publish("PLAN_UPDATED", "brain", reason).
-    aoso_decide("BRAIN", "replan", reason, AOSO_BRAIN["replan_reason"], "dv=" + ROUND(aoso_budget_get("mission_dv", 0), 0)).
 }
 
 FUNCTION aoso_brain_refresh_dirty {

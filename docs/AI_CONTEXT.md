@@ -8,7 +8,8 @@ they watch the kOS terminal and the HUD.
 - **No AND/OR short-circuit.** Both sides always run. Nest `IF` when a
   suffix might be missing (`IF HASNODE { IF NEXTNODE:ETA < x { } }`).
 - **`DEFINED` is for variables, not functions.** `DEFINED aoso_plan_build`
-  is invalid. Check `DEFINED AOSO_PLAN_LAST`.
+  is invalid. Check `DEFINED AOSO_PLAN_LAST`. kOS allows only one unary
+  prefix, so `IF NOT DEFINED x` is a parse error — nest `IF DEFINED x { … }`.
 - **Identifiers are case-insensitive.** A `FUNCTION aoso_const` collides
   with `GLOBAL AOSO_CONST`. Never name a local `path`, `obt`, `note`,
   `alt`, `r`, `v`, `q`, or `status` (builtins). Never pair
