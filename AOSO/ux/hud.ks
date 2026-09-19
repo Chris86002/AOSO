@@ -18,6 +18,7 @@ GLOBAL AOSO_HUD_LAST_DUMP IS 0.
 GLOBAL AOSO_HUD_BUS_LAST IS "".
 GLOBAL AOSO_HUD_BUS_UT IS 0.
 GLOBAL AOSO_HUD_PEER IS FALSE.
+GLOBAL AOSO_HUD_FAST_SKIP IS 0.
 
 FUNCTION aoso_ui_set {
     PARAMETER doing.
@@ -248,6 +249,13 @@ FUNCTION aoso_hud_bus_write {
 
 FUNCTION aoso_hud_fast_tick {
     IF NOT AOSO_HUD_READY { RETURN. }
+    IF DEFINED AOSO_CPU_LEVEL {
+        IF AOSO_CPU_LEVEL >= 3 {
+            SET AOSO_HUD_FAST_SKIP TO AOSO_HUD_FAST_SKIP + 1.
+            IF AOSO_HUD_FAST_SKIP < 2 { RETURN. }
+            SET AOSO_HUD_FAST_SKIP TO 0.
+        }
+    }
     aoso_hud_collect_fast().
     aoso_hud_gui_fast().
     aoso_hud_bus_write().

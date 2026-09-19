@@ -78,17 +78,17 @@ FUNCTION aoso_maneuver_peri_unsafe {
 FUNCTION aoso_warp_force_rails {
     IF WARPMODE = "RAILS" { RETURN. }
     SET WARP TO 0.
-    WAIT 0.
+    aoso_yield_hud().
     SET WARPMODE TO "RAILS".
-    WAIT 0.
+    aoso_yield_hud().
 }
 
 FUNCTION aoso_warp_force_physics {
     IF WARPMODE = "PHYSICS" { RETURN. }
     SET WARP TO 0.
-    WAIT 0.
+    aoso_yield_hud().
     SET WARPMODE TO "PHYSICS".
-    WAIT 0.
+    aoso_yield_hud().
 }
 
 // kOS PHYSICS WARP: 1=2x, 2=3x, 3=4x. Config is the multiplier (2 = 2x).
@@ -163,9 +163,9 @@ FUNCTION aoso_warp_approach {
         IF AOSO_STEER_MODE <> "OFF" { aoso_steer_release(). }
         IF WARPMODE <> "RAILS" {
             SET WARP TO 0.
-            WAIT 0.
+            aoso_yield_hud().
             SET WARPMODE TO "RAILS".
-            WAIT 0.
+            aoso_yield_hud().
         }
         IF WARP = 0 {
             WARPTO(TIME:SECONDS + eta_s - rails_lead_s).
@@ -257,7 +257,7 @@ FUNCTION aoso_maneuver_finish_node {
     PARAMETER reason.
     LOCAL left IS AOSO_MANEUVER_LAST_REMAINING.
     SET WARP TO 0.
-    WAIT 0.
+    aoso_yield_hud().
     SET WARPMODE TO "RAILS".
     aoso_throttle_set(0).
     RCS OFF.

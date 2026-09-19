@@ -49,6 +49,8 @@ GLOBAL AOSO_STG_BOOSTERS IS FALSE.
 GLOBAL AOSO_STG_FUEL_GONE IS FALSE.
 GLOBAL AOSO_STG_AIRBORNE IS FALSE.
 GLOBAL AOSO_STG_THRUST IS 0.
+GLOBAL AOSO_STG_DROP_FUEL IS -1.
+GLOBAL AOSO_STG_DROP_AT IS -99.
 
 FUNCTION aoso_staging_airborne {
     LOCAL st IS SHIP:STATUS.
@@ -56,14 +58,13 @@ FUNCTION aoso_staging_airborne {
 }
 
 FUNCTION aoso_staging_ship_lf {
-    FOR r IN SHIP:RESOURCES {
-        IF r:NAME = "LiquidFuel" { RETURN r:AMOUNT. }
-    }
-    RETURN 0.
+    RETURN aoso_resource_amount("LiquidFuel").
 }
 
 FUNCTION aoso_staging_after_stage {
     aoso_parts_cache_invalidate().
+    SET AOSO_STG_DROP_FUEL TO -1.
+    SET AOSO_STG_DROP_AT TO -99.
     LOCAL cool IS aoso_config_get("STAGING_COOLDOWN_S", 1.2).
     LOCAL spool IS aoso_config_get("STAGING_SPOOL_S", 0.8).
     LOCAL now IS TIME:SECONDS.
@@ -458,7 +459,11 @@ FUNCTION aoso_staging_reset_relight {
 FUNCTION aoso_staging_next_drops_fuel {
     LOCAL drop_at IS STAGE:NUMBER.
     IF drop_at <= 0 { RETURN FALSE. }
+    IF AOSO_STG_DROP_AT = drop_at {
+        IF AOSO_STG_DROP_FUEL >= 0 { RETURN AOSO_STG_DROP_FUEL = 1. }
+    }
     LOCAL plist IS aoso_parts_list().
+    LOCAL drops IS FALSE.
     FOR p IN plist {
         IF p:DECOUPLEDIN = drop_at {
             FOR r IN p:RESOURCES {
@@ -469,12 +474,15 @@ FUNCTION aoso_staging_next_drops_fuel {
                 IF nm = "SolidFuel" { SET keep TO TRUE. }
                 IF nm = "XenonGas" { SET keep TO TRUE. }
                 IF keep {
-                    IF r:AMOUNT > 10 { RETURN TRUE. }
+                    IF r:AMOUNT > 10 { SET drops TO TRUE. }
                 }
             }
         }
     }
-    RETURN FALSE.
+    SET AOSO_STG_DROP_AT TO drop_at.
+    IF drops { SET AOSO_STG_DROP_FUEL TO 1. }
+    ELSE { SET AOSO_STG_DROP_FUEL TO 0. }
+    RETURN drops.
 }
 
 FUNCTION aoso_staging_eng_activate_stage {

@@ -177,7 +177,11 @@ FUNCTION aoso_hud_collect_orbit {
         IF o["burning"] {
             IF o["burn_left"] <= 0 { SET o["burn_left"] TO nd:DELTAV:MAG. }
         }
-        SET o["burn_s"] TO aoso_perf_burn_time_for_dv(nd:DELTAV:MAG).
+        LOCAL do_bt IS TRUE.
+        IF DEFINED AOSO_CPU_LEVEL {
+            IF AOSO_CPU_LEVEL >= 2 { SET do_bt TO FALSE. }
+        }
+        IF do_bt { SET o["burn_s"] TO aoso_perf_burn_time_for_dv(nd:DELTAV:MAG). }
     } ELSE {
         SET o["burn_s"] TO 0.
     }
@@ -227,10 +231,16 @@ FUNCTION aoso_hud_collect_res {
     SET rsrc["twr_now"] TO 0.
     SET rsrc["twr_next"] TO 0.
     SET rsrc["role_next"] TO "".
-    LOCAL pred IS aoso_capabilities_predict_next().
-    SET rsrc["twr_now"] TO pred["twr_now"].
-    SET rsrc["twr_next"] TO pred["twr_next"].
-    SET rsrc["role_next"] TO pred["role_next"].
+    LOCAL want_pred IS TRUE.
+    IF DEFINED AOSO_CPU_LEVEL {
+        IF AOSO_CPU_LEVEL >= 1 { SET want_pred TO FALSE. }
+    }
+    IF want_pred {
+        LOCAL pred IS aoso_capabilities_predict_next().
+        SET rsrc["twr_now"] TO pred["twr_now"].
+        SET rsrc["twr_next"] TO pred["twr_next"].
+        SET rsrc["role_next"] TO pred["role_next"].
+    }
 }
 
 FUNCTION aoso_hud_collect_mission {

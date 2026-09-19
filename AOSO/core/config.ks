@@ -12,7 +12,7 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "LOG_LEVEL", "INFO",                // TRACE..FATAL  (INFO default; TRACE is for hard bugs)
     "TELEM_RATE", "AUTO",               // AUTO | FAST | NORMAL | SLOW | OFF
     "OBS_ENABLED", TRUE,
-    "PROF_ENABLED", TRUE,
+    "PROF_ENABLED", FALSE,
     "PRECISION_LANDING_RADIUS", 150,    // m, acceptable TARGET_ERROR for KSC return
     "MAX_SLOPE_DEG", 15,                // landing-site scoring cutoff
     "DEORBIT_PE_ALT", 30000,            // m, target periapsis for deorbit burns

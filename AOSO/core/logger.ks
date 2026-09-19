@@ -62,10 +62,17 @@ FUNCTION aoso_log {
     AOSO_LOG_BUFFER:ADD(line).
 
     IF lvl >= AOSO_LOG_LEVELS["ERROR"] {
-        // Errors/fatals flush immediately so we never lose them on a crash.
         aoso_log_flush().
     } ELSE IF (t - AOSO_LOG_LAST_FLUSH) >= AOSO_CONST["LOG_FLUSH_INTERVAL"] {
-        aoso_log_flush().
+        LOCAL busy IS FALSE.
+        IF DEFINED AOSO_CPU_LEVEL {
+            IF AOSO_CPU_LEVEL >= 2 { SET busy TO TRUE. }
+        }
+        IF busy {
+            IF AOSO_LOG_BUFFER:LENGTH >= 40 { aoso_log_flush(). }
+        } ELSE {
+            aoso_log_flush().
+        }
     }
 }
 

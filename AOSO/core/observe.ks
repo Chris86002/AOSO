@@ -33,6 +33,9 @@ GLOBAL AOSO_CPU_LEFT IS 0.
 GLOBAL AOSO_CPU_STREAK IS 0.
 GLOBAL AOSO_CPU_LOG_UT IS 0.
 GLOBAL AOSO_CPU_LOG_NAME IS "NORMAL".
+GLOBAL AOSO_CPU_HOLD_UT IS 0.
+GLOBAL AOSO_CPU_RECOVER IS 0.
+GLOBAL AOSO_DUMP_PENDING IS "".
 GLOBAL AOSO_TELEM_FLUSH_NOW IS FALSE.
 
 FUNCTION aoso_observe_reset_files {
@@ -71,6 +74,9 @@ FUNCTION aoso_observe_init {
     SET AOSO_CPU_STREAK TO 0.
     SET AOSO_CPU_LOG_UT TO 0.
     SET AOSO_CPU_LOG_NAME TO "NORMAL".
+    SET AOSO_CPU_HOLD_UT TO 0.
+    SET AOSO_CPU_RECOVER TO 0.
+    SET AOSO_DUMP_PENDING TO "".
     SET AOSO_PROF TO LEXICON().
     SET AOSO_PROF_NAME TO "".
     SET AOSO_OBS_TELEM_LAST TO 0.
@@ -197,7 +203,7 @@ FUNCTION aoso_observe_event {
     IF etype = "TOUCHDOWN" { SET dump TO TRUE. }
     IF etype = "RELIGHT" { SET dump TO TRUE. }
     IF dump {
-        aoso_observe_dump_pre(etype + " " + message).
+        SET AOSO_DUMP_PENDING TO etype + " " + message.
         SET AOSO_POST_LEFT TO 8.
         SET AOSO_TELEM_FLUSH_NOW TO TRUE.
     }
@@ -207,7 +213,19 @@ FUNCTION aoso_observe_event {
     IF severity = "FATAL" { SET must_flush TO TRUE. }
     IF AOSO_EVT_BUF:LENGTH >= 20 { SET must_flush TO TRUE. }
     IF AOSO_EVT_BUF:LENGTH > 80 { SET must_flush TO TRUE. }
-    IF (ut - AOSO_EVT_LAST_FLUSH) >= 5 { SET must_flush TO TRUE. }
+    IF (ut - AOSO_EVT_LAST_FLUSH) >= 5 {
+        LOCAL busy IS FALSE.
+        IF DEFINED AOSO_CPU_LEVEL {
+            IF AOSO_CPU_LEVEL >= 2 { SET busy TO TRUE. }
+        }
+        IF NOT busy { SET must_flush TO TRUE. }
+        IF AOSO_EVT_BUF:LENGTH >= 12 { SET must_flush TO TRUE. }
+    }
+    IF must_flush {
+        IF OPCODESLEFT < aoso_cpu_headroom() {
+            SET must_flush TO FALSE.
+        }
+    }
     IF must_flush { aoso_observe_flush(). }
 }
 
@@ -327,6 +345,51 @@ FUNCTION aoso_prof_end {
     IF dt > s["max"] { SET s["max"] TO dt. }
 }
 
+FUNCTION aoso_cpu_headroom {
+    LOCAL ipu IS CONFIG:IPU.
+    LOCAL n IS FLOOR(ipu * 0.18).
+    IF n < 80 { SET n TO 80. }
+    IF n > 360 { SET n TO 360. }
+    RETURN n.
+}
+
+FUNCTION aoso_cpu_allow {
+    PARAMETER cls.
+    LOCAL lvl IS 0.
+    IF DEFINED AOSO_CPU_LEVEL { SET lvl TO AOSO_CPU_LEVEL. }
+    IF cls <= 0 { RETURN TRUE. }
+    IF lvl >= 3 {
+        IF cls >= 2 { RETURN FALSE. }
+        RETURN TRUE.
+    }
+    IF lvl >= 2 {
+        IF cls >= 3 { RETURN FALSE. }
+        RETURN TRUE.
+    }
+    RETURN TRUE.
+}
+
+FUNCTION aoso_yield_hud {
+    WAIT 0.
+    IF DEFINED AOSO_HUD_READY {
+        IF AOSO_HUD_READY { aoso_hud_fast_tick(). }
+    }
+}
+
+FUNCTION aoso_observe_idle {
+    IF AOSO_DUMP_PENDING = "" {
+        IF AOSO_EVT_BUF:LENGTH < 8 { RETURN. }
+    }
+    IF OPCODESLEFT < aoso_cpu_headroom() { RETURN. }
+    IF AOSO_DUMP_PENDING <> "" {
+        LOCAL why IS AOSO_DUMP_PENDING.
+        SET AOSO_DUMP_PENDING TO "".
+        aoso_observe_dump_pre(why).
+        IF OPCODESLEFT < aoso_cpu_headroom() { RETURN. }
+    }
+    IF AOSO_EVT_BUF:LENGTH >= 8 { aoso_observe_flush(). }
+}
+
 FUNCTION aoso_observe_cpu_end {
     LOCAL spilled IS FALSE.
     IF TIME:SECONDS <> AOSO_CPU_UT0 { SET spilled TO TRUE. }
@@ -381,14 +444,41 @@ FUNCTION aoso_observe_cpu_end {
         }
     }
     LOCAL prev IS AOSO_CPU_LEVEL.
+    LOCAL now_ut IS TIME:SECONDS.
+    IF level > prev {
+        SET AOSO_CPU_HOLD_UT TO now_ut + 1.2.
+        IF level >= 3 { SET AOSO_CPU_HOLD_UT TO now_ut + 2.5. }
+        SET AOSO_CPU_RECOVER TO 0.
+    } ELSE {
+        IF level < prev {
+            IF now_ut < AOSO_CPU_HOLD_UT {
+                SET level TO prev.
+            } ELSE {
+                SET AOSO_CPU_RECOVER TO AOSO_CPU_RECOVER + 1.
+                IF AOSO_CPU_RECOVER < 4 {
+                    SET level TO prev.
+                } ELSE {
+                    SET level TO prev - 1.
+                    SET AOSO_CPU_RECOVER TO 0.
+                    SET AOSO_CPU_HOLD_UT TO now_ut + 0.8.
+                }
+            }
+        } ELSE {
+            SET AOSO_CPU_RECOVER TO 0.
+        }
+    }
+    IF level <= 0 { SET cname TO "NORMAL". }
+    IF level = 1 { SET cname TO "ELEVATED". }
+    IF level = 2 { SET cname TO "HIGH". }
+    IF level >= 3 { SET cname TO "CRITICAL". SET level TO 3. }
     SET AOSO_CPU_LEVEL TO level.
     SET AOSO_CPU_NAME TO cname.
     SET AOSO_CPU_LAST_WALL TO wall.
     SET AOSO_CPU_FRAC TO frac.
     SET AOSO_CPU_USED TO op_used.
     IF cname <> AOSO_CPU_LOG_NAME {
-        IF TIME:SECONDS - AOSO_CPU_LOG_UT >= 8 {
-            SET AOSO_CPU_LOG_UT TO TIME:SECONDS.
+        IF now_ut - AOSO_CPU_LOG_UT >= 8 {
+            SET AOSO_CPU_LOG_UT TO now_ut.
             SET AOSO_CPU_LOG_NAME TO cname.
             aoso_observe_event("CPU", "INFO", cname, "level=" + prev + "->" + level + " frac=" + ROUND(frac, 2) + " wall=" + ROUND(wall, 3)).
         }

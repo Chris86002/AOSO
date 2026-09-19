@@ -157,6 +157,7 @@ FUNCTION aoso_main {
         aoso_hud_fast_tick().
         aoso_sched_run().
         aoso_observe_cpu_end().
+        aoso_observe_idle().
         WAIT 0.
     }
 }

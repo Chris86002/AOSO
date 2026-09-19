@@ -131,38 +131,44 @@ FUNCTION aoso_sched_remove {
 
 FUNCTION aoso_sched_keep {
     PARAMETER name.
-    LOCAL lvl IS 0.
-    IF DEFINED AOSO_CPU_LEVEL { SET lvl TO AOSO_CPU_LEVEL. }
-    IF lvl <= 1 { RETURN TRUE. }
-
     IF name = "auto_staging" { RETURN TRUE. }
     IF name = "watchdog" { RETURN TRUE. }
     IF name = "mission" { RETURN TRUE. }
-    IF name = "auto_power" { RETURN TRUE. }
     IF name = "goto" { RETURN TRUE. }
     IF name = "descent" { RETURN TRUE. }
-
+    IF name = "auto_power" { RETURN aoso_cpu_allow(1). }
+    IF name = "hud" { RETURN aoso_cpu_allow(2). }
     IF name = "telemetry" {
         IF DEFINED AOSO_POST_LEFT {
             IF AOSO_POST_LEFT > 0 { RETURN TRUE. }
         }
-        IF lvl >= 3 { RETURN FALSE. }
-        RETURN TRUE.
+        RETURN aoso_cpu_allow(2).
     }
-    IF name = "hud" { RETURN TRUE. }
-    IF name = "vehicle_profile" { RETURN FALSE. }
-    IF name = "checkpoint_autosave" { RETURN FALSE. }
-    RETURN TRUE.
+    IF name = "vehicle_profile" { RETURN aoso_cpu_allow(3). }
+    IF name = "checkpoint_autosave" { RETURN aoso_cpu_allow(3). }
+    RETURN aoso_cpu_allow(1).
 }
 
 FUNCTION aoso_sched_run {
     LOCAL start_ut IS TIME:SECONDS.
     IF AOSO_TASKS_DIRTY { aoso_sched_rebuild_snap(). }
     LOCAL snap IS AOSO_TASKS_SNAP.
+    LOCAL room IS aoso_cpu_headroom().
+    LOCAL ran IS 0.
+    LOCAL prof IS FALSE.
+    IF DEFINED AOSO_CONFIG {
+        IF AOSO_CONFIG:HASKEY("PROF_ENABLED") {
+            IF AOSO_CONFIG["PROF_ENABLED"] { SET prof TO TRUE. }
+        }
+    }
     FOR t IN snap {
         IF TIME:SECONDS <> start_ut { RETURN. }
         LOCAL left0 IS OPCODESLEFT.
-        IF left0 < 50 { RETURN. }
+        IF ran > 0 {
+            IF left0 < room { RETURN. }
+        } ELSE {
+            IF left0 < 50 { RETURN. }
+        }
         IF t["enabled"] {
             LOCAL now IS TIME:SECONDS.
             IF now >= t["next_run"] {
@@ -170,6 +176,9 @@ FUNCTION aoso_sched_run {
                 LOCAL run_it IS keep_it.
                 IF run_it {
                     LOCAL floor_n IS t["floor"].
+                    IF t["prio"] > 0 {
+                        IF left0 < room { SET floor_n TO left0 + 1. }
+                    }
                     IF left0 < floor_n {
                         SET t["skip_n"] TO t["skip_n"] + 1.
                         IF t["prio"] > 0 {
@@ -189,14 +198,19 @@ FUNCTION aoso_sched_run {
                         SET t["next_run"] TO now + iv.
                     }
                     SET t["run_count"] TO t["run_count"] + 1.
-                    LOCAL t0 IS KUNIVERSE:REALTIME.
-                    t["fn"]:CALL().
-                    LOCAL dt IS KUNIVERSE:REALTIME - t0.
-                    SET t["last_dt"] TO dt.
-                    SET t["sum_dt"] TO t["sum_dt"] + dt.
-                    IF dt > t["max_dt"] { SET t["max_dt"] TO dt. }
+                    SET ran TO ran + 1.
+                    IF prof {
+                        LOCAL t0 IS KUNIVERSE:REALTIME.
+                        t["fn"]:CALL().
+                        LOCAL dt IS KUNIVERSE:REALTIME - t0.
+                        SET t["last_dt"] TO dt.
+                        SET t["sum_dt"] TO t["sum_dt"] + dt.
+                        IF dt > t["max_dt"] { SET t["max_dt"] TO dt. }
+                    } ELSE {
+                        t["fn"]:CALL().
+                    }
                     IF TIME:SECONDS <> start_ut { RETURN. }
-                    IF OPCODESLEFT < 80 { RETURN. }
+                    IF OPCODESLEFT < room { RETURN. }
                 } ELSE {
                     IF NOT keep_it {
                         SET t["next_run"] TO now + t["interval"].

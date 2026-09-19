@@ -25,6 +25,7 @@ GLOBAL AOSO_PROFILE IS LEXICON().
 GLOBAL AOSO_PROFILE_LAST_MASS IS 0.
 GLOBAL AOSO_PROFILE_LAST_SNAP IS LEXICON().
 GLOBAL AOSO_PROFILE_PENDING IS "".
+GLOBAL AOSO_PROFILE_SAVE_PENDING IS FALSE.
 
 FUNCTION aoso_profile_snapshot {
     LOCAL plist IS aoso_parts_list().
@@ -95,7 +96,11 @@ FUNCTION aoso_profile_refresh {
     aoso_prof_start("profile_refresh").
     aoso_parts_cache_invalidate().
     aoso_vessel_scan().
-    aoso_parts_scan().
+    LOCAL persist_parts IS TRUE.
+    IF DEFINED AOSO_CPU_LEVEL {
+        IF AOSO_CPU_LEVEL >= 1 { SET persist_parts TO FALSE. }
+    }
+    aoso_parts_scan(persist_parts).
     aoso_capabilities_refresh().
 
     LOCAL plist IS aoso_parts_list().
@@ -359,7 +364,16 @@ FUNCTION aoso_profile_refresh {
     SET AOSO_PROFILE_LAST_SNAP TO AOSO_PROFILE["snapshot"].
     aoso_budget_refresh().
     aoso_capabilities_predict_next().
-    aoso_profile_save().
+    LOCAL save_now IS TRUE.
+    IF DEFINED AOSO_CPU_LEVEL {
+        IF AOSO_CPU_LEVEL >= 1 { SET save_now TO FALSE. }
+    }
+    IF OPCODESLEFT < 200 { SET save_now TO FALSE. }
+    IF save_now {
+        aoso_profile_save().
+    } ELSE {
+        SET AOSO_PROFILE_SAVE_PENDING TO TRUE.
+    }
 
     aoso_log_info("PROFILE", "Re-profiled (" + reason + "): " + plist:LENGTH + " parts, " +
         elist:LENGTH + " engines, dV=" + ROUND(dv_total, 0) + " m/s, TWR=" + ROUND(twr_now, 2) +
@@ -373,6 +387,16 @@ FUNCTION aoso_profile_refresh {
 }
 
 FUNCTION aoso_profile_maybe_refresh {
+    IF AOSO_PROFILE_SAVE_PENDING {
+        IF DEFINED AOSO_CPU_LEVEL {
+            IF AOSO_CPU_LEVEL < 2 {
+                IF OPCODESLEFT >= 200 {
+                    SET AOSO_PROFILE_SAVE_PENDING TO FALSE.
+                    aoso_profile_save().
+                }
+            }
+        }
+    }
     IF AOSO_PROFILE_PENDING <> "" {
         LOCAL why IS AOSO_PROFILE_PENDING.
         SET AOSO_PROFILE_PENDING TO "".

@@ -11,7 +11,12 @@ GLOBAL AOSO_RES_SNAP_UT IS -1.
 
 FUNCTION aoso_resource_refresh {
     LOCAL now IS TIME:SECONDS.
-    IF now - AOSO_RES_SNAP_UT < 0.12 {
+    LOCAL gap IS 0.12.
+    IF DEFINED AOSO_CPU_LEVEL {
+        IF AOSO_CPU_LEVEL >= 2 { SET gap TO 0.35. }
+        IF AOSO_CPU_LEVEL >= 3 { SET gap TO 0.7. }
+    }
+    IF now - AOSO_RES_SNAP_UT < gap {
         IF AOSO_RES_SNAP:LENGTH > 0 { RETURN. }
     }
     LOCAL snap IS LEXICON().

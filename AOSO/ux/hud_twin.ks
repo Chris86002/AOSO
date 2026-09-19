@@ -52,17 +52,10 @@ FUNCTION aoso_twin_clear_hl {
 }
 
 FUNCTION aoso_twin_fingerprint {
-    LOCAL dock_n IS 0.
-    LOCAL dplist IS aoso_parts_dockports().
-    SET dock_n TO dplist:LENGTH.
+    aoso_parts_cache_ensure().
     LOCAL root_uid IS "".
     IF SHIP:ROOTPART:ISTYPE("Part") { SET root_uid TO "" + SHIP:ROOTPART:UID. }
-    LOCAL ctrl IS "".
-    IF SHIP:CONTROLPART:ISTYPE("Part") { SET ctrl TO "" + SHIP:CONTROLPART:UID. }
-    LOCAL n IS 0.
-    LOCAL plist IS aoso_parts_list().
-    SET n TO plist:LENGTH.
-    RETURN n + "|" + STAGE:NUMBER + "|" + root_uid + "|" + dock_n + "|" + ctrl.
+    RETURN AOSO_PARTS_LIVE:LENGTH + "|" + STAGE:NUMBER + "|" + root_uid + "|" + AOSO_DOCKPORTS:LENGTH.
 }
 
 FUNCTION aoso_twin_kind {

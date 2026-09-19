@@ -137,7 +137,7 @@ FUNCTION aoso_rendezvous_sample_hit {
     PARAMETER t_ut.
     IF t_ut <= TIME:SECONDS + 25 { RETURN -1. }
     SET nd:ETA TO t_ut - TIME:SECONDS.
-    WAIT 0.
+    aoso_yield_hud().
     IF NOT aoso_rendezvous_node_hits_body(nd, hop) { RETURN -1. }
     RETURN aoso_rendezvous_pe_score(nd, hop, aoso_rendezvous_desired_pe(hop)).
 }
@@ -241,7 +241,7 @@ FUNCTION aoso_rendezvous_search_intercept {
         SET nd:PROGRADE TO best_pg.
         SET nd:ETA TO best_ut - TIME:SECONDS.
         IF nd:ETA < 25 { SET nd:ETA TO 25. }
-        WAIT 0.
+        aoso_yield_hud().
         aoso_rendezvous_refine_intercept(nd, hop, dv_use).
         RETURN TRUE.
     }
@@ -269,7 +269,7 @@ FUNCTION aoso_rendezvous_refine_intercept {
     UNTIL dt > 80 {
         SET nd:ETA TO (best_ut + dt) - TIME:SECONDS.
         IF nd:ETA >= 25 {
-            WAIT 0.
+            aoso_yield_hud().
             IF aoso_rendezvous_node_hits_body(nd, hop) {
                 LOCAL sc IS aoso_rendezvous_pe_score(nd, hop, desired).
                 IF sc < best_sc {
@@ -296,7 +296,7 @@ FUNCTION aoso_rendezvous_refine_intercept {
         SET nd:RADIALOUT TO best_rad.
         SET nd:ETA TO best_ut - TIME:SECONDS.
         IF nd:ETA < 25 { SET nd:ETA TO 25. }
-        WAIT 0.
+        aoso_yield_hud().
         IF aoso_rendezvous_node_hits_body(nd, hop) {
             LOCAL sc2 IS aoso_rendezvous_pe_score(nd, hop, desired).
             IF sc2 < best_sc {
@@ -310,7 +310,7 @@ FUNCTION aoso_rendezvous_refine_intercept {
         SET nd:RADIALOUT TO best_rad + extras[ei] * 0.4.
         SET nd:ETA TO best_ut - TIME:SECONDS.
         IF nd:ETA < 25 { SET nd:ETA TO 25. }
-        WAIT 0.
+        aoso_yield_hud().
         IF aoso_rendezvous_node_hits_body(nd, hop) {
             LOCAL sc3 IS aoso_rendezvous_pe_score(nd, hop, desired).
             IF sc3 < best_sc {
@@ -327,7 +327,7 @@ FUNCTION aoso_rendezvous_refine_intercept {
     SET nd:RADIALOUT TO best_rad.
     SET nd:ETA TO best_ut - TIME:SECONDS.
     IF nd:ETA < 25 { SET nd:ETA TO 25. }
-    WAIT 0.
+    aoso_yield_hud().
 }
 
 // Already on a transfer-like ellipse (apo near the moon): wait at apoapsis
@@ -355,7 +355,7 @@ FUNCTION aoso_rendezvous_search_apo_passages {
             SET nd:PROGRADE TO dvs[di].
             SET nd:ETA TO (t0 + k * period) - TIME:SECONDS.
             IF nd:ETA < 25 { SET nd:ETA TO 25. }
-            WAIT 0.
+            aoso_yield_hud().
             IF aoso_rendezvous_node_hits_body(nd, hop) {
                 LOCAL sc IS aoso_rendezvous_pe_score(nd, hop, desired).
                 LOCAL pe_try IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
@@ -379,7 +379,7 @@ FUNCTION aoso_rendezvous_search_apo_passages {
         SET nd:PROGRADE TO best_pg.
         SET nd:ETA TO best_ut - TIME:SECONDS.
         IF nd:ETA < 25 { SET nd:ETA TO 25. }
-        WAIT 0.
+        aoso_yield_hud().
         RETURN TRUE.
     }
     RETURN FALSE.
@@ -432,7 +432,7 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
     // Minmus-SOI plane-change after capture, not a graze from Kerbin.
     LOCAL nd_ag IS aoso_addon_astrogator_add_transfer(target_orbitable, TRUE).
     IF nd_ag <> 0 {
-        WAIT 0.
+        aoso_yield_hud().
         LOCAL pe_ag IS aoso_rendezvous_orbit_pe(nd_ag:ORBIT, target_orbitable).
         LOCAL pe_txt IS "".
         IF pe_ag >= 0 { SET pe_txt TO " patchPE=" + ROUND(pe_ag, 0) + "m". }
@@ -481,7 +481,7 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
         IF NOT polar_hop {
             aoso_log_info("RENDEZVOUS", "Matching " + ROUND(rel_now, 1) + " deg plane to " + target_orbitable:NAME + " before intercept search (equatorial Hohmann misses Minmus SOI).").
             aoso_planechange_apply_to_node(nd, target_orbitable).
-            WAIT 0.
+            aoso_yield_hud().
         }
     }
     aoso_log_info("RENDEZVOUS", "Searching " + target_orbitable:NAME + " intercept at Hohmann dv=" + ROUND(dv, 1) + " m/s (escape " + ROUND(dv_esc, 1) + ") in " + ROUND(node_wait, 0) + "s rel_inc=" + ROUND(rel_now, 1) + "deg.").
@@ -498,7 +498,7 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
                 LOCAL nml_keep IS nd:NORMAL.
                 LOCAL rad_keep IS nd:RADIALOUT.
                 aoso_planechange_apply_to_node(nd, target_orbitable).
-                WAIT 0.
+                aoso_yield_hud().
                 LOCAL fold_ok IS FALSE.
                 IF aoso_rendezvous_node_hits_body(nd, target_orbitable) {
                     LOCAL sc_after IS aoso_rendezvous_pe_score(nd, target_orbitable, aoso_rendezvous_desired_pe(target_orbitable)).
@@ -509,7 +509,7 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
                     SET nd:PROGRADE TO pg_keep.
                     SET nd:NORMAL TO nml_keep.
                     SET nd:RADIALOUT TO rad_keep.
-                    WAIT 0.
+                    aoso_yield_hud().
                 }
             }
         }
@@ -676,7 +676,7 @@ FUNCTION aoso_rendezvous_tune_pe {
         LOCAL orig_eta IS nd:ETA.
         SET nd:ETA TO orig_eta + step_t.
         IF nd:ETA < 25 { SET nd:ETA TO 25. }
-        WAIT 0.
+        aoso_yield_hud().
         LOCAL s IS aoso_rendezvous_pe_score(nd, hop, desired).
         IF s < best {
             SET best TO s.
@@ -686,14 +686,14 @@ FUNCTION aoso_rendezvous_tune_pe {
             IF nd:ETA < 25 {
                 SET nd:ETA TO orig_eta.
             } ELSE {
-                WAIT 0.
+                aoso_yield_hud().
                 SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
                 IF s < best {
                     SET best TO s.
                     SET improved TO TRUE.
                 } ELSE {
                     SET nd:ETA TO orig_eta.
-                    WAIT 0.
+                    aoso_yield_hud().
                 }
             }
         }
@@ -701,14 +701,14 @@ FUNCTION aoso_rendezvous_tune_pe {
         LOCAL orig_pg IS nd:PROGRADE.
         SET nd:PROGRADE TO orig_pg + step_dv.
         aoso_rendezvous_clamp_prograde(nd).
-        WAIT 0.
+        aoso_yield_hud().
         SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
         IF s < best {
             SET best TO s.
             SET improved TO TRUE.
         } ELSE {
             SET nd:PROGRADE TO orig_pg - step_dv.
-            WAIT 0.
+            aoso_yield_hud().
             SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
             IF s < best {
                 SET best TO s.
@@ -721,14 +721,14 @@ FUNCTION aoso_rendezvous_tune_pe {
 
         LOCAL orig_rad IS nd:RADIALOUT.
         SET nd:RADIALOUT TO orig_rad + step_dv.
-        WAIT 0.
+        aoso_yield_hud().
         SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
         IF s < best {
             SET best TO s.
             SET improved TO TRUE.
         } ELSE {
             SET nd:RADIALOUT TO orig_rad - step_dv.
-            WAIT 0.
+            aoso_yield_hud().
             SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
             IF s < best {
                 SET best TO s.
@@ -747,14 +747,14 @@ FUNCTION aoso_rendezvous_tune_pe {
         }
         IF walk_n {
             SET nd:NORMAL TO orig_n + step_dv.
-            WAIT 0.
+            aoso_yield_hud().
             SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
             IF s < best {
                 SET best TO s.
                 SET improved TO TRUE.
             } ELSE {
                 SET nd:NORMAL TO orig_n - step_dv.
-                WAIT 0.
+                aoso_yield_hud().
                 SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
                 IF s < best {
                     SET best TO s.

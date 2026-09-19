@@ -212,13 +212,13 @@ FUNCTION aoso_capture_add_pe_adjust {
     UNTIL round_i >= 12 {
         LOCAL orig IS nd:PROGRADE.
         SET nd:PROGRADE TO orig - step.
-        WAIT 0.
+        aoso_yield_hud().
         LOCAL err IS ABS(nd:ORBIT:PERIAPSIS - target_pe).
         IF err < best_err {
             SET best_err TO err.
         } ELSE {
             SET nd:PROGRADE TO orig + step.
-            WAIT 0.
+            aoso_yield_hud().
             SET err TO ABS(nd:ORBIT:PERIAPSIS - target_pe).
             IF err < best_err {
                 SET best_err TO err.

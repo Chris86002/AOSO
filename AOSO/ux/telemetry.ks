@@ -36,14 +36,9 @@ FUNCTION aoso_telemetry_interval {
 }
 
 FUNCTION aoso_telemetry_row {
-    LOCAL lf_amt IS 0.
-    LOCAL ox_amt IS 0.
-    LOCAL ec_amt IS 0.
-    FOR r IN SHIP:RESOURCES {
-        IF r:NAME = "LiquidFuel" { SET lf_amt TO r:AMOUNT. }
-        IF r:NAME = "Oxidizer" { SET ox_amt TO r:AMOUNT. }
-        IF r:NAME = "ElectricCharge" { SET ec_amt TO r:AMOUNT. }
-    }
+    LOCAL lf_amt IS aoso_resource_amount("LiquidFuel").
+    LOCAL ox_amt IS aoso_resource_amount("Oxidizer").
+    LOCAL ec_amt IS aoso_resource_amount("ElectricCharge").
 
     LOCAL pitch IS 90 - VANG(SHIP:UP:VECTOR, SHIP:FACING:FOREVECTOR).
     IF pitch < 0 { SET pitch TO 0. }
@@ -128,6 +123,6 @@ FUNCTION aoso_telemetry_tick {
 }
 
 FUNCTION aoso_telemetry_register_task {
-    PARAMETER interval_s IS 0.1.
+    PARAMETER interval_s IS 0.5.
     aoso_sched_add("telemetry", interval_s, aoso_telemetry_tick@).
 }

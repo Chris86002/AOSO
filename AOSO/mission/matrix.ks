@@ -98,7 +98,7 @@ FUNCTION aoso_matrix_build {
         IF row["result"] = "FEASIBLE" { SET n_yes TO n_yes + 1. }
         IF row["result"] = "ORBIT_ONLY" { SET n_orbit TO n_orbit + 1. }
         IF row["result"] = "SKIP" { SET n_skip TO n_skip + 1. }
-        WAIT 0.
+        aoso_yield_hud().
     }
     SET AOSO_MATRIX_LAST TO LEXICON(
         "rows", rows,

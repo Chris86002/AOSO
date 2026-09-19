@@ -105,7 +105,12 @@ FUNCTION aoso_vessel_scan {
     aoso_log_info("VESSEL", "Scanned " + SHIP:NAME + ": " + plist:LENGTH + " parts, " +
         elist:LENGTH + " engines, " + (STAGE:NUMBER + 1) + " stages.").
 
-    aoso_vessel_save().
+    LOCAL save_now IS TRUE.
+    IF DEFINED AOSO_CPU_LEVEL {
+        IF AOSO_CPU_LEVEL >= 1 { SET save_now TO FALSE. }
+    }
+    IF OPCODESLEFT < 200 { SET save_now TO FALSE. }
+    IF save_now { aoso_vessel_save(). }
     RETURN AOSO_VESSEL.
 }
 
