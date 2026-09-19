@@ -417,7 +417,7 @@ FUNCTION aoso_hud_gui_build_help {
     aoso_hud_hint(p, "TABS  FLT=flight  NAV=orbit/target  MSN=mission plan  VEH=this ship  PRP=fuel  LND=landing view  STG=staging  SYS=health  TWIN=tanks/engines  LOG=events  DBG=dump").
     aoso_hud_hint(p, "GREEN LIGHTS  3D arrows drawn on the ship. They do not steer. PRO=prograde (where you are going)  RET=retrograde (opposite)  NML=orbit-normal (out of plane)  TGT=toward target  REL=relative velocity  BURN=maneuver node  LAND=surface-retrograde.").
     aoso_hud_hint(p, "FD master switch turns all arrows off. Lights that are on still only draw; AOSO keeps flying.").
-    aoso_hud_hint(p, "CPU HIGH / load-shed  kOS is using most of its instruction budget (usually during a burn or staging). AOSO pauses extra HUD/profile work so steering and staging still run. Not a hardware failure. SYS tab has the WHY line.").
+    aoso_hud_hint(p, "CPU HIGH means kOS is using most of its instruction budget (usual during a burn). The HUD keeps painting. Twin rebuilds and the vehicle profile pause so steering/staging stay first. Not a hardware failure.").
     aoso_hud_hint(p, "SYS  NOMINAL=all good  DEGRADED=something weak  FAIL=something broken. Open SYS and read WHY.").
     aoso_hud_hint(p, "ROUTE  (now)=current hop  (done)=already visited  unmarked=still ahead.").
     aoso_hud_hint(p, "CHROME  BACK=previous tab  HOME=flight page  HELP=this page  A-/A+=size  X=collapse to header  OPEN=expand.").
@@ -933,8 +933,11 @@ FUNCTION aoso_hud_gui_upd_sys {
     aoso_hud_set("sys_wd", "WATCHDOG     " + aoso_hud_st_glyph(s["wd"])).
     aoso_hud_set("sys_cpu", "CPU          " + aoso_hud_st_glyph(s["cpu"]) + "  " + AOSO_HUD_DATA["debug"]["cpu"] + aoso_hud_sys_suffix("cpu", s)).
     LOCAL cpu_note IS "CPU has spare instructions. HUD running at full rate.".
-    IF s["cpu"] = "DEG" { SET cpu_note TO "kOS is busy (often a burn). Extra HUD/profile work is paused so steering and staging keep running. Not a ship failure.". }
-    IF s["cpu"] = "FAIL" { SET cpu_note TO "kOS is overloaded. HUD may skip frames so burns/staging still run. Not a ship failure.". }
+    IF DEFINED AOSO_CPU_NAME {
+        IF AOSO_CPU_NAME = "ELEVATED" { SET cpu_note TO "kOS is working. HUD still updating.". }
+        IF AOSO_CPU_NAME = "HIGH" { SET cpu_note TO "kOS is busy (often a burn). HUD still updating. Twin/profile paused. Not a ship failure.". }
+        IF AOSO_CPU_NAME = "CRITICAL" { SET cpu_note TO "kOS is very busy. HUD still updating, flight first. Not a ship failure.". }
+    }
     aoso_hud_set("sys_cpu_note", cpu_note).
 }
 

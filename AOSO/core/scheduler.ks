@@ -9,8 +9,8 @@
 // next_run (init 0) makes the first dispatch immediate. Nested IF so a
 // disabled task never pays the time compare (kOS AND always evaluates both
 // sides). The hot loop inlines CALL.
-// CPU HIGH/CRITICAL sheds HUD/profile/checkpoints first; staging,
-// watchdog, mission, and power always run.
+// CPU HIGH/CRITICAL sheds profile/checkpoints/telemetry first; HUD,
+// staging, watchdog, mission, and power always run.
 
 GLOBAL AOSO_TASKS IS LIST().
 

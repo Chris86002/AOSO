@@ -327,13 +327,10 @@ FUNCTION aoso_hud_collect_landing {
 FUNCTION aoso_hud_collect_systems {
     LOCAL s IS AOSO_HUD_DATA["systems"].
     LOCAL cpu_st IS "NOM".
-    IF DEFINED AOSO_CPU_LEVEL {
-        IF AOSO_CPU_LEVEL >= 3 { SET cpu_st TO "FAIL". }
-        ELSE {
-            IF AOSO_CPU_LEVEL >= 2 { SET cpu_st TO "DEG". }
-        }
-    }
+    LOCAL cpu_name IS "NORMAL".
+    IF DEFINED AOSO_CPU_NAME { SET cpu_name TO AOSO_CPU_NAME. }
     SET s["cpu"] TO cpu_st.
+    SET s["cpu_name"] TO cpu_name.
     LOCAL ec IS AOSO_HUD_DATA["res"]["ec"].
     LOCAL pwr_st IS "NOM".
     IF ec <= aoso_config_get("WATCHDOG_EC_CRITICAL_PCT", 5) { SET pwr_st TO "FAIL". }
@@ -399,7 +396,7 @@ FUNCTION aoso_hud_collect_systems {
     LOCAL fail_n IS 0.
     LOCAL deg_n IS 0.
     LOCAL why IS "".
-    LOCAL keys IS LIST("cpu", "pwr", "wd", "stg", "steer", "nav", "msn", "lnd", "com", "guid").
+    LOCAL keys IS LIST("pwr", "wd", "stg", "steer", "nav", "msn", "lnd", "com", "guid").
     FOR k IN keys {
         LOCAL st IS s[k].
         IF st = "FAIL" {
@@ -431,8 +428,7 @@ FUNCTION aoso_hud_sys_reason {
     PARAMETER key.
     PARAMETER s.
     IF key = "cpu" {
-        IF s["cpu"] = "FAIL" { RETURN "overloaded - HUD skipped so burns/staging keep running". }
-        RETURN "busy - extra HUD/profile paused, flight still running".
+        RETURN "kOS busy (" + s["cpu_name"] + ") - HUD still painting".
     }
     IF key = "pwr" {
         RETURN "EC " + ROUND(AOSO_HUD_DATA["res"]["ec"], 0) + "%".
