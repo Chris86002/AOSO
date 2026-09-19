@@ -11,8 +11,9 @@ they watch the kOS terminal and the HUD.
   is invalid. Check `DEFINED AOSO_PLAN_LAST`.
 - **Identifiers are case-insensitive.** A `FUNCTION aoso_const` collides
   with `GLOBAL AOSO_CONST`. Never name a local `path`, `obt`, `note`,
-  `alt`, `r`, `v`, or `q` (builtins). Never pair `FUNCTION aoso_foo` with
-  `GLOBAL AOSO_FOO` — kOS fails at compile with `Cannot find label …'0-default`.
+  `alt`, `r`, `v`, `q`, or `status` (builtins). Never pair
+  `FUNCTION aoso_foo` with `GLOBAL AOSO_FOO` — kOS fails at compile with
+  `Cannot find label …'0-default`.
 - **No nested callbacks / deep transition stacks.** Entry handlers must
   not call `aoso_state_transition` in a way that runs the next entry on
   the same stack. Events must queue-then-drain.

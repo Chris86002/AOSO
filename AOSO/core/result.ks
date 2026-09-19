@@ -8,12 +8,12 @@ GLOBAL AOSO_LAST_RESULT IS LEXICON().
 
 FUNCTION aoso_result_make {
     PARAMETER action_type.
-    PARAMETER status.
+    PARAMETER result_status.
     PARAMETER reason IS "".
     RETURN LEXICON(
         "action_id", AOSO_DECIDE_SEQ,
         "action_type", action_type,
-        "status", status,
+        "status", result_status,
         "reason", reason,
         "started_at", 0,
         "completed_at", TIME:SECONDS,

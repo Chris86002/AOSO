@@ -217,11 +217,11 @@ FUNCTION aoso_landing_site_scan_orbit {
     }
 
     LOCAL slope IS aoso_landing_site_slope_deg(best_geo).
-    LOCAL q IS aoso_landing_site_quality(best_geo).
+    LOCAL quality IS aoso_landing_site_quality(best_geo).
     aoso_log_info("SITE", "Best landing site lat=" + ROUND(best_geo:LAT, 2) + " lng=" + ROUND(best_geo:LNG, 2) +
         " alt=" + ROUND(best_geo:TERRAINHEIGHT, 0) + "m slope=" + ROUND(slope, 1) +
-        " deg score=" + ROUND(best_score, 2) + " quality=" + q["overall_score"] +
-        " sun=" + q["sun_score"] + " takeoff=" + q["takeoff_score"] +
+        " deg score=" + ROUND(best_score, 2) + " quality=" + quality["overall_score"] +
+        " sun=" + quality["sun_score"] + " takeoff=" + quality["takeoff_score"] +
         " (" + samples + " samples / " + orbits + " orbits).").
     RETURN LEXICON(
         "lat", best_geo:LAT,
@@ -229,8 +229,8 @@ FUNCTION aoso_landing_site_scan_orbit {
         "score", best_score,
         "slope", slope,
         "alt", best_geo:TERRAINHEIGHT,
-        "quality", q["overall_score"],
-        "sun", q["sun_score"],
-        "takeoff", q["takeoff_score"]
+        "quality", quality["overall_score"],
+        "sun", quality["sun_score"],
+        "takeoff", quality["takeoff_score"]
     ).
 }
