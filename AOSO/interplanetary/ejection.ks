@@ -195,6 +195,7 @@ FUNCTION aoso_capture_pe_too_high {
 // the parking altitude. Works on hyperbolas (no apoapsis to burn at).
 FUNCTION aoso_capture_add_pe_adjust {
     PARAMETER target_pe.
+    aoso_warp_hard_stop().
     LOCAL eta_b IS 40.
     IF ETA:PERIAPSIS > 25 {
         SET eta_b TO ETA:PERIAPSIS * 0.25.
@@ -212,13 +213,13 @@ FUNCTION aoso_capture_add_pe_adjust {
     UNTIL round_i >= 12 {
         LOCAL orig IS nd:PROGRADE.
         SET nd:PROGRADE TO orig - step.
-        aoso_yield_hud().
+        WAIT 0.
         LOCAL err IS ABS(nd:ORBIT:PERIAPSIS - target_pe).
         IF err < best_err {
             SET best_err TO err.
         } ELSE {
             SET nd:PROGRADE TO orig + step.
-            aoso_yield_hud().
+            WAIT 0.
             SET err TO ABS(nd:ORBIT:PERIAPSIS - target_pe).
             IF err < best_err {
                 SET best_err TO err.

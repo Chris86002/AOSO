@@ -215,6 +215,26 @@ FUNCTION aoso_rendezvous_apply_lambert {
     RETURN TRUE.
 }
 
+FUNCTION aoso_rendezvous_apply_hohmann {
+    PARAMETER nd.
+    PARAMETER hop.
+    PARAMETER t_dep.
+    IF t_dep <= TIME:SECONDS + 25 { RETURN FALSE. }
+    LOCAL target_alt IS hop:ORBIT:SEMIMAJORAXIS - SHIP:BODY:RADIUS.
+    IF target_alt < 1000 { RETURN FALSE. }
+    LOCAL dv_h IS aoso_hohmann_dv_at_periapsis_for_apoapsis(target_alt).
+    LOCAL dv_max IS aoso_rendezvous_dv_max(SHIP:BODY:RADIUS + ALTITUDE).
+    IF dv_h > dv_max { SET dv_h TO dv_max. }
+    IF dv_h < 5 { RETURN FALSE. }
+    SET nd:ETA TO t_dep - TIME:SECONDS.
+    IF nd:ETA < 25 { SET nd:ETA TO 25. }
+    SET nd:RADIALOUT TO 0.
+    SET nd:NORMAL TO 0.
+    SET nd:PROGRADE TO dv_h.
+    aoso_rendezvous_clamp_prograde(nd).
+    RETURN TRUE.
+}
+
 FUNCTION aoso_rendezvous_porkchop_score {
     PARAMETER nd.
     PARAMETER hop.
@@ -237,6 +257,7 @@ FUNCTION aoso_rendezvous_porkchop_search {
     IF NOT aoso_config_get("PORKCHOP_ENABLED", TRUE) { RETURN 0. }
 
     SET WARP TO 0.
+    aoso_warp_hard_stop().
     aoso_steer_release().
     aoso_maneuver_clear_all().
 
@@ -285,11 +306,11 @@ FUNCTION aoso_rendezvous_porkchop_search {
         SET ti TO ti + 1.
     }
 
-    LOCAL n_tot IS deps:LENGTH * tofs:LENGTH.
+    LOCAL n_tot IS deps:LENGTH * tofs:LENGTH + deps:LENGTH.
     aoso_log_info("RENDEZVOUS", "Lambert porkchop for " + hop:NAME + ": " + deps:LENGTH + " departures × " + tofs:LENGTH +
-        " TOFs (" + n_tot + " Lambert cells). Hohmann TOF=" + ROUND(tof_h, 0) + "s window in " + ROUND(wait_hoh, 0) +
+        " TOFs + Hohmann seeds (" + n_tot + " cells). Hohmann TOF=" + ROUND(tof_h, 0) + "s window in " + ROUND(wait_hoh, 0) +
         "s. Taking the time to pick a capture PE, not the first graze.").
-    aoso_ui_set("Porkchop " + hop:NAME, n_tot + " Lambert cells  Hohmann " + ROUND(tof_h / 3600, 1) + "h").
+    aoso_ui_set("Porkchop " + hop:NAME, n_tot + " cells  Hohmann " + ROUND(tof_h / 3600, 1) + "h").
 
     LOCAL nd IS NODE(t_soon, 0, 0, 10).
     ADD nd.
@@ -304,6 +325,32 @@ FUNCTION aoso_rendezvous_porkchop_search {
     LOCAL n_hit IS 0.
     LOCAL n_ok IS 0.
     LOCAL n_done IS 0.
+
+    LOCAL dih IS 0.
+    UNTIL dih >= deps:LENGTH {
+        SET n_done TO n_done + 1.
+        IF aoso_rendezvous_apply_hohmann(nd, hop, deps[dih]) {
+            aoso_rendezvous_settle().
+            IF aoso_rendezvous_node_hits_body(nd, hop) {
+                SET n_hit TO n_hit + 1.
+                LOCAL pe_h IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
+                IF aoso_rendezvous_pe_ok_value(pe_h, hop) { SET n_ok TO n_ok + 1. }
+                LOCAL sc_h IS aoso_rendezvous_porkchop_score(nd, hop, desired).
+                IF sc_h >= 0 {
+                    IF sc_h < best_sc {
+                        SET best_sc TO sc_h.
+                        SET best_ut TO TIME:SECONDS + nd:ETA.
+                        SET best_pg TO nd:PROGRADE.
+                        SET best_rad TO nd:RADIALOUT.
+                        SET best_nml TO nd:NORMAL.
+                        SET found TO TRUE.
+                    }
+                }
+            }
+        }
+        aoso_ui_pulse("Porkchop " + hop:NAME, n_done + "/" + n_tot + "  Hohmann seeds  hits " + n_hit).
+        SET dih TO dih + 1.
+    }
 
     LOCAL di2 IS 0.
     UNTIL di2 >= deps:LENGTH {
@@ -886,8 +933,11 @@ FUNCTION aoso_rendezvous_pe_ok_value {
     LOCAL desired IS aoso_rendezvous_desired_pe(hop).
     LOCAL min_pe IS aoso_rendezvous_pe_min(hop, desired).
     IF pe < min_pe { RETURN FALSE. }
-    LOCAL graze IS aoso_rendezvous_soi_alt(hop) * 0.35.
-    IF pe > graze { RETURN FALSE. }
+    LOCAL max_pe IS desired * 3.5.
+    IF max_pe < desired + 20000 { SET max_pe TO desired + 20000. }
+    LOCAL soi_cap IS aoso_rendezvous_soi_alt(hop) * 0.06.
+    IF max_pe > soi_cap { SET max_pe TO soi_cap. }
+    IF pe > max_pe { RETURN FALSE. }
     RETURN TRUE.
 }
 

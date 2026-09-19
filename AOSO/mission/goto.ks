@@ -167,7 +167,7 @@ FUNCTION aoso_goto_on_abort {
 
 FUNCTION aoso_goto_plan_entry {
     PARAMETER data.
-    SET WARP TO 0.
+    aoso_warp_hard_stop().
     aoso_throttle_set(0).
     aoso_maneuver_clear_all().
     aoso_ui_pulse("Planning hop", "Next body toward " + data["goal"]).
@@ -650,7 +650,7 @@ FUNCTION aoso_goto_coast_execute {
 
 FUNCTION aoso_goto_capture_entry {
     PARAMETER data.
-    SET WARP TO 0.
+    aoso_warp_hard_stop().
     aoso_throttle_set(0).
     LOCAL park IS aoso_goto_parking_alt(SHIP:BODY).
     aoso_log_info("GOTO", "Capturing at " + SHIP:BODY:NAME + " periapsis (Oberth) park=" + ROUND(park, 0) + "m PE=" + ROUND(PERIAPSIS, 0) + "m.").
@@ -715,7 +715,21 @@ FUNCTION aoso_goto_capture_execute {
     IF aoso_maneuver_execute_next() {
         LOCAL cap_res IS aoso_maneuver_last_result().
         IF cap_res = "missed" OR cap_res = "incomplete" {
-            aoso_log_warn("GOTO", "Capture " + cap_res + " - re-planning.").
+            LOCAL misses IS 0.
+            IF data:HASKEY("capture_misses") { SET misses TO data["capture_misses"]. }
+            SET data["capture_misses"] TO misses + 1.
+            aoso_log_warn("GOTO", "Capture " + cap_res + " (" + data["capture_misses"] + "/4) - re-planning.").
+            IF data["capture_misses"] >= 4 {
+                aoso_warp_hard_stop().
+                aoso_log_error("GOTO", "Capture missed 4x at " + SHIP:BODY:NAME + " - stopping the warp loop. PE=" + ROUND(PERIAPSIS, 0) + "m.").
+                SET data["skip_capture"] TO TRUE.
+                IF SHIP:BODY:NAME = data["goal"] {
+                    aoso_state_transition(AOSO_GOTO, "DONE").
+                } ELSE {
+                    aoso_state_transition(AOSO_GOTO, "PLAN").
+                }
+                RETURN.
+            }
             aoso_state_transition(AOSO_GOTO, "PLAN").
             RETURN.
         }

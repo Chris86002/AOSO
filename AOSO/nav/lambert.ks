@@ -99,6 +99,23 @@ FUNCTION aoso_lambert_solve {
     IF long_way { SET dnu TO 360 - dnu. }
     IF dnu < 2 { RETURN out. }
     IF dnu > 358 { RETURN out. }
+
+    // 180 deg is the Hohmann singularity (sin=0). Use vis-viva in the
+    // pos1-pos2 plane instead of skipping the cell.
+    IF ABS(dnu - 180) < 2.5 {
+        LOCAL sma_t IS (radius1 + radius2) / 2.
+        IF sma_t < 1 { RETURN out. }
+        LOCAL v_t IS SQRT(mu * (2 / radius1 - 1 / sma_t)).
+        LOCAL nrm_h IS VCRS(pos1, pos2).
+        IF nrm_h:MAG < 0.001 { SET nrm_h TO VCRS(pos1, V(0, 1, 0)). }
+        IF nrm_h:MAG < 0.001 { RETURN out. }
+        LOCAL pgd_h IS VCRS(nrm_h:NORMALIZED, pos1:NORMALIZED):NORMALIZED.
+        SET out["ok"] TO TRUE.
+        SET out["vel1"] TO pgd_h * v_t.
+        SET out["vel2"] TO V(0, 0, 0).
+        RETURN out.
+    }
+
     LOCAL s_nu IS SIN(dnu).
     IF ABS(s_nu) < 0.0008 { RETURN out. }
     LOCAL one_c IS 1 - COS(dnu).

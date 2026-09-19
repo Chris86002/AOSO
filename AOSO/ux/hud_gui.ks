@@ -584,6 +584,10 @@ FUNCTION aoso_hud_gui_fast {
     LOCAL roll IS "".
     IF AOSO_HUD_DATA["systems"]:HASKEY("rollup") { SET roll TO AOSO_HUD_DATA["systems"]["rollup"] + "  ". }
     aoso_hud_set("hdr_sys", "SYS  " + roll + f["body"] + "  " + f["status"] + "  STG " + f["stage"]).
+    LOCAL live IS "ALT " + aoso_hud_km(f["alt"]) + "  VS " + ROUND(f["vs"], 1) + "  AP " + aoso_hud_km(o["ap"]) + "  PE " + aoso_hud_km(o["pe"]).
+    IF o["node"] {
+        SET live TO live + "  NODE " + ROUND(o["node_dv"], 1) + " m/s T-" + aoso_hud_eta(o["node_eta"]).
+    }
     LOCAL pg IS AOSO_HUD_PAGE.
     IF pg = "FLT" {
         aoso_hud_set("flt_alt", "ALT  " + aoso_hud_km(f["alt"]) + "   VS " + ROUND(f["vs"], 1) + " m/s").
@@ -600,6 +604,10 @@ FUNCTION aoso_hud_gui_fast {
             IF o["burning"] { SET ntxt TO "BURN  " + ROUND(o["node_dv"], 1) + " m/s". }
             aoso_hud_set("flt_pri", ntxt).
         }
+    }
+    IF pg = "DBG" {
+        aoso_hud_set("dbg_do", "DOING  " + doing + "  " + f["detail"]).
+        aoso_hud_set("dbg_cpu", live).
     }
     IF pg = "NAV" {
         IF o["node"] {

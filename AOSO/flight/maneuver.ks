@@ -114,6 +114,18 @@ FUNCTION aoso_warp_stop {
     IF WARP > 0 { SET WARP TO 0. }
 }
 
+// WAIT 0 while rails is still running advances UT by hours. Capture
+// planning did that and then "missed" a 40 s node by 28000 s forever.
+FUNCTION aoso_warp_hard_stop {
+    IF WARP > 0 { SET WARP TO 0. }
+    WAIT 0.
+    IF WARP > 0 {
+        SET WARP TO 0.
+        WAIT 0.
+    }
+    IF WARP > 0 { SET WARP TO 0. }
+}
+
 FUNCTION aoso_warp_diag_txt {
     LOCAL w IS "1x".
     IF WARP > 0 {
@@ -162,14 +174,16 @@ FUNCTION aoso_warp_approach {
     IF eta_s > rails_lead_s + 5 {
         IF AOSO_STEER_MODE <> "OFF" { aoso_steer_release(). }
         IF WARPMODE <> "RAILS" {
-            SET WARP TO 0.
-            aoso_yield_hud().
+            aoso_warp_hard_stop().
             SET WARPMODE TO "RAILS".
-            aoso_yield_hud().
+            WAIT 0.
         }
+        LOCAL jump IS eta_s - rails_lead_s.
+        IF jump > 21600 { SET jump TO 21600. }
+        IF jump < 8 { SET jump TO 8. }
         IF WARP = 0 {
-            WARPTO(TIME:SECONDS + eta_s - rails_lead_s).
-            aoso_log_every(45, "WARP", "WARPTO rails eta=" + ROUND(eta_s, 0) + "s lead=" + ROUND(rails_lead_s, 0) + "s " + aoso_warp_diag_txt() + ".").
+            WARPTO(TIME:SECONDS + jump).
+            aoso_log_every(45, "WARP", "WARPTO rails eta=" + ROUND(eta_s, 0) + "s jump=" + ROUND(jump, 0) + "s lead=" + ROUND(rails_lead_s, 0) + "s " + aoso_warp_diag_txt() + ".").
         } ELSE {
             aoso_log_every(60, "WARP", "Rails coast eta=" + ROUND(eta_s, 0) + "s " + aoso_warp_diag_txt() + ".").
         }
@@ -322,6 +336,11 @@ FUNCTION aoso_maneuver_execute_next {
     }
 
     IF NOT AOSO_MANEUVER_BURNING {
+        IF WARP > 0 {
+            IF nd:ETA < 90 {
+                aoso_warp_hard_stop().
+            }
+        }
         LOCAL peri_unsafe IS aoso_maneuver_peri_unsafe(0).
         IF nd:ETA < -8 {
             IF NOT peri_unsafe {
