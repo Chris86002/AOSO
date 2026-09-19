@@ -476,9 +476,6 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
     LOCAL nd IS NODE(TIME:SECONDS + node_wait, 0, 0, dv).
     ADD nd.
     LOCAL polar_hop IS FALSE.
-    IF DEFINED AOSO_WANT_POLAR {
-        IF AOSO_WANT_POLAR { SET polar_hop TO TRUE. }
-    }
     LOCAL rel_now IS aoso_orbit_relative_inclination_deg(SHIP, target_orbitable).
     IF rel_now >= 0.5 {
         IF NOT polar_hop {
@@ -621,10 +618,12 @@ FUNCTION aoso_rendezvous_pe_score {
     LOCAL sc IS ABS(pe - desired_pe).
     IF DEFINED AOSO_WANT_POLAR {
         IF AOSO_WANT_POLAR {
-            LOCAL inc_p IS aoso_rendezvous_orbit_inc(nd:ORBIT, hop).
-            IF inc_p >= 0 {
-                LOCAL tgt_i IS aoso_config_get("TOUR_POLAR_INCLINATION", 90).
-                SET sc TO sc + ABS(inc_p - tgt_i) * 400.
+            IF SHIP:BODY:NAME = hop:NAME {
+                LOCAL inc_p IS aoso_rendezvous_orbit_inc(nd:ORBIT, hop).
+                IF inc_p >= 0 {
+                    LOCAL tgt_i IS aoso_config_get("TOUR_POLAR_INCLINATION", 90).
+                    SET sc TO sc + ABS(inc_p - tgt_i) * 400.
+                }
             }
         }
     }

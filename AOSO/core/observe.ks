@@ -30,6 +30,7 @@ GLOBAL AOSO_CPU_SPILLS IS 0.
 GLOBAL AOSO_CPU_LAST_WALL IS 0.
 GLOBAL AOSO_CPU_FRAC IS 0.
 GLOBAL AOSO_CPU_USED IS 0.
+GLOBAL AOSO_CPU_STREAK IS 0.
 GLOBAL AOSO_CPU_LOG_UT IS 0.
 GLOBAL AOSO_CPU_LOG_NAME IS "NORMAL".
 GLOBAL AOSO_TELEM_FLUSH_NOW IS FALSE.
@@ -51,6 +52,7 @@ FUNCTION aoso_observe_init {
     SET AOSO_CPU_SPILLS TO 0.
     SET AOSO_CPU_FRAC TO 0.
     SET AOSO_CPU_USED TO 0.
+    SET AOSO_CPU_STREAK TO 0.
     SET AOSO_CPU_LOG_UT TO 0.
     SET AOSO_CPU_LOG_NAME TO "NORMAL".
     SET AOSO_PROF TO LEXICON().
@@ -327,20 +329,37 @@ FUNCTION aoso_observe_cpu_end {
     LOCAL level IS 0.
     LOCAL cname IS "NORMAL".
     IF spilled {
-        SET level TO 3.
-        SET cname TO "CRITICAL".
+        SET AOSO_CPU_STREAK TO AOSO_CPU_STREAK + 1.
     } ELSE {
-        IF frac >= 0.9 {
+        SET AOSO_CPU_STREAK TO 0.
+    }
+    // Crossing one physics frame is normal at 50 Hz with IPU 1000+.
+    // Treating every spill as CRITICAL shed the HUD for the whole ascent.
+    IF AOSO_CPU_STREAK >= 5 {
+        IF wall >= 0.06 {
+            SET level TO 3.
+            SET cname TO "CRITICAL".
+        } ELSE {
+            SET level TO 2.
+            SET cname TO "HIGH".
+        }
+    } ELSE {
+        IF spilled {
             SET level TO 2.
             SET cname TO "HIGH".
         } ELSE {
-            IF wall >= 0.08 {
+            IF frac >= 0.9 {
                 SET level TO 2.
                 SET cname TO "HIGH".
             } ELSE {
-                IF frac >= 0.65 {
-                    SET level TO 1.
-                    SET cname TO "ELEVATED".
+                IF wall >= 0.08 {
+                    SET level TO 2.
+                    SET cname TO "HIGH".
+                } ELSE {
+                    IF frac >= 0.65 {
+                        SET level TO 1.
+                        SET cname TO "ELEVATED".
+                    }
                 }
             }
         }

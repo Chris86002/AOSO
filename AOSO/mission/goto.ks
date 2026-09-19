@@ -139,6 +139,9 @@ FUNCTION aoso_goto_patch_is_ours {
     IF np = "" { RETURN FALSE. }
     IF np = data["goal"] { RETURN TRUE. }
     IF np = data["hop"] { RETURN TRUE. }
+    IF data:HASKEY("via") {
+        IF np = data["via"] { RETURN TRUE. }
+    }
     RETURN FALSE.
 }
 
@@ -198,14 +201,19 @@ FUNCTION aoso_goto_plan_entry {
 
     LOCAL hop IS aoso_goto_next_hop_body(goal).
     SET data["hop"] TO hop:NAME.
+    SET data["via"] TO "".
+    IF hop:NAME <> SUN:NAME {
+        IF hop:BODY:NAME = SHIP:BODY:NAME {
+            LOCAL via_try IS aoso_assist_should_flyby(hop).
+            IF via_try:ISTYPE("Body") { SET data["via"] TO via_try:NAME. }
+        }
+    }
     aoso_log_info("GOTO", "Next hop " + SHIP:BODY:NAME + " -> " + hop:NAME + " (goal " + goal:NAME + ").").
 
     LOCAL np IS aoso_goto_patch_body_name().
     IF np <> "" {
-        LOCAL patch_ours IS FALSE.
-        IF np = goal:NAME { SET patch_ours TO TRUE. }
-        IF np = hop:NAME { SET patch_ours TO TRUE. }
-        IF patch_ours {
+        IF aoso_goto_patch_is_ours(data, np) {
+            IF np <> hop:NAME { SET data["hop"] TO np. }
             aoso_goto_remember_patch(data, np, SHIP:ORBIT:NEXTPATCHETA).
             LOCAL hop_b IS BODY(np).
             IF aoso_rendezvous_orbit_needs_correct(SHIP:ORBIT, hop_b) {
@@ -257,7 +265,6 @@ FUNCTION aoso_goto_plan_entry {
 
     LOCAL rel_incl IS aoso_orbit_relative_inclination_deg(SHIP, hop).
     LOCAL match_plane IS TRUE.
-    IF AOSO_WANT_POLAR { SET match_plane TO FALSE. }
     IF rel_incl > 2 {
         IF match_plane {
             LOCAL nd_pc IS aoso_planechange_add_node_for_target(hop).
@@ -267,7 +274,7 @@ FUNCTION aoso_goto_plan_entry {
                 RETURN.
             }
         } ELSE {
-            aoso_log_info("GOTO", "Skipping " + ROUND(rel_incl, 1) + " deg plane-match to " + hop:NAME + " (polar arrival).").
+            aoso_log_info("GOTO", "Skipping " + ROUND(rel_incl, 1) + " deg plane-match to " + hop:NAME + ".").
         }
     }
 
@@ -550,10 +557,21 @@ FUNCTION aoso_goto_coast_execute {
         IF want_correct {
             IF eta_p > 150 {
                 IF ncorr < 3 {
-                    SET WARP TO 0.
-                    aoso_log_info("GOTO", "Patch PE is not a capture altitude - mid-course correction.").
-                    aoso_state_transition(AOSO_GOTO, "PLAN").
-                    RETURN.
+                    LOCAL cool IS 0.
+                    IF data:HASKEY("correct_cool_ut") { SET cool TO data["correct_cool_ut"]. }
+                    IF TIME:SECONDS >= cool {
+                        SET WARP TO 0.
+                        LOCAL ndc IS aoso_rendezvous_add_correction_node(hop_check).
+                        SET data["correct_count"] TO ncorr + 1.
+                        IF ndc <> 0 {
+                            aoso_log_info("GOTO", "Patch PE is not a capture altitude - mid-course correction " + data["correct_count"] + "/3.").
+                            SET data["burn_kind"] TO "correct".
+                            aoso_state_transition(AOSO_GOTO, "BURN").
+                            RETURN.
+                        }
+                        SET data["correct_cool_ut"] TO TIME:SECONDS + 45.
+                        aoso_log_warn("GOTO", "Mid-course tune failed for " + np + " - coasting (will not re-plan; that flickered warp).").
+                    }
                 }
             }
         }

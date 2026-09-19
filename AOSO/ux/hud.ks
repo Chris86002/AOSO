@@ -182,7 +182,9 @@ FUNCTION aoso_hud_tick {
     LOCAL rates IS aoso_hud_collect().
     LOCAL compact IS FALSE.
     IF DEFINED AOSO_CPU_LEVEL {
-        IF AOSO_CPU_LEVEL >= 3 { SET compact TO TRUE. }
+        IF AOSO_CPU_LEVEL >= 3 {
+            IF AOSO_HUD_PAGE = "TWIN" { SET compact TO TRUE. }
+        }
     }
     IF rates["term"] { aoso_hud_term_tick(compact). }
     IF NOT compact {

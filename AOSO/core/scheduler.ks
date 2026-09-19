@@ -66,10 +66,7 @@ FUNCTION aoso_sched_keep {
         IF lvl >= 3 { RETURN FALSE. }
         RETURN TRUE.
     }
-    IF name = "hud" {
-        IF lvl >= 3 { RETURN FALSE. }
-        RETURN TRUE.
-    }
+    IF name = "hud" { RETURN TRUE. }
     IF name = "vehicle_profile" { RETURN FALSE. }
     IF name = "checkpoint_autosave" { RETURN FALSE. }
     RETURN TRUE.
