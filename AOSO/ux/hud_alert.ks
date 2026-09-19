@@ -124,4 +124,16 @@ FUNCTION aoso_hud_watch_alerts {
     } ELSE {
         IF AOSO_HUD_CTX = "DOCK" { aoso_hud_alert("tgt_lost", "WARN", "TARGET LOST", 20, 4). }
     }
+    IF sys:HASKEY("rollup") {
+        IF sys["rollup"] = "DEGRADED" {
+            LOCAL why IS "".
+            IF sys:HASKEY("why") { SET why TO sys["why"]. }
+            aoso_hud_alert("sys_deg", "WARN", "SYS DEGRADED  " + why, 25, 4).
+        }
+        IF sys["rollup"] = "FAIL" {
+            LOCAL whyf IS "".
+            IF sys:HASKEY("why") { SET whyf TO sys["why"]. }
+            aoso_hud_alert("sys_fail", "CRIT", "SYS FAIL  " + whyf, 15, 6).
+        }
+    }
 }

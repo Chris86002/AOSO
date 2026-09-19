@@ -383,35 +383,73 @@ FUNCTION aoso_hud_collect_systems {
     SET s["lnd"] TO lnd_st.
     LOCAL com_st IS "NOM".
     LOCAL net IS aoso_world_network_summary().
-    IF NOT net["has_antenna"] { SET com_st TO "DEG". }
-    IF net["blackout_risk"] { SET com_st TO "DEG". }
+    SET s["com_why"] TO "".
+    IF NOT net["has_antenna"] {
+        SET com_st TO "DEG".
+        SET s["com_why"] TO "no antenna".
+    }
+    IF net["blackout_risk"] {
+        SET com_st TO "DEG".
+        SET s["com_why"] TO "plasma blackout risk".
+    }
     SET s["com"] TO com_st.
     SET s["com_home"] TO net["in_home_soi"].
     SET s["guid"] TO "NOM".
     LOCAL worst IS "NOM".
     LOCAL fail_n IS 0.
     LOCAL deg_n IS 0.
+    LOCAL why IS "".
     LOCAL keys IS LIST("cpu", "pwr", "wd", "stg", "steer", "nav", "msn", "lnd", "com", "guid").
     FOR k IN keys {
         LOCAL st IS s[k].
         IF st = "FAIL" {
             SET worst TO "FAIL".
             SET fail_n TO fail_n + 1.
+            IF why <> "" { SET why TO why + " · ". }
+            SET why TO why + k:TOUPPER + " " + aoso_hud_sys_reason(k, s).
         } ELSE {
             IF st = "DEG" {
                 IF worst <> "FAIL" { SET worst TO "DEG". }
                 SET deg_n TO deg_n + 1.
+                IF why <> "" { SET why TO why + " · ". }
+                SET why TO why + k:TOUPPER + " " + aoso_hud_sys_reason(k, s).
             }
         }
     }
     SET s["worst"] TO worst.
     SET s["fail_n"] TO fail_n.
     SET s["deg_n"] TO deg_n.
+    SET s["why"] TO why.
     IF worst = "FAIL" { SET s["rollup"] TO "FAIL". }
     ELSE {
         IF worst = "DEG" { SET s["rollup"] TO "DEGRADED". }
         ELSE { SET s["rollup"] TO "NOMINAL". }
     }
+}
+
+FUNCTION aoso_hud_sys_reason {
+    PARAMETER key.
+    PARAMETER s.
+    IF key = "cpu" {
+        LOCAL nm IS "HIGH".
+        IF DEFINED AOSO_CPU_NAME { SET nm TO AOSO_CPU_NAME. }
+        IF s["cpu"] = "FAIL" { RETURN "CRITICAL load-shed". }
+        RETURN nm + " load-shed".
+    }
+    IF key = "pwr" {
+        RETURN "EC " + ROUND(AOSO_HUD_DATA["res"]["ec"], 0) + "%".
+    }
+    IF key = "wd" { RETURN "tripped". }
+    IF key = "stg" { RETURN "no thrust". }
+    IF key = "steer" { RETURN "OFF during burn". }
+    IF key = "nav" { RETURN "GOTO aborted". }
+    IF key = "msn" { RETURN "mission aborted". }
+    IF key = "lnd" { RETURN "landing aborted". }
+    IF key = "com" {
+        IF s:HASKEY("com_why") { RETURN s["com_why"]. }
+        RETURN "link".
+    }
+    RETURN "fault".
 }
 
 FUNCTION aoso_hud_collect_vehicle {

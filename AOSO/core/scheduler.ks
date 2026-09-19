@@ -77,7 +77,10 @@ FUNCTION aoso_sched_keep {
 
 FUNCTION aoso_sched_run {
     LOCAL now IS TIME:SECONDS.
-    FOR t IN AOSO_TASKS {
+    // COPY: tasks may aoso_sched_add/remove during CALL (GOTO PLAN, descent).
+    // kOS throws "Collection was modified" if we enumerate AOSO_TASKS live.
+    LOCAL snap IS AOSO_TASKS:COPY.
+    FOR t IN snap {
         IF t["enabled"] {
             IF now >= t["next_run"] {
                 IF aoso_sched_keep(t["name"]) {

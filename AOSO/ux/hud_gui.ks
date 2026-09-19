@@ -197,6 +197,7 @@ FUNCTION aoso_hud_gui_build_sys {
     PARAMETER p.
     aoso_hud_title(p, "SYSTEMS").
     aoso_hud_lab(p, "sys_roll", "AOSO  -").
+    aoso_hud_lab(p, "sys_why", "").
     aoso_hud_lab(p, "sys_guid", "GUIDANCE     -").
     aoso_hud_lab(p, "sys_nav", "NAVIGATION   -").
     aoso_hud_lab(p, "sys_steer", "STEERING     -").
@@ -341,7 +342,13 @@ FUNCTION aoso_hud_gui_upd_header {
     LOCAL col_roll IS aoso_hud_ok(roll).
     IF roll = "DEGRADED" { SET col_roll TO aoso_hud_warn(roll). }
     IF roll = "FAIL" { SET col_roll TO aoso_hud_bad(roll). }
-    aoso_hud_set("hdr_sys", "SYS  " + col_roll + "   " + f["body"] + "  " + f["status"] + "   " + f["warp"]).
+    LOCAL why IS "".
+    IF sys:HASKEY("why") { SET why TO sys["why"]. }
+    IF why = "" {
+        aoso_hud_set("hdr_sys", "SYS  " + col_roll + "   " + f["body"] + "  " + f["status"]).
+    } ELSE {
+        aoso_hud_set("hdr_sys", "SYS  " + col_roll + "   " + why).
+    }
     LOCAL twin_txt IS "TWIN  -".
     IF DEFINED AOSO_TWIN {
         IF AOSO_TWIN:HASKEY("status") { SET twin_txt TO aoso_twin_status_txt(). }
@@ -698,17 +705,32 @@ FUNCTION aoso_hud_gui_upd_stg {
 FUNCTION aoso_hud_gui_upd_sys {
     LOCAL s IS AOSO_HUD_DATA["systems"].
     aoso_hud_set("sys_roll", "AOSO  " + s["rollup"]).
+    LOCAL why IS "".
+    IF s:HASKEY("why") { SET why TO s["why"]. }
+    IF why = "" { aoso_hud_set("sys_why", "All systems nominal."). }
+    ELSE { aoso_hud_set("sys_why", "WHY  " + why). }
     aoso_hud_set("sys_guid", "GUIDANCE     " + aoso_hud_st_glyph(s["guid"])).
     aoso_hud_set("sys_nav", "NAVIGATION   " + aoso_hud_st_glyph(s["nav"])).
     aoso_hud_set("sys_steer", "STEERING     " + aoso_hud_st_glyph(s["steer"]) + "  " + s["steer_mode"]).
     aoso_hud_set("sys_thr", "THROTTLE     " + aoso_hud_st_glyph(s["thr"]) + "  " + s["thr_mode"]).
-    aoso_hud_set("sys_stg", "STAGING      " + aoso_hud_st_glyph(s["stg"])).
+    aoso_hud_set("sys_stg", "STAGING      " + aoso_hud_st_glyph(s["stg"]) + aoso_hud_sys_suffix("stg", s)).
     aoso_hud_set("sys_msn", "MISSION      " + aoso_hud_st_glyph(s["msn"])).
     aoso_hud_set("sys_lnd", "LANDING      " + aoso_hud_st_glyph(s["lnd"])).
-    aoso_hud_set("sys_pwr", "POWER        " + aoso_hud_st_glyph(s["pwr"]) + "  " + ROUND(AOSO_HUD_DATA["res"]["ec"], 0) + "%").
-    aoso_hud_set("sys_com", "COMMS        " + aoso_hud_st_glyph(s["com"])).
+    aoso_hud_set("sys_pwr", "POWER        " + aoso_hud_st_glyph(s["pwr"]) + "  " + ROUND(AOSO_HUD_DATA["res"]["ec"], 0) + "%" + aoso_hud_sys_suffix("pwr", s)).
+    aoso_hud_set("sys_com", "COMMS        " + aoso_hud_st_glyph(s["com"]) + aoso_hud_sys_suffix("com", s)).
     aoso_hud_set("sys_wd", "WATCHDOG     " + aoso_hud_st_glyph(s["wd"])).
-    aoso_hud_set("sys_cpu", "CPU          " + aoso_hud_st_glyph(s["cpu"]) + "  " + AOSO_HUD_DATA["debug"]["cpu"]).
+    aoso_hud_set("sys_cpu", "CPU          " + aoso_hud_st_glyph(s["cpu"]) + "  " + AOSO_HUD_DATA["debug"]["cpu"] + aoso_hud_sys_suffix("cpu", s)).
+}
+
+FUNCTION aoso_hud_sys_suffix {
+    PARAMETER key.
+    PARAMETER s.
+    IF NOT s:HASKEY(key) { RETURN "". }
+    LOCAL st IS s[key].
+    IF st = "DEG" OR st = "FAIL" {
+        RETURN "  " + aoso_hud_sys_reason(key, s).
+    }
+    RETURN "".
 }
 
 FUNCTION aoso_hud_gui_upd_log {
