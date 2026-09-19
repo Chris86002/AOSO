@@ -306,8 +306,8 @@ FUNCTION aoso_twin_focus_hit {
 }
 
 FUNCTION aoso_twin_cluster_key {
-    PARAMETER node.
-    RETURN node["kind"] + "|" + node["stage"] + "|" + node["title"].
+    PARAMETER tnode.
+    RETURN tnode["kind"] + "|" + tnode["stage"] + "|" + tnode["title"].
 }
 
 FUNCTION aoso_twin_merge_res {
@@ -338,24 +338,24 @@ FUNCTION aoso_twin_rebuild_display {
     LOCAL focus IS AOSO_TWIN["resource_focus"].
     LOCAL view IS AOSO_TWIN["view"].
     LOCAL kept IS LIST().
-    FOR node IN AOSO_TWIN["nodes"] {
-        IF aoso_twin_node_keep(node["kind"], filt) {
-            IF aoso_twin_focus_hit(node["resources"], focus) {
+    FOR tnode IN AOSO_TWIN["nodes"] {
+        IF aoso_twin_node_keep(tnode["kind"], filt) {
+            IF aoso_twin_focus_hit(tnode["resources"], focus) {
                 IF view = "STATUS" {
-                    LOCAL tag IS aoso_twin_flow_tag(node).
-                    IF tag <> "" { kept:ADD(node). }
+                    LOCAL tag IS aoso_twin_flow_tag(tnode).
+                    IF tag <> "" { kept:ADD(tnode). }
                     ELSE {
-                        IF node["kind"] = "engine" { kept:ADD(node). }
+                        IF tnode["kind"] = "engine" { kept:ADD(tnode). }
                     }
                 } ELSE {
                     IF filt = "STATUS" {
-                        LOCAL tag2 IS aoso_twin_flow_tag(node).
-                        IF tag2 <> "" { kept:ADD(node). }
+                        LOCAL tag2 IS aoso_twin_flow_tag(tnode).
+                        IF tag2 <> "" { kept:ADD(tnode). }
                         ELSE {
-                            IF node["kind"] = "engine" { kept:ADD(node). }
+                            IF tnode["kind"] = "engine" { kept:ADD(tnode). }
                         }
                     } ELSE {
-                        kept:ADD(node).
+                        kept:ADD(tnode).
                     }
                 }
             }
@@ -370,43 +370,43 @@ FUNCTION aoso_twin_rebuild_display {
         SET limited TO TRUE.
         LOCAL groups IS LEXICON().
         LOCAL order IS LIST().
-        FOR node IN kept {
-            LOCAL key IS aoso_twin_cluster_key(node).
+        FOR tnode IN kept {
+            LOCAL key IS aoso_twin_cluster_key(tnode).
             IF NOT groups:HASKEY(key) {
                 LOCAL copy IS LEXICON(
-                    "uid", node["uid"],
-                    "title", node["title"],
-                    "short", node["short"],
-                    "kind", node["kind"],
-                    "parent_uid", node["parent_uid"],
-                    "depth", node["depth"],
-                    "stage", node["stage"],
-                    "decoupled_in", node["decoupled_in"],
-                    "rx", node["rx"],
-                    "ry", node["ry"],
-                    "rz", node["rz"],
+                    "uid", tnode["uid"],
+                    "title", tnode["title"],
+                    "short", tnode["short"],
+                    "kind", tnode["kind"],
+                    "parent_uid", tnode["parent_uid"],
+                    "depth", tnode["depth"],
+                    "stage", tnode["stage"],
+                    "decoupled_in", tnode["decoupled_in"],
+                    "rx", tnode["rx"],
+                    "ry", tnode["ry"],
+                    "rz", tnode["rz"],
                     "resources", LIST(),
-                    "ignition", node["ignition"],
-                    "flameout", node["flameout"],
-                    "thrust", node["thrust"],
-                    "maxthrust", node["maxthrust"],
-                    "mass", node["mass"],
-                    "modules", node["modules"],
+                    "ignition", tnode["ignition"],
+                    "flameout", tnode["flameout"],
+                    "thrust", tnode["thrust"],
+                    "maxthrust", tnode["maxthrust"],
+                    "mass", tnode["mass"],
+                    "modules", tnode["modules"],
                     "n", 0,
                     "members", LIST()
                 ).
-                aoso_twin_merge_res(copy["resources"], node["resources"]).
+                aoso_twin_merge_res(copy["resources"], tnode["resources"]).
                 SET groups[key] TO copy.
                 order:ADD(key).
             } ELSE {
-                aoso_twin_merge_res(groups[key]["resources"], node["resources"]).
-                SET groups[key]["thrust"] TO groups[key]["thrust"] + node["thrust"].
-                SET groups[key]["maxthrust"] TO groups[key]["maxthrust"] + node["maxthrust"].
-                IF node["ignition"] { SET groups[key]["ignition"] TO TRUE. }
-                IF node["flameout"] { SET groups[key]["flameout"] TO TRUE. }
+                aoso_twin_merge_res(groups[key]["resources"], tnode["resources"]).
+                SET groups[key]["thrust"] TO groups[key]["thrust"] + tnode["thrust"].
+                SET groups[key]["maxthrust"] TO groups[key]["maxthrust"] + tnode["maxthrust"].
+                IF tnode["ignition"] { SET groups[key]["ignition"] TO TRUE. }
+                IF tnode["flameout"] { SET groups[key]["flameout"] TO TRUE. }
             }
             SET groups[key]["n"] TO groups[key]["n"] + 1.
-            groups[key]["members"]:ADD(node["uid"]).
+            groups[key]["members"]:ADD(tnode["uid"]).
         }
         FOR key IN order {
             LOCAL gnode IS groups[key].
@@ -441,13 +441,13 @@ FUNCTION aoso_twin_bands_stage {
     PARAMETER disp.
     LOCAL by_st IS LEXICON().
     LOCAL st_keys IS LIST().
-    FOR node IN disp {
-        LOCAL key IS "" + node["decoupled_in"].
+    FOR tnode IN disp {
+        LOCAL key IS "" + tnode["decoupled_in"].
         IF NOT by_st:HASKEY(key) {
             SET by_st[key] TO LIST().
             st_keys:ADD(key).
         }
-        by_st[key]:ADD(node).
+        by_st[key]:ADD(tnode).
     }
     LOCAL sorted IS LIST().
     UNTIL st_keys:LENGTH = 0 {
@@ -467,10 +467,10 @@ FUNCTION aoso_twin_bands_kind {
     PARAMETER disp.
     LOCAL order IS LIST("command", "antenna", "battery", "solar", "tank", "engine", "rcs", "dock", "isru", "chute", "gear", "science", "radiator", "structural").
     LOCAL byk IS LEXICON().
-    FOR node IN disp {
-        LOCAL k IS node["kind"].
+    FOR tnode IN disp {
+        LOCAL k IS tnode["kind"].
         IF NOT byk:HASKEY(k) { SET byk[k] TO LIST(). }
-        byk[k]:ADD(node).
+        byk[k]:ADD(tnode).
     }
     LOCAL bands IS LIST().
     FOR k IN order {
@@ -480,11 +480,11 @@ FUNCTION aoso_twin_bands_kind {
 }
 
 FUNCTION aoso_twin_axis_of {
-    PARAMETER node.
+    PARAMETER tnode.
     LOCAL ax IS "Y".
-    LOCAL avx IS ABS(node["rx"]).
-    LOCAL avy IS ABS(node["ry"]).
-    LOCAL avz IS ABS(node["rz"]).
+    LOCAL avx IS ABS(tnode["rx"]).
+    LOCAL avy IS ABS(tnode["ry"]).
+    LOCAL avz IS ABS(tnode["rz"]).
     IF avx >= avy {
         IF avx >= avz { SET ax TO "X". }
         ELSE { SET ax TO "Z". }
@@ -496,11 +496,11 @@ FUNCTION aoso_twin_axis_of {
 }
 
 FUNCTION aoso_twin_coord {
-    PARAMETER node.
+    PARAMETER tnode.
     PARAMETER ax.
-    IF ax = "X" { RETURN node["rx"]. }
-    IF ax = "Z" { RETURN node["rz"]. }
-    RETURN node["ry"].
+    IF ax = "X" { RETURN tnode["rx"]. }
+    IF ax = "Z" { RETURN tnode["rz"]. }
+    RETURN tnode["ry"].
 }
 
 FUNCTION aoso_twin_bands_spatial {
@@ -508,20 +508,20 @@ FUNCTION aoso_twin_bands_spatial {
     IF disp:LENGTH = 0 { RETURN LIST(). }
 
     LOCAL sx IS 0. LOCAL sy IS 0. LOCAL sz IS 0.
-    FOR node IN disp {
-        SET sx TO sx + node["rx"].
-        SET sy TO sy + node["ry"].
-        SET sz TO sz + node["rz"].
+    FOR tnode IN disp {
+        SET sx TO sx + tnode["rx"].
+        SET sy TO sy + tnode["ry"].
+        SET sz TO sz + tnode["rz"].
     }
     LOCAL inv IS 1 / disp:LENGTH.
     LOCAL mx IS sx * inv.
     LOCAL my IS sy * inv.
     LOCAL mz IS sz * inv.
     LOCAL vx IS 0. LOCAL vy IS 0. LOCAL vz IS 0.
-    FOR node IN disp {
-        SET vx TO vx + (node["rx"] - mx) * (node["rx"] - mx).
-        SET vy TO vy + (node["ry"] - my) * (node["ry"] - my).
-        SET vz TO vz + (node["rz"] - mz) * (node["rz"] - mz).
+    FOR tnode IN disp {
+        SET vx TO vx + (tnode["rx"] - mx) * (tnode["rx"] - mx).
+        SET vy TO vy + (tnode["ry"] - my) * (tnode["ry"] - my).
+        SET vz TO vz + (tnode["rz"] - mz) * (tnode["rz"] - mz).
     }
     LOCAL ax IS "Y".
     IF vx >= vy {
@@ -549,11 +549,11 @@ FUNCTION aoso_twin_bands_spatial {
     LOCAL max_a IS min_a.
     LOCAL eng_sum IS 0.
     LOCAL eng_n IS 0.
-    FOR node IN disp {
-        LOCAL c IS aoso_twin_coord(node, ax).
+    FOR tnode IN disp {
+        LOCAL c IS aoso_twin_coord(tnode, ax).
         IF c < min_a { SET min_a TO c. }
         IF c > max_a { SET max_a TO c. }
-        IF node["kind"] = "engine" {
+        IF tnode["kind"] = "engine" {
             SET eng_sum TO eng_sum + c.
             SET eng_n TO eng_n + 1.
         }
@@ -567,12 +567,12 @@ FUNCTION aoso_twin_bands_spatial {
         buckets:ADD(LIST()).
         SET bi TO bi + 1.
     }
-    FOR node IN disp {
-        LOCAL c IS aoso_twin_coord(node, ax).
+    FOR tnode IN disp {
+        LOCAL c IS aoso_twin_coord(tnode, ax).
         LOCAL idx IS FLOOR(((c - min_a) / span) * nb).
         IF idx < 0 { SET idx TO 0. }
         IF idx >= nb { SET idx TO nb - 1. }
-        buckets[idx]:ADD(node).
+        buckets[idx]:ADD(tnode).
     }
 
     LOCAL eng_mean IS min_a.
@@ -602,7 +602,7 @@ FUNCTION aoso_twin_sort_band {
     PARAMETER ax2.
     LOCAL out IS LIST().
     LOCAL rest IS LIST().
-    FOR node IN band { rest:ADD(node). }
+    FOR tnode IN band { rest:ADD(tnode). }
     UNTIL rest:LENGTH = 0 {
         LOCAL best IS 0.
         LOCAL i IS 1.
@@ -618,8 +618,8 @@ FUNCTION aoso_twin_sort_band {
 
 FUNCTION aoso_twin_disp_sig {
     LOCAL sig IS AOSO_TWIN["view"] + "|" + AOSO_TWIN["filter"] + "|" + AOSO_TWIN["resource_focus"] + "|".
-    FOR node IN AOSO_TWIN["disp"] {
-        SET sig TO sig + node["uid"] + ",".
+    FOR tnode IN AOSO_TWIN["disp"] {
+        SET sig TO sig + tnode["uid"] + ",".
     }
     RETURN sig.
 }
@@ -628,26 +628,26 @@ FUNCTION aoso_twin_refresh_fills {
     LOCAL totals IS LEXICON().
     LOCAL eng_on IS 0.
     LOCAL eng_n IS 0.
-    FOR node IN AOSO_TWIN["nodes"] {
-        LOCAL uid IS node["uid"].
+    FOR tnode IN AOSO_TWIN["nodes"] {
+        LOCAL uid IS tnode["uid"].
         IF AOSO_TWIN_PARTS:HASKEY(uid) {
             LOCAL prt IS AOSO_TWIN_PARTS[uid].
-            SET node["resources"] TO aoso_twin_read_resources(prt).
-            SET node["mass"] TO prt:MASS.
-            IF node["kind"] = "engine" {
+            SET tnode["resources"] TO aoso_twin_read_resources(prt).
+            SET tnode["mass"] TO prt:MASS.
+            IF tnode["kind"] = "engine" {
                 SET eng_n TO eng_n + 1.
                 IF prt:ISTYPE("Engine") {
-                    SET node["ignition"] TO prt:IGNITION.
-                    SET node["flameout"] TO prt:FLAMEOUT.
-                    SET node["thrust"] TO prt:THRUST.
-                    SET node["maxthrust"] TO prt:AVAILABLETHRUST.
+                    SET tnode["ignition"] TO prt:IGNITION.
+                    SET tnode["flameout"] TO prt:FLAMEOUT.
+                    SET tnode["thrust"] TO prt:THRUST.
+                    SET tnode["maxthrust"] TO prt:AVAILABLETHRUST.
                     IF prt:IGNITION {
                         IF NOT prt:FLAMEOUT { SET eng_on TO eng_on + 1. }
                     }
                 }
             }
         }
-        FOR res_item IN node["resources"] {
+        FOR res_item IN tnode["resources"] {
             LOCAL rn IS res_item["name"].
             IF NOT totals:HASKEY(rn) {
                 SET totals[rn] TO LEXICON("amount", 0, "capacity", 0).
@@ -683,23 +683,23 @@ FUNCTION aoso_twin_refresh_fills {
 }
 
 FUNCTION aoso_twin_engine_state {
-    PARAMETER node.
-    IF node["kind"] <> "engine" { RETURN "". }
-    IF node["flameout"] {
+    PARAMETER tnode.
+    IF tnode["kind"] <> "engine" { RETURN "". }
+    IF tnode["flameout"] {
         IF THROTTLE > 0.05 { RETURN "STARVED". }
         RETURN "FLAMEOUT".
     }
-    IF node["ignition"] { RETURN "ACTIVE". }
+    IF tnode["ignition"] { RETURN "ACTIVE". }
     RETURN "IDLE".
 }
 
 FUNCTION aoso_twin_flow_tag {
-    PARAMETER node.
-    IF node["kind"] = "engine" { RETURN aoso_twin_engine_state(node). }
-    IF node["kind"] <> "tank" { RETURN "". }
+    PARAMETER tnode.
+    IF tnode["kind"] = "engine" { RETURN aoso_twin_engine_state(tnode). }
+    IF tnode["kind"] <> "tank" { RETURN "". }
     LOCAL enabled IS TRUE.
     LOCAL empty IS TRUE.
-    FOR res_item IN node["resources"] {
+    FOR res_item IN tnode["resources"] {
         IF aoso_capabilities_is_propellant(res_item["name"]) {
             IF res_item["amount"] > 0.05 { SET empty TO FALSE. }
             IF NOT res_item["enabled"] { SET enabled TO FALSE. }
@@ -708,7 +708,7 @@ FUNCTION aoso_twin_flow_tag {
     IF NOT enabled { RETURN "DISABLED". }
     IF empty { RETURN "EMPTY". }
     IF AOSO_TWIN["engines_on"] > 0 {
-        IF node["stage"] = STAGE:NUMBER { RETURN "FEED". }
+        IF tnode["stage"] = STAGE:NUMBER { RETURN "FEED". }
     }
     RETURN "".
 }

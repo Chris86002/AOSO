@@ -1,5 +1,5 @@
 // AOSO/ux/hud_twin_view.ks
-// GUI schematic for AOSO_TWIN. Widgets for the node set are rebuilt
+// GUI schematic for AOSO_TWIN. Widgets for the tnode set are rebuilt
 // only when the displayed UID set / view / filter changes. Tank bars
 // update in place. APPROXIMATE flow tags are labelled as such.
 
@@ -19,18 +19,18 @@ FUNCTION aoso_twin_wset {
 }
 
 FUNCTION aoso_twin_primary_pct {
-    PARAMETER node.
+    PARAMETER tnode.
     LOCAL focus IS AOSO_TWIN["resource_focus"].
     LOCAL best_amt IS -1.
     LOCAL best_cap IS 0.
-    FOR res_item IN node["resources"] {
+    FOR res_item IN tnode["resources"] {
         LOCAL use IS FALSE.
         IF focus = "ALL" {
             IF aoso_capabilities_is_propellant(res_item["name"]) { SET use TO TRUE. }
-            IF node["kind"] = "battery" {
+            IF tnode["kind"] = "battery" {
                 IF res_item["name"] = "ElectricCharge" { SET use TO TRUE. }
             }
-            IF node["kind"] = "isru" {
+            IF tnode["kind"] = "isru" {
                 IF res_item["name"] = "Ore" { SET use TO TRUE. }
             }
         } ELSE {
@@ -48,23 +48,23 @@ FUNCTION aoso_twin_primary_pct {
 }
 
 FUNCTION aoso_twin_node_txt {
-    PARAMETER node.
-    LOCAL tag IS node["kind"].
+    PARAMETER tnode.
+    LOCAL tag IS tnode["kind"].
     IF tag:LENGTH >= 3 { SET tag TO tag:SUBSTRING(0, 3):TOUPPER. }
     ELSE { SET tag TO tag:TOUPPER. }
-    LOCAL line IS tag + "  " + node["short"].
-    LOCAL pct IS aoso_twin_primary_pct(node).
+    LOCAL line IS tag + "  " + tnode["short"].
+    LOCAL pct IS aoso_twin_primary_pct(tnode).
     IF pct >= 0 { SET line TO line + "  " + ROUND(pct, 0) + "%". }
-    LOCAL flow IS aoso_twin_flow_tag(node).
+    LOCAL flow IS aoso_twin_flow_tag(tnode).
     IF flow <> "" { SET line TO line + "  " + flow. }
     RETURN line.
 }
 
 FUNCTION aoso_twin_bar_txt {
-    PARAMETER node.
+    PARAMETER tnode.
     LOCAL focus IS AOSO_TWIN["resource_focus"].
     LOCAL lines IS "".
-    FOR res_item IN node["resources"] {
+    FOR res_item IN tnode["resources"] {
         LOCAL show IS FALSE.
         IF focus = "ALL" { SET show TO TRUE. }
         IF res_item["name"] = focus { SET show TO TRUE. }
@@ -163,7 +163,7 @@ FUNCTION aoso_twin_view_build {
     SET r5:ONCLICK TO aoso_twin_view_focus@:BIND("Ore").
 
     SET AOSO_TWIN_BOX TO page:ADDVLAYOUT().
-    aoso_hud_lab(page, "tw_sel", "SELECT a node").
+    aoso_hud_lab(page, "tw_sel", "SELECT a tnode").
     aoso_hud_lab(page, "tw_det", "").
     aoso_hud_lab(page, "tw_res", "").
     aoso_hud_lab(page, "tw_mod", "").
@@ -200,9 +200,9 @@ FUNCTION aoso_twin_view_rebuild_schematic {
             }
         }
         LOCAL row IS AOSO_TWIN_BOX:ADDHLAYOUT().
-        FOR node IN bands[bi] {
-            LOCAL uid IS node["uid"].
-            LOCAL btn IS row:ADDBUTTON(aoso_twin_node_txt(node)).
+        FOR tnode IN bands[bi] {
+            LOCAL uid IS tnode["uid"].
+            LOCAL btn IS row:ADDBUTTON(aoso_twin_node_txt(tnode)).
             SET btn:ONCLICK TO aoso_twin_select@:BIND(uid).
             SET AOSO_TWIN_W[uid] TO btn.
             SET AOSO_TWIN_LAST[uid] TO btn:TEXT.
@@ -214,10 +214,10 @@ FUNCTION aoso_twin_view_rebuild_schematic {
 }
 
 FUNCTION aoso_twin_view_upd_fills {
-    FOR node IN AOSO_TWIN["disp"] {
-        LOCAL uid IS node["uid"].
+    FOR tnode IN AOSO_TWIN["disp"] {
+        LOCAL uid IS tnode["uid"].
         IF AOSO_TWIN_W:HASKEY(uid) {
-            LOCAL txt IS aoso_twin_node_txt(node).
+            LOCAL txt IS aoso_twin_node_txt(tnode).
             IF NOT AOSO_TWIN_LAST:HASKEY(uid) {
                 SET AOSO_TWIN_W[uid]:TEXT TO txt.
                 SET AOSO_TWIN_LAST[uid] TO txt.
@@ -252,43 +252,43 @@ FUNCTION aoso_twin_totals_txt {
 
 FUNCTION aoso_twin_detail_txt {
     LOCAL uid IS AOSO_TWIN["selected_uid"].
-    IF uid = "" { RETURN "SELECT a node". }
-    LOCAL node IS 0.
+    IF uid = "" { RETURN "SELECT a tnode". }
+    LOCAL tnode IS 0.
     FOR dnode IN AOSO_TWIN["disp"] {
-        IF dnode["uid"] = uid { SET node TO dnode. }
+        IF dnode["uid"] = uid { SET tnode TO dnode. }
     }
-    IF NOT node:ISTYPE("Lexicon") { RETURN "SELECT a node". }
-    LOCAL line IS node["title"] + "  " + node["kind"]:TOUPPER.
-    IF node["n"] > 1 { SET line TO line + "  x" + node["n"]. }
+    IF NOT tnode:ISTYPE("Lexicon") { RETURN "SELECT a tnode". }
+    LOCAL line IS tnode["title"] + "  " + tnode["kind"]:TOUPPER.
+    IF tnode["n"] > 1 { SET line TO line + "  x" + tnode["n"]. }
     RETURN line.
 }
 
 FUNCTION aoso_twin_detail_meta {
     LOCAL uid IS AOSO_TWIN["selected_uid"].
     IF uid = "" { RETURN "". }
-    LOCAL node IS 0.
+    LOCAL tnode IS 0.
     FOR dnode IN AOSO_TWIN["disp"] {
-        IF dnode["uid"] = uid { SET node TO dnode. }
+        IF dnode["uid"] = uid { SET tnode TO dnode. }
     }
-    IF NOT node:ISTYPE("Lexicon") { RETURN "". }
+    IF NOT tnode:ISTYPE("Lexicon") { RETURN "". }
     LOCAL mass_t IS 0.
-    IF node:HASKEY("mass") { SET mass_t TO node["mass"]. }
+    IF tnode:HASKEY("mass") { SET mass_t TO tnode["mass"]. }
     LOCAL en IS "yes".
-    FOR res_item IN node["resources"] {
+    FOR res_item IN tnode["resources"] {
         IF NOT res_item["enabled"] { SET en TO "no". }
     }
-    RETURN "UID " + uid + "  MASS " + ROUND(mass_t, 2) + " t  STG " + node["stage"] + "  DEC " + node["decoupled_in"] + "  EN " + en.
+    RETURN "UID " + uid + "  MASS " + ROUND(mass_t, 2) + " t  STG " + tnode["stage"] + "  DEC " + tnode["decoupled_in"] + "  EN " + en.
 }
 
 FUNCTION aoso_twin_detail_mods {
     LOCAL uid IS AOSO_TWIN["selected_uid"].
     IF uid = "" { RETURN "". }
-    LOCAL node IS 0.
+    LOCAL tnode IS 0.
     FOR dnode IN AOSO_TWIN["disp"] {
-        IF dnode["uid"] = uid { SET node TO dnode. }
+        IF dnode["uid"] = uid { SET tnode TO dnode. }
     }
-    IF NOT node:ISTYPE("Lexicon") { RETURN "". }
-    IF node:HASKEY("modules") { RETURN node["modules"]. }
+    IF NOT tnode:ISTYPE("Lexicon") { RETURN "". }
+    IF tnode:HASKEY("modules") { RETURN tnode["modules"]. }
     RETURN "".
 }
 
