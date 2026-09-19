@@ -431,7 +431,12 @@ FUNCTION aoso_goto_burn_execute {
     IF aoso_maneuver_execute_next() {
         LOCAL burn_res IS aoso_maneuver_last_result().
         IF burn_res = "missed" OR burn_res = "incomplete" {
-            IF data["burn_kind"] = "transfer" OR data["burn_kind"] = "assist" OR data["burn_kind"] = "correct" {
+            IF data["burn_kind"] = "correct" {
+                aoso_log_warn("GOTO", "Mid-course " + burn_res + " - re-planning the intercept, not circularizing (that kills the transfer).").
+                aoso_state_transition(AOSO_GOTO, "PLAN").
+                RETURN.
+            }
+            IF data["burn_kind"] = "transfer" OR data["burn_kind"] = "assist" {
                 IF NOT aoso_orbit_is_hyperbolic() {
                     IF SHIP:ORBIT:ECCENTRICITY > 0.08 {
                         IF NOT aoso_goto_orbit_is_parked() {
@@ -545,12 +550,15 @@ FUNCTION aoso_goto_coast_execute {
             IF aoso_rendezvous_orbit_needs_correct(SHIP:ORBIT, hop_check) {
                 LOCAL pe_now IS aoso_rendezvous_orbit_pe(SHIP:ORBIT, hop_check).
                 LOCAL correct_within IS aoso_config_get("GOTO_CORRECT_WITHIN_S", 28800).
-                // Far-out grazes are a conics lie. Only correct a lithobrake
-                // immediately, or a graze once we are inside ~8 h of SOI.
+                LOCAL soi_a IS hop_check:SOIRADIUS - hop_check:RADIUS.
                 IF pe_now < 0 {
                     SET want_correct TO TRUE.
                 } ELSE {
-                    IF eta_p < correct_within { SET want_correct TO TRUE. }
+                    IF pe_now > soi_a * 0.12 {
+                        SET want_correct TO TRUE.
+                    } ELSE {
+                        IF eta_p < correct_within { SET want_correct TO TRUE. }
+                    }
                 }
             }
         }

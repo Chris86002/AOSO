@@ -179,7 +179,7 @@ FUNCTION aoso_warp_approach {
             WAIT 0.
         }
         LOCAL jump IS eta_s - rails_lead_s.
-        IF jump > 21600 { SET jump TO 21600. }
+        IF jump > 86400 { SET jump TO 86400. }
         IF jump < 8 { SET jump TO 8. }
         IF WARP = 0 {
             WARPTO(TIME:SECONDS + jump).
@@ -479,21 +479,33 @@ FUNCTION aoso_maneuver_execute_next {
         LOCAL cur_orb IS SHIP:ORBIT.
         LOCAL patch_i IS 0.
         LOCAL got_patch IS FALSE.
+        LOCAL pe_cut IS -1.
         UNTIL patch_i >= 4 {
             IF NOT cur_orb:HASNEXTPATCH {
                 SET patch_i TO 4.
             } ELSE {
                 SET cur_orb TO cur_orb:NEXTPATCH.
-                IF cur_orb:BODY:NAME = AOSO_MANEUVER_CUT_BODY { SET got_patch TO TRUE. }
+                IF cur_orb:BODY:NAME = AOSO_MANEUVER_CUT_BODY {
+                    SET got_patch TO TRUE.
+                    SET pe_cut TO cur_orb:PERIAPSIS.
+                }
                 SET patch_i TO patch_i + 1.
             }
         }
         IF got_patch {
+            LOCAL hop_cut IS BODY(AOSO_MANEUVER_CUT_BODY).
+            LOCAL pe_ok IS FALSE.
+            IF hop_cut:ISTYPE("Body") {
+                SET pe_ok TO aoso_rendezvous_pe_ok_value(pe_cut, hop_cut).
+            }
             LOCAL cut_now IS FALSE.
-            IF remaining < 20 { SET cut_now TO TRUE. }
-            IF SHIP:ORBIT:ECCENTRICITY > 0.98 { SET cut_now TO TRUE. }
+            IF pe_ok {
+                IF remaining < 40 { SET cut_now TO TRUE. }
+            } ELSE {
+                IF remaining < 3 { SET cut_now TO TRUE. }
+            }
             IF cut_now {
-                aoso_log_info("MANEUVER", "Intercept with " + AOSO_MANEUVER_CUT_BODY + " locked in - cutting so we keep it.").
+                aoso_log_info("MANEUVER", "Intercept with " + AOSO_MANEUVER_CUT_BODY + " locked in PE=" + ROUND(pe_cut, 0) + "m - cutting so we keep it.").
                 aoso_maneuver_finish_node(nd, "intercept").
                 RETURN TRUE.
             }
