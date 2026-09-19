@@ -21,6 +21,7 @@ FUNCTION aoso_hud_fd_init {
     aoso_hud_fd_set("RET", FALSE).
     aoso_hud_fd_set("NML", FALSE).
     aoso_hud_fd_set("REL", FALSE).
+    aoso_hud_fd_set("LAND", FALSE).
 }
 
 FUNCTION aoso_hud_fd_make {
@@ -95,6 +96,7 @@ FUNCTION aoso_hud_fd_tick {
     IF ctx = "LANDING" {
         SET show_pro TO FALSE.
         SET show_land TO TRUE.
+        SET AOSO_HUD_FD["LAND"]["want"] TO TRUE.
     }
     IF ctx = "BURN" { SET show_burn TO TRUE. }
     IF ctx = "DOCK" {

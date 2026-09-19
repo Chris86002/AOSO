@@ -8,8 +8,10 @@ GLOBAL AOSO_HUD_PAGES IS LEXICON().
 GLOBAL AOSO_HUD_TABS IS LEXICON().
 GLOBAL AOSO_HUD_W IS LEXICON().
 GLOBAL AOSO_HUD_LAST IS LEXICON().
-GLOBAL AOSO_HUD_PAGE IS "FLT".
+GLOBAL AOSO_HUD_PAGE IS "".
 GLOBAL AOSO_HUD_GUI_ON IS TRUE.
+GLOBAL AOSO_HUD_SHOW_LND IS TRUE.
+GLOBAL AOSO_HUD_SHOW_PRP IS TRUE.
 
 FUNCTION aoso_hud_set {
     PARAMETER key.
@@ -64,11 +66,13 @@ FUNCTION aoso_hud_add_page {
 FUNCTION aoso_hud_show_page {
     PARAMETER name.
     IF NOT AOSO_HUD_PAGES:HASKEY(name) { RETURN. }
+    IF AOSO_HUD_PAGE = name { RETURN. }
     AOSO_HUD_STACK:SHOWONLY(AOSO_HUD_PAGES[name]).
     SET AOSO_HUD_PAGE TO name.
     IF AOSO_HUD_TABS:HASKEY(name) {
         SET AOSO_HUD_TABS[name]:PRESSED TO TRUE.
     }
+    aoso_hud_trace("page " + name).
 }
 
 FUNCTION aoso_hud_add_tab {
@@ -159,6 +163,7 @@ FUNCTION aoso_hud_gui_build_prop {
 FUNCTION aoso_hud_gui_build_land {
     PARAMETER p.
     aoso_hud_title(p, "LANDING").
+    aoso_hud_lab(p, "lnd_note", "DISPLAY ONLY  AOSO flies the landing. HUD does not STAGE/ABORT/LAND.").
     aoso_hud_lab(p, "lnd_st", "LANDING SYSTEM  STANDBY").
     aoso_hud_lab(p, "lnd_site", "SITE  -").
     aoso_hud_lab(p, "lnd_alt", "RADAR  -").
@@ -229,13 +234,14 @@ FUNCTION aoso_hud_gui_build_dbg {
     aoso_hud_lab(p, "dbg_twin", "TWIN  -").
 }
 
-FUNCTION aoso_hud_fd_cb_pro { PARAMETER on. aoso_hud_fd_set("PRO", on). }
-FUNCTION aoso_hud_fd_cb_ret { PARAMETER on. aoso_hud_fd_set("RET", on). }
-FUNCTION aoso_hud_fd_cb_nml { PARAMETER on. aoso_hud_fd_set("NML", on). }
-FUNCTION aoso_hud_fd_cb_tgt { PARAMETER on. aoso_hud_fd_set("TGT", on). }
-FUNCTION aoso_hud_fd_cb_rel { PARAMETER on. aoso_hud_fd_set("REL", on). }
-FUNCTION aoso_hud_fd_cb_burn { PARAMETER on. aoso_hud_fd_set("BURN", on). }
-FUNCTION aoso_hud_fd_cb_land { PARAMETER on. aoso_hud_fd_set("LAND", on). }
+FUNCTION aoso_hud_fd_cb_master { PARAMETER on. aoso_hud_fd_enable(on). aoso_hud_trace("FD master=" + on). }
+FUNCTION aoso_hud_fd_cb_pro { PARAMETER on. aoso_hud_fd_set("PRO", on). aoso_hud_trace("FD PRO=" + on). }
+FUNCTION aoso_hud_fd_cb_ret { PARAMETER on. aoso_hud_fd_set("RET", on). aoso_hud_trace("FD RET=" + on). }
+FUNCTION aoso_hud_fd_cb_nml { PARAMETER on. aoso_hud_fd_set("NML", on). aoso_hud_trace("FD NML=" + on). }
+FUNCTION aoso_hud_fd_cb_tgt { PARAMETER on. aoso_hud_fd_set("TGT", on). aoso_hud_trace("FD TGT=" + on). }
+FUNCTION aoso_hud_fd_cb_rel { PARAMETER on. aoso_hud_fd_set("REL", on). aoso_hud_trace("FD REL=" + on). }
+FUNCTION aoso_hud_fd_cb_burn { PARAMETER on. aoso_hud_fd_set("BURN", on). aoso_hud_trace("FD BURN=" + on). }
+FUNCTION aoso_hud_fd_cb_land { PARAMETER on. aoso_hud_fd_set("LAND", on). aoso_hud_trace("FD LAND vec=" + on + " (display only, does not land)"). }
 
 FUNCTION aoso_hud_gui_init {
     aoso_hud_gui_dispose().
@@ -260,7 +266,7 @@ FUNCTION aoso_hud_gui_init {
     LOCAL b_eng IS modes:ADDBUTTON("ENG").
     SET b_eng:ONCLICK TO aoso_hud_mode_eng@.
     LOCAL b_fd IS modes:ADDCHECKBOX("FD", TRUE).
-    SET b_fd:ONTOGGLE TO aoso_hud_fd_enable@.
+    SET b_fd:ONTOGGLE TO aoso_hud_fd_cb_master@.
 
     LOCAL fdrow IS g:ADDHLAYOUT().
     LOCAL c1 IS fdrow:ADDCHECKBOX("PRO", TRUE).
@@ -275,7 +281,7 @@ FUNCTION aoso_hud_gui_init {
     SET c2b:ONTOGGLE TO aoso_hud_fd_cb_rel@.
     LOCAL c3 IS fdrow:ADDCHECKBOX("BURN", TRUE).
     SET c3:ONTOGGLE TO aoso_hud_fd_cb_burn@.
-    LOCAL c4 IS fdrow:ADDCHECKBOX("LAND", TRUE).
+    LOCAL c4 IS fdrow:ADDCHECKBOX("LAND", FALSE).
     SET c4:ONTOGGLE TO aoso_hud_fd_cb_land@.
 
     LOCAL row1 IS g:ADDHLAYOUT().
@@ -309,6 +315,7 @@ FUNCTION aoso_hud_gui_init {
     aoso_hud_show_page("FLT").
     SET AOSO_HUD_GUI_ON TO TRUE.
     g:SHOW().
+    aoso_hud_trace("GUI online").
 }
 
 FUNCTION aoso_hud_gui_hide {
@@ -354,7 +361,11 @@ FUNCTION aoso_hud_tabs_adapt {
         IF AOSO_HUD_DATA["landing"]["active"] { SET show_lnd TO TRUE. }
     }
     IF AOSO_HUD_TABS:HASKEY("LND") {
-        SET AOSO_HUD_TABS["LND"]:VISIBLE TO show_lnd.
+        IF show_lnd <> AOSO_HUD_SHOW_LND {
+            SET AOSO_HUD_TABS["LND"]:VISIBLE TO show_lnd.
+            SET AOSO_HUD_SHOW_LND TO show_lnd.
+            aoso_hud_trace("tab LND visible=" + show_lnd).
+        }
         IF NOT show_lnd {
             IF AOSO_HUD_PAGE = "LND" { aoso_hud_show_page("FLT"). }
         }
@@ -368,7 +379,11 @@ FUNCTION aoso_hud_tabs_adapt {
         }
     }
     IF AOSO_HUD_TABS:HASKEY("PRP") {
-        SET AOSO_HUD_TABS["PRP"]:VISIBLE TO show_prp.
+        IF show_prp <> AOSO_HUD_SHOW_PRP {
+            SET AOSO_HUD_TABS["PRP"]:VISIBLE TO show_prp.
+            SET AOSO_HUD_SHOW_PRP TO show_prp.
+            aoso_hud_trace("tab PRP visible=" + show_prp).
+        }
         IF NOT show_prp {
             IF AOSO_HUD_PAGE = "PRP" { aoso_hud_show_page("FLT"). }
         }
@@ -577,6 +592,7 @@ FUNCTION aoso_hud_gui_upd_land {
     LOCAL l IS AOSO_HUD_DATA["landing"].
     LOCAL f IS AOSO_HUD_DATA["flight"].
     LOCAL rsrc IS AOSO_HUD_DATA["res"].
+    IF NOT l:HASKEY("active") { RETURN. }
     IF NOT l["active"] {
         aoso_hud_set("lnd_st", "LANDING SYSTEM  STANDBY").
     } ELSE {

@@ -96,15 +96,23 @@ FUNCTION aoso_hud_doing_text {
     RETURN "idle".
 }
 
+FUNCTION aoso_hud_trace {
+    PARAMETER msg.
+    aoso_hud_event_push("INFO", msg).
+    aoso_log_info("HUD", msg).
+}
+
 FUNCTION aoso_hud_mode_tactical {
     SET AOSO_HUD_MODE TO "TACTICAL".
     aoso_hud_gui_hide().
+    aoso_hud_trace("mode TACTICAL").
     aoso_hud_alert("mode", "INFO", "TACTICAL HUD", 4, 2).
 }
 
 FUNCTION aoso_hud_mode_computer {
     SET AOSO_HUD_MODE TO "COMPUTER".
     aoso_hud_gui_show().
+    aoso_hud_trace("mode COMPUTER").
     aoso_hud_alert("mode", "INFO", "MISSION COMPUTER", 4, 2).
 }
 
@@ -112,6 +120,7 @@ FUNCTION aoso_hud_mode_eng {
     SET AOSO_HUD_MODE TO "ENGINEERING".
     aoso_hud_gui_show().
     aoso_hud_show_page("TWIN").
+    aoso_hud_trace("mode ENGINEERING").
     aoso_hud_alert("mode", "INFO", "ENGINEERING HUD", 4, 2).
 }
 
@@ -170,17 +179,21 @@ FUNCTION aoso_hud_tick {
         IF AOSO_CPU_LEVEL >= 3 { SET compact TO TRUE. }
     }
     IF rates["term"] { aoso_hud_term_tick(compact). }
-    IF compact { RETURN. }
-    aoso_hud_watch_alerts().
-    aoso_hud_fd_tick(rates["fd"]).
-    LOCAL twin_geom IS TRUE.
-    LOCAL twin_fill IS TRUE.
-    IF DEFINED AOSO_CPU_LEVEL {
-        IF AOSO_CPU_LEVEL >= 2 { SET twin_geom TO FALSE. }
+    IF NOT compact {
+        aoso_hud_watch_alerts().
+        aoso_hud_fd_tick(rates["fd"]).
+        LOCAL twin_geom IS TRUE.
+        LOCAL twin_fill IS TRUE.
+        IF DEFINED AOSO_CPU_LEVEL {
+            IF AOSO_CPU_LEVEL >= 2 { SET twin_geom TO FALSE. }
+        }
+        IF rates["md"] > 1.5 { SET twin_fill TO rates["gui"]. }
+        aoso_twin_tick(twin_geom, twin_fill).
     }
-    IF rates["md"] > 1.5 { SET twin_fill TO rates["gui"]. }
-    aoso_twin_tick(twin_geom, twin_fill).
-    aoso_hud_gui_tick(rates["gui"]).
+    // Always paint the GUI, even at CPU CRITICAL. Skipping it after a
+    // tab click leaves SHOWONLY on a stale/half-built page (the LND glitch).
+    aoso_hud_gui_tick(TRUE).
+    aoso_log_every(8, "HUD_HB", "page=" + AOSO_HUD_PAGE + " mode=" + AOSO_HUD_MODE + " ctx=" + AOSO_HUD_CTX + " cpu=" + AOSO_CPU_NAME).
 }
 
 FUNCTION aoso_hud_draw {
@@ -199,6 +212,7 @@ FUNCTION aoso_hud_init {
     aoso_hud_collect(TRUE).
     aoso_hud_term_tick(FALSE).
     aoso_hud_event_push("INFO", "HUD online  IPU " + CONFIG:IPU).
+    aoso_hud_trace("HUD online IPU=" + CONFIG:IPU).
     aoso_hud_alert("boot", "OK", "AOSO HUD ONLINE", 8, 3).
 }
 
