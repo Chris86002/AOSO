@@ -26,6 +26,7 @@ FUNCTION aoso_sched_prio_of {
     IF name = "watchdog" { RETURN 0. }
     IF name = "hud" { RETURN 1. }
     IF name = "auto_power" { RETURN 1. }
+    IF name = "brain" { RETURN 2. }
     IF name = "telemetry" { RETURN 2. }
     IF name = "vehicle_profile" { RETURN 3. }
     IF name = "checkpoint_autosave" { RETURN 3. }
@@ -40,6 +41,7 @@ FUNCTION aoso_sched_floor_of {
     IF name = "watchdog" { RETURN 40. }
     IF name = "mission" { RETURN 80. }
     IF name = "hud" { RETURN 160. }
+    IF name = "brain" { RETURN 200. }
     IF name = "auto_power" {
         IF DEFINED AOSO_POWER_SPACE_DONE {
             IF NOT AOSO_POWER_SPACE_DONE { RETURN 40. }
@@ -57,6 +59,7 @@ FUNCTION aoso_sched_phase_of {
     IF name = "auto_staging" { RETURN 0. }
     IF name = "mission" { RETURN 0.04. }
     IF name = "hud" { RETURN 0.07. }
+    IF name = "brain" { RETURN 0.22. }
     IF name = "telemetry" { RETURN 0.12. }
     IF name = "auto_power" { RETURN 0.35. }
     IF name = "watchdog" { RETURN 0.55. }
@@ -74,6 +77,7 @@ FUNCTION aoso_sched_rebuild_snap {
         "watchdog",
         "hud",
         "auto_power",
+        "brain",
         "telemetry",
         "vehicle_profile",
         "checkpoint_autosave"
@@ -148,6 +152,7 @@ FUNCTION aoso_sched_keep {
         RETURN aoso_cpu_allow(1).
     }
     IF name = "hud" { RETURN aoso_cpu_allow(2). }
+    IF name = "brain" { RETURN aoso_cpu_allow(2). }
     IF name = "telemetry" {
         IF DEFINED AOSO_POST_LEFT {
             IF AOSO_POST_LEFT > 0 { RETURN TRUE. }
