@@ -30,11 +30,15 @@ RUN ONCE "AOSO/core/observe".
 RUN ONCE "AOSO/core/context".
 RUN ONCE "AOSO/core/events".
 RUN ONCE "AOSO/core/result".
+RUN ONCE "AOSO/core/authority".
+RUN ONCE "AOSO/core/verify".
+RUN ONCE "AOSO/core/warp".
 RUN ONCE "AOSO/core/boot".
 
 // --- Vehicle ----------------------------------------------------------------
 RUN ONCE "AOSO/vehicle/vessel".
 RUN ONCE "AOSO/vehicle/parts".
+RUN ONCE "AOSO/vehicle/topology".
 RUN ONCE "AOSO/vehicle/capabilities".
 RUN ONCE "AOSO/vehicle/performance".
 RUN ONCE "AOSO/vehicle/resources".
@@ -80,6 +84,7 @@ RUN ONCE "AOSO/landing/parachute".
 // --- Refuel & power -------------------------------------------------------
 RUN ONCE "AOSO/power/power".
 RUN ONCE "AOSO/refuel/isru".
+RUN ONCE "AOSO/surface/operations".
 
 // --- Return ----------------------------------------------------------------
 RUN ONCE "AOSO/return/moonescape".
@@ -97,6 +102,8 @@ RUN ONCE "AOSO/mission/windows".
 RUN ONCE "AOSO/mission/score".
 RUN ONCE "AOSO/mission/route".
 RUN ONCE "AOSO/mission/planner".
+RUN ONCE "AOSO/mission/certify".
+RUN ONCE "AOSO/mission/assurance".
 RUN ONCE "AOSO/mission/goto".
 RUN ONCE "AOSO/mission/tour".
 RUN ONCE "AOSO/mission/mission".

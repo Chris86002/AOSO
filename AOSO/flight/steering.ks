@@ -17,6 +17,9 @@ GLOBAL AOSO_STEER_MODE IS "OFF".
 
 FUNCTION aoso_throttle_set {
     PARAMETER t.
+    IF DEFINED AOSO_AUTH {
+        IF NOT aoso_auth_can_cmd("THROTTLE") { RETURN. }
+    }
     IF t < 0 { SET t TO 0. }
     IF t > 1 { SET t TO 1. }
     SET AOSO_CMD_THROTTLE TO t.
@@ -35,6 +38,9 @@ FUNCTION aoso_throttle_release {
 FUNCTION aoso_steer_heading_pitch {
     PARAMETER hdg.
     PARAMETER pitch.
+    IF DEFINED AOSO_AUTH {
+        IF NOT aoso_auth_can_cmd("STEERING") { RETURN. }
+    }
     SET AOSO_CMD_STEERING TO HEADING(hdg, pitch).
     IF AOSO_STEER_MODE <> "CMD" {
         LOCK STEERING TO AOSO_CMD_STEERING.
@@ -44,6 +50,9 @@ FUNCTION aoso_steer_heading_pitch {
 
 FUNCTION aoso_steer_to_vector {
     PARAMETER dir_vector.
+    IF DEFINED AOSO_AUTH {
+        IF NOT aoso_auth_can_cmd("STEERING") { RETURN. }
+    }
     SET AOSO_CMD_STEERING TO dir_vector.
     IF AOSO_STEER_MODE <> "CMD" {
         LOCK STEERING TO AOSO_CMD_STEERING.
@@ -52,6 +61,9 @@ FUNCTION aoso_steer_to_vector {
 }
 
 FUNCTION aoso_steer_prograde {
+    IF DEFINED AOSO_AUTH {
+        IF NOT aoso_auth_can_cmd("STEERING") { RETURN. }
+    }
     IF AOSO_STEER_MODE = "PROGRADE" { RETURN. }
     LOCK STEERING TO SHIP:PROGRADE.
     SET AOSO_STEER_MODE TO "PROGRADE".
@@ -60,6 +72,9 @@ FUNCTION aoso_steer_prograde {
 // Surface-relative retrograde: landing burns cancel velocity relative to
 // the ground, not the body-centered orbital velocity vector.
 FUNCTION aoso_steer_srf_retrograde {
+    IF DEFINED AOSO_AUTH {
+        IF NOT aoso_auth_can_cmd("STEERING") { RETURN. }
+    }
     IF AOSO_STEER_MODE = "SRF_RETROGRADE" { RETURN. }
     LOCK STEERING TO SHIP:SRFRETROGRADE.
     SET AOSO_STEER_MODE TO "SRF_RETROGRADE".
@@ -69,6 +84,9 @@ FUNCTION aoso_steer_srf_retrograde {
 // vertical hold just before touchdown so the vessel settles upright rather
 // than tipping toward whatever direction the last velocity vector pointed.
 FUNCTION aoso_steer_up {
+    IF DEFINED AOSO_AUTH {
+        IF NOT aoso_auth_can_cmd("STEERING") { RETURN. }
+    }
     IF AOSO_STEER_MODE = "UP" { RETURN. }
     LOCK STEERING TO SHIP:UP.
     SET AOSO_STEER_MODE TO "UP".

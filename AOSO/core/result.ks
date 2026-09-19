@@ -34,6 +34,23 @@ FUNCTION aoso_result_make {
 FUNCTION aoso_result_emit {
     PARAMETER res.
     SET AOSO_LAST_RESULT TO res.
+    IF res:HASKEY("predicted_dv") {
+        IF res:HASKEY("actual_dv") {
+            SET res["dv_error"] TO res["actual_dv"] - res["predicted_dv"].
+            IF res["predicted_dv"] > 0 {
+                LOCAL mag IS ABS(res["dv_error"]).
+                LOCAL replan_n IS aoso_config_get("REPLAN_DV_ERROR", 250).
+                LOCAL local_n IS aoso_config_get("CORRECT_LOCAL_DV", 25).
+                IF mag >= replan_n {
+                    aoso_event_publish("REPLAN_REQUESTED", "result", res["action_type"] + " dv_error=" + ROUND(res["dv_error"], 0)).
+                } ELSE {
+                    IF mag >= local_n {
+                        aoso_event_publish("CORRECT_REQUESTED", "result", res["action_type"] + " dv_error=" + ROUND(res["dv_error"], 0)).
+                    }
+                }
+            }
+        }
+    }
     IF DEFINED AOSO_XP {
         aoso_xp_ingest_result(res).
     }
