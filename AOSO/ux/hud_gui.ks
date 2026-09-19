@@ -1,9 +1,10 @@
 // AOSO/ux/hud_gui.ks
-// Movable AOSO computer. Built once; pages live in an ADDSTACK and are
-// swapped with SHOWONLY. Labels update only when the text actually changed.
+// Movable AOSO computer. Pages are VLAYOUT children toggled with VISIBLE.
+// Labels update only when the text actually changed.
 
 GLOBAL AOSO_HUD_GUI IS 0.
 GLOBAL AOSO_HUD_STACK IS 0.
+GLOBAL AOSO_HUD_BODY IS 0.
 GLOBAL AOSO_HUD_PAGES IS LEXICON().
 GLOBAL AOSO_HUD_TABS IS LEXICON().
 GLOBAL AOSO_HUD_W IS LEXICON().
@@ -14,6 +15,11 @@ GLOBAL AOSO_HUD_SHOW_LND IS TRUE.
 GLOBAL AOSO_HUD_SHOW_PRP IS TRUE.
 GLOBAL AOSO_HUD_TAB_LOCK IS FALSE.
 GLOBAL AOSO_HUD_TABLABEL IS LEXICON().
+GLOBAL AOSO_HUD_HIST IS LIST().
+GLOBAL AOSO_HUD_SCALE IS 2.
+GLOBAL AOSO_HUD_COMPACT IS FALSE.
+GLOBAL AOSO_HUD_BTN_X IS 0.
+GLOBAL AOSO_HUD_HDR_TITLE IS 0.
 
 FUNCTION aoso_hud_set {
     PARAMETER key.
@@ -52,10 +58,14 @@ FUNCTION aoso_hud_gui_dispose {
     }
     SET AOSO_HUD_GUI TO 0.
     SET AOSO_HUD_STACK TO 0.
+    SET AOSO_HUD_BODY TO 0.
+    SET AOSO_HUD_BTN_X TO 0.
+    SET AOSO_HUD_HDR_TITLE TO 0.
     SET AOSO_HUD_PAGES TO LEXICON().
     SET AOSO_HUD_TABS TO LEXICON().
     SET AOSO_HUD_TABLABEL TO LEXICON().
     SET AOSO_HUD_TAB_LOCK TO FALSE.
+    SET AOSO_HUD_PAGE TO "".
     SET AOSO_HUD_W TO LEXICON().
     SET AOSO_HUD_LAST TO LEXICON().
 }
@@ -70,10 +80,17 @@ FUNCTION aoso_hud_add_page {
 
 FUNCTION aoso_hud_show_page {
     PARAMETER name.
+    PARAMETER record IS TRUE.
     IF AOSO_HUD_TAB_LOCK { RETURN. }
     IF NOT AOSO_HUD_PAGES:HASKEY(name) { RETURN. }
     IF AOSO_HUD_PAGE = name { RETURN. }
     SET AOSO_HUD_TAB_LOCK TO TRUE.
+    IF record {
+        IF AOSO_HUD_PAGE <> "" {
+            AOSO_HUD_HIST:ADD(AOSO_HUD_PAGE).
+            IF AOSO_HUD_HIST:LENGTH > 8 { AOSO_HUD_HIST:REMOVE(0). }
+        }
+    }
     SET AOSO_HUD_PAGE TO name.
     FOR pk IN AOSO_HUD_PAGES:KEYS {
         SET AOSO_HUD_PAGES[pk]:VISIBLE TO (pk = name).
@@ -93,6 +110,7 @@ FUNCTION aoso_hud_show_page {
 
 FUNCTION aoso_hud_tab_click {
     PARAMETER name.
+    IF AOSO_HUD_COMPACT { aoso_hud_set_compact(FALSE). }
     aoso_hud_show_page(name).
 }
 
@@ -105,6 +123,109 @@ FUNCTION aoso_hud_add_tab {
     SET AOSO_HUD_TABS[name] TO b.
     SET AOSO_HUD_TABLABEL[name] TO label.
     RETURN b.
+}
+
+FUNCTION aoso_hud_scale_fs {
+    RETURN 10 + (2 * AOSO_HUD_SCALE).
+}
+
+FUNCTION aoso_hud_scale_width {
+    RETURN 380 + (50 * AOSO_HUD_SCALE).
+}
+
+FUNCTION aoso_hud_scale_pct {
+    RETURN 80 + (20 * AOSO_HUD_SCALE).
+}
+
+FUNCTION aoso_hud_skin_apply {
+    PARAMETER g.
+    LOCAL fs IS aoso_hud_scale_fs().
+    SET g:SKIN:LABEL:FONTSIZE TO fs.
+    SET g:SKIN:BUTTON:FONTSIZE TO fs.
+    SET g:SKIN:TOGGLE:FONTSIZE TO fs.
+    SET g:SKIN:WINDOW:FONTSIZE TO fs.
+}
+
+FUNCTION aoso_hud_scale_walk {
+    PARAMETER box.
+    PARAMETER fs.
+    LOCAL q IS LIST(box).
+    LOCAL i IS 0.
+    UNTIL i >= q:LENGTH {
+        LOCAL w IS q[i].
+        SET i TO i + 1.
+        SET w:STYLE:FONTSIZE TO fs.
+        IF w:HASSUFFIX("WIDGETS") {
+            FOR child IN w:WIDGETS { q:ADD(child). }
+        }
+    }
+}
+
+FUNCTION aoso_hud_apply_scale {
+    IF NOT AOSO_HUD_GUI:ISTYPE("GUI") { RETURN. }
+    LOCAL g IS AOSO_HUD_GUI.
+    LOCAL fs IS aoso_hud_scale_fs().
+    LOCAL wid IS aoso_hud_scale_width().
+    aoso_hud_skin_apply(g).
+    SET g:STYLE:WIDTH TO wid.
+    aoso_hud_scale_walk(g, fs).
+    IF AOSO_HUD_HDR_TITLE:ISTYPE("LABEL") {
+        SET AOSO_HUD_HDR_TITLE:TEXT TO "<b><size=" + (fs + 4) + "><color=#7EC8FF>AOSO</color></size>  MISSION COMPUTER</b>".
+    }
+    aoso_hud_set("chrome_pct", "" + aoso_hud_scale_pct() + "%").
+}
+
+FUNCTION aoso_hud_scale_down {
+    IF AOSO_HUD_SCALE <= 0 { RETURN. }
+    SET AOSO_HUD_SCALE TO AOSO_HUD_SCALE - 1.
+    aoso_hud_apply_scale().
+    aoso_hud_event_push("INFO", "scale " + aoso_hud_scale_pct() + "%").
+}
+
+FUNCTION aoso_hud_scale_up {
+    IF AOSO_HUD_SCALE >= 4 { RETURN. }
+    SET AOSO_HUD_SCALE TO AOSO_HUD_SCALE + 1.
+    aoso_hud_apply_scale().
+    aoso_hud_event_push("INFO", "scale " + aoso_hud_scale_pct() + "%").
+}
+
+FUNCTION aoso_hud_back {
+    IF AOSO_HUD_COMPACT { aoso_hud_set_compact(FALSE). }
+    IF AOSO_HUD_HIST:LENGTH = 0 {
+        aoso_hud_show_page("FLT", FALSE).
+        RETURN.
+    }
+    LOCAL i IS AOSO_HUD_HIST:LENGTH - 1.
+    LOCAL prev IS AOSO_HUD_HIST[i].
+    AOSO_HUD_HIST:REMOVE(i).
+    aoso_hud_show_page(prev, FALSE).
+}
+
+FUNCTION aoso_hud_home {
+    IF AOSO_HUD_COMPACT { aoso_hud_set_compact(FALSE). }
+    SET AOSO_HUD_HIST TO LIST().
+    aoso_hud_show_page("FLT", FALSE).
+}
+
+FUNCTION aoso_hud_set_compact {
+    PARAMETER on.
+    SET AOSO_HUD_COMPACT TO on.
+    IF AOSO_HUD_BODY:ISTYPE("BOX") {
+        SET AOSO_HUD_BODY:VISIBLE TO NOT on.
+    }
+    IF AOSO_HUD_BTN_X:ISTYPE("BUTTON") {
+        IF on { SET AOSO_HUD_BTN_X:TEXT TO "OPEN". }
+        ELSE { SET AOSO_HUD_BTN_X:TEXT TO "X". }
+    }
+}
+
+FUNCTION aoso_hud_toggle_compact {
+    aoso_hud_set_compact(NOT AOSO_HUD_COMPACT).
+    IF AOSO_HUD_COMPACT {
+        aoso_hud_event_push("INFO", "HUD collapsed").
+    } ELSE {
+        aoso_hud_event_push("INFO", "HUD expanded").
+    }
 }
 
 FUNCTION aoso_hud_gui_build_flight {
@@ -275,20 +396,40 @@ FUNCTION aoso_hud_fd_cb_land { PARAMETER on. aoso_hud_fd_set("LAND", on). aoso_h
 
 FUNCTION aoso_hud_gui_init {
     aoso_hud_gui_dispose().
-    LOCAL g IS GUI(460).
+    LOCAL g IS GUI(aoso_hud_scale_width()).
     SET g:X TO 20.
     SET g:Y TO 60.
     SET g:DRAGGABLE TO TRUE.
+    aoso_hud_skin_apply(g).
     SET AOSO_HUD_GUI TO g.
 
     LOCAL hdr IS g:ADDLABEL("<b><size=16><color=#7EC8FF>AOSO</color></size>  MISSION COMPUTER</b>").
     SET hdr:STYLE:HSTRETCH TO TRUE.
+    SET AOSO_HUD_HDR_TITLE TO hdr.
     aoso_hud_lab(g, "hdr_sys", "SYS  NOMINAL").
     aoso_hud_lab(g, "hdr_twin", "TWIN  -").
     aoso_hud_lab(g, "hdr_do", "DOING  -").
     aoso_hud_lab(g, "hdr_dt", "").
 
-    LOCAL modes IS g:ADDHLAYOUT().
+    LOCAL chrome IS g:ADDHLAYOUT().
+    LOCAL b_back IS chrome:ADDBUTTON("BACK").
+    SET b_back:ONCLICK TO aoso_hud_back@.
+    LOCAL b_home IS chrome:ADDBUTTON("HOME").
+    SET b_home:ONCLICK TO aoso_hud_home@.
+    LOCAL b_minus IS chrome:ADDBUTTON("A-").
+    SET b_minus:ONCLICK TO aoso_hud_scale_down@.
+    aoso_hud_lab(chrome, "chrome_pct", "100%").
+    SET AOSO_HUD_W["chrome_pct"]:STYLE:HSTRETCH TO FALSE.
+    LOCAL b_plus IS chrome:ADDBUTTON("A+").
+    SET b_plus:ONCLICK TO aoso_hud_scale_up@.
+    LOCAL b_x IS chrome:ADDBUTTON("X").
+    SET b_x:ONCLICK TO aoso_hud_toggle_compact@.
+    SET AOSO_HUD_BTN_X TO b_x.
+
+    LOCAL body IS g:ADDVLAYOUT().
+    SET AOSO_HUD_BODY TO body.
+
+    LOCAL modes IS body:ADDHLAYOUT().
     LOCAL b_tac IS modes:ADDBUTTON("TAC").
     SET b_tac:ONCLICK TO aoso_hud_mode_tactical@.
     LOCAL b_gui IS modes:ADDBUTTON("GUI").
@@ -298,7 +439,7 @@ FUNCTION aoso_hud_gui_init {
     LOCAL b_fd IS modes:ADDCHECKBOX("FD", TRUE).
     SET b_fd:ONTOGGLE TO aoso_hud_fd_cb_master@.
 
-    LOCAL fdrow IS g:ADDHLAYOUT().
+    LOCAL fdrow IS body:ADDHLAYOUT().
     LOCAL c1 IS fdrow:ADDCHECKBOX("PRO", TRUE).
     SET c1:ONTOGGLE TO aoso_hud_fd_cb_pro@.
     LOCAL c1b IS fdrow:ADDCHECKBOX("RET", FALSE).
@@ -314,13 +455,13 @@ FUNCTION aoso_hud_gui_init {
     LOCAL c4 IS fdrow:ADDCHECKBOX("LAND", FALSE).
     SET c4:ONTOGGLE TO aoso_hud_fd_cb_land@.
 
-    LOCAL row1 IS g:ADDHLAYOUT().
+    LOCAL row1 IS body:ADDHLAYOUT().
     aoso_hud_add_tab(row1, "FLT", "FLT").
     aoso_hud_add_tab(row1, "NAV", "NAV").
     aoso_hud_add_tab(row1, "MSN", "MSN").
     aoso_hud_add_tab(row1, "VEH", "VEH").
     aoso_hud_add_tab(row1, "PRP", "PRP").
-    LOCAL row2 IS g:ADDHLAYOUT().
+    LOCAL row2 IS body:ADDHLAYOUT().
     aoso_hud_add_tab(row2, "LND", "LND").
     aoso_hud_add_tab(row2, "STG", "STG").
     aoso_hud_add_tab(row2, "SYS", "SYS").
@@ -328,7 +469,7 @@ FUNCTION aoso_hud_gui_init {
     aoso_hud_add_tab(row2, "LOG", "LOG").
     aoso_hud_add_tab(row2, "DBG", "DBG").
 
-    SET AOSO_HUD_STACK TO g:ADDVLAYOUT().
+    SET AOSO_HUD_STACK TO body:ADDVLAYOUT().
     aoso_hud_gui_build_flight(aoso_hud_add_page("FLT")).
     aoso_hud_gui_build_nav(aoso_hud_add_page("NAV")).
     aoso_hud_gui_build_mission(aoso_hud_add_page("MSN")).
@@ -341,7 +482,9 @@ FUNCTION aoso_hud_gui_init {
     aoso_hud_gui_build_log(aoso_hud_add_page("LOG")).
     aoso_hud_gui_build_dbg(aoso_hud_add_page("DBG")).
 
-    aoso_hud_show_page("FLT").
+    aoso_hud_apply_scale().
+    aoso_hud_set_compact(AOSO_HUD_COMPACT).
+    aoso_hud_show_page("FLT", FALSE).
     SET AOSO_HUD_GUI_ON TO TRUE.
     g:SHOW().
     aoso_hud_trace_log("GUI online").

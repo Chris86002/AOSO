@@ -189,7 +189,9 @@ FUNCTION aoso_hud_tick {
         aoso_hud_watch_alerts().
         aoso_hud_fd_tick(rates["fd"]).
         LOCAL want_twin IS FALSE.
-        IF AOSO_HUD_PAGE = "TWIN" { SET want_twin TO TRUE. }
+        IF AOSO_HUD_PAGE = "TWIN" {
+            IF NOT AOSO_HUD_COMPACT { SET want_twin TO TRUE. }
+        }
         IF rates["lo"] > 0 {
             IF TIME:SECONDS - AOSO_HUD_LAST_LO >= rates["lo"] { SET want_twin TO TRUE. }
         }
@@ -294,7 +296,9 @@ FUNCTION aoso_hud_debug_snap {
         "hud_dt", hud_dt,
         "hi_age", now - AOSO_HUD_LAST_HI,
         "md_age", now - AOSO_HUD_LAST_MD,
-        "lo_age", now - AOSO_HUD_LAST_LO
+        "lo_age", now - AOSO_HUD_LAST_LO,
+        "scale", aoso_hud_scale_pct(),
+        "compact", AOSO_HUD_COMPACT
     ).
 }
 
