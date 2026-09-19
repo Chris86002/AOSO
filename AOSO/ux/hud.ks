@@ -217,7 +217,7 @@ FUNCTION aoso_hud_init {
 }
 
 FUNCTION aoso_hud_register_task {
-    PARAMETER interval_s IS 0.1.
+    PARAMETER interval_s IS 0.05.
     aoso_hud_init().
     aoso_sched_add("hud", interval_s, aoso_hud_tick@).
 }

@@ -32,12 +32,12 @@ FUNCTION aoso_hud_rates {
     LOCAL lvl IS 0.
     IF DEFINED AOSO_CPU_LEVEL { SET lvl TO AOSO_CPU_LEVEL. }
     IF lvl >= 3 {
-        RETURN LEXICON("hi", 0.45, "md", 2.5, "lo", 10, "gui", FALSE, "fd", FALSE, "term", TRUE).
+        RETURN LEXICON("hi", 0.2, "md", 2.5, "lo", 10, "gui", TRUE, "fd", FALSE, "term", TRUE).
     }
     IF lvl >= 2 {
-        RETURN LEXICON("hi", 0.22, "md", 1.0, "lo", 5, "gui", TRUE, "fd", FALSE, "term", TRUE).
+        RETURN LEXICON("hi", 0.1, "md", 1.0, "lo", 5, "gui", TRUE, "fd", FALSE, "term", TRUE).
     }
-    RETURN LEXICON("hi", 0.12, "md", 0.5, "lo", 2.5, "gui", TRUE, "fd", TRUE, "term", TRUE).
+    RETURN LEXICON("hi", 0.05, "md", 0.4, "lo", 2.5, "gui", TRUE, "fd", TRUE, "term", TRUE).
 }
 
 FUNCTION aoso_hud_local_g {
@@ -50,14 +50,14 @@ FUNCTION aoso_hud_collect_flight {
     LOCAL f IS AOSO_HUD_DATA["flight"].
     SET f["alt"] TO ALTITUDE.
     LOCAL radar IS ALT:RADAR.
-    LOCAL show_radar IS FALSE.
-    IF radar > 0 {
-        IF radar < ALTITUDE * 0.6 { SET show_radar TO TRUE. }
-    }
-    IF SHIP:STATUS = "FLYING" { SET show_radar TO TRUE. }
-    IF SHIP:STATUS = "LANDED" { SET show_radar TO TRUE. }
     SET f["radar"] TO radar.
-    SET f["show_radar"] TO show_radar.
+    SET f["show_radar"] TO FALSE.
+    IF radar > 0 {
+        IF ABS(ALTITUDE - radar) > 40 {
+            IF radar < 25000 { SET f["show_radar"] TO TRUE. }
+        }
+    }
+    IF SHIP:STATUS = "LANDED" { SET f["show_radar"] TO TRUE. }
     SET f["vs"] TO VERTICALSPEED.
     SET f["gs"] TO SHIP:GROUNDSPEED.
     SET f["srf"] TO SHIP:VELOCITY:SURFACE:MAG.
@@ -554,9 +554,16 @@ FUNCTION aoso_hud_collect {
         SET AOSO_HUD_LAST_LO TO now.
         RETURN rates.
     }
-    IF (now - AOSO_HUD_LAST_HI) >= rates["hi"] {
-        aoso_hud_collect_flight().
-        SET AOSO_HUD_LAST_HI TO now.
+    aoso_hud_collect_flight().
+    IF AOSO_HUD_PAGE = "FLT" {
+        aoso_hud_collect_orbit().
+        aoso_hud_refresh_context().
+    } ELSE {
+        IF (now - AOSO_HUD_LAST_HI) >= rates["hi"] {
+            aoso_hud_collect_orbit().
+            aoso_hud_refresh_context().
+            SET AOSO_HUD_LAST_HI TO now.
+        }
     }
     IF (now - AOSO_HUD_LAST_MD) >= rates["md"] {
         aoso_hud_collect_orbit().

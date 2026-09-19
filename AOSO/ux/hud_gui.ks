@@ -22,6 +22,11 @@ FUNCTION aoso_hud_set {
     }
     SET AOSO_HUD_LAST[key] TO txt.
     SET AOSO_HUD_W[key]:TEXT TO txt.
+    IF txt = "" {
+        SET AOSO_HUD_W[key]:VISIBLE TO FALSE.
+    } ELSE {
+        SET AOSO_HUD_W[key]:VISIBLE TO TRUE.
+    }
 }
 
 FUNCTION aoso_hud_lab {
@@ -395,9 +400,12 @@ FUNCTION aoso_hud_gui_upd_flight {
     LOCAL o IS AOSO_HUD_DATA["orbit"].
     LOCAL sys IS AOSO_HUD_DATA["systems"].
     LOCAL ctx IS AOSO_HUD_CTX.
-    aoso_hud_set("flt_body", "BODY  " + f["body"] + "   " + f["status"] + "   " + ctx).
+    LOCAL mode_txt IS ctx.
+    IF mode_txt = "IDLE" { SET mode_txt TO f["status"]. }
+    aoso_hud_set("flt_body", "BODY  " + f["body"] + "   " + mode_txt).
+
     IF ctx = "LANDING" {
-        aoso_hud_set("flt_alt", "RAD  " + aoso_hud_km(AOSO_HUD_DATA["landing"]["radar"]) + "   ALT " + aoso_hud_km(f["alt"]) + "   VS " + ROUND(f["vs"], 1)).
+        aoso_hud_set("flt_alt", "RAD  " + aoso_hud_km(AOSO_HUD_DATA["landing"]["radar"]) + "   VS " + ROUND(f["vs"], 1) + " m/s").
         aoso_hud_set("flt_spd", "HSPD " + ROUND(f["gs"], 1) + "  SRF " + ROUND(f["srf"], 1) + " m/s").
         aoso_hud_set("flt_att", "PITCH " + ROUND(f["pitch"], 1) + "  ROLL " + ROUND(f["roll"], 1)).
         aoso_hud_set("flt_orb", "").
@@ -405,21 +413,41 @@ FUNCTION aoso_hud_gui_upd_flight {
         LOCAL radar_txt IS "".
         IF f["show_radar"] { SET radar_txt TO "  RAD " + aoso_hud_km(f["radar"]). }
         aoso_hud_set("flt_alt", "ALT  " + aoso_hud_km(f["alt"]) + radar_txt + "   VS " + ROUND(f["vs"], 1) + " m/s").
-        aoso_hud_set("flt_spd", "ORB " + ROUND(f["orb"], 0) + "  SRF " + ROUND(f["srf"], 0) + "  GS " + ROUND(f["gs"], 0) + " m/s").
+        IF f["in_atm"] {
+            aoso_hud_set("flt_spd", "SRF " + ROUND(f["srf"], 0) + "  GS " + ROUND(f["gs"], 0) + " m/s").
+        } ELSE {
+            aoso_hud_set("flt_spd", "ORB " + ROUND(f["orb"], 0) + "  SRF " + ROUND(f["srf"], 0) + " m/s").
+        }
         aoso_hud_set("flt_att", "HDG " + ROUND(f["hdg"], 0) + "  PITCH " + ROUND(f["pitch"], 1) + "  ROLL " + ROUND(f["roll"], 1)).
-        LOCAL ap_txt IS aoso_hud_km(o["ap"]).
-        IF o["hyper"] { SET ap_txt TO "hyper". }
-        aoso_hud_set("flt_orb", "AP " + ap_txt + "  PE " + aoso_hud_km(o["pe"]) + "  INC " + ROUND(o["inc"], 1) + "  e " + ROUND(o["ecc"], 3)).
+        LOCAL orb_line IS "AP " + aoso_hud_km(o["ap"]).
+        IF o["pe"] > 0 {
+            SET orb_line TO orb_line + "  PE " + aoso_hud_km(o["pe"]).
+        }
+        IF NOT f["in_atm"] {
+            SET orb_line TO orb_line + "  INC " + ROUND(o["inc"], 1) + "  e " + ROUND(o["ecc"], 3).
+        }
+        IF o["hyper"] { SET orb_line TO "AP  hyperbolic". }
+        aoso_hud_set("flt_orb", orb_line).
     }
+
     LOCAL twr_line IS "TWR " + ROUND(f["twr"], 2) + "  THR " + ROUND(f["throttle"] * 100, 0) + "%  MASS " + ROUND(f["mass"], 2) + " t  STG " + f["stage"].
-    IF ctx = "LAUNCH" {
-        IF f["in_atm"] { SET twr_line TO twr_line + "  Q " + ROUND(f["q"], 3) + "  AoA " + ROUND(f["aoa"], 1). }
-    }
+    IF f["in_atm"] { SET twr_line TO twr_line + "  Q " + ROUND(f["q"], 3) + "  AoA " + ROUND(f["aoa"], 1). }
     aoso_hud_set("flt_twr", twr_line).
-    aoso_hud_set("flt_guid", "GUIDANCE     " + aoso_hud_st_glyph(sys["guid"])).
-    aoso_hud_set("flt_steer", "STEERING     " + aoso_hud_st_glyph(sys["steer"]) + "  " + sys["steer_mode"]).
-    aoso_hud_set("flt_thr", "THROTTLE     " + aoso_hud_st_glyph(sys["thr"]) + "  " + sys["thr_mode"]).
-    aoso_hud_set("flt_nav", "NAVIGATION   " + aoso_hud_st_glyph(sys["nav"])).
+
+    LOCAL doing IS f["doing"].
+    IF doing = "" { SET doing TO aoso_hud_doing_text(). }
+    IF doing = "idle" { SET doing TO "". }
+    IF doing <> "" { aoso_hud_set("flt_guid", doing). }
+    ELSE { aoso_hud_set("flt_guid", ""). }
+
+    aoso_hud_set("flt_steer", "STEER  " + sys["steer_mode"] + "   THR  " + sys["thr_mode"]).
+    LOCAL flags IS "".
+    IF f["sas"] { SET flags TO flags + "SAS  ". }
+    IF f["rcs"] { SET flags TO flags + "RCS  ". }
+    IF f["gear"] { SET flags TO flags + "GEAR  ". }
+    SET flags TO flags + f["warp"].
+    aoso_hud_set("flt_thr", flags).
+    aoso_hud_set("flt_nav", "").
     aoso_hud_set("flt_pri", aoso_hud_flight_priority_txt()).
 }
 
@@ -431,34 +459,35 @@ FUNCTION aoso_hud_flight_priority_txt {
     LOCAL lnd IS AOSO_HUD_DATA["landing"].
     LOCAL tgt IS AOSO_HUD_DATA["target"].
     IF ctx = "LAUNCH" {
-        RETURN "FOCUS  TWR " + ROUND(f["twr"], 2) + "  Q " + ROUND(f["q"], 3) + "  AoA " + ROUND(f["aoa"], 1) + "  STG " + f["stage"] + "  THR " + ROUND(f["throttle"] * 100, 0) + "%".
+        RETURN "".
     }
     IF ctx = "BURN" {
         LOCAL left IS o["node_dv"].
         IF o["burning"] { SET left TO o["burn_left"]. }
-        RETURN "FOCUS  BURN " + ROUND(left, 1) + " m/s  T-" + aoso_hud_eta(o["node_eta"]) + "  THR " + ROUND(f["throttle"] * 100, 0) + "%".
+        RETURN "BURN  " + ROUND(left, 1) + " m/s  T-" + aoso_hud_eta(o["node_eta"]).
     }
     IF ctx = "TRANSFER" {
-        LOCAL ttxt IS "NO TARGET".
-        IF tgt["has"] { SET ttxt TO tgt["name"] + " " + aoso_hud_km(tgt["dist"]) + "  rel " + ROUND(tgt["rel"], 0) + " m/s". }
-        RETURN "FOCUS  " + ttxt + "  dV " + ROUND(rsrc["mission_dv"], 0).
+        LOCAL ttxt IS "".
+        IF tgt["has"] { SET ttxt TO tgt["name"] + "  " + aoso_hud_km(tgt["dist"]) + "  rel " + ROUND(tgt["rel"], 0) + " m/s". }
+        IF ttxt = "" { RETURN "". }
+        RETURN ttxt.
     }
     IF ctx = "LANDING" {
-        RETURN "FOCUS  RAD " + aoso_hud_km(lnd["radar"]) + "  VS " + ROUND(f["vs"], 1) + "  HS " + ROUND(f["gs"], 1) + "  trig " + ROUND(lnd["trig"], 0) + " m".
+        RETURN "SUICIDE  trig " + ROUND(lnd["trig"], 0) + " m".
     }
     IF ctx = "DOCK" {
-        IF tgt["has"] { RETURN "FOCUS  " + tgt["name"] + "  " + aoso_hud_km(tgt["dist"]) + "  rel " + ROUND(tgt["rel"], 1) + " m/s". }
-        RETURN "FOCUS  TARGET UNAVAILABLE".
+        IF tgt["has"] { RETURN tgt["name"] + "  " + aoso_hud_km(tgt["dist"]) + "  rel " + ROUND(tgt["rel"], 1) + " m/s". }
+        RETURN "".
     }
     IF ctx = "REFUEL" {
         LOCAL ore IS 0.
         IF rsrc:HASKEY("ore") { SET ore TO rsrc["ore"]. }
-        RETURN "FOCUS  ORE " + ROUND(ore, 0) + "%  LF " + ROUND(rsrc["lf"], 0) + "%  OX " + ROUND(rsrc["ox"], 0) + "%  EC " + ROUND(rsrc["ec"], 0) + "%".
+        RETURN "ORE " + ROUND(ore, 0) + "%  LF " + ROUND(rsrc["lf"], 0) + "%  OX " + ROUND(rsrc["ox"], 0) + "%".
     }
     IF ctx = "RETURN" {
-        RETURN "FOCUS  HOME  dV " + ROUND(rsrc["mission_dv"], 0) + "  PE " + aoso_hud_km(o["pe"]).
+        RETURN "HOME  dV " + ROUND(rsrc["mission_dv"], 0) + " m/s".
     }
-    RETURN "FOCUS  AP " + aoso_hud_km(o["ap"]) + "  PE " + aoso_hud_km(o["pe"]) + "  " + f["body"].
+    RETURN "".
 }
 
 FUNCTION aoso_hud_gui_upd_nav {
