@@ -1,13 +1,37 @@
 # AOSO v2.2 architecture
 
 AOSO is still a set of kOS FSMs (ascent, goto, descent, tour, …). v2
-did not replace them. v2.2 puts a single structural model and a
-verify/authority layer under those machines.
+did not replace them. v2.2 puts one structural model, one projected-state
+ledger, and a verify/authority layer under those machines.
 
 ```
-OBSERVE → TOPOLOGY → CAPABILITY → CERTIFY → PLAN
-→ DECISION → ACTION → AUTHORITY/CONTROLLER → VERIFY → RESULT
-→ LEARN → RE-CERTIFY → REPLAN
+OBSERVE
+   ↓
+TOPOLOGY / WORLD STATE
+   ↓
+CAPABILITIES
+   ↓
+PROJECT FUTURE STATE
+   ↓
+FEASIBILITY
+   ↓
+PLAN
+   ↓
+DECISION
+   ↓
+ACTION
+   ↓
+CONTROLLER  (existing FSMs; brain never flies)
+   ↓
+VERIFY RESULT
+   ↓
+MEASURE
+   ↓
+LEARN
+   ↓
+UPDATE MODEL
+   ↓
+REPLAN IF NEEDED
 ```
 
 ## Loop
@@ -15,22 +39,58 @@ OBSERVE → TOPOLOGY → CAPABILITY → CERTIFY → PLAN
 | Step | What | Where |
 |---|---|---|
 | OBSERVE | Body, situation, fuel, EC, mass, nodes | `aoso_ctx_refresh_env`, `observe.ks` |
-| TOPOLOGY | Structure, hw, stage groups, next drop | `topology.ks` |
+| TOPOLOGY | Structure, hw, stage groups, prop roles | `topology.ks` |
+| DYNAMIC | Fuel/mass in-place (`dyn_rev`) | `aoso_topo_refresh_dynamic` |
 | UNDERSTAND | Dirty flags + vehicle/budget refresh | `brain.ks` `aoso_brain_refresh_dirty` |
-| CERTIFY / ASSURE | Can we attempt / continue / depart | `certify.ks`, `assurance.ks` |
+| CAPABILITIES | Live TWR + topology-backed stage dV | `capabilities.ks` |
+| PROJECT | Sequential leftover ledger | `mission/project.ks` |
+| FEASIBILITY | FEASIBLE / ORBIT_ONLY / SKIP from seq | `feasibility.ks` |
+| CERTIFY / ASSURE | Attempt / continue / depart | `certify.ks`, `assurance.ks` |
 | PREDICT | Analytical cost × bounded experience | `aoso_xp_apply` / `aoso_xp_predict` |
-| DECIDE | Feasibility, scores, route, nodes | `feasibility.ks`, `score.ks`, `route.ks`, porkchop |
-| EXECUTE | Existing FSMs. Brain never flies. | `ascent`, `goto`, `maneuver`, `descent` |
-| AUTHORITY | Who may command steering/throttle/warp | `authority.ks` |
+| DECIDE | Scores, route, nodes | `score.ks`, `route.ks`, porkchop |
+| ACTION | Identity on `AOSO_ACTION_CUR` | `result.ks` `aoso_action_*` |
+| EXECUTE | Existing FSMs | `ascent`, `goto`, `maneuver`, `descent` |
+| AUTHORITY | Who may command steering/throttle/warp/stage | `authority.ks`, `aoso_staging_do` |
 | MEASURE | Heartbeats + **verified** action results | `verify.ks`, `aoso_hb_set`, `aoso_result_emit` |
 | LEARN | `actual/predicted` into XP models | `experience.ks` |
 | UPDATE MODELS | Dirty feas/route after XP or profile | events `MODEL_UPDATED`, `PROFILE_UPDATED` |
-| REPLAN | Debounced `aoso_plan_build` when quiet | `aoso_brain_do_replan` |
+| REPLAN | Debounced `aoso_plan_build` when quiet | `aoso_brain_do_replan`, `aoso_plan_stale` |
+
+## Source of truth (one writer per fact)
+
+| Fact | Owner |
+|---|---|
+| Vessel structure | topology |
+| Dynamic fuel / mass in groups | topology `refresh_dynamic` |
+| Stage performance / live TWR | capabilities (from topology + live engines) |
+| Mission costs | projected-state / feasibility |
+| Strategic plan | planner |
+| Control ownership | authority |
+| Action success | verifier |
+| Observed outcome | result |
+| Learned correction | experience |
+| Current snapshot | context |
+| Replan policy | brain |
+
+## Duplicate-path verdict
+
+| Path | Verdict |
+|---|---|
+| `topology.ks` DECOUPLEDIN groups | KEEP — structural SSOT |
+| `capabilities` independent part regroup | MIGRATE — uses `AOSO_TOPO_GROUPS` when populated; part-walk FALLBACK ONLY |
+| `profile_surface_twr` all-engines | KEEP — pad/live launch TWR, not future Tylo |
+| `aoso_caps_surface_twr_for_config` | KEEP — future LANDER/CORE/BOOSTER TWR |
+| `experience.ks` | KEEP — operational prediction correction |
+| `ascent_opt.ks` | KEEP — specialized start-speed search |
+| `learn.ks` | DEMOTE — leftover-LF diary + XP circ migration source. Do not feed feas. |
+| `parts.ks` engine lists | KEEP — live IGNITION/FLAMEOUT census; roles owned by topology |
+| Independent hop_budget vs each cost | REMOVE — sequential `aoso_project_seq` |
+| Tank Ore = biome empty | REMOVE — stall on no fuel/ore progress |
 
 ## Think windows
 
-Expensive work (porkchop, route, feas catalog) only runs when the ship
-can sit still:
+Expensive work (porkchop, route, feas catalog, `aoso_project_route`)
+only runs when the ship can sit still:
 
 - **Pad / landed / splashed** — calculate before launch if needed.
 - **Bound orbit** with no burn in progress and no node inside
@@ -42,6 +102,9 @@ can sit still:
 window, then calculates anyway. Porkchop calls it **once** at the start
 of the grid, not per cell. Mid-course waits only if SOI is still more
 than the lead time away.
+
+Do not full-rebuild topology, matrix, route, XP aggregation, or JSON
+persistence inside critical flight loops.
 
 ## Configuration identity
 
@@ -72,3 +135,5 @@ Public function names, existing FSMs, the scheduler run-loop, and
 `ascent_opt` stay. The brain is another scheduled task. It can request
 a replan; it cannot steal steering or throttle. Authority is who may
 command; verify is whether the action worked.
+`Update-AOSO.ps1` is not part of this architecture and must not be
+edited on this branch unless the user asks.

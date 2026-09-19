@@ -42,8 +42,47 @@ FUNCTION aoso_refuel_targets_full {
 }
 
 // TRUE once Ore has run out, i.e. there is nothing left worth mining.
+// Tank Ore near zero is NOT biome-empty: a drill+converter can consume
+// Ore as fast as it is produced. Progress is fuel/ore movement over time.
 FUNCTION aoso_refuel_ore_depleted {
-    RETURN aoso_resource_amount("Ore") <= aoso_config_get("REFUEL_ORE_MIN_AMOUNT", 0.01).
+    RETURN FALSE.
+}
+
+FUNCTION aoso_refuel_classify {
+    PARAMETER start_pct.
+    PARAMETER end_pct.
+    PARAMETER target_pct.
+    LOCAL gain IS end_pct - start_pct.
+    IF end_pct >= target_pct - 1 { RETURN "SUCCESS". }
+    IF gain >= 2 { RETURN "PARTIAL". }
+    RETURN "FAILED".
+}
+
+FUNCTION aoso_refuel_stalled {
+    PARAMETER data.
+    IF NOT data:HASKEY("last_progress_at") { RETURN FALSE. }
+    LOCAL stall_s IS aoso_config_get("REFUEL_STALL_S", 90).
+    IF TIME:SECONDS - data["last_progress_at"] < stall_s { RETURN FALSE. }
+    RETURN TRUE.
+}
+
+FUNCTION aoso_refuel_note_progress {
+    PARAMETER data.
+    LOCAL fuel_now IS aoso_resource_amount("LiquidFuel").
+    LOCAL ore_now IS aoso_resource_amount("Ore").
+    LOCAL moved IS FALSE.
+    IF data:HASKEY("last_fuel") {
+        IF fuel_now > data["last_fuel"] + 0.05 { SET moved TO TRUE. }
+    }
+    IF data:HASKEY("last_ore") {
+        IF ABS(ore_now - data["last_ore"]) > 0.05 { SET moved TO TRUE. }
+    }
+    IF moved {
+        SET data["last_progress_at"] TO TIME:SECONDS.
+        SET data["last_fuel"] TO fuel_now.
+        SET data["last_ore"] TO ore_now.
+    }
+    RETURN moved.
 }
 
 FUNCTION aoso_refuel_on_abort {
@@ -52,6 +91,11 @@ FUNCTION aoso_refuel_on_abort {
     SET ISRU TO FALSE.
     IF aoso_vessel_get("has_radiators", FALSE) { SET RADIATORS TO FALSE. }
     SET DEPLOYDRILLS TO FALSE.
+    LOCAL res_a IS aoso_result_make("REFUEL", "ABORTED", "safety interruption").
+    IF data:HASKEY("start_fuel_pct") { SET res_a["predicted_fuel"] TO data["target_pct"] - data["start_fuel_pct"]. }
+    SET res_a["actual_fuel"] TO aoso_resource_pct("LiquidFuel").
+    IF data:HASKEY("start_fuel_pct") { SET res_a["fuel_used"] TO res_a["actual_fuel"] - data["start_fuel_pct"]. }
+    aoso_result_emit(res_a).
     aoso_state_transition(AOSO_REFUEL, "ABORTED").
 }
 
@@ -114,12 +158,15 @@ FUNCTION aoso_refuel_harvest_execute {
         }
     }
     aoso_warp_set_physics_cruise().
-    IF aoso_refuel_ore_depleted() {
-        aoso_log_warn("REFUEL", "Ore depleted before targets were full.").
+    aoso_refuel_note_progress(data).
+    IF aoso_refuel_stalled(data) {
+        aoso_log_warn("REFUEL", "Harvest stalled (no fuel/ore progress).").
+        SET data["stow_kind"] TO "stalled".
         aoso_state_transition(AOSO_REFUEL, "STOW").
         RETURN.
     }
     IF aoso_refuel_targets_full(data["targets"]) {
+        SET data["stow_kind"] TO "full".
         aoso_state_transition(AOSO_REFUEL, "STOW").
     }
     LOCAL fuel_p IS aoso_resource_pct("LiquidFuel") / 100.
@@ -132,9 +179,19 @@ FUNCTION aoso_refuel_stow_entry {
     SET ISRU TO FALSE.
     IF aoso_vessel_get("has_radiators", FALSE) { SET RADIATORS TO FALSE. }
     SET DEPLOYDRILLS TO FALSE.
-    aoso_log_info("REFUEL", "Harvest complete; drills/converters stowed.").
-    LOCAL res_r IS aoso_result_make("REFUEL", "SUCCESS", "stow").
-    SET res_r["actual_fuel"] TO aoso_resource_pct("LiquidFuel").
+    LOCAL start_pct IS 0.
+    LOCAL target_pct IS aoso_config_get("REFUEL_TARGET_PCT", 95).
+    IF data:HASKEY("start_fuel_pct") { SET start_pct TO data["start_fuel_pct"]. }
+    IF data:HASKEY("target_pct") { SET target_pct TO data["target_pct"]. }
+    LOCAL end_pct IS aoso_resource_pct("LiquidFuel").
+    LOCAL stow_st IS aoso_refuel_classify(start_pct, end_pct, target_pct).
+    LOCAL why IS "stow".
+    IF data:HASKEY("stow_kind") { SET why TO data["stow_kind"]. }
+    aoso_log_info("REFUEL", "Harvest " + stow_st + " (" + why + ") " + ROUND(start_pct, 0) + "% -> " + ROUND(end_pct, 0) + "% target " + ROUND(target_pct, 0) + "%.").
+    LOCAL res_r IS aoso_result_make("REFUEL", stow_st, why).
+    SET res_r["predicted_fuel"] TO target_pct - start_pct.
+    SET res_r["actual_fuel"] TO end_pct.
+    SET res_r["fuel_used"] TO end_pct - start_pct.
     aoso_result_emit(res_r).
     aoso_state_transition(AOSO_REFUEL, "DONE").
 }
@@ -172,7 +229,21 @@ FUNCTION aoso_refuel_start {
 
     LOCAL pct IS aoso_config_get("REFUEL_TARGET_PCT", 95).
     SET pct TO aoso_refuel_needed_pct().
-    SET AOSO_REFUEL["data"] TO LEXICON("targets", target_names, "target_pct", pct, "ec_paused", FALSE).
+    LOCAL start_pct IS aoso_resource_pct("LiquidFuel").
+    SET AOSO_REFUEL["data"] TO LEXICON(
+        "targets", target_names,
+        "target_pct", pct,
+        "ec_paused", FALSE,
+        "start_fuel_pct", start_pct,
+        "last_fuel", aoso_resource_amount("LiquidFuel"),
+        "last_ore", aoso_resource_amount("Ore"),
+        "last_progress_at", TIME:SECONDS,
+        "stow_kind", "ok"
+    ).
+    LOCAL did IS aoso_decide("REFUEL", "start", SHIP:BODY:NAME, "target " + pct + "%", "start=" + ROUND(start_pct, 0), pct - start_pct).
+    LOCAL act IS aoso_action_create(did, "REFUEL", SHIP:BODY:NAME, 0).
+    SET act["predicted_fuel"] TO pct - start_pct.
+    aoso_action_begin(act).
     aoso_state_transition(AOSO_REFUEL, "DEPLOY").
     aoso_log_info("REFUEL", "Refuel sequence started, target " + pct + "%.").
     RETURN TRUE.

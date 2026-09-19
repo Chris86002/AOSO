@@ -53,13 +53,37 @@ FUNCTION aoso_cert_eval {
     IF mission_kind = "grand_tour" {
         LOCAL eve_twr IS aoso_profile_surface_twr("Eve").
         LOCAL tylo_twr IS aoso_profile_surface_twr("Tylo").
+        IF DEFINED AOSO_CAPS {
+            SET eve_twr TO aoso_caps_surface_twr_for_config("LANDER", "Eve", 0).
+            SET tylo_twr TO aoso_caps_surface_twr_for_config("LANDER", "Tylo", 0).
+        }
         LOCAL min_twr IS aoso_config_get("TOUR_MIN_LAND_TWR", 1.4).
-        IF eve_twr < 1.6 { warn:ADD("Eve surface TWR " + ROUND(eve_twr, 2) + " — Eve landing not certified"). }
-        IF tylo_twr < min_twr { warn:ADD("Tylo surface TWR " + ROUND(tylo_twr, 2) + " — Tylo landing is a bottleneck"). }
+        IF eve_twr < 1.05 { warn:ADD("Eve surface TWR " + ROUND(eve_twr, 2) + " — Eve landing not certified"). }
+        ELSE {
+            IF eve_twr < 1.6 { warn:ADD("Eve surface TWR " + ROUND(eve_twr, 2) + " — Eve landing not certified"). }
+        }
+        IF tylo_twr < 1.05 { warn:ADD("Tylo surface TWR " + ROUND(tylo_twr, 2) + " — Tylo landing is a bottleneck"). }
+        ELSE {
+            IF tylo_twr < min_twr { warn:ADD("Tylo surface TWR " + ROUND(tylo_twr, 2) + " — Tylo landing is a bottleneck"). }
+        }
         IF NOT ability["can_land"] { warn:ADD("no landing hardware — orbit-only tour"). }
         IF NOT ability["can_isru"] { warn:ADD("no ISRU — later hops use leftover fuel only"). }
         IF ability["heatshield"] < 1 { warn:ADD("no heat shield — Eve/Laythe/Kerbin entry is a risk"). }
         unk:ADD("window geometry at each hop is not certified until porkchop").
+        IF DEFINED AOSO_PROJECT_LAST {
+            IF AOSO_PROJECT_LAST:HASKEY("ok") {
+                IF NOT AOSO_PROJECT_LAST["ok"] {
+                    LOCAL weak_n IS "".
+                    IF AOSO_PROJECT_LAST:HASKEY("weakest") { SET weak_n TO AOSO_PROJECT_LAST["weakest"]. }
+                    warn:ADD("projected route fails at " + weak_n + " leftover " + ROUND(AOSO_PROJECT_LAST["min_margin"], 0) + " m/s").
+                }
+            }
+            IF AOSO_PROJECT_LAST:HASKEY("min_margin") {
+                IF AOSO_PROJECT_LAST["min_margin"] < 200 {
+                    warn:ADD("weakest remaining margin " + ROUND(AOSO_PROJECT_LAST["min_margin"], 0) + " m/s at " + AOSO_PROJECT_LAST["weakest"]).
+                }
+            }
+        }
     }
 
     IF SHIP:STATUS = "FLYING" { hard:ADD("cannot certify mid-ascent"). }
@@ -83,8 +107,14 @@ FUNCTION aoso_cert_eval {
         "uncertainties", unk,
         "ability", ability,
         "confidence", conf,
+        "weakest", "",
+        "min_margin", 0,
         "at", TIME:SECONDS
     ).
+    IF DEFINED AOSO_PROJECT_LAST {
+        IF AOSO_PROJECT_LAST:HASKEY("weakest") { SET report["weakest"] TO AOSO_PROJECT_LAST["weakest"]. }
+        IF AOSO_PROJECT_LAST:HASKEY("min_margin") { SET report["min_margin"] TO AOSO_PROJECT_LAST["min_margin"]. }
+    }
     SET AOSO_CERT_LAST TO report.
     aoso_log_info("CERT", status_name + " " + mission_kind + " dv=" + ROUND(dv, 0) +
         " twr=" + ROUND(twr_now, 2) + " warn=" + warn:LENGTH + " hard=" + hard:LENGTH + ".").

@@ -123,7 +123,6 @@ FUNCTION aoso_brain_do_replan {
         aoso_ctx_clear_dirty("dirty_feas").
         aoso_ctx_clear_dirty("dirty_opp").
         aoso_ctx_clear_dirty("dirty_route").
-        aoso_ctx_mark_plan().
         aoso_event_publish("PLAN_UPDATED", "brain", reason).
         aoso_decide("BRAIN", "replan", reason, AOSO_BRAIN["replan_reason"], "dv=" + ROUND(aoso_budget_get("mission_dv", 0), 0)).
     }

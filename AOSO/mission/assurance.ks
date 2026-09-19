@@ -7,6 +7,13 @@ GLOBAL AOSO_ASSURE_LAST IS LEXICON().
 FUNCTION aoso_assure_weakest {
     LOCAL weakest IS "".
     LOCAL worst IS 99999.
+    IF DEFINED AOSO_PROJECT_LAST {
+        IF AOSO_PROJECT_LAST:HASKEY("weakest") {
+            IF AOSO_PROJECT_LAST["weakest"] <> "" {
+                RETURN LEXICON("body", AOSO_PROJECT_LAST["weakest"], "margin", AOSO_PROJECT_LAST["min_margin"]).
+            }
+        }
+    }
     IF DEFINED AOSO_PLAN_LAST {
         IF AOSO_PLAN_LAST:HASKEY("targets") {
             LOCAL hop IS aoso_budget_get("mission_dv", 0).
@@ -36,6 +43,9 @@ FUNCTION aoso_depart_certify {
     }
     LOCAL warn IS LIST().
     LOCAL twr IS aoso_profile_surface_twr(SHIP:BODY:NAME).
+    IF DEFINED AOSO_CAPS {
+        SET twr TO aoso_caps_surface_twr_for_config("LANDER", SHIP:BODY:NAME, 0).
+    }
     LOCAL min_twr IS aoso_config_get("TOUR_MIN_LAND_TWR", 1.4).
     LOCAL fuel_pct IS aoso_resource_pct("LiquidFuel").
     LOCAL takeoff_dv IS aoso_feas_takeoff_cost(SHIP:BODY:NAME).
@@ -46,13 +56,20 @@ FUNCTION aoso_depart_certify {
     IF twr < 1.05 {
         RETURN LEXICON("status", "NOT_READY", "reason", "surface TWR " + ROUND(twr, 2), "warnings", warn).
     }
+    IF SHIP:AVAILABLETHRUST <= 0.05 {
+        LOCAL unlit_n IS 0.
+        IF DEFINED AOSO_STG_UNIGNITED { SET unlit_n TO AOSO_STG_UNIGNITED. }
+        IF unlit_n < 1 {
+            RETURN LEXICON("status", "NOT_READY", "reason", "no propulsion", "warnings", warn).
+        }
+    }
     IF twr < min_twr { warn:ADD("TWR " + ROUND(twr, 2) + " below tour minimum " + min_twr). }
     IF fuel_pct < 8 {
         RETURN LEXICON("status", "NOT_READY", "reason", "fuel " + ROUND(fuel_pct, 0) + "%", "warnings", warn).
     }
     IF takeoff_dv > 0 {
         IF mission_dv + 50 < takeoff_dv {
-            warn:ADD("takeoff table " + ROUND(takeoff_dv, 0) + " vs mission dV " + ROUND(mission_dv, 0)).
+            RETURN LEXICON("status", "NOT_READY", "reason", "takeoff " + ROUND(takeoff_dv, 0) + " vs mission dV " + ROUND(mission_dv, 0), "warnings", warn).
         }
     }
     IF DEFINED AOSO_TOPO {
@@ -90,9 +107,21 @@ FUNCTION aoso_assure_eval {
         "fuel_pct", fuel_pct,
         "weak_body", weak["body"],
         "weak_margin", weak["margin"],
+        "min_twr_margin", 0,
+        "next_refuel", "",
+        "return_margin", 0,
+        "confidence", 0.6,
         "can_return", can_return,
         "at", TIME:SECONDS
     ).
+    IF DEFINED AOSO_PROJECT_LAST {
+        IF AOSO_PROJECT_LAST:HASKEY("min_margin") { SET snap["weak_margin"] TO AOSO_PROJECT_LAST["min_margin"]. }
+        IF AOSO_PROJECT_LAST:HASKEY("weakest") { SET snap["weak_body"] TO AOSO_PROJECT_LAST["weakest"]. }
+        IF AOSO_PROJECT_LAST:HASKEY("next_refuel") { SET snap["next_refuel"] TO AOSO_PROJECT_LAST["next_refuel"]. }
+        IF AOSO_PROJECT_LAST:HASKEY("end_dv") { SET snap["return_margin"] TO AOSO_PROJECT_LAST["end_dv"]. }
+        IF AOSO_PROJECT_LAST:HASKEY("min_twr") { SET snap["min_twr_margin"] TO AOSO_PROJECT_LAST["min_twr"]. }
+        SET snap["confidence"] TO 0.75.
+    }
     SET AOSO_ASSURE_LAST TO snap.
     RETURN snap.
 }

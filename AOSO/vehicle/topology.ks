@@ -215,6 +215,29 @@ FUNCTION aoso_topo_rebuild {
             IF i = 0 { SET role TO "BOOSTER". }
         }
         SET layers[i]["role"] TO role.
+        IF d < 0 { SET layers[i]["prop_role"] TO "CORE". }
+        ELSE {
+            IF i = 0 { SET layers[i]["prop_role"] TO "BOOSTER". }
+            ELSE { SET layers[i]["prop_role"] TO "STAGE". }
+        }
+        IF layers[i]["legs"] > 0 {
+            IF layers[i]["engines"] > 0 { SET layers[i]["prop_role"] TO "LANDER". }
+        }
+    }
+    LOCAL prop_list IS LIST().
+    FOR i IN RANGE(0, layers:LENGTH) {
+        IF layers[i]["engines"] > 0 {
+            prop_list:ADD(LEXICON(
+                "id", aoso_topo_group_key(layers[i]["decoupled_in"]),
+                "stage", layers[i]["decoupled_in"],
+                "role", layers[i]["prop_role"],
+                "engines", layers[i]["engines"],
+                "dry_mass", layers[i]["dry_mass"],
+                "current_mass", layers[i]["wet_mass"],
+                "lf", layers[i]["lf"],
+                "ox", layers[i]["ox"]
+            )).
+        }
     }
 
     LOCAL nxt IS aoso_topo_predict_drop(layers).
@@ -232,6 +255,7 @@ FUNCTION aoso_topo_rebuild {
         "max_depth", max_depth,
         "hw", hw,
         "layers", layers,
+        "prop", prop_list,
         "landing", LEXICON(
             "legs", hw["legs"],
             "chutes", hw["chute"],
@@ -314,6 +338,55 @@ FUNCTION aoso_topo_predict_drop {
     ).
 }
 
+FUNCTION aoso_topo_refresh_dynamic {
+    IF NOT AOSO_TOPO:HASKEY("rev") { RETURN AOSO_TOPO. }
+    aoso_parts_cache_ensure().
+    LOCAL plist IS aoso_parts_list().
+    FOR k IN AOSO_TOPO_GROUPS:KEYS {
+        LOCAL g IS AOSO_TOPO_GROUPS[k].
+        SET g["wet_mass"] TO 0.
+        SET g["dry_mass"] TO 0.
+        SET g["lf"] TO 0.
+        SET g["ox"] TO 0.
+        SET g["sf"] TO 0.
+        SET g["xe"] TO 0.
+        SET g["mp"] TO 0.
+        SET g["lf_cap"] TO 0.
+        SET g["ox_cap"] TO 0.
+    }
+    FOR p IN plist {
+        LOCAL dkey IS aoso_topo_group_key(p:DECOUPLEDIN).
+        IF AOSO_TOPO_GROUPS:HASKEY(dkey) {
+            LOCAL g IS AOSO_TOPO_GROUPS[dkey].
+            SET g["wet_mass"] TO g["wet_mass"] + p:MASS.
+            SET g["dry_mass"] TO g["dry_mass"] + p:DRYMASS.
+            FOR res_item IN p:RESOURCES {
+                LOCAL rn IS res_item:NAME.
+                LOCAL amt IS res_item:AMOUNT.
+                LOCAL cap IS res_item:CAPACITY.
+                IF rn = "LiquidFuel" {
+                    SET g["lf"] TO g["lf"] + amt.
+                    SET g["lf_cap"] TO g["lf_cap"] + cap.
+                }
+                IF rn = "Oxidizer" {
+                    SET g["ox"] TO g["ox"] + amt.
+                    SET g["ox_cap"] TO g["ox_cap"] + cap.
+                }
+                IF rn = "SolidFuel" { SET g["sf"] TO g["sf"] + amt. }
+                IF rn = "XenonGas" { SET g["xe"] TO g["xe"] + amt. }
+                IF rn = "MonoPropellant" { SET g["mp"] TO g["mp"] + amt. }
+            }
+        }
+    }
+    SET AOSO_TOPO["mass"] TO SHIP:MASS.
+    SET AOSO_TOPO["thrust"] TO SHIP:AVAILABLETHRUST.
+    SET AOSO_TOPO["dyn_rev"] TO AOSO_TOPO["dyn_rev"] + 1.
+    IF AOSO_TOPO:HASKEY("layers") {
+        SET AOSO_TOPO["next_stage"] TO aoso_topo_predict_drop(AOSO_TOPO["layers"]).
+    }
+    RETURN AOSO_TOPO.
+}
+
 FUNCTION aoso_topo_touch_dynamic {
     IF NOT AOSO_TOPO:HASKEY("rev") { RETURN. }
     SET AOSO_TOPO["mass"] TO SHIP:MASS.
@@ -346,6 +419,16 @@ FUNCTION aoso_topo_fuel_of {
 FUNCTION aoso_topo_turn_lead_s {
     IF AOSO_TOPO:HASKEY("control") { RETURN AOSO_TOPO["control"]["turn_lead_s"]. }
     RETURN aoso_config_get("MANEUVER_ALIGN_S", 50).
+}
+
+FUNCTION aoso_topo_prop_of {
+    PARAMETER role_name.
+    IF AOSO_TOPO:HASKEY("prop") {
+        FOR pg IN AOSO_TOPO["prop"] {
+            IF pg["role"] = role_name { RETURN pg. }
+        }
+    }
+    RETURN LEXICON("id", "", "stage", -1, "role", role_name, "engines", 0, "dry_mass", 0, "current_mass", 0, "lf", 0, "ox", 0).
 }
 
 FUNCTION aoso_topo_get {

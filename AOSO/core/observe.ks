@@ -257,10 +257,12 @@ FUNCTION aoso_decide {
     PARAMETER selected.
     PARAMETER reason.
     PARAMETER inputs_str.
+    PARAMETER predicted IS 0.
     aoso_observe_event("DECIDE", "INFO", tag, "dec=" + decision + " sel=" + selected + " why=" + reason + " in=" + inputs_str).
     IF DEFINED AOSO_OPEN_DECISIONS {
-        aoso_decide_open(tag, decision, selected, reason, 0).
+        RETURN aoso_decide_open(tag, decision, selected, reason, predicted).
     }
+    RETURN 0.
 }
 
 FUNCTION aoso_observe_anomaly {

@@ -14,9 +14,13 @@ RUN ONCE "AOSO/core/authority".
 RUN ONCE "AOSO/core/verify".
 RUN ONCE "AOSO/core/warp".
 RUN ONCE "AOSO/core/brain".
+RUN ONCE "AOSO/core/state".
 RUN ONCE "AOSO/vehicle/experience".
 RUN ONCE "AOSO/mission/feasibility".
+RUN ONCE "AOSO/mission/project".
+RUN ONCE "AOSO/refuel/isru".
 RUN ONCE "AOSO/surface/operations".
+RUN ONCE "AOSO/hardening/watchdog".
 
 FUNCTION aoso_selftest_check {
     PARAMETER name.
@@ -68,6 +72,62 @@ FUNCTION aoso_selftest {
     SET fail TO aoso_selftest_check("cont DEAD_END leftover", aoso_feas_continuation_of(TRUE, TRUE, 20, 800) = "DEAD_END", fail).
     SET fail TO aoso_selftest_check("cont LOW", aoso_feas_continuation_of(TRUE, TRUE, 400, 1200) = "LOW", fail).
     SET fail TO aoso_selftest_check("cont SAFE no land", aoso_feas_continuation_of(FALSE, FALSE, 0, 800) = "SAFE", fail).
+
+    LOCAL seq_a IS aoso_project_seq(5000, 3000, 1500, 1000, 800, FALSE, 5000).
+    SET fail TO aoso_selftest_check("proj reach 5000-3000", seq_a["can_reach"] = TRUE, fail).
+    SET fail TO aoso_selftest_check("proj capture 2000-1500", seq_a["can_orbit"] = TRUE, fail).
+    SET fail TO aoso_selftest_check("proj land 500-1000 no", seq_a["can_land"] = FALSE, fail).
+    SET fail TO aoso_selftest_check("proj takeoff skipped", seq_a["can_takeoff"] = FALSE, fail).
+    SET fail TO aoso_selftest_check("xfer_only 3000-1500", aoso_project_xfer_only(3000, 1500) = 1500, fail).
+
+    LOCAL seq_b IS aoso_project_seq(5000, 1000, 400, 800, 800, TRUE, 5000).
+    SET fail TO aoso_selftest_check("proj ISRU takeoff", seq_b["can_takeoff"] = TRUE, fail).
+
+    LOCAL id1 IS aoso_decide_open("TEST", "one", "Duna", "first", 1080).
+    LOCAL id2 IS aoso_decide_open("TEST", "two", "Eve", "second", 2000).
+    LOCAL act1 IS aoso_action_create(id1, "TRANSFER", "Duna", 1080).
+    LOCAL act2 IS aoso_action_create(id2, "TRANSFER", "Eve", 2000).
+    aoso_action_begin(act1).
+    LOCAL res_act IS aoso_result_from_action(act1, "SUCCESS", "ok").
+    SET fail TO aoso_selftest_check("action id not latest seq", res_act["action_id"] = id1, fail).
+    SET fail TO aoso_selftest_check("action id not id2", res_act["action_id"] <> id2, fail).
+    SET fail TO aoso_selftest_check("action predicted", res_act["predicted_dv"] = 1080, fail).
+    aoso_action_clear().
+    aoso_decide_close(id1, res_act).
+    aoso_decide_close(id2, res_act).
+
+    SET fail TO aoso_selftest_check("isru classify partial", aoso_refuel_classify(20, 55, 70) = "PARTIAL", fail).
+    SET fail TO aoso_selftest_check("isru classify success", aoso_refuel_classify(20, 70, 70) = "SUCCESS", fail).
+    SET fail TO aoso_selftest_check("isru classify failed", aoso_refuel_classify(20, 20, 70) = "FAILED", fail).
+
+    LOCAL kind_hold IS aoso_watchdog_recovery_kind(TRUE, FALSE, FALSE).
+    SET fail TO aoso_selftest_check("watchdog stall replan", kind_hold = "REPLAN", fail).
+    LOCAL kind_abort IS aoso_watchdog_recovery_kind(TRUE, TRUE, FALSE).
+    SET fail TO aoso_selftest_check("watchdog critical abort", kind_abort = "ABORT", fail).
+    LOCAL kind_fly IS aoso_watchdog_recovery_kind(TRUE, FALSE, TRUE).
+    SET fail TO aoso_selftest_check("watchdog ascent no generic recover", kind_fly = "NONE", fail).
+
+    SET fail TO aoso_selftest_check("schema version 2", aoso_const_get("SCHEMA_VERSION") = 2, fail).
+    LOCAL stamped IS LEXICON("n", 1).
+    SET fail TO aoso_selftest_check("schema migrate v1", aoso_json_schema_of(aoso_json_migrate(stamped)) = 1, fail).
+
+    LOCAL xp_save_at IS AOSO_XP["save_at"].
+    LOCAL xp_loaded IS AOSO_XP["loaded"].
+    LOCAL xp_store IS AOSO_XP["store"].
+    SET AOSO_XP["store"] TO LEXICON("models", LEXICON(), "samples", LIST()).
+    SET AOSO_XP["loaded"] TO TRUE.
+    SET AOSO_XP["save_at"] TO TIME:SECONDS + 99999.
+    LOCAL m1 IS aoso_xp_record("TRANSFER", "SelftestBody", 1000, 1100, FALSE).
+    LOCAL m2 IS aoso_xp_record("TRANSFER", "SelftestBody", 1000, 1100, FALSE).
+    LOCAL m3 IS aoso_xp_record("TRANSFER", "SelftestBody", 1000, 1100, FALSE).
+    SET fail TO aoso_selftest_check("xp corr rises", m3["corr"] > 1, fail).
+    SET fail TO aoso_selftest_check("xp corr bounded", m3["corr"] <= 1.35, fail).
+    SET AOSO_XP["store"] TO xp_store.
+    SET AOSO_XP["loaded"] TO xp_loaded.
+    SET AOSO_XP["save_at"] TO xp_save_at.
+
+    LOCAL seq_tylo IS aoso_project_seq(2000, 800, 400, 2270, 2270, FALSE, 2000).
+    SET fail TO aoso_selftest_check("tylo land not sequential", seq_tylo["can_land"] = FALSE, fail).
 
     LOCAL quiet IS aoso_brain_is_quiet().
     SET fail TO aoso_selftest_check("brain_is_quiet boolean", quiet = TRUE OR quiet = FALSE, fail).
@@ -135,6 +195,13 @@ FUNCTION aoso_selftest {
     IF DEFINED AOSO_TOPO {
         LOCAL fp_now IS aoso_topo_fp().
         SET fail TO aoso_selftest_check("topo fp string", fp_now:ISTYPE("String"), fail).
+        IF AOSO_TOPO:HASKEY("rev") {
+            LOCAL rev0 IS AOSO_TOPO["rev"].
+            LOCAL dyn0 IS AOSO_TOPO["dyn_rev"].
+            aoso_topo_refresh_dynamic().
+            SET fail TO aoso_selftest_check("topo dyn fuel no struct rebuild", AOSO_TOPO["rev"] = rev0, fail).
+            SET fail TO aoso_selftest_check("topo dyn_rev increments", AOSO_TOPO["dyn_rev"] > dyn0, fail).
+        }
     }
     IF DEFINED AOSO_CERT_LAST {
         LOCAL cert IS aoso_cert_eval("grand_tour").

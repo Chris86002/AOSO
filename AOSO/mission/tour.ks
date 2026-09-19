@@ -543,47 +543,29 @@ FUNCTION aoso_tour_descend_execute {
 
 FUNCTION aoso_tour_refuel_entry {
     PARAMETER data.
-    IF NOT aoso_refuel_available() {
-        aoso_log_info("TOUR", "No ISRU aboard - skipping refuel at " + SHIP:BODY:NAME + ".").
+    LOCAL surf IS aoso_surface_begin().
+    IF surf["phase"] = "HOLD" {
+        aoso_log_warn("TOUR", "Surface hold before ISRU: " + surf["reason"] + ".").
+        aoso_ui_set("HOLD", surf["reason"]).
+        RETURN.
+    }
+    IF surf["phase"] = "LAUNCH" {
+        aoso_log_info("TOUR", "No ISRU needed at " + SHIP:BODY:NAME + " (" + surf["reason"] + ").").
         aoso_state_transition(AOSO_TOUR, "LAUNCH").
         RETURN.
     }
-    IF SHIP:STATUS <> "LANDED" {
-        aoso_state_transition(AOSO_TOUR, "LAUNCH").
-        RETURN.
-    }
-    IF NOT aoso_surface_stable() {
-        aoso_log_warn("TOUR", "Surface not stable - waiting before ISRU.").
-        aoso_ui_set("HOLD", "waiting for a stable surface before ISRU").
-        RETURN.
-    }
-    LOCAL started IS aoso_refuel_start().
-    IF NOT started {
-        aoso_state_transition(AOSO_TOUR, "LAUNCH").
-    }
+    aoso_log_info("TOUR", "Surface executive: " + surf["phase"] + " " + surf["reason"] + ".").
 }
 
 FUNCTION aoso_tour_refuel_execute {
     PARAMETER data.
-    IF AOSO_REFUEL["current"] = "" {
-        IF aoso_surface_stable() {
-            IF aoso_refuel_available() {
-                aoso_refuel_start().
-            } ELSE {
-                aoso_state_transition(AOSO_TOUR, "LAUNCH").
-            }
-        } ELSE {
-            aoso_ui_set("HOLD", "waiting for a stable surface before ISRU").
-        }
+    LOCAL surf IS aoso_surface_update().
+    IF surf["phase"] = "HOLD" {
+        aoso_ui_set("HOLD", surf["reason"]).
+        aoso_log_every(20, "TOUR", "Surface hold: " + surf["reason"] + ".").
         RETURN.
     }
-    aoso_refuel_tick().
-    IF aoso_refuel_is_aborted() {
-        aoso_log_warn("TOUR", "Refuel aborted at " + SHIP:BODY:NAME + " - launching on remaining propellant.").
-        aoso_state_transition(AOSO_TOUR, "LAUNCH").
-        RETURN.
-    }
-    IF aoso_refuel_is_done() {
+    IF surf["phase"] = "LAUNCH" {
         aoso_state_transition(AOSO_TOUR, "LAUNCH").
     }
 }

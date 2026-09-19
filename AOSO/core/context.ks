@@ -32,6 +32,10 @@ FUNCTION aoso_ctx_init {
         "rev_plan", 0,
         "rev_xp", 0,
         "rev_topo", 0,
+        "plan_n", 0,
+        "plan_next", "",
+        "plan_from", "",
+        "plan_provisional", FALSE,
         "dirty_vehicle", TRUE,
         "dirty_cap", TRUE,
         "dirty_budget", TRUE,
@@ -221,4 +225,17 @@ FUNCTION aoso_ctx_mark_world {
 FUNCTION aoso_ctx_mark_plan {
     aoso_ctx_bump("rev_plan").
     aoso_ctx_dirty("dirty_plan").
+    IF DEFINED AOSO_PLAN_LAST {
+        LOCAL next_n IS "".
+        LOCAL n IS 0.
+        IF AOSO_PLAN_LAST:HASKEY("targets") {
+            SET n TO AOSO_PLAN_LAST["targets"]:LENGTH.
+            IF n > 0 { SET next_n TO AOSO_PLAN_LAST["targets"][0]. }
+        }
+        SET AOSO_CTX["plan_n"] TO n.
+        SET AOSO_CTX["plan_next"] TO next_n.
+        IF AOSO_PLAN_LAST:HASKEY("from") { SET AOSO_CTX["plan_from"] TO AOSO_PLAN_LAST["from"]. }
+        IF AOSO_PLAN_LAST:HASKEY("provisional") { SET AOSO_CTX["plan_provisional"] TO AOSO_PLAN_LAST["provisional"]. }
+        IF AOSO_PLAN_LAST:HASKEY("mission_dv") { SET AOSO_CTX["mission_dv"] TO AOSO_PLAN_LAST["mission_dv"]. }
+    }
 }

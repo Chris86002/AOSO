@@ -40,6 +40,8 @@
 // LIST ENGINES / LIST PARTS / LIST DOCKINGPORTS is expensive. Engine structure
 // refs stay live for IGNITION/FLAMEOUT/MASSFLOW, so we cache until STAGE:NUMBER
 // changes (or a caller invalidates after STAGE.).
+// Engine grouping here is a live lit census. Structural roles (BOOSTER /
+// CORE / LANDER) and stage-local tanks are owned by topology.ks.
 
 GLOBAL AOSO_PARTS IS LEXICON().
 GLOBAL AOSO_ENGINES IS LIST().
@@ -112,7 +114,9 @@ FUNCTION aoso_parts_scan {
         IF depth > max_depth { SET max_depth TO depth. }
     }
 
-    // Group engines by the stage they are jettisoned in.
+    // Live lit/flameout counts only. Structural roles/order live in
+    // topology.ks (AOSO_TOPO layers). This walk is not a second structural
+    // truth — it is a dynamic ignition census for HUD/staging sense.
     LOCAL groups IS LEXICON().
     FOR e IN elist {
         LOCAL d IS e:DECOUPLEDIN.

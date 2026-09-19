@@ -344,6 +344,8 @@ FUNCTION aoso_descent_touchdown_entry {
     aoso_observe_event("TOUCHDOWN", "INFO", "TOUCHDOWN", "radar=" + ROUND(aoso_descent_true_radar(), 1)).
     LOCAL ver_l IS aoso_verify_landing().
     LOCAL res_l IS aoso_result_make("LANDING", "SUCCESS", "touchdown").
+    IF data:HASKEY("pred_land") { SET res_l["predicted_dv"] TO data["pred_land"]. }
+    SET res_l["actual_dv"] TO ABS(VERTICALSPEED).
     SET res_l TO aoso_verify_apply_result(res_l, ver_l).
     aoso_result_emit(res_l).
     aoso_auth_release_all("descent").
@@ -374,6 +376,11 @@ FUNCTION aoso_descent_start {
     aoso_auth_acquire("descent", "STEERING", 4).
     aoso_auth_acquire("descent", "THROTTLE", 4).
     aoso_auth_use("descent").
+    LOCAL pred_l IS aoso_feas_land_cost(SHIP:BODY:NAME).
+    LOCAL did_l IS aoso_decide("DESCENT", "start", SHIP:BODY:NAME, "landing", "pred=" + ROUND(pred_l, 0), pred_l).
+    LOCAL act_l IS aoso_action_create(did_l, "LANDING", SHIP:BODY:NAME, pred_l).
+    aoso_action_begin(act_l).
+    SET AOSO_DESCENT["data"]["pred_land"] TO pred_l.
     aoso_log_info("DESCENT", "Descent guidance started in FREEFALL. AP=" + ROUND(aoso_orbit_apoapsis_alt(), 0) +
         " PE=" + ROUND(PERIAPSIS, 0) + " alt=" + ROUND(ALTITUDE, 0) + " vs=" + ROUND(VERTICALSPEED, 1) +
         " " + aoso_warp_diag_txt() + ".").

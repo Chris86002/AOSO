@@ -305,7 +305,11 @@ FUNCTION aoso_maneuver_finish_node {
     }
     aoso_log_info("MANEUVER", "Node executed (" + reason + ").").
     aoso_observe_event("BURN", "INFO", reason, "left=" + ROUND(left, 2)).
-    aoso_decide("MANEUVER", "finish", reason, AOSO_MANEUVER_RESULT, "left=" + ROUND(left, 2)).
+    LOCAL did_m IS aoso_decide("MANEUVER", "finish", reason, AOSO_MANEUVER_RESULT, "left=" + ROUND(left, 2), AOSO_MANEUVER_START_DV).
+    IF NOT AOSO_ACTION_CUR:ISTYPE("Lexicon") {
+        LOCAL act_m IS aoso_action_create(did_m, "MANEUVER", SHIP:BODY:NAME, AOSO_MANEUVER_START_DV).
+        aoso_action_begin(act_m).
+    }
     IF AOSO_MANEUVER_RESULT = "ok" {
         LOCAL res_ok IS aoso_result_make("MANEUVER", "SUCCESS", reason).
         SET res_ok["predicted_dv"] TO AOSO_MANEUVER_START_DV.
@@ -316,6 +320,9 @@ FUNCTION aoso_maneuver_finish_node {
         aoso_result_emit(res_ok).
     } ELSE {
         LOCAL res_f IS aoso_result_make("MANEUVER", "FAILED", reason).
+        SET res_f["predicted_dv"] TO AOSO_MANEUVER_START_DV.
+        SET res_f["actual_dv"] TO AOSO_MANEUVER_START_DV - left.
+        IF res_f["actual_dv"] < 0 { SET res_f["actual_dv"] TO 0. }
         LOCAL ver_f IS aoso_verify_maneuver(AOSO_MANEUVER_RESULT).
         SET res_f TO aoso_verify_apply_result(res_f, ver_f).
         aoso_result_emit(res_f).

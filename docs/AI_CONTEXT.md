@@ -27,31 +27,54 @@ they watch the kOS terminal and the HUD.
 
 - The topology model is the authoritative source of vessel structure.
   No subsystem performs a full structural vessel scan unless it owns
-  topology.
+  topology. Fuel drain uses `aoso_topo_refresh_dynamic` (`dyn_rev`);
+  do not rebuild structure for mass/fuel. Do not name
+  `FUNCTION aoso_project` or `FUNCTION aoso_surface` (globals
+  `AOSO_PROJECT_LAST` / `AOSO_SURFACE_LAST`). Use `AOSO_ACTION_CUR`,
+  never `GLOBAL AOSO_ACTION`.
 - Capabilities are derived from topology and dynamic state. Profile is
-  a summary/view, not an independent structural truth.
-- Staging uses topology prediction, then executes.
+  a summary/view, not an independent structural truth. Future TWR
+  (Tylo/Eve lander) uses `aoso_caps_surface_twr_for_config("LANDER")`,
+  not pad all-engine TWR.
+- Mission costs are sequential leftover from `mission/project.ks`, not
+  independent comparisons of every cost to the original hop budget.
+  Capture is split out of transfer (`aoso_project_xfer_only`).
+- Staging uses topology prediction, then `aoso_staging_do` (authority).
 - Controllers do not define strategic objectives. They must own
   authority before commanding flight controls.
 - An action is not successful until its postconditions are verified.
+  `aoso_decide` returns an id; `aoso_action_create` / `begin` bind
+  results to that id, not the latest sequence number.
 - Trajectory corrections are normal actions, not necessarily mission
   failures. `CORRECT_LOCAL_DV` vs `REPLAN_DV_ERROR`.
 - Mission strategy is re-certified after meaningful spacecraft changes.
-- Surface takeoff requires departure certification.
-- Persistent schema changes require migration.
+  `aoso_plan_stale` is topo/budget/world rev drift.
+- Surface takeoff requires departure certification. Hard inability
+  (TWR, no propulsion, takeoff_dv, sliding) is `NOT_READY`.
+- Persistent files stamp `schema_version` (current 2). Missing key
+  migrates as v1. Do not add required keys without a loader migrate.
 - One authoritative body knowledge source (`bodydb` + `world/body`).
 - Duplicate calculations should be removed after migration.
 - Prefer real observed state over saved expectations after restart.
 - When uncertain, enter a safe evaluative state instead of continuing
-  blindly (`aoso_safe_hold`).
+  blindly (`aoso_safe_hold`). Watchdog stall without critical
+  fuel/EC requests REPLAN (not during ascent/descent); critical +
+  stall still aborts.
 - `CONFIG:IPU` defaults to 2000. That is headroom, not a target
   utilization. Critical flight always outranks UI and strategy.
 - Background work stops before the protected opcode reserve.
 - Full topology scans are event-driven. Replan may wait for a quiet
-  window. HUD/telemetry must never starve flight control.
+  window. HUD/telemetry must never starve flight control. Do not
+  `aoso_project_route` / matrix rebuild / JSON persist in a critical
+  flight tick.
 - Ascent AoA limit is **asymmetric**: tight nose-up, wider nose-down
   so a lofted flight path can still catch the pitch program. Do not
   judge THRUST_MISMATCH in the same tick as `STAGE()`.
+- Tank Ore near zero is not biome-empty. ISRU progress is fuel/ore
+  movement; stall is `REFUEL_STALL_S`. STOW is SUCCESS / PARTIAL /
+  FAILED / ABORTED.
+- `learn.ks` is a leftover-LF diary. Operational correction is
+  `experience.ks`. Ascent start-speed search is `ascent_opt.ks`.
 
 ## Think windows
 
@@ -71,7 +94,7 @@ burn zero a cost.
 ## Planner / tour
 
 - Opportunity scores change **order**, not membership. CAN is still
-  SKIP vs not.
+  SKIP vs not. 1-hop leftover is a score bonus only.
 - `DEAD_END` continuation demotes `FEASIBLE` → `ORBIT_ONLY`. Tour
   lands only on `result = FEASIBLE`.
 - After a surface launch, replan remaining and `index = 0`. Do not
@@ -79,6 +102,11 @@ burn zero a cost.
 - Do not drill while sliding. Do not launch at an arbitrary fuel %.
   `aoso_depart_certify` must be READY / READY_WITH_WARNING.
 - Track `accomplished` as SKIPPED / ORBITED / LANDED / COMPLETED.
+
+## Projection
+
+See `docs/AOSO_PROJECTION.md`. Sequential leftover is the cost truth.
+`aoso_feas_evaluate(dest_name)` is unchanged as a public signature.
 
 ## Branching
 
@@ -90,3 +118,4 @@ copy does not auto-overwrite onto this branch.
 
 `run "AOSO/dev/selftest".` after a normal AOSO boot (or it RUN ONCEs
 the core it needs). It must not STAGE, LOCK, WARP, or THROTTLE.
+Manual KSP flights: `docs/AOSO_SCENARIOS.md`.

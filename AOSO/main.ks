@@ -97,6 +97,7 @@ RUN ONCE "AOSO/precision/kscreturn".
 // --- Mission layer -----------------------------------------------------
 RUN ONCE "AOSO/mission/checkpoints".
 RUN ONCE "AOSO/mission/feasibility".
+RUN ONCE "AOSO/mission/project".
 RUN ONCE "AOSO/mission/matrix".
 RUN ONCE "AOSO/mission/windows".
 RUN ONCE "AOSO/mission/score".

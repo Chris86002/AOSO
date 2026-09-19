@@ -501,9 +501,10 @@ FUNCTION aoso_ascent_liftoff_execute {
         }
         IF STAGE:READY {
             aoso_log_info("ASCENT", "Liftoff ignition: staging (" + STAGE:NUMBER + ").").
-            STAGE.
-            aoso_staging_after_stage().
-            SET data["ignite_attempts"] TO data["ignite_attempts"] + 1.
+            IF aoso_staging_do() {
+                aoso_staging_after_stage().
+                SET data["ignite_attempts"] TO data["ignite_attempts"] + 1.
+            }
         }
         RETURN.
     }
@@ -513,9 +514,10 @@ FUNCTION aoso_ascent_liftoff_execute {
     IF SHIP:STATUS = "PRELAUNCH" AND TIME:SECONDS - data["thrust_since"] > 3 AND attempts_left {
         IF STAGE:READY {
             aoso_log_warn("ASCENT", "Still PRELAUNCH " + ROUND(TIME:SECONDS - data["thrust_since"], 1) + "s after ignition - staging (" + STAGE:NUMBER + ") to clear holds.").
-            STAGE.
-            aoso_staging_after_stage().
-            SET data["ignite_attempts"] TO data["ignite_attempts"] + 1.
+            IF aoso_staging_do() {
+                aoso_staging_after_stage().
+                SET data["ignite_attempts"] TO data["ignite_attempts"] + 1.
+            }
         }
         RETURN.
     }
@@ -755,13 +757,19 @@ FUNCTION aoso_ascent_done_entry {
     aoso_steer_release().
     aoso_log_info("ASCENT", "Ascent complete. Apo=" + ROUND(APOAPSIS, 0) + " Peri=" + ROUND(PERIAPSIS, 0)).
     aoso_ascent_persist_run(data).
-    LOCAL res IS aoso_result_make("ASCENT", "SUCCESS", "orbit").
+    LOCAL op_name IS "ASCENT".
+    IF data:HASKEY("action_op") { SET op_name TO data["action_op"]. }
+    LOCAL res IS aoso_result_make(op_name, "SUCCESS", "orbit").
     IF data:HASKEY("pad_lf") {
         SET res["actual_fuel"] TO aoso_resource_amount("LiquidFuel").
         SET res["fuel_used"] TO data["pad_lf"] - res["actual_fuel"].
+        SET res["predicted_fuel"] TO data["pad_lf"].
     }
     IF data:HASKEY("circ_dv") { SET res["actual_dv"] TO data["circ_dv"]. }
     LOCAL ver_a IS aoso_verify_ascent().
+    IF data:HASKEY("from_surface") {
+        IF data["from_surface"] { SET ver_a TO aoso_verify_takeoff(). }
+    }
     SET res TO aoso_verify_apply_result(res, ver_a).
     aoso_result_emit(res).
     aoso_auth_release_all("ascent").
@@ -804,7 +812,9 @@ FUNCTION aoso_ascent_aborted_entry {
         }
         aoso_ascent_opt_commit(rec).
     }
-    LOCAL res_a IS aoso_result_make("ASCENT", "ABORTED", "aborted").
+    LOCAL abort_op IS "ASCENT".
+    IF data:HASKEY("action_op") { SET abort_op TO data["action_op"]. }
+    LOCAL res_a IS aoso_result_make(abort_op, "ABORTED", "aborted").
     IF data:HASKEY("pad_lf") {
         SET res_a["actual_fuel"] TO aoso_resource_amount("LiquidFuel").
         SET res_a["fuel_used"] TO data["pad_lf"] - res_a["actual_fuel"].
@@ -884,7 +894,19 @@ FUNCTION aoso_ascent_start {
     LOCAL max_aoa IS aoso_ascent_max_aoa().
     LOCAL twr_cap IS aoso_config_get("ASCENT_TWR_LIMIT", 2.2).
     aoso_log_info("ASCENT", "Profile=" + aoso_ascent_profile_name() + " gravity-turn (MechJeb-classic pitch program, shape=" + ROUND(shape_now, 2) + ", startAlt=" + ROUND(start_a, 0) + ", endAlt=" + ROUND(end_a, 0) + ", maxAoA=" + ROUND(max_aoa, 1) + ", TWR cap=" + ROUND(twr_cap, 2) + ") holdAP=" + ROUND(aoso_config_get("ASCENT_HOLD_AP_S", 45), 0) + "s target=" + ROUND(target_apo, 0) + "m (cut throttle here; parking is not the burn). If this line is missing, GameData still has the old ascent.").
-    aoso_decide("ASCENT", "start", aoso_ascent_profile_name(), "start speed / shape", "spd=" + ROUND(AOSO_ASCENT["data"]["pitchover_speed"], 0) + " shape=" + ROUND(shape_now, 2) + " startAlt=" + ROUND(start_a, 0) + " endAlt=" + ROUND(end_a, 0)).
+    LOCAL op_name IS "ASCENT".
+    LOCAL from_surface IS FALSE.
+    IF SHIP:STATUS = "LANDED" { SET from_surface TO TRUE. }
+    IF SHIP:STATUS = "SPLASHED" { SET from_surface TO TRUE. }
+    IF from_surface {
+        IF SHIP:BODY:NAME <> aoso_config_get("HOME_BODY", "Kerbin") { SET op_name TO "TAKEOFF". }
+    }
+    SET AOSO_ASCENT["data"]["from_surface"] TO from_surface.
+    SET AOSO_ASCENT["data"]["action_op"] TO op_name.
+    LOCAL pred_dv IS aoso_feas_takeoff_cost(SHIP:BODY:NAME).
+    LOCAL did IS aoso_decide("ASCENT", "start", aoso_ascent_profile_name(), "start speed / shape", "spd=" + ROUND(AOSO_ASCENT["data"]["pitchover_speed"], 0) + " shape=" + ROUND(shape_now, 2) + " startAlt=" + ROUND(start_a, 0) + " endAlt=" + ROUND(end_a, 0), pred_dv).
+    LOCAL act IS aoso_action_create(did, op_name, SHIP:BODY:NAME, pred_dv).
+    aoso_action_begin(act).
     aoso_state_transition(AOSO_ASCENT, "LIFTOFF").
 }
 
