@@ -224,8 +224,7 @@ FUNCTION aoso_descent_burn_entry {
     SET WARP TO 0.
     aoso_steer_srf_retrograde().
     IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
-    LOCK THROTTLE TO aoso_descent_required_throttle().
-    SET AOSO_THROTTLE_MODE TO "DESCENT_BURN".
+    aoso_throttle_set(aoso_descent_required_throttle()).
 }
 
 FUNCTION aoso_descent_burn_execute {
@@ -249,6 +248,8 @@ FUNCTION aoso_descent_burn_execute {
         RETURN.
     }
 
+    aoso_throttle_set(aoso_descent_required_throttle()).
+
     IF aoso_descent_should_final_approach() {
         aoso_state_transition(AOSO_DESCENT, "FINAL_APPROACH").
     }
@@ -258,8 +259,7 @@ FUNCTION aoso_descent_final_approach_entry {
     PARAMETER data.
     aoso_steer_up().
     LEGS ON.
-    LOCK THROTTLE TO aoso_descent_final_approach_throttle().
-    SET AOSO_THROTTLE_MODE TO "DESCENT_FINAL".
+    aoso_throttle_set(aoso_descent_final_approach_throttle()).
 }
 
 FUNCTION aoso_descent_final_approach_execute {
@@ -276,6 +276,7 @@ FUNCTION aoso_descent_final_approach_execute {
     }
 
     aoso_steer_up().
+    aoso_throttle_set(aoso_descent_final_approach_throttle()).
 
     aoso_staging_auto_check().
 
@@ -296,6 +297,10 @@ FUNCTION aoso_descent_touchdown_entry {
     aoso_observe_event("TOUCHDOWN", "INFO", "TOUCHDOWN", "radar=" + ROUND(aoso_descent_true_radar(), 1)).
 }
 
+FUNCTION aoso_descent_poll {
+    RETURN.
+}
+
 FUNCTION aoso_descent_is_landed {
     RETURN AOSO_DESCENT["current"] = "TOUCHDOWN".
 }
@@ -311,12 +316,38 @@ FUNCTION aoso_descent_start {
     aoso_state_define(AOSO_DESCENT, "TOUCHDOWN", aoso_descent_touchdown_entry@, 0, 0).
     aoso_state_define(AOSO_DESCENT, "ABORTED", 0, 0, 0).
 
-    aoso_state_transition(AOSO_DESCENT, "FREEFALL").
-    aoso_log_info("DESCENT", "Descent guidance started in FREEFALL. AP=" + ROUND(APOAPSIS, 0) +
+    aoso_state_queue(AOSO_DESCENT, "FREEFALL").
+    aoso_sched_add("descent", 0, aoso_descent_tick@).
+    aoso_log_info("DESCENT", "Descent guidance started in FREEFALL. AP=" + ROUND(aoso_orbit_apoapsis_alt(), 0) +
         " PE=" + ROUND(PERIAPSIS, 0) + " alt=" + ROUND(ALTITUDE, 0) + " vs=" + ROUND(VERTICALSPEED, 1) +
         " " + aoso_warp_diag_txt() + ".").
 }
 
 FUNCTION aoso_descent_tick {
+    IF AOSO_DESCENT["current"] = "" { RETURN. }
+    LOCAL cur IS AOSO_DESCENT["current"].
+    LOCAL pending IS FALSE.
+    IF AOSO_DESCENT:HASKEY("need_entry") {
+        IF AOSO_DESCENT["need_entry"] { SET pending TO TRUE. }
+    }
+    IF NOT pending {
+        IF cur = "TOUCHDOWN" {
+            aoso_sched_remove("descent").
+            RETURN.
+        }
+        IF cur = "ABORTED" {
+            aoso_sched_remove("descent").
+            RETURN.
+        }
+    }
     aoso_state_update(AOSO_DESCENT).
+    SET cur TO AOSO_DESCENT["current"].
+    SET pending TO FALSE.
+    IF AOSO_DESCENT:HASKEY("need_entry") {
+        IF AOSO_DESCENT["need_entry"] { SET pending TO TRUE. }
+    }
+    IF NOT pending {
+        IF cur = "TOUCHDOWN" { aoso_sched_remove("descent"). }
+        IF cur = "ABORTED" { aoso_sched_remove("descent"). }
+    }
 }

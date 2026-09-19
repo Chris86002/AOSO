@@ -378,6 +378,18 @@ FUNCTION aoso_goto_plan_entry {
 
 FUNCTION aoso_goto_wait_execute {
     PARAMETER data.
+    IF NOT data:HASKEY("window_ut") {
+        aoso_state_transition(AOSO_GOTO, "PLAN").
+        RETURN.
+    }
+    IF NOT data:HASKEY("hop") {
+        aoso_state_abort(AOSO_GOTO).
+        RETURN.
+    }
+    IF data["hop"] = "" {
+        aoso_state_abort(AOSO_GOTO).
+        RETURN.
+    }
     LOCAL align_s IS aoso_maneuver_align_s().
     IF TIME:SECONDS >= data["window_ut"] - align_s {
         SET WARP TO 0.
@@ -484,7 +496,12 @@ FUNCTION aoso_goto_coast_entry {
 
 FUNCTION aoso_goto_coast_execute {
     PARAMETER data.
+    IF NOT data:HASKEY("goal") {
+        aoso_state_abort(AOSO_GOTO).
+        RETURN.
+    }
     LOCAL goal_name IS data["goal"].
+    IF NOT data:HASKEY("depart_body") { SET data["depart_body"] TO SHIP:BODY:NAME. }
 
     IF SHIP:BODY:NAME = goal_name {
         SET WARP TO 0.
@@ -727,11 +744,41 @@ FUNCTION aoso_goto_start {
     aoso_goto_define_states().
     SET AOSO_GOTO["data"] TO LEXICON("goal", body_name, "hop", "", "burn_kind", "", "depart_body", SHIP:BODY:NAME, "window_ut", 0, "coast_since", 0, "retry_ut", 0, "corrected", FALSE, "correct_count", 0, "last_patch_ut", 0, "expect_body", "", "expect_ut", 0, "patch_lost_ut", 0, "capture_fails", 0, "skip_capture", FALSE).
     aoso_log_info("GOTO", "Navigating to " + body_name + ".").
-    aoso_state_transition(AOSO_GOTO, "PLAN").
+    // Do not run PLAN on the tour/mission stack - that blew kOS's 3000-slot
+    // argument stack at aoso_goto_update (Acacius). Queue it; the sibling
+    // "goto" scheduler task runs PLAN from a shallow stack next tick.
+    aoso_state_queue(AOSO_GOTO, "PLAN").
+    aoso_sched_add("goto", 0, aoso_goto_update@).
+}
+
+FUNCTION aoso_goto_poll {
+    RETURN.
+}
+
+FUNCTION aoso_goto_task_pending_entry {
+    IF NOT AOSO_GOTO:HASKEY("need_entry") { RETURN FALSE. }
+    RETURN AOSO_GOTO["need_entry"].
 }
 
 FUNCTION aoso_goto_update {
+    IF AOSO_GOTO["current"] = "" { RETURN. }
+    LOCAL cur IS AOSO_GOTO["current"].
+    IF NOT aoso_goto_task_pending_entry() {
+        IF cur = "DONE" {
+            aoso_sched_remove("goto").
+            RETURN.
+        }
+        IF cur = "ABORTED" {
+            aoso_sched_remove("goto").
+            RETURN.
+        }
+    }
     aoso_state_update(AOSO_GOTO).
+    SET cur TO AOSO_GOTO["current"].
+    IF NOT aoso_goto_task_pending_entry() {
+        IF cur = "DONE" { aoso_sched_remove("goto"). }
+        IF cur = "ABORTED" { aoso_sched_remove("goto"). }
+    }
 }
 
 FUNCTION aoso_goto_is_done {

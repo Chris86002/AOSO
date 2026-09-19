@@ -131,7 +131,7 @@ FUNCTION aoso_mission_step_deorbit {
 }
 
 FUNCTION aoso_mission_step_descend {
-    RETURN aoso_mission_step("DESCEND", aoso_descent_start@, aoso_descent_tick@, aoso_descent_is_landed@, aoso_descent_is_aborted@).
+    RETURN aoso_mission_step("DESCEND", aoso_descent_start@, aoso_descent_poll@, aoso_descent_is_landed@, aoso_descent_is_aborted@).
 }
 
 FUNCTION aoso_mission_step_refuel {
@@ -156,7 +156,7 @@ FUNCTION aoso_mission_step_dock {
 
 FUNCTION aoso_mission_step_goto {
     PARAMETER body_name.
-    RETURN aoso_mission_step("GOTO:" + body_name, aoso_goto_start@:BIND(body_name), aoso_goto_update@, aoso_goto_is_done@, aoso_goto_is_aborted@).
+    RETURN aoso_mission_step("GOTO:" + body_name, aoso_goto_start@:BIND(body_name), aoso_goto_poll@, aoso_goto_is_done@, aoso_goto_is_aborted@).
 }
 
 FUNCTION aoso_mission_step_grand_tour {

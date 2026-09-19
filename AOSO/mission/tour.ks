@@ -197,7 +197,6 @@ FUNCTION aoso_tour_goto_entry {
 
 FUNCTION aoso_tour_goto_execute {
     PARAMETER data.
-    aoso_goto_update().
     IF aoso_goto_is_aborted() {
         aoso_state_abort(AOSO_TOUR).
         RETURN.
@@ -496,7 +495,6 @@ FUNCTION aoso_tour_deorbit_execute {
 
 FUNCTION aoso_tour_descend_execute {
     PARAMETER data.
-    aoso_descent_tick().
     IF aoso_descent_is_aborted() {
         aoso_log_warn("TOUR", "Landing aborted at " + SHIP:BODY:NAME + " - continuing the tour from orbit if possible.").
         IF SHIP:STATUS = "LANDED" {
@@ -602,7 +600,6 @@ FUNCTION aoso_tour_ksc_execute {
         // kscreturn DONE already started descent in its handoff.
     }
     IF AOSO_DESCENT["current"] <> "" {
-        aoso_descent_tick().
         IF aoso_descent_is_landed() {
             aoso_state_transition(AOSO_TOUR, "DONE").
             RETURN.

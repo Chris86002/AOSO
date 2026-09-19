@@ -16,6 +16,13 @@ FUNCTION aoso_boot {
     aoso_observe_init().
     aoso_log_set_level(aoso_config_get("LOG_LEVEL", "INFO")).
     aoso_log_info("BOOT", "Vessel: " + SHIP:NAME).
+    LOCAL ipu_now IS CONFIG:IPU.
+    IF ipu_now < 400 {
+        SET CONFIG:IPU TO 400.
+        aoso_log_info("BOOT", "CONFIG:IPU raised " + ipu_now + " -> 400 (AOSO needs the headroom for PLAN/HUD).").
+    } ELSE {
+        aoso_log_info("BOOT", "CONFIG:IPU=" + ipu_now + ".").
+    }
     aoso_addons_detect().
 
     aoso_body_database_load().

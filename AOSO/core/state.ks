@@ -154,6 +154,19 @@ FUNCTION aoso_state_update {
     SET machine["busy"] TO FALSE.
 }
 
+// Queue a state so its entry runs on the next aoso_state_update of THIS
+// machine, not on the caller's stack. mission -> tour -> goto PLAN used to
+// blow kOS's 3000-slot argument stack at aoso_goto_update.
+FUNCTION aoso_state_queue {
+    PARAMETER machine.
+    PARAMETER new_state.
+    aoso_state_ensure_keys(machine).
+    SET machine["nest"] TO machine["nest"] + 1.
+    LOCAL ok IS aoso_state_transition(machine, new_state).
+    SET machine["nest"] TO machine["nest"] - 1.
+    RETURN ok.
+}
+
 FUNCTION aoso_state_abort {
     PARAMETER machine.
     IF machine["current"] = "" { RETURN. }

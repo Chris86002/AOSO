@@ -51,11 +51,13 @@ FUNCTION aoso_sched_keep {
     IF DEFINED AOSO_CPU_LEVEL { SET lvl TO AOSO_CPU_LEVEL. }
     IF lvl <= 1 { RETURN TRUE. }
 
-    // Never shed flight / staging / landing / watchdog.
+    // Never shed flight / staging / landing / watchdog / hop / suicide.
     IF name = "auto_staging" { RETURN TRUE. }
     IF name = "watchdog" { RETURN TRUE. }
     IF name = "mission" { RETURN TRUE. }
     IF name = "auto_power" { RETURN TRUE. }
+    IF name = "goto" { RETURN TRUE. }
+    IF name = "descent" { RETURN TRUE. }
 
     IF name = "telemetry" {
         IF DEFINED AOSO_POST_LEFT {
