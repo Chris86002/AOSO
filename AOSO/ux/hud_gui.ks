@@ -126,6 +126,7 @@ FUNCTION aoso_hud_gui_build_mission {
     aoso_hud_lab(p, "msn_feas", "FEAS  -").
     aoso_hud_lab(p, "msn_class", "CLASS  -").
     aoso_hud_lab(p, "msn_time", "ROUTE  -").
+    aoso_hud_lab(p, "msn_skip", "").
 }
 
 FUNCTION aoso_hud_gui_build_vehicle {
@@ -152,6 +153,7 @@ FUNCTION aoso_hud_gui_build_prop {
     aoso_hud_lab(p, "prp_ox", "OX   -").
     aoso_hud_lab(p, "prp_mp", "MP   -").
     aoso_hud_lab(p, "prp_ec", "EC   -").
+    aoso_hud_lab(p, "prp_next", "NEXT STAGE  -").
 }
 
 FUNCTION aoso_hud_gui_build_land {
@@ -165,6 +167,10 @@ FUNCTION aoso_hud_gui_build_land {
     aoso_hud_lab(p, "lnd_trig", "SUICIDE  -").
     aoso_hud_lab(p, "lnd_dv", "LANDING dV  -").
     aoso_hud_lab(p, "lnd_gear", "GEAR  -").
+    aoso_hud_lab(p, "lnd_ret0", "").
+    aoso_hud_lab(p, "lnd_ret1", "").
+    aoso_hud_lab(p, "lnd_ret2", "").
+    aoso_hud_lab(p, "lnd_ret3", "").
 }
 
 FUNCTION aoso_hud_gui_build_stg {
@@ -224,7 +230,10 @@ FUNCTION aoso_hud_gui_build_dbg {
 }
 
 FUNCTION aoso_hud_fd_cb_pro { PARAMETER on. aoso_hud_fd_set("PRO", on). }
+FUNCTION aoso_hud_fd_cb_ret { PARAMETER on. aoso_hud_fd_set("RET", on). }
+FUNCTION aoso_hud_fd_cb_nml { PARAMETER on. aoso_hud_fd_set("NML", on). }
 FUNCTION aoso_hud_fd_cb_tgt { PARAMETER on. aoso_hud_fd_set("TGT", on). }
+FUNCTION aoso_hud_fd_cb_rel { PARAMETER on. aoso_hud_fd_set("REL", on). }
 FUNCTION aoso_hud_fd_cb_burn { PARAMETER on. aoso_hud_fd_set("BURN", on). }
 FUNCTION aoso_hud_fd_cb_land { PARAMETER on. aoso_hud_fd_set("LAND", on). }
 
@@ -256,8 +265,14 @@ FUNCTION aoso_hud_gui_init {
     LOCAL fdrow IS g:ADDHLAYOUT().
     LOCAL c1 IS fdrow:ADDCHECKBOX("PRO", TRUE).
     SET c1:ONTOGGLE TO aoso_hud_fd_cb_pro@.
+    LOCAL c1b IS fdrow:ADDCHECKBOX("RET", FALSE).
+    SET c1b:ONTOGGLE TO aoso_hud_fd_cb_ret@.
+    LOCAL c1c IS fdrow:ADDCHECKBOX("NML", FALSE).
+    SET c1c:ONTOGGLE TO aoso_hud_fd_cb_nml@.
     LOCAL c2 IS fdrow:ADDCHECKBOX("TGT", TRUE).
     SET c2:ONTOGGLE TO aoso_hud_fd_cb_tgt@.
+    LOCAL c2b IS fdrow:ADDCHECKBOX("REL", FALSE).
+    SET c2b:ONTOGGLE TO aoso_hud_fd_cb_rel@.
     LOCAL c3 IS fdrow:ADDCHECKBOX("BURN", TRUE).
     SET c3:ONTOGGLE TO aoso_hud_fd_cb_burn@.
     LOCAL c4 IS fdrow:ADDCHECKBOX("LAND", TRUE).
@@ -324,28 +339,73 @@ FUNCTION aoso_hud_gui_upd_header {
     IF doing = "" { SET doing TO aoso_hud_doing_text(). }
     aoso_hud_set("hdr_do", "DOING  " + doing).
     aoso_hud_set("hdr_dt", f["detail"]).
+    aoso_hud_tabs_adapt().
+}
+
+FUNCTION aoso_hud_tabs_adapt {
+    LOCAL veh IS AOSO_HUD_DATA["vehicle"].
+    LOCAL show_lnd IS FALSE.
+    IF veh:HASKEY("land") {
+        IF veh["land"] { SET show_lnd TO TRUE. }
+        IF veh["gear"] { SET show_lnd TO TRUE. }
+        IF veh["chutes"] { SET show_lnd TO TRUE. }
+    }
+    IF AOSO_HUD_DATA["landing"]:HASKEY("active") {
+        IF AOSO_HUD_DATA["landing"]["active"] { SET show_lnd TO TRUE. }
+    }
+    IF AOSO_HUD_TABS:HASKEY("LND") {
+        SET AOSO_HUD_TABS["LND"]:VISIBLE TO show_lnd.
+        IF NOT show_lnd {
+            IF AOSO_HUD_PAGE = "LND" { aoso_hud_show_page("FLT"). }
+        }
+    }
+    LOCAL show_prp IS TRUE.
+    IF veh:HASKEY("engines") {
+        IF veh["engines"] <= 0 {
+            IF AOSO_HUD_DATA["res"]:HASKEY("lf_has") {
+                IF NOT AOSO_HUD_DATA["res"]["lf_has"] { SET show_prp TO FALSE. }
+            }
+        }
+    }
+    IF AOSO_HUD_TABS:HASKEY("PRP") {
+        SET AOSO_HUD_TABS["PRP"]:VISIBLE TO show_prp.
+        IF NOT show_prp {
+            IF AOSO_HUD_PAGE = "PRP" { aoso_hud_show_page("FLT"). }
+        }
+    }
 }
 
 FUNCTION aoso_hud_gui_upd_flight {
     LOCAL f IS AOSO_HUD_DATA["flight"].
     LOCAL o IS AOSO_HUD_DATA["orbit"].
     LOCAL sys IS AOSO_HUD_DATA["systems"].
-    LOCAL radar_txt IS "".
-    IF f["show_radar"] { SET radar_txt TO "  RAD " + aoso_hud_km(f["radar"]). }
-    aoso_hud_set("flt_body", "BODY  " + f["body"] + "   " + f["status"]).
-    aoso_hud_set("flt_alt", "ALT  " + aoso_hud_km(f["alt"]) + radar_txt + "   VS " + ROUND(f["vs"], 1) + " m/s").
-    aoso_hud_set("flt_spd", "ORB " + ROUND(f["orb"], 0) + "  SRF " + ROUND(f["srf"], 0) + "  GS " + ROUND(f["gs"], 0) + " m/s").
-    aoso_hud_set("flt_att", "HDG " + ROUND(f["hdg"], 0) + "  PITCH " + ROUND(f["pitch"], 1) + "  ROLL " + ROUND(f["roll"], 1)).
-    LOCAL ap_txt IS aoso_hud_km(o["ap"]).
-    IF o["hyper"] { SET ap_txt TO "hyper". }
-    aoso_hud_set("flt_orb", "AP " + ap_txt + "  PE " + aoso_hud_km(o["pe"]) + "  INC " + ROUND(o["inc"], 1) + "  e " + ROUND(o["ecc"], 3)).
-    aoso_hud_set("flt_twr", "TWR " + ROUND(f["twr"], 2) + "  THR " + ROUND(f["throttle"] * 100, 0) + "%  MASS " + ROUND(f["mass"], 2) + " t  STG " + f["stage"]).
+    LOCAL ctx IS AOSO_HUD_CTX.
+    aoso_hud_set("flt_body", "BODY  " + f["body"] + "   " + f["status"] + "   " + ctx).
+    IF ctx = "LANDING" {
+        aoso_hud_set("flt_alt", "RAD  " + aoso_hud_km(AOSO_HUD_DATA["landing"]["radar"]) + "   ALT " + aoso_hud_km(f["alt"]) + "   VS " + ROUND(f["vs"], 1)).
+        aoso_hud_set("flt_spd", "HSPD " + ROUND(f["gs"], 1) + "  SRF " + ROUND(f["srf"], 1) + " m/s").
+        aoso_hud_set("flt_att", "PITCH " + ROUND(f["pitch"], 1) + "  ROLL " + ROUND(f["roll"], 1)).
+        aoso_hud_set("flt_orb", "").
+    } ELSE {
+        LOCAL radar_txt IS "".
+        IF f["show_radar"] { SET radar_txt TO "  RAD " + aoso_hud_km(f["radar"]). }
+        aoso_hud_set("flt_alt", "ALT  " + aoso_hud_km(f["alt"]) + radar_txt + "   VS " + ROUND(f["vs"], 1) + " m/s").
+        aoso_hud_set("flt_spd", "ORB " + ROUND(f["orb"], 0) + "  SRF " + ROUND(f["srf"], 0) + "  GS " + ROUND(f["gs"], 0) + " m/s").
+        aoso_hud_set("flt_att", "HDG " + ROUND(f["hdg"], 0) + "  PITCH " + ROUND(f["pitch"], 1) + "  ROLL " + ROUND(f["roll"], 1)).
+        LOCAL ap_txt IS aoso_hud_km(o["ap"]).
+        IF o["hyper"] { SET ap_txt TO "hyper". }
+        aoso_hud_set("flt_orb", "AP " + ap_txt + "  PE " + aoso_hud_km(o["pe"]) + "  INC " + ROUND(o["inc"], 1) + "  e " + ROUND(o["ecc"], 3)).
+    }
+    LOCAL twr_line IS "TWR " + ROUND(f["twr"], 2) + "  THR " + ROUND(f["throttle"] * 100, 0) + "%  MASS " + ROUND(f["mass"], 2) + " t  STG " + f["stage"].
+    IF ctx = "LAUNCH" {
+        IF f["in_atm"] { SET twr_line TO twr_line + "  Q " + ROUND(f["q"], 3) + "  AoA " + ROUND(f["aoa"], 1). }
+    }
+    aoso_hud_set("flt_twr", twr_line).
     aoso_hud_set("flt_guid", "GUIDANCE     " + aoso_hud_st_glyph(sys["guid"])).
     aoso_hud_set("flt_steer", "STEERING     " + aoso_hud_st_glyph(sys["steer"]) + "  " + sys["steer_mode"]).
     aoso_hud_set("flt_thr", "THROTTLE     " + aoso_hud_st_glyph(sys["thr"]) + "  " + sys["thr_mode"]).
     aoso_hud_set("flt_nav", "NAVIGATION   " + aoso_hud_st_glyph(sys["nav"])).
-    LOCAL pri IS aoso_hud_flight_priority_txt().
-    aoso_hud_set("flt_pri", pri).
+    aoso_hud_set("flt_pri", aoso_hud_flight_priority_txt()).
 }
 
 FUNCTION aoso_hud_flight_priority_txt {
@@ -453,6 +513,10 @@ FUNCTION aoso_hud_gui_upd_mission {
     IF m:HASKEY("timeline") { SET tl TO m["timeline"]. }
     IF tl = "" { SET tl TO aoso_hud_na(). }
     aoso_hud_set("msn_time", "ROUTE  " + tl).
+    LOCAL skip IS "".
+    IF m:HASKEY("skip") { SET skip TO m["skip"]. }
+    IF skip = "" { aoso_hud_set("msn_skip", ""). }
+    ELSE { aoso_hud_set("msn_skip", "SKIP  " + skip). }
 }
 
 FUNCTION aoso_hud_gui_upd_vehicle {
@@ -469,9 +533,12 @@ FUNCTION aoso_hud_gui_upd_vehicle {
     IF veh["chutes"] { SET mob TO mob + "CHUTES  ". } ELSE { SET mob TO mob + "CHUTES n  ". }
     aoso_hud_set("veh_mob", "MOBILITY  " + mob).
     LOCAL cap IS "".
+    IF veh["launch"] { SET cap TO cap + "LAUNCH Y  ". } ELSE { SET cap TO cap + "LAUNCH n  ". }
+    IF veh["orbit"] { SET cap TO cap + "ORBIT Y  ". } ELSE { SET cap TO cap + "ORBIT n  ". }
     IF veh["land"] { SET cap TO cap + "LAND Y  ". } ELSE { SET cap TO cap + "LAND n  ". }
     IF veh["isru"] { SET cap TO cap + "ISRU Y  ". } ELSE { SET cap TO cap + "ISRU n  ". }
-    IF veh["dock"] { SET cap TO cap + "DOCK Y". } ELSE { SET cap TO cap + "DOCK n". }
+    IF veh["dock"] { SET cap TO cap + "DOCK Y  ". } ELSE { SET cap TO cap + "DOCK n  ". }
+    IF veh["home"] { SET cap TO cap + "HOME Y". } ELSE { SET cap TO cap + "HOME n". }
     aoso_hud_set("veh_cap", "CAPABLE  " + cap).
     aoso_hud_set("veh_pwr", "POWER  SOLAR " + veh["solar"] + "  EC " + ROUND(AOSO_HUD_DATA["res"]["ec"], 0) + "%").
     LOCAL tw IS "TWIN  -".
@@ -498,6 +565,12 @@ FUNCTION aoso_hud_gui_upd_prop {
     IF rsrc["mp_has"] { aoso_hud_set("prp_mp", "MP   " + aoso_hud_bar(rsrc["mp"])). }
     ELSE { aoso_hud_set("prp_mp", "MP   " + aoso_hud_na()). }
     aoso_hud_set("prp_ec", "EC   " + aoso_hud_bar(rsrc["ec"])).
+    LOCAL nxt IS "NEXT STAGE  -".
+    IF rsrc:HASKEY("twr_next") {
+        SET nxt TO "NEXT STAGE  TWR " + ROUND(rsrc["twr_next"], 2) + "  now " + ROUND(rsrc["twr_now"], 2).
+        IF rsrc["role_next"] <> "" { SET nxt TO nxt + "  " + rsrc["role_next"]. }
+    }
+    aoso_hud_set("prp_next", nxt).
 }
 
 FUNCTION aoso_hud_gui_upd_land {
@@ -525,6 +598,41 @@ FUNCTION aoso_hud_gui_upd_land {
     IF f["gear"] { SET gtxt TO "DOWN". }
     IF NOT AOSO_HUD_DATA["vehicle"]["gear"] { SET gtxt TO "NOT INSTALLED". }
     aoso_hud_set("lnd_gear", "GEAR  " + gtxt).
+    IF l["active"] {
+        LOCAL cell_e IS 1.
+        LOCAL cell_n IS 1.
+        IF l["drift_e"] > 2 { SET cell_e TO 2. }
+        IF l["drift_e"] < -2 { SET cell_e TO 0. }
+        IF l["drift_n"] > 2 { SET cell_n TO 0. }
+        IF l["drift_n"] < -2 { SET cell_n TO 2. }
+        aoso_hud_set("lnd_ret0", "DRIFT  E " + ROUND(l["drift_e"], 1) + "  N " + ROUND(l["drift_n"], 1) + " m/s  (surface, not a GPS reticle)").
+        aoso_hud_set("lnd_ret1", aoso_hud_reticle_row(0, cell_n, cell_e)).
+        aoso_hud_set("lnd_ret2", aoso_hud_reticle_row(1, cell_n, cell_e)).
+        aoso_hud_set("lnd_ret3", aoso_hud_reticle_row(2, cell_n, cell_e)).
+    } ELSE {
+        aoso_hud_set("lnd_ret0", "").
+        aoso_hud_set("lnd_ret1", "").
+        aoso_hud_set("lnd_ret2", "").
+        aoso_hud_set("lnd_ret3", "").
+    }
+}
+
+FUNCTION aoso_hud_reticle_row {
+    PARAMETER row.
+    PARAMETER mark_row.
+    PARAMETER mark_col.
+    LOCAL out IS "    ".
+    LOCAL col IS 0.
+    UNTIL col >= 3 {
+        IF row = mark_row {
+            IF col = mark_col { SET out TO out + "[*]". }
+            ELSE { SET out TO out + "[ ]". }
+        } ELSE {
+            SET out TO out + "[ ]".
+        }
+        SET col TO col + 1.
+    }
+    RETURN out.
 }
 
 FUNCTION aoso_hud_gui_upd_stg {

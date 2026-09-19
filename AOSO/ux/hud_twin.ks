@@ -106,6 +106,19 @@ FUNCTION aoso_twin_short {
     RETURN title:SUBSTRING(0, 16).
 }
 
+FUNCTION aoso_twin_mod_short {
+    PARAMETER prt.
+    LOCAL out IS "".
+    LOCAL n IS 0.
+    FOR mname IN prt:MODULES {
+        IF n >= 4 { BREAK. }
+        IF out <> "" { SET out TO out + ",". }
+        SET out TO out + mname.
+        SET n TO n + 1.
+    }
+    RETURN out.
+}
+
 FUNCTION aoso_twin_read_resources {
     PARAMETER prt.
     LOCAL bag IS LIST().
@@ -206,6 +219,8 @@ FUNCTION aoso_twin_rebuild {
             "flameout", flameout,
             "thrust", thrust_now,
             "maxthrust", thrust_max,
+            "mass", prt:MASS,
+            "modules", aoso_twin_mod_short(prt),
             "n", 1,
             "members", LIST(uid)
         )).
@@ -262,6 +277,20 @@ FUNCTION aoso_twin_node_keep {
         IF kind = "rcs" { RETURN TRUE. }
         RETURN FALSE.
     }
+    IF filt = "SYSTEM" {
+        IF kind = "command" { RETURN TRUE. }
+        IF kind = "antenna" { RETURN TRUE. }
+        IF kind = "battery" { RETURN TRUE. }
+        IF kind = "solar" { RETURN TRUE. }
+        IF kind = "rcs" { RETURN TRUE. }
+        IF kind = "dock" { RETURN TRUE. }
+        IF kind = "isru" { RETURN TRUE. }
+        IF kind = "chute" { RETURN TRUE. }
+        IF kind = "gear" { RETURN TRUE. }
+        IF kind = "radiator" { RETURN TRUE. }
+        RETURN FALSE.
+    }
+    IF filt = "STATUS" { RETURN TRUE. }
     IF kind = "structural" { RETURN FALSE. }
     RETURN TRUE.
 }
@@ -312,7 +341,23 @@ FUNCTION aoso_twin_rebuild_display {
     FOR node IN AOSO_TWIN["nodes"] {
         IF aoso_twin_node_keep(node["kind"], filt) {
             IF aoso_twin_focus_hit(node["resources"], focus) {
-                kept:ADD(node).
+                IF view = "STATUS" {
+                    LOCAL tag IS aoso_twin_flow_tag(node).
+                    IF tag <> "" { kept:ADD(node). }
+                    ELSE {
+                        IF node["kind"] = "engine" { kept:ADD(node). }
+                    }
+                } ELSE {
+                    IF filt = "STATUS" {
+                        LOCAL tag2 IS aoso_twin_flow_tag(node).
+                        IF tag2 <> "" { kept:ADD(node). }
+                        ELSE {
+                            IF node["kind"] = "engine" { kept:ADD(node). }
+                        }
+                    } ELSE {
+                        kept:ADD(node).
+                    }
+                }
             }
         }
     }
@@ -345,6 +390,8 @@ FUNCTION aoso_twin_rebuild_display {
                     "flameout", node["flameout"],
                     "thrust", node["thrust"],
                     "maxthrust", node["maxthrust"],
+                    "mass", node["mass"],
+                    "modules", node["modules"],
                     "n", 0,
                     "members", LIST()
                 ).
@@ -378,7 +425,15 @@ FUNCTION aoso_twin_rebuild_display {
     IF view = "STAGING" {
         SET AOSO_TWIN["bands"] TO aoso_twin_bands_stage(disp).
     } ELSE {
-        SET AOSO_TWIN["bands"] TO aoso_twin_bands_spatial(disp).
+        IF view = "SYSTEM" {
+            SET AOSO_TWIN["bands"] TO aoso_twin_bands_kind(disp).
+        } ELSE {
+            IF view = "STATUS" {
+                SET AOSO_TWIN["bands"] TO aoso_twin_bands_kind(disp).
+            } ELSE {
+                SET AOSO_TWIN["bands"] TO aoso_twin_bands_spatial(disp).
+            }
+        }
     }
 }
 
@@ -406,6 +461,22 @@ FUNCTION aoso_twin_bands_stage {
         st_keys:REMOVE(best).
     }
     RETURN sorted.
+}
+
+FUNCTION aoso_twin_bands_kind {
+    PARAMETER disp.
+    LOCAL order IS LIST("command", "antenna", "battery", "solar", "tank", "engine", "rcs", "dock", "isru", "chute", "gear", "science", "radiator", "structural").
+    LOCAL byk IS LEXICON().
+    FOR node IN disp {
+        LOCAL k IS node["kind"].
+        IF NOT byk:HASKEY(k) { SET byk[k] TO LIST(). }
+        byk[k]:ADD(node).
+    }
+    LOCAL bands IS LIST().
+    FOR k IN order {
+        IF byk:HASKEY(k) { bands:ADD(byk[k]). }
+    }
+    RETURN bands.
 }
 
 FUNCTION aoso_twin_axis_of {
@@ -562,6 +633,7 @@ FUNCTION aoso_twin_refresh_fills {
         IF AOSO_TWIN_PARTS:HASKEY(uid) {
             LOCAL prt IS AOSO_TWIN_PARTS[uid].
             SET node["resources"] TO aoso_twin_read_resources(prt).
+            SET node["mass"] TO prt:MASS.
             IF node["kind"] = "engine" {
                 SET eng_n TO eng_n + 1.
                 IF prt:ISTYPE("Engine") {
@@ -595,6 +667,7 @@ FUNCTION aoso_twin_refresh_fills {
             IF dnode["n"] <= 1 {
                 IF AOSO_TWIN_PARTS:HASKEY(dnode["uid"]) {
                     SET dnode["resources"] TO aoso_twin_read_resources(AOSO_TWIN_PARTS[dnode["uid"]]).
+                    SET dnode["mass"] TO AOSO_TWIN_PARTS[dnode["uid"]]:MASS.
                     LOCAL prt IS AOSO_TWIN_PARTS[dnode["uid"]].
                     IF dnode["kind"] = "engine" {
                         IF prt:ISTYPE("Engine") {

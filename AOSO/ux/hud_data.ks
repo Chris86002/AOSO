@@ -180,6 +180,13 @@ FUNCTION aoso_hud_collect_res {
     SET rsrc["mission_dv"] TO mission_dv.
     SET rsrc["total_dv"] TO total_dv.
     SET rsrc["land_dv"] TO land_dv.
+    SET rsrc["twr_now"] TO 0.
+    SET rsrc["twr_next"] TO 0.
+    SET rsrc["role_next"] TO "".
+    LOCAL pred IS aoso_capabilities_predict_next().
+    SET rsrc["twr_now"] TO pred["twr_now"].
+    SET rsrc["twr_next"] TO pred["twr_next"].
+    SET rsrc["role_next"] TO pred["role_next"].
 }
 
 FUNCTION aoso_hud_collect_mission {
@@ -196,6 +203,7 @@ FUNCTION aoso_hud_collect_mission {
     SET m["feas"] TO "".
     SET m["class"] TO "".
     SET m["timeline"] TO "".
+    SET m["skip"] TO "".
     IF DEFINED AOSO_MISSION {
         SET m["mission"] TO AOSO_MISSION["current"].
         SET m["step"] TO aoso_mission_current_step_name().
@@ -235,6 +243,17 @@ FUNCTION aoso_hud_collect_mission {
         }
     }
     SET m["timeline"] TO aoso_hud_timeline_txt().
+    SET m["skip"] TO "".
+    IF DEFINED AOSO_FEAS_LAST {
+        IF AOSO_FEAS_LAST:HASKEY("result") {
+            IF AOSO_FEAS_LAST["result"] = "SKIP" {
+                SET m["skip"] TO AOSO_FEAS_LAST["body"] + ": " + AOSO_FEAS_LAST["reason"].
+            }
+            IF AOSO_FEAS_LAST["result"] = "ORBIT_ONLY" {
+                SET m["skip"] TO AOSO_FEAS_LAST["body"] + " orbit-only: " + AOSO_FEAS_LAST["reason"].
+            }
+        }
+    }
 }
 
 FUNCTION aoso_hud_timeline_txt {
@@ -267,6 +286,8 @@ FUNCTION aoso_hud_collect_landing {
     SET l["radar"] TO 0.
     SET l["trig"] TO 0.
     SET l["site"] TO "".
+    SET l["drift_e"] TO 0.
+    SET l["drift_n"] TO 0.
     IF DEFINED AOSO_DESCENT {
         IF AOSO_DESCENT["current"] <> "" {
             IF AOSO_DESCENT["current"] <> "TOUCHDOWN" {
@@ -284,6 +305,11 @@ FUNCTION aoso_hud_collect_landing {
     IF l["active"] {
         SET l["radar"] TO aoso_descent_true_radar().
         SET l["trig"] TO aoso_descent_burn_trigger_alt().
+        LOCAL srf IS SHIP:VELOCITY:SURFACE.
+        LOCAL upv IS SHIP:UP:VECTOR.
+        LOCAL horiz IS VXCL(upv, srf).
+        SET l["drift_e"] TO VDOT(horiz, VCRS(upv, SHIP:NORTH:VECTOR)).
+        SET l["drift_n"] TO VDOT(horiz, SHIP:NORTH:VECTOR).
     }
     IF DEFINED AOSO_TOUR {
         IF AOSO_TOUR:HASKEY("data") {
@@ -396,6 +422,9 @@ FUNCTION aoso_hud_collect_vehicle {
     SET veh["land"] TO FALSE.
     SET veh["isru"] TO FALSE.
     SET veh["dock"] TO FALSE.
+    SET veh["orbit"] TO FALSE.
+    SET veh["launch"] TO FALSE.
+    SET veh["home"] TO FALSE.
     SET veh["gear"] TO FALSE.
     SET veh["chutes"] TO FALSE.
     SET veh["antenna"] TO FALSE.
@@ -420,6 +449,9 @@ FUNCTION aoso_hud_collect_vehicle {
         SET veh["land"] TO aoso_profile_capable("can_land").
         SET veh["isru"] TO aoso_profile_capable("can_isru").
         SET veh["dock"] TO aoso_profile_capable("can_dock").
+        SET veh["orbit"] TO aoso_profile_capable("can_orbit").
+        SET veh["launch"] TO aoso_profile_capable("can_launch").
+        SET veh["home"] TO aoso_profile_capable("can_return_to_kerbin").
     }
     IF DEFINED AOSO_CLASS_LAST {
         IF AOSO_CLASS_LAST:HASKEY("class") { SET veh["class"] TO AOSO_CLASS_LAST["class"]. }

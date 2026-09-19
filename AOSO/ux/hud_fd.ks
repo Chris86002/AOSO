@@ -13,10 +13,14 @@ FUNCTION aoso_hud_fd_init {
     SET AOSO_HUD_FD_ON TO FALSE.
     aoso_hud_fd_make("PRO", RGB(0.2, 0.95, 0.45), "PRO").
     aoso_hud_fd_make("RET", RGB(0.95, 0.35, 0.3), "RET").
+    aoso_hud_fd_make("NML", RGB(0.55, 0.55, 1.0), "NML").
     aoso_hud_fd_make("TGT", RGB(0.35, 0.75, 1.0), "TGT").
     aoso_hud_fd_make("REL", RGB(1.0, 0.55, 0.15), "REL V").
     aoso_hud_fd_make("BURN", RGB(1.0, 0.85, 0.15), "BURN").
     aoso_hud_fd_make("LAND", RGB(0.85, 0.4, 1.0), "LAND").
+    aoso_hud_fd_set("RET", FALSE).
+    aoso_hud_fd_set("NML", FALSE).
+    aoso_hud_fd_set("REL", FALSE).
 }
 
 FUNCTION aoso_hud_fd_make {
@@ -107,7 +111,9 @@ FUNCTION aoso_hud_fd_tick {
     IF ctx = "LAUNCH" { SET pro TO SHIP:VELOCITY:SURFACE. }
     IF ctx = "LANDING" { SET pro TO SHIP:VELOCITY:SURFACE. }
     aoso_hud_fd_apply("PRO", pro, show_pro).
-    aoso_hud_fd_apply("RET", -1 * pro, show_ret).
+    aoso_hud_fd_apply("RET", -1 * pro, TRUE).
+    LOCAL nml IS VCRS(-1 * SHIP:BODY:POSITION, SHIP:VELOCITY:ORBIT).
+    aoso_hud_fd_apply("NML", nml, TRUE).
 
     LOCAL tgt_v IS V(0, 0, 0).
     LOCAL rel_v IS V(0, 0, 0).
@@ -116,7 +122,7 @@ FUNCTION aoso_hud_fd_tick {
         SET rel_v TO TARGET:VELOCITY:ORBIT - SHIP:VELOCITY:ORBIT.
     }
     aoso_hud_fd_apply("TGT", tgt_v, show_tgt).
-    aoso_hud_fd_apply("REL", rel_v, show_rel).
+    aoso_hud_fd_apply("REL", rel_v, HASTARGET).
 
     LOCAL burn_v IS V(0, 0, 0).
     IF HASNODE { SET burn_v TO NEXTNODE:BURNVECTOR. }

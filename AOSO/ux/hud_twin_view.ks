@@ -91,7 +91,10 @@ FUNCTION aoso_twin_view_mode {
     IF view = "POWER" { aoso_twin_set_filter("POWER"). }
     IF view = "PROPULSION" { aoso_twin_set_filter("PROPULSION"). }
     IF view = "CONTROL" { aoso_twin_set_filter("CONTROL"). }
+    IF view = "SYSTEM" { aoso_twin_set_filter("SYSTEM"). }
+    IF view = "STATUS" { aoso_twin_set_filter("STATUS"). }
     IF view = "NORMAL" { aoso_twin_set_filter("ALL"). }
+    IF view = "EXPLODED" { aoso_twin_set_filter("ALL"). }
     IF view = "STAGING" { aoso_twin_set_filter("ALL"). }
     SET AOSO_TWIN_VIEW_DIRTY TO TRUE.
 }
@@ -113,15 +116,22 @@ FUNCTION aoso_twin_view_build {
     LOCAL vrow IS page:ADDHLAYOUT().
     LOCAL b1 IS vrow:ADDBUTTON("NORM").
     SET b1:ONCLICK TO aoso_twin_view_mode@:BIND("NORMAL").
+    LOCAL bx IS vrow:ADDBUTTON("EXP").
+    SET bx:ONCLICK TO aoso_twin_view_mode@:BIND("EXPLODED").
     LOCAL b2 IS vrow:ADDBUTTON("STG").
     SET b2:ONCLICK TO aoso_twin_view_mode@:BIND("STAGING").
-    LOCAL b3 IS vrow:ADDBUTTON("FUEL").
+    LOCAL bs IS vrow:ADDBUTTON("SYS").
+    SET bs:ONCLICK TO aoso_twin_view_mode@:BIND("SYSTEM").
+    LOCAL bt IS vrow:ADDBUTTON("STAT").
+    SET bt:ONCLICK TO aoso_twin_view_mode@:BIND("STATUS").
+    LOCAL vrow2 IS page:ADDHLAYOUT().
+    LOCAL b3 IS vrow2:ADDBUTTON("FUEL").
     SET b3:ONCLICK TO aoso_twin_view_mode@:BIND("FUEL").
-    LOCAL b4 IS vrow:ADDBUTTON("PWR").
+    LOCAL b4 IS vrow2:ADDBUTTON("PWR").
     SET b4:ONCLICK TO aoso_twin_view_mode@:BIND("POWER").
-    LOCAL b5 IS vrow:ADDBUTTON("ENG").
+    LOCAL b5 IS vrow2:ADDBUTTON("ENG").
     SET b5:ONCLICK TO aoso_twin_view_mode@:BIND("PROPULSION").
-    LOCAL b6 IS vrow:ADDBUTTON("CTL").
+    LOCAL b6 IS vrow2:ADDBUTTON("CTL").
     SET b6:ONCLICK TO aoso_twin_view_mode@:BIND("CONTROL").
 
     LOCAL frow IS page:ADDHLAYOUT().
@@ -155,6 +165,7 @@ FUNCTION aoso_twin_view_build {
     SET AOSO_TWIN_BOX TO page:ADDVLAYOUT().
     aoso_hud_lab(page, "tw_sel", "SELECT a node").
     aoso_hud_lab(page, "tw_det", "").
+    aoso_hud_lab(page, "tw_res", "").
     aoso_hud_lab(page, "tw_mod", "").
     SET AOSO_TWIN_VIEW_DIRTY TO TRUE.
 }
@@ -183,6 +194,10 @@ FUNCTION aoso_twin_view_rebuild_schematic {
         IF bi > 0 {
             LOCAL conn IS AOSO_TWIN_BOX:ADDLABEL("          |").
             SET conn:STYLE:HSTRETCH TO TRUE.
+            IF AOSO_TWIN["view"] = "EXPLODED" {
+                LOCAL pad IS AOSO_TWIN_BOX:ADDLABEL("").
+                SET pad:STYLE:HSTRETCH TO TRUE.
+            }
         }
         LOCAL row IS AOSO_TWIN_BOX:ADDHLAYOUT().
         FOR node IN bands[bi] {
@@ -245,10 +260,36 @@ FUNCTION aoso_twin_detail_txt {
     IF NOT node:ISTYPE("Lexicon") { RETURN "SELECT a node". }
     LOCAL line IS node["title"] + "  " + node["kind"]:TOUPPER.
     IF node["n"] > 1 { SET line TO line + "  x" + node["n"]. }
-    SET line TO line + "  STG " + node["stage"].
-    LOCAL bars IS aoso_twin_bar_txt(node).
-    IF bars <> "" { SET line TO line + "  " + bars. }
     RETURN line.
+}
+
+FUNCTION aoso_twin_detail_meta {
+    LOCAL uid IS AOSO_TWIN["selected_uid"].
+    IF uid = "" { RETURN "". }
+    LOCAL node IS 0.
+    FOR dnode IN AOSO_TWIN["disp"] {
+        IF dnode["uid"] = uid { SET node TO dnode. }
+    }
+    IF NOT node:ISTYPE("Lexicon") { RETURN "". }
+    LOCAL mass_t IS 0.
+    IF node:HASKEY("mass") { SET mass_t TO node["mass"]. }
+    LOCAL en IS "yes".
+    FOR res_item IN node["resources"] {
+        IF NOT res_item["enabled"] { SET en TO "no". }
+    }
+    RETURN "UID " + uid + "  MASS " + ROUND(mass_t, 2) + " t  STG " + node["stage"] + "  DEC " + node["decoupled_in"] + "  EN " + en.
+}
+
+FUNCTION aoso_twin_detail_mods {
+    LOCAL uid IS AOSO_TWIN["selected_uid"].
+    IF uid = "" { RETURN "". }
+    LOCAL node IS 0.
+    FOR dnode IN AOSO_TWIN["disp"] {
+        IF dnode["uid"] = uid { SET node TO dnode. }
+    }
+    IF NOT node:ISTYPE("Lexicon") { RETURN "". }
+    IF node:HASKEY("modules") { RETURN node["modules"]. }
+    RETURN "".
 }
 
 FUNCTION aoso_twin_view_tick {
@@ -260,7 +301,18 @@ FUNCTION aoso_twin_view_tick {
     aoso_hud_set("tw_tot", aoso_twin_totals_txt()).
     aoso_hud_set("tw_eng", "ENGINES  " + AOSO_TWIN["engines_on"] + " / " + AOSO_TWIN["engines_total"] + " active   flow APPROXIMATE").
     aoso_hud_set("tw_sel", aoso_twin_detail_txt()).
+    aoso_hud_set("tw_det", aoso_twin_detail_meta()).
+    LOCAL bars IS "".
+    LOCAL uid IS AOSO_TWIN["selected_uid"].
+    IF uid <> "" {
+        FOR dnode IN AOSO_TWIN["disp"] {
+            IF dnode["uid"] = uid { SET bars TO aoso_twin_bar_txt(dnode). }
+        }
+    }
+    aoso_hud_set("tw_res", bars).
+    aoso_hud_set("tw_mod", aoso_twin_detail_mods()).
 
+    IF AOSO_TWIN["status"] = "UPDATING" { RETURN. }
     IF lvl >= 2 { RETURN. }
 
     LOCAL sig IS aoso_twin_disp_sig().
