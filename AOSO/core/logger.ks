@@ -52,7 +52,13 @@ FUNCTION aoso_log {
     IF DEFINED TIME { SET t TO TIME:SECONDS. }
     LOCAL line IS "[" + ROUND(t, 2) + "][" + level_name + "][" + tag + "] " + message.
 
-    PRINT line.
+    LOCAL do_print IS TRUE.
+    IF DEFINED AOSO_CPU_LEVEL {
+        IF AOSO_CPU_LEVEL >= 2 {
+            IF lvl < AOSO_LOG_LEVELS["WARN"] { SET do_print TO FALSE. }
+        }
+    }
+    IF do_print { PRINT line. }
     AOSO_LOG_BUFFER:ADD(line).
 
     IF lvl >= AOSO_LOG_LEVELS["ERROR"] {

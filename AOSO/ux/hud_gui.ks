@@ -20,6 +20,8 @@ GLOBAL AOSO_HUD_SCALE IS 2.
 GLOBAL AOSO_HUD_COMPACT IS FALSE.
 GLOBAL AOSO_HUD_BTN_X IS 0.
 GLOBAL AOSO_HUD_HDR_TITLE IS 0.
+GLOBAL AOSO_HUD_LAST_GUI IS 0.
+GLOBAL AOSO_HUD_GUI_PAINTED IS "".
 
 FUNCTION aoso_hud_set {
     PARAMETER key.
@@ -1000,8 +1002,16 @@ FUNCTION aoso_hud_gui_tick {
         RETURN.
     }
     IF NOT AOSO_HUD_GUI_ON { aoso_hud_gui_show(). }
-    aoso_hud_gui_upd_header().
+    LOCAL now IS TIME:SECONDS.
     LOCAL pg IS AOSO_HUD_PAGE.
+    LOCAL force IS FALSE.
+    IF pg <> AOSO_HUD_GUI_PAINTED { SET force TO TRUE. }
+    IF now - AOSO_HUD_LAST_GUI < 0.08 {
+        IF NOT force { RETURN. }
+    }
+    SET AOSO_HUD_LAST_GUI TO now.
+    SET AOSO_HUD_GUI_PAINTED TO pg.
+    aoso_hud_gui_upd_header().
     IF pg = "FLT" { aoso_hud_gui_upd_flight(). RETURN. }
     IF pg = "NAV" { aoso_hud_gui_upd_nav(). RETURN. }
     IF pg = "MSN" { aoso_hud_gui_upd_mission(). RETURN. }

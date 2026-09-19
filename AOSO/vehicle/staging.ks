@@ -38,6 +38,7 @@ GLOBAL AOSO_STAGING_PENDING_RELIGHT IS FALSE.
 GLOBAL AOSO_STAGING_EXTRA_THIS IS 0.
 GLOBAL AOSO_STG_DROP_FLOWING IS FALSE.
 GLOBAL AOSO_STAGING_HOTSEP_LOG IS 0.
+GLOBAL AOSO_STAGING_HOTSEP_STG IS -1.
 GLOBAL AOSO_STG_LIT IS 0.
 GLOBAL AOSO_STG_FLAMED IS 0.
 GLOBAL AOSO_STG_FLOWING IS 0.
@@ -290,9 +291,16 @@ FUNCTION aoso_staging_should_stage {
     aoso_staging_sense(commanded_throttle).
 
     IF AOSO_STG_DROP_FLOWING {
-        IF TIME:SECONDS - AOSO_STAGING_HOTSEP_LOG > 5 {
-            aoso_log_info("STAGING", "Holding stage " + STAGE:NUMBER + " - next drop group still thrusting (hot-sep).").
+        LOCAL stg_n IS STAGE:NUMBER.
+        LOCAL say IS FALSE.
+        IF stg_n <> AOSO_STAGING_HOTSEP_STG { SET say TO TRUE. }
+        ELSE {
+            IF TIME:SECONDS - AOSO_STAGING_HOTSEP_LOG > 45 { SET say TO TRUE. }
+        }
+        IF say {
+            aoso_log_info("STAGING", "Holding stage " + stg_n + " - next drop group still thrusting (hot-sep).").
             SET AOSO_STAGING_HOTSEP_LOG TO TIME:SECONDS.
+            SET AOSO_STAGING_HOTSEP_STG TO stg_n.
         }
         RETURN FALSE.
     }

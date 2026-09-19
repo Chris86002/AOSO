@@ -22,6 +22,9 @@ FUNCTION aoso_boot {
         aoso_log_info("BOOT", "CONFIG:IPU raised " + ipu_now + " -> 400 (AOSO needs the headroom for PLAN/HUD).").
     } ELSE {
         aoso_log_info("BOOT", "CONFIG:IPU=" + ipu_now + ".").
+        IF ipu_now < 800 {
+            aoso_log_warn("BOOT", "CONFIG:IPU is " + ipu_now + ". 1000+ is more comfortable during ascent; 2000 is optional headroom, not required.").
+        }
     }
     aoso_addons_detect().
 

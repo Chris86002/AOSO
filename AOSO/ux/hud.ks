@@ -186,7 +186,9 @@ FUNCTION aoso_hud_tick {
             IF AOSO_HUD_PAGE = "TWIN" { SET compact TO TRUE. }
         }
     }
-    IF rates["term"] { aoso_hud_term_tick(compact). }
+    IF rates["term"] {
+        IF NOT AOSO_HUD_GUI_ON { aoso_hud_term_tick(compact). }
+    }
     IF NOT compact {
         aoso_hud_watch_alerts().
         aoso_hud_fd_tick(rates["fd"]).
@@ -208,7 +210,7 @@ FUNCTION aoso_hud_tick {
         }
     }
     aoso_hud_gui_tick(TRUE).
-    aoso_log_every(8, "HUD_HB", aoso_hud_debug_line()).
+    aoso_log_every(20, "HUD_HB", aoso_hud_debug_line()).
     IF AOSO_HUD_PAGE = "DBG" {
         IF TIME:SECONDS - AOSO_HUD_LAST_DUMP >= 20 { aoso_hud_debug_write(). }
     }
@@ -235,7 +237,7 @@ FUNCTION aoso_hud_init {
 }
 
 FUNCTION aoso_hud_register_task {
-    PARAMETER interval_s IS 0.05.
+    PARAMETER interval_s IS 0.1.
     aoso_hud_init().
     aoso_sched_add("hud", interval_s, aoso_hud_tick@).
 }

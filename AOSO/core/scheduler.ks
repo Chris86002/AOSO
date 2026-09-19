@@ -6,13 +6,72 @@
 // implemented as non-blocking (return quickly); use the state machine
 // (core/state.ks) for multi-tick sequences.
 //
-// next_run (init 0) makes the first dispatch immediate. Nested IF so a
-// disabled task never pays the time compare (kOS AND always evaluates both
-// sides). The hot loop inlines CALL.
-// CPU HIGH/CRITICAL sheds profile/checkpoints/telemetry first; HUD,
-// staging, watchdog, mission, and power always run.
+// Opcode budget: kOS gives CONFIG:IPU instructions per physics update.
+// Running staging + mission + HUD in the same slice spills into the next
+// frame and the CPU classifier sticks on CRITICAL. Flight tasks (prio 0)
+// always run; HUD/power (prio 1) need leftover headroom; telemetry and
+// profile yield first. Skipped work stays due so it runs next physics tick.
+//
+// Snapshot COPY only when the task list mutates (GOTO PLAN, descent).
 
 GLOBAL AOSO_TASKS IS LIST().
+GLOBAL AOSO_TASKS_SNAP IS LIST().
+GLOBAL AOSO_TASKS_DIRTY IS TRUE.
+
+FUNCTION aoso_sched_prio_of {
+    PARAMETER name.
+    IF name = "auto_staging" { RETURN 0. }
+    IF name = "watchdog" { RETURN 0. }
+    IF name = "mission" { RETURN 0. }
+    IF name = "goto" { RETURN 0. }
+    IF name = "descent" { RETURN 0. }
+    IF name = "hud" { RETURN 1. }
+    IF name = "auto_power" { RETURN 1. }
+    IF name = "telemetry" { RETURN 2. }
+    IF name = "vehicle_profile" { RETURN 3. }
+    IF name = "checkpoint_autosave" { RETURN 3. }
+    RETURN 1.
+}
+
+FUNCTION aoso_sched_floor_of {
+    PARAMETER name.
+    IF name = "auto_staging" { RETURN 40. }
+    IF name = "watchdog" { RETURN 40. }
+    IF name = "mission" { RETURN 80. }
+    IF name = "goto" { RETURN 80. }
+    IF name = "descent" { RETURN 80. }
+    IF name = "hud" { RETURN 220. }
+    IF name = "auto_power" { RETURN 80. }
+    IF name = "telemetry" { RETURN 160. }
+    IF name = "vehicle_profile" { RETURN 280. }
+    IF name = "checkpoint_autosave" { RETURN 200. }
+    RETURN 120.
+}
+
+FUNCTION aoso_sched_rebuild_snap {
+    LOCAL b0 IS LIST().
+    LOCAL b1 IS LIST().
+    LOCAL b2 IS LIST().
+    LOCAL b3 IS LIST().
+    FOR t IN AOSO_TASKS {
+        LOCAL p IS t["prio"].
+        IF p <= 0 { b0:ADD(t). }
+        ELSE {
+            IF p = 1 { b1:ADD(t). }
+            ELSE {
+                IF p = 2 { b2:ADD(t). }
+                ELSE { b3:ADD(t). }
+            }
+        }
+    }
+    LOCAL snap IS LIST().
+    FOR t IN b0 { snap:ADD(t). }
+    FOR t IN b1 { snap:ADD(t). }
+    FOR t IN b2 { snap:ADD(t). }
+    FOR t IN b3 { snap:ADD(t). }
+    SET AOSO_TASKS_SNAP TO snap.
+    SET AOSO_TASKS_DIRTY TO FALSE.
+}
 
 FUNCTION aoso_sched_add {
     PARAMETER task_name.
@@ -20,7 +79,6 @@ FUNCTION aoso_sched_add {
     PARAMETER task_delegate.
     PARAMETER enabled IS TRUE.
 
-    // Replace if already registered.
     aoso_sched_remove(task_name).
     AOSO_TASKS:ADD(LEXICON(
         "name", task_name,
@@ -28,12 +86,16 @@ FUNCTION aoso_sched_add {
         "next_run", 0,
         "fn", task_delegate,
         "enabled", enabled,
+        "prio", aoso_sched_prio_of(task_name),
+        "floor", aoso_sched_floor_of(task_name),
+        "skip_n", 0,
         "run_count", 0,
         "last_error", "",
         "last_dt", 0,
         "sum_dt", 0,
         "max_dt", 0
     )).
+    SET AOSO_TASKS_DIRTY TO TRUE.
 }
 
 FUNCTION aoso_sched_remove {
@@ -42,7 +104,10 @@ FUNCTION aoso_sched_remove {
     FOR i IN RANGE(0, AOSO_TASKS:LENGTH) {
         IF AOSO_TASKS[i]["name"] = task_name { SET idx TO i. }
     }
-    IF idx >= 0 { AOSO_TASKS:REMOVE(idx). }
+    IF idx >= 0 {
+        AOSO_TASKS:REMOVE(idx).
+        SET AOSO_TASKS_DIRTY TO TRUE.
+    }
 }
 
 FUNCTION aoso_sched_keep {
@@ -51,7 +116,6 @@ FUNCTION aoso_sched_keep {
     IF DEFINED AOSO_CPU_LEVEL { SET lvl TO AOSO_CPU_LEVEL. }
     IF lvl <= 1 { RETURN TRUE. }
 
-    // Never shed flight / staging / landing / watchdog / hop / suicide.
     IF name = "auto_staging" { RETURN TRUE. }
     IF name = "watchdog" { RETURN TRUE. }
     IF name = "mission" { RETURN TRUE. }
@@ -74,13 +138,25 @@ FUNCTION aoso_sched_keep {
 
 FUNCTION aoso_sched_run {
     LOCAL now IS TIME:SECONDS.
-    // COPY: tasks may aoso_sched_add/remove during CALL (GOTO PLAN, descent).
-    // kOS throws "Collection was modified" if we enumerate AOSO_TASKS live.
-    LOCAL snap IS AOSO_TASKS:COPY.
+    IF AOSO_TASKS_DIRTY { aoso_sched_rebuild_snap(). }
+    LOCAL snap IS AOSO_TASKS_SNAP.
     FOR t IN snap {
         IF t["enabled"] {
             IF now >= t["next_run"] {
-                IF aoso_sched_keep(t["name"]) {
+                LOCAL keep_it IS aoso_sched_keep(t["name"]).
+                LOCAL run_it IS keep_it.
+                IF run_it {
+                    LOCAL left IS OPCODESLEFT.
+                    LOCAL floor_n IS t["floor"].
+                    IF left < floor_n {
+                        SET t["skip_n"] TO t["skip_n"] + 1.
+                        IF t["prio"] > 0 {
+                            IF t["skip_n"] < 6 { SET run_it TO FALSE. }
+                        }
+                    }
+                }
+                IF run_it {
+                    SET t["skip_n"] TO 0.
                     SET t["next_run"] TO now + t["interval"].
                     SET t["run_count"] TO t["run_count"] + 1.
                     LOCAL t0 IS KUNIVERSE:REALTIME.
@@ -90,7 +166,9 @@ FUNCTION aoso_sched_run {
                     SET t["sum_dt"] TO t["sum_dt"] + dt.
                     IF dt > t["max_dt"] { SET t["max_dt"] TO dt. }
                 } ELSE {
-                    SET t["next_run"] TO now + t["interval"].
+                    IF NOT keep_it {
+                        SET t["next_run"] TO now + t["interval"].
+                    }
                 }
             }
         }

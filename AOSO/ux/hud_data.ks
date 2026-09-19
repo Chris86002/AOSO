@@ -498,6 +498,7 @@ FUNCTION aoso_hud_collect_debug {
     LOCAL d IS AOSO_HUD_DATA["debug"].
     SET d["ipu"] TO CONFIG:IPU.
     SET d["left"] TO OPCODESLEFT.
+    IF DEFINED AOSO_CPU_LEFT { SET d["left"] TO AOSO_CPU_LEFT. }
     LOCAL used IS 0.
     LOCAL frac IS 0.
     LOCAL cname IS "NORMAL".

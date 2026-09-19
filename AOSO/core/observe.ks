@@ -29,13 +29,28 @@ GLOBAL AOSO_CPU_RT0 IS 0.
 GLOBAL AOSO_CPU_SPILLS IS 0.
 GLOBAL AOSO_CPU_LAST_WALL IS 0.
 GLOBAL AOSO_CPU_FRAC IS 0.
-GLOBAL AOSO_CPU_USED IS 0.
+GLOBAL AOSO_CPU_LEFT IS 0.
 GLOBAL AOSO_CPU_STREAK IS 0.
 GLOBAL AOSO_CPU_LOG_UT IS 0.
 GLOBAL AOSO_CPU_LOG_NAME IS "NORMAL".
 GLOBAL AOSO_TELEM_FLUSH_NOW IS FALSE.
 
+FUNCTION aoso_observe_reset_files {
+    LOCAL files IS LIST(
+        AOSO_CONST["EVENTS_FILE"],
+        AOSO_CONST["TELEMETRY_FILE"],
+        AOSO_CONST["FLIGHTREC_FILE"]
+    ).
+    FOR pth IN files {
+        IF EXISTS(pth) { DELETEPATH(pth). }
+    }
+    IF DEFINED AOSO_TELEMETRY_HEADER_WRITTEN {
+        SET AOSO_TELEMETRY_HEADER_WRITTEN TO FALSE.
+    }
+}
+
 FUNCTION aoso_observe_init {
+    aoso_observe_reset_files().
     SET AOSO_RING TO LIST().
     LOCAL i IS 0.
     UNTIL i >= AOSO_RING_CAP {
@@ -52,6 +67,7 @@ FUNCTION aoso_observe_init {
     SET AOSO_CPU_SPILLS TO 0.
     SET AOSO_CPU_FRAC TO 0.
     SET AOSO_CPU_USED TO 0.
+    SET AOSO_CPU_LEFT TO 0.
     SET AOSO_CPU_STREAK TO 0.
     SET AOSO_CPU_LOG_UT TO 0.
     SET AOSO_CPU_LOG_NAME TO "NORMAL".
@@ -315,12 +331,16 @@ FUNCTION aoso_observe_cpu_end {
     LOCAL spilled IS FALSE.
     IF TIME:SECONDS <> AOSO_CPU_UT0 { SET spilled TO TRUE. }
     LOCAL op_used IS 0.
+    LOCAL left_now IS OPCODESLEFT.
+    SET AOSO_CPU_LEFT TO left_now.
     IF spilled {
         SET op_used TO CONFIG:IPU.
         SET AOSO_CPU_SPILLS TO AOSO_CPU_SPILLS + 1.
+        SET AOSO_CPU_STREAK TO AOSO_CPU_STREAK + 1.
     } ELSE {
-        SET op_used TO AOSO_CPU_OP0 - OPCODESLEFT.
+        SET op_used TO AOSO_CPU_OP0 - left_now.
         IF op_used < 0 { SET op_used TO 0. }
+        SET AOSO_CPU_STREAK TO 0.
     }
     LOCAL ipu IS CONFIG:IPU.
     IF ipu < 1 { SET ipu TO 1. }
@@ -328,38 +348,34 @@ FUNCTION aoso_observe_cpu_end {
     LOCAL wall IS KUNIVERSE:REALTIME - AOSO_CPU_RT0.
     LOCAL level IS 0.
     LOCAL cname IS "NORMAL".
+    // A TIME:SECONDS step means we used more than IPU this physics update.
+    // That is normal at 20-50 Hz with a HUD. CRITICAL is only a real stall
+    // (tick took ~3+ physics frames, or we spilled 12 ticks in a row).
     IF spilled {
-        SET AOSO_CPU_STREAK TO AOSO_CPU_STREAK + 1.
-    } ELSE {
-        SET AOSO_CPU_STREAK TO 0.
-    }
-    // Crossing one physics frame is normal at 50 Hz with IPU 1000+.
-    // Treating every spill as CRITICAL shed the HUD for the whole ascent.
-    IF AOSO_CPU_STREAK >= 5 {
-        IF wall >= 0.06 {
+        IF wall >= 0.10 {
             SET level TO 3.
             SET cname TO "CRITICAL".
         } ELSE {
-            SET level TO 2.
-            SET cname TO "HIGH".
+            IF AOSO_CPU_STREAK >= 12 {
+                SET level TO 3.
+                SET cname TO "CRITICAL".
+            } ELSE {
+                SET level TO 2.
+                SET cname TO "HIGH".
+            }
         }
     } ELSE {
-        IF spilled {
+        IF frac >= 0.92 {
             SET level TO 2.
             SET cname TO "HIGH".
         } ELSE {
-            IF frac >= 0.9 {
+            IF wall >= 0.08 {
                 SET level TO 2.
                 SET cname TO "HIGH".
             } ELSE {
-                IF wall >= 0.08 {
-                    SET level TO 2.
-                    SET cname TO "HIGH".
-                } ELSE {
-                    IF frac >= 0.65 {
-                        SET level TO 1.
-                        SET cname TO "ELEVATED".
-                    }
+                IF frac >= 0.70 {
+                    SET level TO 1.
+                    SET cname TO "ELEVATED".
                 }
             }
         }

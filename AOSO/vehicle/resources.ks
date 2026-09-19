@@ -6,29 +6,43 @@
 // Electric charge is deliberately excluded: it is not a propellant and is
 // usually plentiful, so including it would mask a genuine fuel shortage.
 
+GLOBAL AOSO_RES_SNAP IS LEXICON().
+GLOBAL AOSO_RES_SNAP_UT IS -1.
+
+FUNCTION aoso_resource_refresh {
+    LOCAL now IS TIME:SECONDS.
+    IF now - AOSO_RES_SNAP_UT < 0.12 {
+        IF AOSO_RES_SNAP:LENGTH > 0 { RETURN. }
+    }
+    LOCAL snap IS LEXICON().
+    FOR rsrc IN SHIP:RESOURCES {
+        snap:ADD(rsrc:NAME, LEXICON("amt", rsrc:AMOUNT, "cap", rsrc:CAPACITY)).
+    }
+    SET AOSO_RES_SNAP TO snap.
+    SET AOSO_RES_SNAP_UT TO now.
+}
+
 FUNCTION aoso_resource_amount {
     PARAMETER res_name.
-    FOR r IN SHIP:RESOURCES {
-        IF r:NAME = res_name { RETURN r:AMOUNT. }
-    }
+    aoso_resource_refresh().
+    IF AOSO_RES_SNAP:HASKEY(res_name) { RETURN AOSO_RES_SNAP[res_name]["amt"]. }
     RETURN 0.
 }
 
 FUNCTION aoso_resource_capacity {
     PARAMETER res_name.
-    FOR r IN SHIP:RESOURCES {
-        IF r:NAME = res_name { RETURN r:CAPACITY. }
-    }
+    aoso_resource_refresh().
+    IF AOSO_RES_SNAP:HASKEY(res_name) { RETURN AOSO_RES_SNAP[res_name]["cap"]. }
     RETURN 0.
 }
 
 FUNCTION aoso_resource_pct {
     PARAMETER res_name.
-    FOR r IN SHIP:RESOURCES {
-        IF r:NAME = res_name {
-            IF r:CAPACITY <= 0 { RETURN 0. }
-            RETURN (r:AMOUNT / r:CAPACITY) * 100.
-        }
+    aoso_resource_refresh().
+    IF AOSO_RES_SNAP:HASKEY(res_name) {
+        LOCAL e IS AOSO_RES_SNAP[res_name].
+        IF e["cap"] <= 0 { RETURN 0. }
+        RETURN (e["amt"] / e["cap"]) * 100.
     }
     RETURN 0.
 }
