@@ -51,6 +51,7 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "WARP_CRUCIAL_S", 10,               // last N seconds always 1x (ignition, SOI, suicide)
     "MANEUVER_FOLLOW_ABOVE_S", 8,       // s of remaining burn-time above which we follow the live node instead of locking
     "GOTO_CORRECT_WITHIN_S", 28800,     // s (~8 h): only mid-course a graze this close to SOI; lithobrake still corrects immediately
+    "GOTO_CORRECT_MAX", 5,              // mid-course PE retunes per hop (was 3; grazes need more)
     "GOTO_PATCH_FLICKER_S", 15,         // s of physics-2x after a patch vanishes, so conics can rebuild before we resume rails
     "GOTO_PATCH_TRUST_S", 600,          // s past expected SOI before we give up on a vanished intercept
     "TOUR_REFUEL_BELOW_PCT", 60,        // % LiquidFuel at/below which the grand tour will land and ISRU-refuel
@@ -74,7 +75,8 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "DESCENT_FINAL_SPEED_MAX", 25,      // m/s surface speed required before leaving suicide burn for final approach
     "DESCENT_FINAL_SPEED", -3,          // m/s, target vertical speed held during final approach
     "DESCENT_TOUCHDOWN_ALT", 0.5,       // m, radar altitude below which touchdown is declared
-    "DESCENT_SAFE_PE_ALT", 8000,        // m, airless deorbit periapsis floor (never sea level / lithobrake)
+    "DESCENT_SAFE_PE_ALT", 8000,        // m, airless deorbit ceiling if no site (never sea level / lithobrake)
+    "DESCENT_PE_MARGIN", 600,           // m above scanned site terrain for airless deorbit PE (8 km was above suicide range on Minmus)
     "LOW_EC_PCT", 20,                   // % ElectricCharge at/below which fuel cells are enabled
     "FUEL_CELL_DISABLE_PCT", 90,        // % ElectricCharge at/above which fuel cells are disabled
     "PANEL_MAX_AIRSPEED", 50,           // m/s, airspeed inside atmosphere above which panels retract

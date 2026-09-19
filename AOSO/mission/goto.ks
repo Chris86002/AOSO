@@ -227,12 +227,12 @@ FUNCTION aoso_goto_plan_entry {
                     IF eta_p < aoso_config_get("GOTO_CORRECT_WITHIN_S", 28800) { SET do_corr TO TRUE. }
                 }
                 IF do_corr {
-                    IF ncorr < 3 {
-                        SET data["corrected"] TO TRUE.
-                        SET data["correct_count"] TO ncorr + 1.
+                    IF ncorr < aoso_config_get("GOTO_CORRECT_MAX", 5) {
                         LOCAL ndc IS aoso_rendezvous_add_correction_node(hop_b).
                         IF ndc <> 0 {
-                            aoso_log_info("GOTO", "Patch to " + np + " has a poor PE - mid-course correction " + data["correct_count"] + "/3.").
+                            SET data["corrected"] TO TRUE.
+                            SET data["correct_count"] TO ncorr + 1.
+                            aoso_log_info("GOTO", "Patch to " + np + " has a poor PE - mid-course correction " + data["correct_count"] + "/" + ROUND(aoso_config_get("GOTO_CORRECT_MAX", 5), 0) + ".").
                             SET data["burn_kind"] TO "correct".
                             aoso_state_transition(AOSO_GOTO, "BURN").
                             RETURN.
@@ -556,15 +556,15 @@ FUNCTION aoso_goto_coast_execute {
         }
         IF want_correct {
             IF eta_p > 150 {
-                IF ncorr < 3 {
+                IF ncorr < aoso_config_get("GOTO_CORRECT_MAX", 5) {
                     LOCAL cool IS 0.
                     IF data:HASKEY("correct_cool_ut") { SET cool TO data["correct_cool_ut"]. }
                     IF TIME:SECONDS >= cool {
                         SET WARP TO 0.
                         LOCAL ndc IS aoso_rendezvous_add_correction_node(hop_check).
-                        SET data["correct_count"] TO ncorr + 1.
                         IF ndc <> 0 {
-                            aoso_log_info("GOTO", "Patch PE is not a capture altitude - mid-course correction " + data["correct_count"] + "/3.").
+                            SET data["correct_count"] TO ncorr + 1.
+                            aoso_log_info("GOTO", "Patch PE is not a capture altitude - mid-course correction " + data["correct_count"] + "/" + ROUND(aoso_config_get("GOTO_CORRECT_MAX", 5), 0) + ".").
                             SET data["burn_kind"] TO "correct".
                             aoso_state_transition(AOSO_GOTO, "BURN").
                             RETURN.

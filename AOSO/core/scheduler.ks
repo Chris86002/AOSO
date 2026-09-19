@@ -40,7 +40,12 @@ FUNCTION aoso_sched_floor_of {
     IF name = "watchdog" { RETURN 40. }
     IF name = "mission" { RETURN 80. }
     IF name = "hud" { RETURN 160. }
-    IF name = "auto_power" { RETURN 80. }
+    IF name = "auto_power" {
+        IF DEFINED AOSO_POWER_SPACE_DONE {
+            IF NOT AOSO_POWER_SPACE_DONE { RETURN 40. }
+        }
+        RETURN 80.
+    }
     IF name = "telemetry" { RETURN 160. }
     IF name = "vehicle_profile" { RETURN 280. }
     IF name = "checkpoint_autosave" { RETURN 200. }
@@ -136,7 +141,12 @@ FUNCTION aoso_sched_keep {
     IF name = "mission" { RETURN TRUE. }
     IF name = "goto" { RETURN TRUE. }
     IF name = "descent" { RETURN TRUE. }
-    IF name = "auto_power" { RETURN aoso_cpu_allow(1). }
+    IF name = "auto_power" {
+        IF DEFINED AOSO_POWER_SPACE_DONE {
+            IF NOT AOSO_POWER_SPACE_DONE { RETURN TRUE. }
+        }
+        RETURN aoso_cpu_allow(1).
+    }
     IF name = "hud" { RETURN aoso_cpu_allow(2). }
     IF name = "telemetry" {
         IF DEFINED AOSO_POST_LEFT {

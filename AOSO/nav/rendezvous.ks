@@ -131,13 +131,53 @@ FUNCTION aoso_rendezvous_search_step_s {
     RETURN step.
 }
 
+// Extra physics ticks after a node edit so KSP rebuilt NEXTPATCH before we
+// score PE. Rushing this is how a 503 km Minmus graze got burned.
+FUNCTION aoso_rendezvous_settle {
+    WAIT 0.
+    WAIT 0.
+    IF DEFINED AOSO_HUD_READY {
+        IF AOSO_HUD_READY {
+            IF OPCODESLEFT > 240 {
+                aoso_hud_fast_tick().
+            }
+        }
+    }
+}
+
+// Do not burn a guess. Hill-climb patched PE (B-plane / aiming radius)
+// until it is a capture altitude. Returns FALSE if it is still a graze.
+FUNCTION aoso_rendezvous_finalize_node {
+    PARAMETER nd.
+    PARAMETER hop.
+    aoso_rendezvous_settle().
+    LOCAL pe0 IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
+    LOCAL want IS aoso_rendezvous_desired_pe(hop).
+    IF aoso_rendezvous_pe_ok_value(pe0, hop) {
+        aoso_log_info("RENDEZVOUS", hop:NAME + " intercept PE " + ROUND(pe0, 0) + "m already a capture (want " + ROUND(want, 0) + "m).").
+        RETURN TRUE.
+    }
+    aoso_log_info("RENDEZVOUS", hop:NAME + " intercept PE " + ROUND(pe0, 0) + "m is not a capture (want " + ROUND(want, 0) + "m) - hill-climbing patched conics before the burn.").
+    aoso_ui_pulse("Aiming " + hop:NAME + " intercept", "PE " + ROUND(pe0, 0) + "m  want " + ROUND(want, 0) + "m").
+    aoso_rendezvous_refine_intercept(nd, hop, nd:PROGRADE).
+    aoso_rendezvous_tune_pe(nd, hop).
+    aoso_rendezvous_settle().
+    LOCAL pe1 IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
+    IF aoso_rendezvous_pe_ok_value(pe1, hop) {
+        aoso_log_info("RENDEZVOUS", "Aimed " + hop:NAME + " intercept PE " + ROUND(pe0, 0) + " -> " + ROUND(pe1, 0) + "m (want " + ROUND(want, 0) + "m).").
+        RETURN TRUE.
+    }
+    aoso_log_warn("RENDEZVOUS", "Still a graze after aiming: PE " + ROUND(pe1, 0) + "m want " + ROUND(want, 0) + "m - will not burn this window.").
+    RETURN FALSE.
+}
+
 FUNCTION aoso_rendezvous_sample_hit {
     PARAMETER nd.
     PARAMETER hop.
     PARAMETER t_ut.
     IF t_ut <= TIME:SECONDS + 25 { RETURN -1. }
     SET nd:ETA TO t_ut - TIME:SECONDS.
-    aoso_yield_hud().
+    aoso_rendezvous_settle().
     IF NOT aoso_rendezvous_node_hits_body(nd, hop) { RETURN -1. }
     RETURN aoso_rendezvous_pe_score(nd, hop, aoso_rendezvous_desired_pe(hop)).
 }
@@ -426,21 +466,26 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
         RETURN 0.
     }
 
-    // Astrogator is the intercept planner when installed. AOSO Hohmann
-    // phasing produced 400 km Minmus grazes; mid-course (goto COAST)
-    // still retunes PE the regular way after the burn. Polar landing is a
-    // Minmus-SOI plane-change after capture, not a graze from Kerbin.
+    // Astrogator is a seed, not a burn. Its first Minmus node was a 503 km
+    // graze; mid-course never made that a capture. NASA/B-plane: aim PE
+    // on the ground, then burn. Reject and Hohmann-search if still a graze.
     LOCAL nd_ag IS aoso_addon_astrogator_add_transfer(target_orbitable, TRUE).
     IF nd_ag <> 0 {
-        aoso_yield_hud().
+        aoso_rendezvous_settle().
         LOCAL pe_ag IS aoso_rendezvous_orbit_pe(nd_ag:ORBIT, target_orbitable).
         LOCAL pe_txt IS "".
         IF pe_ag >= 0 { SET pe_txt TO " patchPE=" + ROUND(pe_ag, 0) + "m". }
-        aoso_log_info("RENDEZVOUS", "Astrogator intercept with " + target_orbitable:NAME + " in " + ROUND(nd_ag:ETA, 0) + "s dv=" + ROUND(nd_ag:DELTAV:MAG, 1) + " m/s" + pe_txt + " (mid-course will retune PE).").
-        aoso_ui_clear().
-        RETURN nd_ag.
+        aoso_log_info("RENDEZVOUS", "Astrogator seed intercept with " + target_orbitable:NAME + " in " + ROUND(nd_ag:ETA, 0) + "s dv=" + ROUND(nd_ag:DELTAV:MAG, 1) + " m/s" + pe_txt + ".").
+        IF aoso_rendezvous_finalize_node(nd_ag, target_orbitable) {
+            LOCAL pe_ok IS aoso_rendezvous_orbit_pe(nd_ag:ORBIT, target_orbitable).
+            aoso_log_info("RENDEZVOUS", "Astrogator intercept accepted: PE " + ROUND(pe_ok, 0) + "m in " + ROUND(nd_ag:ETA, 0) + "s dv=" + ROUND(nd_ag:DELTAV:MAG, 1) + " m/s.").
+            aoso_ui_clear().
+            RETURN nd_ag.
+        }
+        aoso_log_warn("RENDEZVOUS", "Astrogator PE was still a graze after aiming - dropping it and searching Hohmann windows.").
+        aoso_maneuver_clear_all().
     }
-    aoso_log_info("RENDEZVOUS", "Astrogator unavailable or returned no node - falling back to Hohmann search.").
+    aoso_log_info("RENDEZVOUS", "Searching Hohmann intercept windows for " + target_orbitable:NAME + ".").
 
     LOCAL wait_s IS aoso_rendezvous_wait_time_to_transfer_s(target_orbitable).
     IF wait_s < 0 {
@@ -520,17 +565,15 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
         IF pe_now >= 0 { SET pe_txt TO " patchPE=" + ROUND(pe_now, 0) + " m want=" + ROUND(want_pe, 0) + "m". }
         LOCAL inc_p IS aoso_rendezvous_orbit_inc(nd:ORBIT, target_orbitable).
         IF inc_p >= 0 { SET pe_txt TO pe_txt + " patchInc=" + ROUND(inc_p, 1) + "deg". }
-        IF pe_now >= 0 {
-            IF ABS(pe_now - want_pe) > want_pe * 0.8 {
-                aoso_log_warn("RENDEZVOUS", "Encounter with " + target_orbitable:NAME + " in " + ROUND(nd:ETA, 0) + "s dv=" + ROUND(nd:PROGRADE, 1) + " m/s" + pe_txt + " - will mid-course if the PE stays a graze.").
-            } ELSE {
-                aoso_log_info("RENDEZVOUS", "Encounter with " + target_orbitable:NAME + " in " + ROUND(nd:ETA, 0) + "s dv=" + ROUND(nd:PROGRADE, 1) + " m/s" + pe_txt + ".").
-            }
-        } ELSE {
+        IF aoso_rendezvous_pe_ok_value(pe_now, target_orbitable) {
             aoso_log_info("RENDEZVOUS", "Encounter with " + target_orbitable:NAME + " in " + ROUND(nd:ETA, 0) + "s dv=" + ROUND(nd:PROGRADE, 1) + " m/s" + pe_txt + ".").
+            aoso_ui_clear().
+            RETURN nd.
         }
+        aoso_log_warn("RENDEZVOUS", "Hohmann window still a graze after aiming " + pe_txt + " - not burning. Will retry next orbit.").
         aoso_ui_clear().
-        RETURN nd.
+        REMOVE nd.
+        RETURN 0.
     }
 
     aoso_log_warn("RENDEZVOUS", "No patched encounter this window - not burning a blind Hohmann (that escaped Kerbin last time). Will retry next orbit.").
@@ -670,13 +713,13 @@ FUNCTION aoso_rendezvous_tune_pe {
     LOCAL step_t IS 40.
     LOCAL step_dv IS 8.
     LOCAL rounds IS 0.
-    UNTIL rounds >= 10 {
+    UNTIL rounds >= 16 {
         LOCAL improved IS FALSE.
 
         LOCAL orig_eta IS nd:ETA.
         SET nd:ETA TO orig_eta + step_t.
         IF nd:ETA < 25 { SET nd:ETA TO 25. }
-        aoso_yield_hud().
+        aoso_rendezvous_settle().
         LOCAL s IS aoso_rendezvous_pe_score(nd, hop, desired).
         IF s < best {
             SET best TO s.
@@ -686,7 +729,7 @@ FUNCTION aoso_rendezvous_tune_pe {
             IF nd:ETA < 25 {
                 SET nd:ETA TO orig_eta.
             } ELSE {
-                aoso_yield_hud().
+                aoso_rendezvous_settle().
                 SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
                 IF s < best {
                     SET best TO s.
@@ -754,7 +797,7 @@ FUNCTION aoso_rendezvous_tune_pe {
                 SET improved TO TRUE.
             } ELSE {
                 SET nd:NORMAL TO orig_n - step_dv.
-                aoso_yield_hud().
+                aoso_rendezvous_settle().
                 SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
                 IF s < best {
                     SET best TO s.

@@ -601,6 +601,11 @@ FUNCTION aoso_ascent_coast_execute {
         RETURN.
     }
 
+    // Space: jettison the airstream shell and extend panels. Do not wait
+    // for the shedable power task -- CPU HIGH during coast used to skip
+    // this until Minmus.
+    aoso_power_on_space().
+
     // Circularization attitude: east and horizontal. Prograde while
     // still climbing is pitched up; rails warp then freezes the wrong
     // inertial facing. Point at the burn before we warp.
@@ -651,6 +656,7 @@ FUNCTION aoso_ascent_circularize_entry {
     aoso_throttle_set(0).
     aoso_ascent_restore_steering(data).
     aoso_steer_prepare_for_burn().
+    aoso_power_on_space().
     aoso_staging_auto_check().
     IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
     IF data:HASKEY("circ_now") {

@@ -321,12 +321,14 @@ FUNCTION aoso_tour_scan_entry {
         SET data["site_lat"] TO result["lat"].
         SET data["site_lng"] TO result["lng"].
         SET data["site_score"] TO result["score"].
+        SET data["site_alt"] TO result["alt"].
         aoso_log_info("TOUR", "Landing site lat=" + ROUND(result["lat"], 2) + " lng=" + ROUND(result["lng"], 2) +
-            " slope=" + ROUND(result["slope"], 1) + " deg.").
+            " alt=" + ROUND(result["alt"], 0) + "m slope=" + ROUND(result["slope"], 1) + " deg.").
         aoso_decide("TOUR", "site", ROUND(result["lat"], 2) + "/" + ROUND(result["lng"], 2), "scan", "score=" + ROUND(result["score"], 2) + " slope=" + ROUND(result["slope"], 1)).
     } ELSE {
         SET data["site_lat"] TO SHIP:GEOPOSITION:LAT.
         SET data["site_lng"] TO SHIP:GEOPOSITION:LNG.
+        SET data["site_alt"] TO SHIP:GEOPOSITION:TERRAINHEIGHT.
         aoso_log_warn("TOUR", "Scan found nothing safer than the current ground track - landing near lat=" +
             ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) + ".").
         SET data["site_score"] TO 0.
@@ -396,6 +398,7 @@ FUNCTION aoso_tour_deorbit_execute {
     }
 
     IF HASNODE {
+        aoso_ui_set("Deorbit burn", aoso_warp_diag_txt()).
         IF aoso_maneuver_execute_next() {
             LOCAL burn_res IS aoso_maneuver_last_result().
             IF burn_res = "missed" OR burn_res = "incomplete" {
@@ -651,7 +654,7 @@ FUNCTION aoso_tour_start {
     }
 
     aoso_tour_define_states().
-    SET AOSO_TOUR["data"] TO LEXICON("targets", targets, "index", 0, "site_lat", 0, "site_lng", 0, "site_score", -1, "deorbit_wait_since", 0, "polar_warp_logged", FALSE, "scan_until", 0, "scan_next_sample", 0, "scan_orbits", 2).
+    SET AOSO_TOUR["data"] TO LEXICON("targets", targets, "index", 0, "site_lat", 0, "site_lng", 0, "site_alt", 0, "site_score", -1, "deorbit_wait_since", 0, "polar_warp_logged", FALSE, "scan_until", 0, "scan_next_sample", 0, "scan_orbits", 2).
     aoso_log_info("TOUR", "Grand tour armed: " + targets:LENGTH + " bodies (" + aoso_classify_name() + "), then KSC return.").
     aoso_decide("TOUR", "arm", "" + targets:LENGTH, aoso_classify_name(), "n=" + targets:LENGTH).
     aoso_state_transition(AOSO_TOUR, "BOOT").

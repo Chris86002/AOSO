@@ -7,8 +7,8 @@
 // Aero-sensitive hardware (the airstream-shell fairing and the solar panels)
 // is only ever deployed once the vessel is clear of the atmosphere -- see
 // aoso_power_out_of_atmosphere() -- so nothing is jettisoned or extended into
-// the airstream during the climb. Cargo/service bays are deliberately left
-// alone (never commanded open) per operator preference.
+// the airstream during the climb. Cargo/service bays open in space so
+// enclosed panels can extend.
 //
 // Solar panels are extended through each ModuleDeployableSolarPanel's own
 // "extend" KSPAction (the documented PartModule DOACTION path -- the same
@@ -26,6 +26,8 @@ FUNCTION aoso_power_ec_pct {
 // the per-panel extend action isn't re-fired every tick. Reset on retract.
 GLOBAL AOSO_POWER_PANELS_DEPLOYED IS FALSE.
 GLOBAL AOSO_POWER_FUELCELLS_COMMANDED IS FALSE.
+GLOBAL AOSO_POWER_SPACE_DONE IS FALSE.
+GLOBAL AOSO_POWER_BAYS_OPENED IS FALSE.
 
 // TRUE once the vessel is clear of the atmosphere (or on an airless body,
 // where there's no airstream to protect against). Aero-sensitive hardware --
@@ -94,16 +96,30 @@ FUNCTION aoso_power_fairing_has_jettison_event {
         LOCAL ev_name IS event_name:TOLOWER.
         IF ev_name:CONTAINS("deploy") { RETURN TRUE. }
         IF ev_name:CONTAINS("jettison") { RETURN TRUE. }
+        IF ev_name:CONTAINS("decouple") { RETURN TRUE. }
+        IF ev_name:CONTAINS("separate") { RETURN TRUE. }
     }
     IF fairing_module:HASEVENT("Deploy") { RETURN TRUE. }
     RETURN FALSE.
 }
 
 FUNCTION aoso_power_fairings_pending {
-    IF NOT aoso_vessel_get("has_fairings", FALSE) { RETURN FALSE. }
     FOR fairing_module IN SHIP:MODULESNAMED("ModuleProceduralFairing") {
         IF aoso_power_fairing_has_jettison_event(fairing_module) { RETURN TRUE. }
     }
+    FOR fairing_module IN SHIP:MODULESNAMED("ModuleFairing") {
+        IF aoso_power_fairing_has_jettison_event(fairing_module) { RETURN TRUE. }
+    }
+    RETURN FALSE.
+}
+
+FUNCTION aoso_power_try_jettison_module {
+    PARAMETER fairing_module.
+    IF aoso_power_module_do_event(fairing_module, "deploy") { RETURN TRUE. }
+    IF aoso_power_module_do_event(fairing_module, "jettison") { RETURN TRUE. }
+    IF aoso_power_module_do_event(fairing_module, "decouple") { RETURN TRUE. }
+    IF aoso_power_module_do_action(fairing_module, "deploy") { RETURN TRUE. }
+    IF aoso_power_module_do_action(fairing_module, "jettison") { RETURN TRUE. }
     RETURN FALSE.
 }
 
@@ -111,13 +127,25 @@ FUNCTION aoso_power_fairings_pending {
 // was enclosing (e.g. solar panels) can subsequently deploy. Safe to call
 // repeatedly -- already-fired fairings simply have no matching event left.
 FUNCTION aoso_power_deploy_fairings {
+    LOCAL n_ok IS 0.
+    LOCAL n_seen IS 0.
     FOR fairing_module IN SHIP:MODULESNAMED("ModuleProceduralFairing") {
-        IF aoso_power_module_do_event(fairing_module, "deploy") {
+        SET n_seen TO n_seen + 1.
+        IF aoso_power_try_jettison_module(fairing_module) {
+            SET n_ok TO n_ok + 1.
             aoso_log_info("POWER", "Jettisoning fairing/canopy: " + fairing_module:PART:TITLE + ".").
-        } ELSE {
-            IF aoso_power_module_do_event(fairing_module, "jettison") {
-                aoso_log_info("POWER", "Jettisoning fairing/canopy: " + fairing_module:PART:TITLE + ".").
-            }
+        }
+    }
+    FOR fairing_module IN SHIP:MODULESNAMED("ModuleFairing") {
+        SET n_seen TO n_seen + 1.
+        IF aoso_power_try_jettison_module(fairing_module) {
+            SET n_ok TO n_ok + 1.
+            aoso_log_info("POWER", "Jettisoning fairing/canopy: " + fairing_module:PART:TITLE + ".").
+        }
+    }
+    IF n_seen > 0 {
+        IF n_ok = 0 {
+            aoso_log_warn("POWER", "Fairing/canopy still on (" + n_seen + " module(s)) but no deploy/jettison event fired.").
         }
     }
 }
@@ -132,6 +160,48 @@ FUNCTION aoso_power_fairings_auto_check {
     IF aoso_power_fairings_pending() {
         aoso_power_deploy_fairings().
     }
+}
+
+FUNCTION aoso_power_open_bays {
+    IF AOSO_POWER_BAYS_OPENED { RETURN. }
+    LOCAL have_bay IS FALSE.
+    IF aoso_vessel_get("has_bays", FALSE) { SET have_bay TO TRUE. }
+    IF NOT have_bay {
+        LOCAL bay_mods IS SHIP:MODULESNAMED("ModuleCargoBay").
+        IF bay_mods:LENGTH > 0 { SET have_bay TO TRUE. }
+    }
+    IF NOT have_bay { RETURN. }
+    SET BAYS TO TRUE.
+    FOR bay_module IN SHIP:MODULESNAMED("ModuleCargoBay") {
+        IF NOT aoso_power_module_do_event(bay_module, "open") {
+            aoso_power_module_do_action(bay_module, "open").
+        }
+    }
+    SET AOSO_POWER_BAYS_OPENED TO TRUE.
+    aoso_log_info("POWER", "Opening cargo/service bays (space - panels need a clear sky).").
+}
+
+// One-shot at atmosphere exit: jettison the airstream shell, open bays,
+// extend solar. Called from ascent as well as the power task so CPU HIGH
+// during the gravity turn cannot skip this until Minmus (Acacius).
+FUNCTION aoso_power_on_space {
+    IF AOSO_POWER_SPACE_DONE { RETURN. }
+    IF NOT aoso_power_out_of_atmosphere() { RETURN. }
+    IF aoso_power_panels_prelaunch() { RETURN. }
+
+    aoso_power_fairings_auto_check().
+    aoso_power_open_bays().
+
+    IF aoso_vessel_get("has_solar_panels", FALSE) {
+        IF NOT AOSO_POWER_PANELS_DEPLOYED {
+            IF NOT PANELS {
+                aoso_power_deploy_panels().
+            }
+        }
+    }
+
+    IF aoso_power_fairings_pending() { RETURN. }
+    SET AOSO_POWER_SPACE_DONE TO TRUE.
 }
 
 // Fires the first KSPAction on a part module whose (case-insensitive) display
@@ -190,10 +260,9 @@ FUNCTION aoso_power_retract_panels {
 // only deploys the fairing/panels once the vessel is clear of the atmosphere
 // (aoso_power_out_of_atmosphere), so the airstream shell isn't jettisoned and
 // the panels aren't extended into the airstream on the way up. Cargo/service
-// bays are deliberately never commanded open (operator preference): the panels
-// are extended directly via their own actions. Each step -- jettison fairing,
-// extend panels -- runs at most once and yields a tick before the next, so it
-// never spams DOACTION calls or log lines.
+// bays open in space so enclosed panels can extend. Each step -- jettison
+// fairing, open bays, extend panels -- runs at most once and yields a tick
+// before the next, so it never spams DOACTION calls or log lines.
 FUNCTION aoso_power_panels_auto_check {
     IF NOT aoso_vessel_get("has_solar_panels", FALSE) { RETURN. }
 
@@ -213,7 +282,11 @@ FUNCTION aoso_power_panels_auto_check {
     // if a shell is still pending, give it this tick and extend next tick.
     IF aoso_power_fairings_pending() {
         aoso_power_deploy_fairings().
-        RETURN.
+        aoso_power_open_bays().
+        // Do not RETURN forever if the canopy event did not fire - panels
+        // outside the shell still need to extend (Acacius waited until Minmus).
+    } ELSE {
+        aoso_power_open_bays().
     }
 
     aoso_power_deploy_panels().
@@ -251,6 +324,7 @@ FUNCTION aoso_power_fuelcells_auto_check {
 // Single entry point combining both checks; call once per scheduler tick
 // (or register via aoso_power_register_task()).
 FUNCTION aoso_power_auto_manage {
+    aoso_power_on_space().
     aoso_power_fairings_auto_check().
     aoso_power_panels_auto_check().
     aoso_power_fuelcells_auto_check().

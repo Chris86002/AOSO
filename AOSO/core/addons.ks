@@ -150,10 +150,11 @@ FUNCTION aoso_addon_mj_aoa {
 }
 
 // ---------------------------------------------------------------------
-// Astrogator (optional). Primary intercept planner when installed:
-// addons:astrogator:create(body) / calculateBurns(body). Mid-course PE
-// retune after the burn stays in AOSO (goto COAST). Hohmann search is
-// the fallback if the addon is missing or returns no node.
+// Astrogator (optional). Seed intercept planner when installed:
+// addons:astrogator:create(body) / calculateBurns(body). AOSO then
+// hill-climbs the patched PE before burning (a graze is rejected).
+// Hohmann search is the fallback if the addon is missing or the seed
+// stays a graze. Mid-course PE retune after the burn stays in goto COAST.
 // ---------------------------------------------------------------------
 
 FUNCTION aoso_addon_astrogator_obj {

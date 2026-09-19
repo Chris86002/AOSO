@@ -134,6 +134,24 @@ FUNCTION aoso_descent_on_abort {
     aoso_state_transition(AOSO_DESCENT, "ABORTED").
 }
 
+// TRUE if periapsis actually reaches the suicide-burn radar. An 8 km PE
+// on Minmus with TWR 40 never does: trigger is ~2.5 km, PE is 8 km, and
+// freefall warps apo-to-pe forever.
+FUNCTION aoso_descent_pe_reaches_suicide {
+    IF aoso_orbit_is_hyperbolic() { RETURN TRUE. }
+    IF PERIAPSIS < 0 { RETURN TRUE. }
+    IF SHIP:BODY:ATM:EXISTS {
+        IF PERIAPSIS < SHIP:BODY:ATM:HEIGHT { RETURN TRUE. }
+        RETURN FALSE.
+    }
+    LOCAL trigger IS aoso_descent_burn_trigger_alt().
+    LOCAL site_alt IS aoso_deorbit_site_alt().
+    LOCAL radar_pe IS PERIAPSIS - site_alt.
+    IF radar_pe < 80 { RETURN TRUE. }
+    IF radar_pe > trigger + 500 { RETURN FALSE. }
+    RETURN TRUE.
+}
+
 FUNCTION aoso_descent_freefall_entry {
     PARAMETER data.
     aoso_throttle_set(0).
@@ -146,6 +164,33 @@ FUNCTION aoso_descent_freefall_entry {
 FUNCTION aoso_descent_freefall_execute {
     PARAMETER data.
     aoso_parachute_auto_check().
+
+    // Fly a PE-lowering node if we already decided this ellipse cannot land.
+    IF HASNODE {
+        aoso_ui_set("Lowering PE to land", aoso_warp_diag_txt()).
+        IF aoso_maneuver_execute_next() {
+            aoso_log_info("DESCENT", "PE-lowering burn complete. AP=" + ROUND(APOAPSIS, 0) +
+                " PE=" + ROUND(PERIAPSIS, 0) + " alt=" + ROUND(ALTITUDE, 0) + ".").
+        }
+        RETURN.
+    }
+
+    IF NOT aoso_descent_pe_reaches_suicide() {
+        LOCAL tgt IS aoso_deorbit_target_periapsis_alt().
+        LOCAL eta_s IS aoso_orbit_eta_apoapsis().
+        IF eta_s < 20 { SET eta_s TO 25. }
+        aoso_log_warn("DESCENT", "PE " + ROUND(PERIAPSIS, 0) + "m is above suicide range (trig~" +
+            ROUND(aoso_descent_burn_trigger_alt(), 0) + "m) - lowering periapsis to " + ROUND(tgt, 0) +
+            "m instead of looping this ellipse.").
+        aoso_decide("DESCENT", "drop_pe", ROUND(tgt, 0), "pe_high", "pe=" + ROUND(PERIAPSIS, 0) + " tgt=" + ROUND(tgt, 0)).
+        LOCAL nd IS aoso_deorbit_add_node(tgt, TRUE, eta_s).
+        IF nd = 0 {
+            aoso_log_warn("DESCENT", "Could not add PE-lowering node - suicide will try from this PE anyway.").
+        } ELSE {
+            aoso_ui_set("Lowering PE to land", "tgt " + ROUND(tgt, 0) + "m  " + aoso_warp_diag_txt()).
+        }
+        RETURN.
+    }
 
     // After a deorbit the ship is still at apoapsis with VS≈0 for minutes
     // (Minmus 16x8 km). Using radar/speed as TTI then LOCK SRFRETROGRADE
