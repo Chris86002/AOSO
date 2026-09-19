@@ -150,11 +150,9 @@ FUNCTION aoso_addon_mj_aoa {
 }
 
 // ---------------------------------------------------------------------
-// Astrogator (optional). Seed intercept planner when installed:
-// addons:astrogator:create(body) / calculateBurns(body). AOSO then
-// hill-climbs the patched PE before burning (a graze is rejected).
-// Hohmann search is the fallback if the addon is missing or the seed
-// stays a graze. Mid-course PE retune after the burn stays in goto COAST.
+// Astrogator (optional). Fallback intercept seed if the Lambert porkchop
+// in nav/lambert.ks + nav/rendezvous.ks finds no capture. AOSO still
+// hill-climbs patched PE before burning (a graze is rejected).
 // ---------------------------------------------------------------------
 
 FUNCTION aoso_addon_astrogator_obj {

@@ -171,6 +171,204 @@ FUNCTION aoso_rendezvous_finalize_node {
     RETURN FALSE.
 }
 
+FUNCTION aoso_rendezvous_porkchop_tof_hoh {
+    PARAMETER hop.
+    LOCAL mu IS SHIP:BODY:MU.
+    LOCAL radius1 IS SHIP:BODY:RADIUS + (APOAPSIS + PERIAPSIS) / 2.
+    IF radius1 < SHIP:BODY:RADIUS + 1000 { SET radius1 TO SHIP:BODY:RADIUS + ALTITUDE. }
+    LOCAL radius2 IS hop:ORBIT:SEMIMAJORAXIS.
+    LOCAL sma_t IS (radius1 + radius2) / 2.
+    LOCAL tof_h IS CONSTANT:PI * SQRT((sma_t ^ 3) / mu).
+    IF tof_h < 600 { SET tof_h TO 600. }
+    RETURN tof_h.
+}
+
+FUNCTION aoso_rendezvous_apply_lambert {
+    PARAMETER nd.
+    PARAMETER hop.
+    PARAMETER t_dep.
+    PARAMETER tof_s.
+    IF t_dep <= TIME:SECONDS + 25 { RETURN FALSE. }
+    LOCAL parent_body IS SHIP:BODY.
+    LOCAL pos1 IS aoso_lambert_rel_pos(SHIP, t_dep, parent_body).
+    LOCAL pos2 IS aoso_lambert_rel_pos(hop, t_dep + tof_s, parent_body).
+    LOCAL vel_now IS VELOCITYAT(SHIP, t_dep):ORBIT.
+    LOCAL mu IS parent_body:MU.
+    LOCAL sol IS aoso_lambert_solve(pos1, pos2, tof_s, mu, FALSE).
+    IF NOT sol["ok"] {
+        SET sol TO aoso_lambert_solve(pos1, pos2, tof_s, mu, TRUE).
+    }
+    IF sol["ok"] {
+    } ELSE {
+        RETURN FALSE.
+    }
+    LOCAL dv_vec IS sol["vel1"] - vel_now.
+    LOCAL dv_max IS aoso_rendezvous_dv_max(pos1:MAG).
+    IF dv_vec:MAG > dv_max * 1.15 { RETURN FALSE. }
+    LOCAL xyz IS aoso_lambert_dv_to_node_xyz(dv_vec, pos1, vel_now).
+    SET nd:ETA TO t_dep - TIME:SECONDS.
+    IF nd:ETA < 25 { SET nd:ETA TO 25. }
+    SET nd:RADIALOUT TO xyz["radial"].
+    SET nd:NORMAL TO xyz["normal"].
+    SET nd:PROGRADE TO xyz["prograde"].
+    aoso_rendezvous_clamp_prograde(nd).
+    RETURN TRUE.
+}
+
+FUNCTION aoso_rendezvous_porkchop_score {
+    PARAMETER nd.
+    PARAMETER hop.
+    PARAMETER desired.
+    LOCAL pe IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
+    LOCAL dv_m IS nd:DELTAV:MAG.
+    IF pe < -0.5 { RETURN -1. }
+    IF aoso_rendezvous_pe_ok_value(pe, hop) {
+        RETURN dv_m + ABS(pe - desired) * 0.002.
+    }
+    RETURN 100000000 + aoso_rendezvous_pe_score(nd, hop, desired) + dv_m.
+}
+
+// NASA porkchop: grid of departure times × times of flight, Lambert for
+// each cell, patched-conic PE to keep or reject. Slow on purpose.
+FUNCTION aoso_rendezvous_porkchop_search {
+    PARAMETER hop.
+
+    IF hop:BODY:NAME <> SHIP:BODY:NAME { RETURN 0. }
+    IF NOT aoso_config_get("PORKCHOP_ENABLED", TRUE) { RETURN 0. }
+
+    SET WARP TO 0.
+    aoso_steer_release().
+    aoso_maneuver_clear_all().
+
+    LOCAL tof_h IS aoso_rendezvous_porkchop_tof_hoh(hop).
+    LOCAL n_dep IS aoso_config_get("PORKCHOP_DEP_SAMPLES", 12).
+    IF n_dep < 6 { SET n_dep TO 6. }
+    IF n_dep > 18 { SET n_dep TO 18. }
+    LOCAL n_tof IS aoso_config_get("PORKCHOP_TOF_SAMPLES", 8).
+    IF n_tof < 5 { SET n_tof TO 5. }
+    IF n_tof > 12 { SET n_tof TO 12. }
+    LOCAL tof_min_f IS aoso_config_get("PORKCHOP_TOF_MIN", 0.06).
+    LOCAL tof_max_f IS aoso_config_get("PORKCHOP_TOF_MAX", 1.7).
+    IF tof_min_f < 0.03 { SET tof_min_f TO 0.03. }
+    IF tof_max_f < tof_min_f + 0.2 { SET tof_max_f TO tof_min_f + 0.2. }
+
+    LOCAL p_ship IS aoso_orbit_period_s().
+    IF p_ship < 80 { SET p_ship TO 600. }
+    LOCAL wait_hoh IS aoso_rendezvous_wait_time_to_transfer_s(hop).
+    IF wait_hoh < 0 { SET wait_hoh TO p_ship. }
+    LOCAL t_soon IS TIME:SECONDS + 80.
+    LOCAL t_hoh IS TIME:SECONDS + wait_hoh.
+    IF t_hoh < t_soon { SET t_hoh TO t_soon. }
+
+    LOCAL deps IS LIST().
+    LOCAL di IS 0.
+    UNTIL di >= 5 {
+        deps:ADD(t_soon + di * (p_ship / 4)).
+        SET di TO di + 1.
+    }
+    SET di TO 0.
+    UNTIL di >= n_dep {
+        LOCAL t_d IS t_hoh + (di - (n_dep - 1) / 2) * (p_ship / 5).
+        IF t_d > TIME:SECONDS + 40 { deps:ADD(t_d). }
+        SET di TO di + 1.
+    }
+
+    LOCAL tofs IS LIST().
+    tofs:ADD(900).
+    tofs:ADD(1800).
+    tofs:ADD(3600).
+    tofs:ADD(7200).
+    LOCAL ti IS 0.
+    UNTIL ti >= n_tof {
+        LOCAL frac IS tof_min_f + (tof_max_f - tof_min_f) * ti / MAX(1, n_tof - 1).
+        tofs:ADD(tof_h * frac).
+        SET ti TO ti + 1.
+    }
+
+    LOCAL n_tot IS deps:LENGTH * tofs:LENGTH.
+    aoso_log_info("RENDEZVOUS", "Lambert porkchop for " + hop:NAME + ": " + deps:LENGTH + " departures × " + tofs:LENGTH +
+        " TOFs (" + n_tot + " Lambert cells). Hohmann TOF=" + ROUND(tof_h, 0) + "s window in " + ROUND(wait_hoh, 0) +
+        "s. Taking the time to pick a capture PE, not the first graze.").
+    aoso_ui_set("Porkchop " + hop:NAME, n_tot + " Lambert cells  Hohmann " + ROUND(tof_h / 3600, 1) + "h").
+
+    LOCAL nd IS NODE(t_soon, 0, 0, 10).
+    ADD nd.
+
+    LOCAL desired IS aoso_rendezvous_desired_pe(hop).
+    LOCAL best_sc IS 1e99.
+    LOCAL found IS FALSE.
+    LOCAL best_ut IS t_soon.
+    LOCAL best_pg IS 10.
+    LOCAL best_rad IS 0.
+    LOCAL best_nml IS 0.
+    LOCAL n_hit IS 0.
+    LOCAL n_ok IS 0.
+    LOCAL n_done IS 0.
+
+    LOCAL di2 IS 0.
+    UNTIL di2 >= deps:LENGTH {
+        LOCAL ti2 IS 0.
+        UNTIL ti2 >= tofs:LENGTH {
+            SET n_done TO n_done + 1.
+            LOCAL t_dep IS deps[di2].
+            LOCAL tof_s IS tofs[ti2].
+            IF aoso_rendezvous_apply_lambert(nd, hop, t_dep, tof_s) {
+                aoso_rendezvous_settle().
+                IF aoso_rendezvous_node_hits_body(nd, hop) {
+                    SET n_hit TO n_hit + 1.
+                    LOCAL pe_try IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
+                    IF aoso_rendezvous_pe_ok_value(pe_try, hop) { SET n_ok TO n_ok + 1. }
+                    LOCAL sc IS aoso_rendezvous_porkchop_score(nd, hop, desired).
+                    IF sc >= 0 {
+                        IF sc < best_sc {
+                            SET best_sc TO sc.
+                            SET best_ut TO TIME:SECONDS + nd:ETA.
+                            SET best_pg TO nd:PROGRADE.
+                            SET best_rad TO nd:RADIALOUT.
+                            SET best_nml TO nd:NORMAL.
+                            SET found TO TRUE.
+                        }
+                    }
+                }
+            }
+            IF FLOOR(n_done / 4) * 4 = n_done {
+                LOCAL pe_txt IS "none".
+                IF found { SET pe_txt TO ROUND(best_sc, 0). }
+                aoso_ui_pulse("Porkchop " + hop:NAME, n_done + "/" + n_tot + "  hits " + n_hit + "  capture " + n_ok + "  best " + pe_txt).
+            }
+            SET ti2 TO ti2 + 1.
+        }
+        SET di2 TO di2 + 1.
+    }
+
+    IF NOT found {
+        aoso_log_warn("RENDEZVOUS", "Porkchop found no patched " + hop:NAME + " encounter in " + n_tot + " cells.").
+        REMOVE nd.
+        RETURN 0.
+    }
+
+    SET nd:ETA TO best_ut - TIME:SECONDS.
+    IF nd:ETA < 25 { SET nd:ETA TO 25. }
+    SET nd:PROGRADE TO best_pg.
+    SET nd:RADIALOUT TO best_rad.
+    SET nd:NORMAL TO best_nml.
+    aoso_rendezvous_settle().
+    LOCAL pe0 IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
+    aoso_log_info("RENDEZVOUS", "Porkchop best seed: dv=" + ROUND(nd:DELTAV:MAG, 1) + " m/s in " + ROUND(nd:ETA, 0) +
+        "s patchPE=" + ROUND(pe0, 0) + "m (hits=" + n_hit + " capture-cells=" + n_ok + "/" + n_tot + "). B-plane trim next.").
+    aoso_ui_set("Aiming " + hop:NAME + " intercept", "porkchop PE " + ROUND(pe0, 0) + "m  dv " + ROUND(nd:DELTAV:MAG, 0)).
+
+    IF aoso_rendezvous_finalize_node(nd, hop) {
+        LOCAL pe1 IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
+        aoso_log_info("RENDEZVOUS", "Porkchop intercept accepted: PE " + ROUND(pe1, 0) + "m dv=" + ROUND(nd:DELTAV:MAG, 1) +
+            " m/s in " + ROUND(nd:ETA, 0) + "s.").
+        RETURN nd.
+    }
+    aoso_log_warn("RENDEZVOUS", "Porkchop seed did not trim to a capture PE - dropping it.").
+    REMOVE nd.
+    RETURN 0.
+}
+
 FUNCTION aoso_rendezvous_sample_hit {
     PARAMETER nd.
     PARAMETER hop.
@@ -464,6 +662,14 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
         aoso_log_warn("RENDEZVOUS", "No " + target_orbitable:NAME + " patch on this ellipse this synodic - not burning a second Hohmann. Will wait.").
         REMOVE nd_a.
         RETURN 0.
+    }
+
+    // NASA porkchop (Lambert × TOF grid + patched-conic PE) is the
+    // intercept. Slow on purpose. Astrogator/Hohmann are fallbacks.
+    LOCAL nd_pc IS aoso_rendezvous_porkchop_search(target_orbitable).
+    IF nd_pc <> 0 {
+        aoso_ui_clear().
+        RETURN nd_pc.
     }
 
     // Astrogator is a seed, not a burn. Its first Minmus node was a 503 km

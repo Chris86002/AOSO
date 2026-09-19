@@ -51,6 +51,7 @@ RUN ONCE "AOSO/flight/ascent".
 RUN ONCE "AOSO/nav/orbit".
 RUN ONCE "AOSO/nav/hohmann".
 RUN ONCE "AOSO/nav/planechange".
+RUN ONCE "AOSO/nav/lambert".
 RUN ONCE "AOSO/nav/rendezvous".
 
 // --- Interplanetary -----------------------------------------------------

@@ -52,6 +52,11 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "MANEUVER_FOLLOW_ABOVE_S", 8,       // s of remaining burn-time above which we follow the live node instead of locking
     "GOTO_CORRECT_WITHIN_S", 28800,     // s (~8 h): only mid-course a graze this close to SOI; lithobrake still corrects immediately
     "GOTO_CORRECT_MAX", 5,              // mid-course PE retunes per hop (was 3; grazes need more)
+    "PORKCHOP_ENABLED", TRUE,           // Lambert porkchop is the intercept (slow, accurate)
+    "PORKCHOP_DEP_SAMPLES", 12,         // departure samples around the Hohmann window
+    "PORKCHOP_TOF_SAMPLES", 8,          // times-of-flight as fractions of Hohmann TOF
+    "PORKCHOP_TOF_MIN", 0.06,           // min TOF as a fraction of Hohmann (plus extra 15-120 min cells)
+    "PORKCHOP_TOF_MAX", 1.7,            // max TOF as a fraction of Hohmann
     "GOTO_PATCH_FLICKER_S", 15,         // s of physics-2x after a patch vanishes, so conics can rebuild before we resume rails
     "GOTO_PATCH_TRUST_S", 600,          // s past expected SOI before we give up on a vanished intercept
     "TOUR_REFUEL_BELOW_PCT", 60,        // % LiquidFuel at/below which the grand tour will land and ISRU-refuel
