@@ -101,6 +101,11 @@ RUN ONCE "AOSO/advanced/docking".
 
 // --- Hardening & UX (Phase 12) ---------------------------------------------
 RUN ONCE "AOSO/hardening/watchdog".
+RUN ONCE "AOSO/ux/hud_fmt".
+RUN ONCE "AOSO/ux/hud_data".
+RUN ONCE "AOSO/ux/hud_alert".
+RUN ONCE "AOSO/ux/hud_fd".
+RUN ONCE "AOSO/ux/hud_gui".
 RUN ONCE "AOSO/ux/hud".
 RUN ONCE "AOSO/ux/telemetry".
 

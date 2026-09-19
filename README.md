@@ -40,7 +40,14 @@ Long burns follow the live node marker until a few seconds remain, then feather;
 
 AOSO is a full autopilot. On boot it will raise `CONFIG:IPU` to **400** if it is still at the kOS default (150). **400–800 is the working range**; 803 is fine. Do not use 2000 — that hitchs the physics tick. IPU lives in Esc → Settings → Difficulty Options → **kOS** tab, not in `aoso_config.json`.
 
-The terminal HUD now draws a **SYS NOMINAL / DEGRADED / FAIL** board (CPU, power, watchdog, staging, comms, NAV, mission, steering, warp) plus live dV, TWR, Q, AoA, throttle, node, and patch. Subsystems publish into `AOSO_SYS`; the HUD also polls the live state machines so a quiet module still shows. CPU HIGH no longer blanks the HUD (only CRITICAL does).
+The HUD is a **mission computer**, not a PRINT dump:
+
+- **GUI window** (draggable) with FLT / NAV / MSN / VEH / PRP / LND / STG / SYS / LOG / DBG pages
+- **Tactical terminal strip** at the top of the kOS window (always on)
+- **Flight-director VECDRAW** arrows (PRO / TGT / BURN / LAND) — updated from the HUD tick, not `VECUPDATER` delegates
+- **HUDTEXT alerts** with cooldowns (low EC, watchdog, suicide burn, target lost, …)
+
+Buttons: **TAC** hides the GUI (flight HUD only), **GUI** brings the computer back, **ENG** jumps to SYSTEMS. Data is cached at three rates (flight ~8 Hz, orbit/fuel ~2 Hz, vehicle from the existing profile ~0.4 Hz). The HUD never `LIST PARTS`. CPU HIGH slows cosmetic updates; CRITICAL keeps a 3-line strip only.
 
 GOTO and descent run as their own scheduler tasks instead of nested inside the tour FSM. That was the `aoso_goto_update` stack overflow on Acacius (kOS 3000-slot argument cap).
 

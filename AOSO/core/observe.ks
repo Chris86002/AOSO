@@ -155,6 +155,12 @@ FUNCTION aoso_observe_event {
         IF NOT keep { RETURN. }
     }
 
+    IF DEFINED AOSO_HUD_READY {
+        IF AOSO_HUD_READY {
+            aoso_hud_on_event(etype, severity, state_or_tag, message).
+        }
+    }
+
     LOCAL ut IS TIME:SECONDS.
     LOCAL met IS MISSIONTIME.
     LOCAL line IS ROUND(ut, 2) + "," + ROUND(met, 1) + "," + AOSO_OBS_PHASE + "," + etype + "," + severity + "," + state_or_tag + "," + message.
