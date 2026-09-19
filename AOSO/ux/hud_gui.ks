@@ -22,6 +22,7 @@ GLOBAL AOSO_HUD_BTN_X IS 0.
 GLOBAL AOSO_HUD_HDR_TITLE IS 0.
 GLOBAL AOSO_HUD_LAST_GUI IS 0.
 GLOBAL AOSO_HUD_GUI_PAINTED IS "".
+GLOBAL AOSO_HUD_TAC_CHIP IS 0.
 
 FUNCTION aoso_hud_set {
     PARAMETER key.
@@ -72,6 +73,10 @@ FUNCTION aoso_hud_gui_dispose {
     SET AOSO_HUD_BODY TO 0.
     SET AOSO_HUD_BTN_X TO 0.
     SET AOSO_HUD_HDR_TITLE TO 0.
+    IF AOSO_HUD_TAC_CHIP:ISTYPE("GUI") {
+        AOSO_HUD_TAC_CHIP:DISPOSE().
+    }
+    SET AOSO_HUD_TAC_CHIP TO 0.
     SET AOSO_HUD_PAGES TO LEXICON().
     SET AOSO_HUD_TABS TO LEXICON().
     SET AOSO_HUD_TABLABEL TO LEXICON().
@@ -536,12 +541,32 @@ FUNCTION aoso_hud_gui_init {
     aoso_hud_trace_log("GUI online").
 }
 
+FUNCTION aoso_hud_tac_chip_show {
+    IF AOSO_HUD_TAC_CHIP:ISTYPE("GUI") {
+        AOSO_HUD_TAC_CHIP:SHOW().
+        RETURN.
+    }
+    LOCAL c IS GUI(140).
+    SET c:X TO 20.
+    SET c:Y TO 80.
+    LOCAL b IS c:ADDBUTTON("GUI").
+    SET b:ONCLICK TO aoso_hud_mode_computer@.
+    SET AOSO_HUD_TAC_CHIP TO c.
+    c:SHOW().
+}
+
+FUNCTION aoso_hud_tac_chip_hide {
+    IF AOSO_HUD_TAC_CHIP:ISTYPE("GUI") { AOSO_HUD_TAC_CHIP:HIDE(). }
+}
+
 FUNCTION aoso_hud_gui_hide {
     IF AOSO_HUD_GUI:ISTYPE("GUI") { AOSO_HUD_GUI:HIDE(). }
     SET AOSO_HUD_GUI_ON TO FALSE.
+    aoso_hud_tac_chip_show().
 }
 
 FUNCTION aoso_hud_gui_show {
+    aoso_hud_tac_chip_hide().
     IF AOSO_HUD_GUI:ISTYPE("GUI") { AOSO_HUD_GUI:SHOW(). }
     SET AOSO_HUD_GUI_ON TO TRUE.
 }
