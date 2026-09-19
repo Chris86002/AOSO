@@ -38,7 +38,7 @@ Long burns follow the live node marker until a few seconds remain, then feather;
 
 ### kOS settings (IPU + HUD)
 
-AOSO is a full autopilot. On boot it will raise `CONFIG:IPU` to **400** if it is still at the kOS default (150). **400–800 is the working range**; 803 is fine. Do not use 2000 — that hitchs the physics tick. IPU lives in Esc → Settings → Difficulty Options → **kOS** tab, not in `aoso_config.json`.
+AOSO is a full autopilot. On boot it raises `CONFIG:IPU` to **`IPU_TARGET` (default 2000)** if the kOS default is lower. **2000 is headroom, not a utilization target.** Background work stops before a protected opcode reserve (absolute 400 + 18% + extra during ascent/descent) so steering never starves. Do not keep raising IPU in the difficulty menu to “make it think harder” — the extra opcodes are a safety budget. Override `IPU_TARGET` in `0:/aoso_config.json` if you must; the kOS tab still shows the live `CONFIG:IPU`.
 
 The HUD is a **mission computer**, not a PRINT dump:
 
@@ -89,6 +89,6 @@ Built across 12 ordered phases:
 - [x] Phase 10 — Mission layer
 - [x] Phase 11 — Advanced
 - [x] Phase 12 — Hardening & UX
-- [ ] v2 integration (branch `aoso-v2-integration`) — shared context, queued events, experience-backed predictions, think windows (pad / landed / quiet orbit), continuation analysis, heartbeat watchdog. See `docs/AOSO_ARCHITECTURE.md`.
+- [ ] v2.2 integration (branch `aoso-v2-integration`) — topology as the structural source of truth, mission certification / assurance / departure cert, verified action results, controller authority, warp deadlines, surface stability + strategic ISRU fill, IPU 2000 with a leftover opcode reserve. Flying `Watch-AOSO` still tracks `main`. See `docs/AOSO_ARCHITECTURE.md`.
 
 kOS 1.4 hot paths now lock-once cooked throttle/steering to cheap globals (LOCK expressions re-eval every physics tick; locking to a user function burns IPU/EC at 25 Hz). LIST ENGINES/PARTS/DOCKINGPORTS is cached until STAGE:NUMBER changes (engine refs stay live). Staging fills one snapshot per tick and debounces the 0.1 s auto-stage + ascent double call. The 2 s profile walk is skipped unless stage/status/mass actually moved. Ascent flies MechJeb Classic pitch (not a 3° prograde lead). Staging waits 0.45 s for spool, cools down 1.2 s, and will not walk unignited lander engines. Observability splits the human log, telemetry CSV, and a structured event/flight-record stream with CPU load-shed.
