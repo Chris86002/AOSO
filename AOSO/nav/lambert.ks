@@ -161,10 +161,10 @@ FUNCTION aoso_lambert_solve {
 }
 
 FUNCTION aoso_lambert_rel_pos {
-    PARAMETER obt.
+    PARAMETER obj.
     PARAMETER t_ut.
     PARAMETER parent_body.
-    RETURN POSITIONAT(obt, t_ut) - POSITIONAT(parent_body, t_ut).
+    RETURN POSITIONAT(obj, t_ut) - POSITIONAT(parent_body, t_ut).
 }
 
 // Ship orbital basis at t_ut -> node radial/normal/prograde from inertial dv.
