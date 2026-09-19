@@ -12,6 +12,8 @@ GLOBAL AOSO_HUD_PAGE IS "".
 GLOBAL AOSO_HUD_GUI_ON IS TRUE.
 GLOBAL AOSO_HUD_SHOW_LND IS TRUE.
 GLOBAL AOSO_HUD_SHOW_PRP IS TRUE.
+GLOBAL AOSO_HUD_TAB_LOCK IS FALSE.
+GLOBAL AOSO_HUD_TABLABEL IS LEXICON().
 
 FUNCTION aoso_hud_set {
     PARAMETER key.
@@ -57,6 +59,8 @@ FUNCTION aoso_hud_gui_dispose {
     SET AOSO_HUD_STACK TO 0.
     SET AOSO_HUD_PAGES TO LEXICON().
     SET AOSO_HUD_TABS TO LEXICON().
+    SET AOSO_HUD_TABLABEL TO LEXICON().
+    SET AOSO_HUD_TAB_LOCK TO FALSE.
     SET AOSO_HUD_W TO LEXICON().
     SET AOSO_HUD_LAST TO LEXICON().
 }
@@ -70,14 +74,28 @@ FUNCTION aoso_hud_add_page {
 
 FUNCTION aoso_hud_show_page {
     PARAMETER name.
+    IF AOSO_HUD_TAB_LOCK { RETURN. }
     IF NOT AOSO_HUD_PAGES:HASKEY(name) { RETURN. }
     IF AOSO_HUD_PAGE = name { RETURN. }
-    AOSO_HUD_STACK:SHOWONLY(AOSO_HUD_PAGES[name]).
+    SET AOSO_HUD_TAB_LOCK TO TRUE.
     SET AOSO_HUD_PAGE TO name.
-    IF AOSO_HUD_TABS:HASKEY(name) {
-        SET AOSO_HUD_TABS[name]:PRESSED TO TRUE.
+    AOSO_HUD_STACK:SHOWONLY(AOSO_HUD_PAGES[name]).
+    FOR k IN AOSO_HUD_TABS:KEYS {
+        LOCAL lab IS k.
+        IF AOSO_HUD_TABLABEL:HASKEY(k) { SET lab TO AOSO_HUD_TABLABEL[k]. }
+        IF k = name {
+            SET AOSO_HUD_TABS[k]:TEXT TO "[" + lab + "]".
+        } ELSE {
+            SET AOSO_HUD_TABS[k]:TEXT TO lab.
+        }
     }
-    aoso_hud_trace("page " + name).
+    SET AOSO_HUD_TAB_LOCK TO FALSE.
+    aoso_hud_event_push("INFO", "page " + name).
+}
+
+FUNCTION aoso_hud_tab_click {
+    PARAMETER name.
+    aoso_hud_show_page(name).
 }
 
 FUNCTION aoso_hud_add_tab {
@@ -85,10 +103,9 @@ FUNCTION aoso_hud_add_tab {
     PARAMETER name.
     PARAMETER label.
     LOCAL b IS row:ADDBUTTON(label).
-    SET b:TOGGLE TO TRUE.
-    SET b:EXCLUSIVE TO TRUE.
-    SET b:ONCLICK TO aoso_hud_show_page@:BIND(name).
+    SET b:ONCLICK TO aoso_hud_tab_click@:BIND(name).
     SET AOSO_HUD_TABS[name] TO b.
+    SET AOSO_HUD_TABLABEL[name] TO label.
     RETURN b.
 }
 
@@ -326,11 +343,10 @@ FUNCTION aoso_hud_gui_init {
     aoso_hud_gui_build_log(aoso_hud_add_page("LOG")).
     aoso_hud_gui_build_dbg(aoso_hud_add_page("DBG")).
 
-    SET AOSO_HUD_TABS["FLT"]:PRESSED TO TRUE.
     aoso_hud_show_page("FLT").
     SET AOSO_HUD_GUI_ON TO TRUE.
     g:SHOW().
-    aoso_hud_trace("GUI online").
+    aoso_hud_trace_log("GUI online").
 }
 
 FUNCTION aoso_hud_gui_hide {

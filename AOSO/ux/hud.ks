@@ -100,20 +100,25 @@ FUNCTION aoso_hud_doing_text {
 FUNCTION aoso_hud_trace {
     PARAMETER msg.
     aoso_hud_event_push("INFO", msg).
+}
+
+FUNCTION aoso_hud_trace_log {
+    PARAMETER msg.
+    aoso_hud_event_push("INFO", msg).
     aoso_log_info("HUD", msg).
 }
 
 FUNCTION aoso_hud_mode_tactical {
     SET AOSO_HUD_MODE TO "TACTICAL".
     aoso_hud_gui_hide().
-    aoso_hud_trace("mode TACTICAL").
+    aoso_hud_trace_log("mode TACTICAL").
     aoso_hud_alert("mode", "INFO", "TACTICAL HUD", 4, 2).
 }
 
 FUNCTION aoso_hud_mode_computer {
     SET AOSO_HUD_MODE TO "COMPUTER".
     aoso_hud_gui_show().
-    aoso_hud_trace("mode COMPUTER").
+    aoso_hud_trace_log("mode COMPUTER").
     aoso_hud_alert("mode", "INFO", "MISSION COMPUTER", 4, 2).
 }
 
@@ -121,7 +126,7 @@ FUNCTION aoso_hud_mode_eng {
     SET AOSO_HUD_MODE TO "ENGINEERING".
     aoso_hud_gui_show().
     aoso_hud_show_page("TWIN").
-    aoso_hud_trace("mode ENGINEERING").
+    aoso_hud_trace_log("mode ENGINEERING").
     aoso_hud_alert("mode", "INFO", "ENGINEERING HUD", 4, 2).
 }
 
@@ -216,7 +221,7 @@ FUNCTION aoso_hud_init {
     aoso_hud_collect(TRUE).
     aoso_hud_term_tick(FALSE).
     aoso_hud_event_push("INFO", "HUD online  IPU " + CONFIG:IPU).
-    aoso_hud_trace("HUD online IPU=" + CONFIG:IPU).
+    aoso_hud_trace_log("HUD online IPU=" + CONFIG:IPU).
     aoso_hud_alert("boot", "OK", "AOSO HUD ONLINE", 8, 3).
 }
 
@@ -305,5 +310,5 @@ FUNCTION aoso_hud_debug_dump {
     LOCAL snap IS aoso_hud_debug_write().
     aoso_log_info("HUD_DUMP", aoso_hud_debug_line(snap)).
     aoso_hud_event_push("INFO", "HUD dump  0:/aoso_hud.json").
-    aoso_hud_trace("dump written").
+    aoso_hud_trace_log("dump written").
 }
