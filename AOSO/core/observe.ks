@@ -348,15 +348,15 @@ FUNCTION aoso_observe_cpu_end {
     LOCAL wall IS KUNIVERSE:REALTIME - AOSO_CPU_RT0.
     LOCAL level IS 0.
     LOCAL cname IS "NORMAL".
-    // A TIME:SECONDS step means we used more than IPU this physics update.
-    // That is normal at 20-50 Hz with a HUD. CRITICAL is only a real stall
-    // (tick took ~3+ physics frames, or we spilled 12 ticks in a row).
+    // A TIME:SECONDS step means this slice used more than IPU. That is
+    // one physics frame of overrun, not a stall. CRITICAL is a real hitch
+    // (wall >= 0.15 s) or a long unbroken spill streak.
     IF spilled {
-        IF wall >= 0.10 {
+        IF wall >= 0.15 {
             SET level TO 3.
             SET cname TO "CRITICAL".
         } ELSE {
-            IF AOSO_CPU_STREAK >= 12 {
+            IF AOSO_CPU_STREAK >= 20 {
                 SET level TO 3.
                 SET cname TO "CRITICAL".
             } ELSE {

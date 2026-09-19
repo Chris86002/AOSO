@@ -1006,7 +1006,12 @@ FUNCTION aoso_hud_gui_tick {
     LOCAL pg IS AOSO_HUD_PAGE.
     LOCAL force IS FALSE.
     IF pg <> AOSO_HUD_GUI_PAINTED { SET force TO TRUE. }
-    IF now - AOSO_HUD_LAST_GUI < 0.08 {
+    LOCAL gmin IS 0.10.
+    IF DEFINED AOSO_CPU_LEVEL {
+        IF AOSO_CPU_LEVEL >= 2 { SET gmin TO 0.20. }
+        IF AOSO_CPU_LEVEL >= 3 { SET gmin TO 0.35. }
+    }
+    IF now - AOSO_HUD_LAST_GUI < gmin {
         IF NOT force { RETURN. }
     }
     SET AOSO_HUD_LAST_GUI TO now.

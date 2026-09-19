@@ -32,10 +32,10 @@ FUNCTION aoso_hud_rates {
     LOCAL lvl IS 0.
     IF DEFINED AOSO_CPU_LEVEL { SET lvl TO AOSO_CPU_LEVEL. }
     IF lvl >= 3 {
-        RETURN LEXICON("hi", 0.15, "md", 0.8, "lo", 4, "gui", TRUE, "fd", FALSE, "term", TRUE).
+        RETURN LEXICON("hi", 0.20, "md", 1.2, "lo", 5, "gui", TRUE, "fd", FALSE, "term", TRUE).
     }
     IF lvl >= 2 {
-        RETURN LEXICON("hi", 0.08, "md", 0.5, "lo", 3, "gui", TRUE, "fd", TRUE, "term", TRUE).
+        RETURN LEXICON("hi", 0.12, "md", 0.7, "lo", 3.5, "gui", TRUE, "fd", FALSE, "term", TRUE).
     }
     RETURN LEXICON("hi", 0.05, "md", 0.25, "lo", 1.5, "gui", TRUE, "fd", TRUE, "term", TRUE).
 }

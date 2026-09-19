@@ -296,7 +296,7 @@ FUNCTION aoso_mission_update {
 }
 
 FUNCTION aoso_mission_register_task {
-    PARAMETER interval_s IS 0.05.
+    PARAMETER interval_s IS 0.1.
     aoso_sched_add("mission", interval_s, aoso_mission_update@).
 }
 
