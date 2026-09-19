@@ -603,6 +603,10 @@ FUNCTION aoso_hud_collect {
             SET AOSO_HUD_LAST_HI TO now.
         }
     }
+    IF AOSO_HUD_PAGE = "DBG" {
+        aoso_hud_collect_debug().
+        aoso_hud_collect_systems().
+    }
     IF (now - AOSO_HUD_LAST_MD) >= rates["md"] {
         aoso_hud_collect_orbit().
         aoso_hud_collect_target().

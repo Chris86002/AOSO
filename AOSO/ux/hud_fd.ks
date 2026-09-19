@@ -77,6 +77,18 @@ FUNCTION aoso_hud_fd_apply {
     }
 }
 
+FUNCTION aoso_hud_fd_status_txt {
+    IF NOT AOSO_HUD_FD_ON { RETURN "OFF". }
+    LOCAL bits IS "ON".
+    FOR k IN AOSO_HUD_FD:KEYS {
+        IF AOSO_HUD_FD[k]["show"] { SET bits TO bits + " " + k. }
+        ELSE {
+            IF AOSO_HUD_FD[k]["want"] { SET bits TO bits + " " + k + "*". }
+        }
+    }
+    RETURN bits.
+}
+
 FUNCTION aoso_hud_fd_tick {
     PARAMETER allow.
     IF NOT allow {

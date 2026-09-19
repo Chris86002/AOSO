@@ -228,16 +228,25 @@ FUNCTION aoso_hud_gui_build_log {
 
 FUNCTION aoso_hud_gui_build_dbg {
     PARAMETER p.
-    aoso_hud_title(p, "DEBUG").
+    aoso_hud_title(p, "DEBUG  (entire HUD)").
+    LOCAL row IS p:ADDHLAYOUT().
+    LOCAL dump_btn IS row:ADDBUTTON("DUMP HUD").
+    SET dump_btn:ONCLICK TO aoso_hud_debug_dump@.
     aoso_hud_lab(p, "dbg_cpu", "CPU  -").
     aoso_hud_lab(p, "dbg_ipu", "IPU  -").
     aoso_hud_lab(p, "dbg_page", "PAGE  -").
     aoso_hud_lab(p, "dbg_ctx", "CTX  -").
+    aoso_hud_lab(p, "dbg_gui", "GUI  -").
+    aoso_hud_lab(p, "dbg_sys", "SYS  -").
+    aoso_hud_lab(p, "dbg_fd", "FD  -").
     aoso_hud_lab(p, "dbg_st", "STATE  -").
+    aoso_hud_lab(p, "dbg_do", "DOING  -").
+    aoso_hud_lab(p, "dbg_flt", "FLT  -").
     aoso_hud_lab(p, "dbg_warn", "WARN  -").
     aoso_hud_lab(p, "dbg_err", "ERR  -").
     aoso_hud_lab(p, "dbg_last", "LAST  -").
     aoso_hud_lab(p, "dbg_twin", "TWIN  -").
+    aoso_hud_lab(p, "dbg_file", "FILE  0:/aoso_hud.json").
 }
 
 FUNCTION aoso_hud_fd_cb_master { PARAMETER on. aoso_hud_fd_enable(on). aoso_hud_trace("FD master=" + on). }
@@ -746,19 +755,27 @@ FUNCTION aoso_hud_gui_upd_log {
 }
 
 FUNCTION aoso_hud_gui_upd_dbg {
+    LOCAL snap IS aoso_hud_debug_snap().
     LOCAL d IS AOSO_HUD_DATA["debug"].
     LOCAL m IS AOSO_HUD_DATA["mission"].
-    aoso_hud_set("dbg_cpu", "CPU  " + d["cpu"] + "  " + ROUND(100 * d["frac"], 0) + "%  spills " + d["spills"]).
-    aoso_hud_set("dbg_ipu", "IPU  " + d["ipu"] + "   used " + ROUND(d["used"], 0) + "   left " + d["left"]).
-    aoso_hud_set("dbg_page", "PAGE  " + d["page"] + "   MODE " + d["mode"]).
-    aoso_hud_set("dbg_ctx", "CTX  " + d["ctx"] + "   PHASE " + d["phase"]).
+    aoso_hud_set("dbg_cpu", "CPU  " + snap["cpu"] + "  used " + ROUND(snap["used"], 0) + "  spills " + snap["spills"] + "  hud_dt " + ROUND(snap["hud_dt"], 3) + "s").
+    aoso_hud_set("dbg_ipu", "IPU  " + snap["ipu"] + "   left " + snap["left"]).
+    aoso_hud_set("dbg_page", "PAGE  " + snap["page"] + "   MODE " + snap["mode"] + "   ready=" + snap["ready"]).
+    aoso_hud_set("dbg_ctx", "CTX  " + snap["ctx"] + "   PHASE " + d["phase"] + "   body " + snap["body"] + " " + snap["status"]).
+    aoso_hud_set("dbg_gui", "GUI  on=" + snap["gui_on"] + "  collect hi/md/lo age " + ROUND(snap["hi_age"], 1) + "/" + ROUND(snap["md_age"], 1) + "/" + ROUND(snap["lo_age"], 1) + "s").
+    LOCAL why IS snap["why"].
+    IF why = "" { SET why TO "nominal". }
+    aoso_hud_set("dbg_sys", "SYS  " + snap["sys"] + "  " + why).
+    aoso_hud_set("dbg_fd", "FD  " + snap["fd"]).
     aoso_hud_set("dbg_st", "MSN " + m["mission"] + " / " + m["step"] + "  TOUR " + m["tour"] + "  GOTO " + m["goto"] + "  ASC " + m["ascent"]).
-    aoso_hud_set("dbg_warn", "WARN  " + AOSO_HUD_WARN_N + "  " + AOSO_HUD_LAST_WARN).
-    aoso_hud_set("dbg_err", "ERR   " + AOSO_HUD_ERR_N + "  " + AOSO_HUD_LAST_ERR).
-    aoso_hud_set("dbg_last", "LAST  " + AOSO_HUD_LAST_EVT).
-    LOCAL tw IS "-".
-    IF d:HASKEY("twin") { SET tw TO d["twin"] + "  n=" + d["twin_parts"] + "  " + d["twin_reason"]. }
-    aoso_hud_set("dbg_twin", "TWIN  " + tw).
+    aoso_hud_set("dbg_do", "DOING  " + snap["doing"] + "  " + snap["detail"]).
+    aoso_hud_set("dbg_flt", "FLT  alt " + ROUND(snap["alt"], 0) + "  vs " + ROUND(snap["vs"], 1) + "  twr " + ROUND(snap["twr"], 2) + "  thr " + ROUND(100 * snap["throttle"], 0) + "%  stg " + snap["stage"]).
+    aoso_hud_set("dbg_warn", "WARN  " + snap["warn_n"] + "  " + snap["last_warn"]).
+    aoso_hud_set("dbg_err", "ERR   " + snap["err_n"] + "  " + snap["last_err"]).
+    aoso_hud_set("dbg_last", "LAST  " + snap["last_evt"]).
+    aoso_hud_set("dbg_twin", "TWIN  " + snap["twin"] + "  n=" + snap["twin_n"] + "  " + snap["twin_reason"]).
+    LOCAL age IS TIME:SECONDS - AOSO_HUD_LAST_DUMP.
+    aoso_hud_set("dbg_file", "FILE  0:/aoso_hud.json  last dump " + ROUND(age, 0) + "s ago  (DUMP HUD writes now)").
 }
 
 FUNCTION aoso_hud_gui_tick {

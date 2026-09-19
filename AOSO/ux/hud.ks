@@ -14,6 +14,7 @@ GLOBAL AOSO_HUD_SPACES IS "                                                     
 GLOBAL AOSO_UI IS LEXICON("doing", "", "detail", "").
 GLOBAL AOSO_HUD_MODE IS "COMPUTER".
 GLOBAL AOSO_HUD_READY IS FALSE.
+GLOBAL AOSO_HUD_LAST_DUMP IS 0.
 
 FUNCTION aoso_ui_set {
     PARAMETER doing.
@@ -193,7 +194,10 @@ FUNCTION aoso_hud_tick {
     // Always paint the GUI, even at CPU CRITICAL. Skipping it after a
     // tab click leaves SHOWONLY on a stale/half-built page (the LND glitch).
     aoso_hud_gui_tick(TRUE).
-    aoso_log_every(8, "HUD_HB", "page=" + AOSO_HUD_PAGE + " mode=" + AOSO_HUD_MODE + " ctx=" + AOSO_HUD_CTX + " cpu=" + AOSO_CPU_NAME).
+    aoso_log_every(8, "HUD_HB", aoso_hud_debug_line()).
+    IF AOSO_HUD_PAGE = "DBG" {
+        IF TIME:SECONDS - AOSO_HUD_LAST_DUMP >= 20 { aoso_hud_debug_write(). }
+    }
 }
 
 FUNCTION aoso_hud_draw {
@@ -220,4 +224,86 @@ FUNCTION aoso_hud_register_task {
     PARAMETER interval_s IS 0.05.
     aoso_hud_init().
     aoso_sched_add("hud", interval_s, aoso_hud_tick@).
+}
+
+FUNCTION aoso_hud_debug_snap {
+    LOCAL f IS AOSO_HUD_DATA["flight"].
+    LOCAL sys IS AOSO_HUD_DATA["systems"].
+    LOCAL d IS AOSO_HUD_DATA["debug"].
+    LOCAL m IS AOSO_HUD_DATA["mission"].
+    LOCAL now IS TIME:SECONDS.
+    LOCAL why IS "".
+    IF sys:HASKEY("why") { SET why TO sys["why"]. }
+    LOCAL roll IS "".
+    IF sys:HASKEY("rollup") { SET roll TO sys["rollup"]. }
+    LOCAL gui_on IS FALSE.
+    IF DEFINED AOSO_HUD_GUI_ON { SET gui_on TO AOSO_HUD_GUI_ON. }
+    LOCAL fd_txt IS "OFF".
+    IF DEFINED AOSO_HUD_FD { SET fd_txt TO aoso_hud_fd_status_txt(). }
+    LOCAL hud_dt IS 0.
+    FOR tsk IN AOSO_TASKS:COPY {
+        IF tsk["name"] = "hud" { SET hud_dt TO tsk["last_dt"]. }
+    }
+    RETURN LEXICON(
+        "ut", now,
+        "met", MISSIONTIME,
+        "ready", AOSO_HUD_READY,
+        "mode", AOSO_HUD_MODE,
+        "page", AOSO_HUD_PAGE,
+        "ctx", AOSO_HUD_CTX,
+        "gui_on", gui_on,
+        "doing", AOSO_UI["doing"],
+        "detail", AOSO_UI["detail"],
+        "sys", roll,
+        "why", why,
+        "cpu", d["cpu"],
+        "ipu", d["ipu"],
+        "used", d["used"],
+        "left", d["left"],
+        "spills", d["spills"],
+        "fd", fd_txt,
+        "twin", d["twin"],
+        "twin_n", d["twin_parts"],
+        "twin_reason", d["twin_reason"],
+        "body", f["body"],
+        "status", f["status"],
+        "alt", f["alt"],
+        "vs", f["vs"],
+        "twr", f["twr"],
+        "throttle", f["throttle"],
+        "stage", f["stage"],
+        "mission", m["mission"],
+        "tour", m["tour"],
+        "goto_st", m["goto"],
+        "ascent", m["ascent"],
+        "warn_n", AOSO_HUD_WARN_N,
+        "err_n", AOSO_HUD_ERR_N,
+        "last_evt", AOSO_HUD_LAST_EVT,
+        "last_warn", AOSO_HUD_LAST_WARN,
+        "last_err", AOSO_HUD_LAST_ERR,
+        "hud_dt", hud_dt,
+        "hi_age", now - AOSO_HUD_LAST_HI,
+        "md_age", now - AOSO_HUD_LAST_MD,
+        "lo_age", now - AOSO_HUD_LAST_LO
+    ).
+}
+
+FUNCTION aoso_hud_debug_line {
+    PARAMETER snap IS 0.
+    IF snap = 0 { SET snap TO aoso_hud_debug_snap(). }
+    RETURN "page=" + snap["page"] + " mode=" + snap["mode"] + " ctx=" + snap["ctx"] + " gui=" + snap["gui_on"] + " sys=" + snap["sys"] + " why=[" + snap["why"] + "] fd=" + snap["fd"] + " twin=" + snap["twin"] + " cpu=" + snap["cpu"] + " ipu=" + snap["ipu"] + " left=" + snap["left"] + " doing=" + snap["doing"] + " alt=" + ROUND(snap["alt"], 0) + " vs=" + ROUND(snap["vs"], 1) + " twr=" + ROUND(snap["twr"], 2) + " stg=" + snap["stage"] + " warn=" + snap["warn_n"] + " err=" + snap["err_n"] + " last=" + snap["last_evt"].
+}
+
+FUNCTION aoso_hud_debug_write {
+    LOCAL snap IS aoso_hud_debug_snap().
+    aoso_json_write(AOSO_CONST["HUD_FILE"], snap).
+    SET AOSO_HUD_LAST_DUMP TO TIME:SECONDS.
+    RETURN snap.
+}
+
+FUNCTION aoso_hud_debug_dump {
+    LOCAL snap IS aoso_hud_debug_write().
+    aoso_log_info("HUD_DUMP", aoso_hud_debug_line(snap)).
+    aoso_hud_event_push("INFO", "HUD dump  0:/aoso_hud.json").
+    aoso_hud_trace("dump written").
 }
