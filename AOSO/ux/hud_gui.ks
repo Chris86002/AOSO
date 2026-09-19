@@ -158,14 +158,14 @@ FUNCTION aoso_hud_skin_apply {
 FUNCTION aoso_hud_scale_walk {
     PARAMETER box.
     PARAMETER fs.
-    LOCAL q IS LIST(box).
+    LOCAL wq IS LIST(box).
     LOCAL i IS 0.
-    UNTIL i >= q:LENGTH {
-        LOCAL w IS q[i].
+    UNTIL i >= wq:LENGTH {
+        LOCAL w IS wq[i].
         SET i TO i + 1.
         SET w:STYLE:FONTSIZE TO fs.
         IF w:HASSUFFIX("WIDGETS") {
-            FOR child IN w:WIDGETS { q:ADD(child). }
+            FOR child IN w:WIDGETS { wq:ADD(child). }
         }
     }
 }
@@ -467,10 +467,10 @@ FUNCTION aoso_hud_gui_init {
     SET b_x:ONCLICK TO aoso_hud_toggle_compact@.
     SET AOSO_HUD_BTN_X TO b_x.
 
-    LOCAL body IS g:ADDVLAYOUT().
-    SET AOSO_HUD_BODY TO body.
+    LOCAL vbox IS g:ADDVLAYOUT().
+    SET AOSO_HUD_BODY TO vbox.
 
-    LOCAL modes IS body:ADDHLAYOUT().
+    LOCAL modes IS vbox:ADDHLAYOUT().
     LOCAL b_tac IS modes:ADDBUTTON("TAC").
     SET b_tac:ONCLICK TO aoso_hud_mode_tactical@.
     LOCAL b_gui IS modes:ADDBUTTON("GUI").
@@ -480,7 +480,7 @@ FUNCTION aoso_hud_gui_init {
     LOCAL b_fd IS modes:ADDCHECKBOX("FD", TRUE).
     SET b_fd:ONTOGGLE TO aoso_hud_fd_cb_master@.
 
-    LOCAL fdrow IS body:ADDHLAYOUT().
+    LOCAL fdrow IS vbox:ADDHLAYOUT().
     LOCAL c1 IS fdrow:ADDCHECKBOX("PRO", TRUE).
     SET c1:ONTOGGLE TO aoso_hud_fd_cb_pro@.
     LOCAL c1b IS fdrow:ADDCHECKBOX("RET", FALSE).
@@ -495,15 +495,15 @@ FUNCTION aoso_hud_gui_init {
     SET c3:ONTOGGLE TO aoso_hud_fd_cb_burn@.
     LOCAL c4 IS fdrow:ADDCHECKBOX("LAND", FALSE).
     SET c4:ONTOGGLE TO aoso_hud_fd_cb_land@.
-    aoso_hud_hint(body, "FD lights draw 3D arrows on the ship. They do not fly it. PRO=prograde  RET=retrograde  NML=orbit-normal  TGT=target  REL=relative vel  BURN=node  LAND=surface-retro. HELP tab explains all of this.").
+    aoso_hud_hint(vbox, "FD lights draw 3D arrows on the ship. They do not fly it. PRO=prograde  RET=retrograde  NML=orbit-normal  TGT=target  REL=relative vel  BURN=node  LAND=surface-retro. HELP tab explains all of this.").
 
-    LOCAL row1 IS body:ADDHLAYOUT().
+    LOCAL row1 IS vbox:ADDHLAYOUT().
     aoso_hud_add_tab(row1, "FLT", "FLT").
     aoso_hud_add_tab(row1, "NAV", "NAV").
     aoso_hud_add_tab(row1, "MSN", "MSN").
     aoso_hud_add_tab(row1, "VEH", "VEH").
     aoso_hud_add_tab(row1, "PRP", "PRP").
-    LOCAL row2 IS body:ADDHLAYOUT().
+    LOCAL row2 IS vbox:ADDHLAYOUT().
     aoso_hud_add_tab(row2, "LND", "LND").
     aoso_hud_add_tab(row2, "STG", "STG").
     aoso_hud_add_tab(row2, "SYS", "SYS").
@@ -512,7 +512,7 @@ FUNCTION aoso_hud_gui_init {
     aoso_hud_add_tab(row2, "DBG", "DBG").
     aoso_hud_add_tab(row2, "HELP", "HELP").
 
-    SET AOSO_HUD_STACK TO body:ADDVLAYOUT().
+    SET AOSO_HUD_STACK TO vbox:ADDVLAYOUT().
     aoso_hud_gui_build_flight(aoso_hud_add_page("FLT")).
     aoso_hud_gui_build_nav(aoso_hud_add_page("NAV")).
     aoso_hud_gui_build_mission(aoso_hud_add_page("MSN")).
