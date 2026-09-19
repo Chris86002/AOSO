@@ -701,10 +701,16 @@ FUNCTION aoso_ascent_circularize_execute {
         }
         IF circ_res <> "ok" {
             aoso_log_warn("ASCENT", "Circularization " + circ_res + " - retrying.").
-            IF ETA:APOAPSIS > ETA:PERIAPSIS {
-                aoso_maneuver_add_circularize_here().
+            LOCAL park IS aoso_config_get("ASCENT_TARGET_APO", 80000).
+            IF APOAPSIS > park * 1.35 {
+                aoso_log_warn("ASCENT", "Apo lofted to " + ROUND(APOAPSIS, 0) + "m - dropping it back to " + ROUND(park, 0) + "m at periapsis instead of circularizing up there.").
+                aoso_hohmann_add_apoapsis_change(park).
             } ELSE {
-                aoso_maneuver_add_circularize_at_apoapsis().
+                IF ETA:APOAPSIS > ETA:PERIAPSIS {
+                    aoso_maneuver_add_circularize_here().
+                } ELSE {
+                    aoso_maneuver_add_circularize_at_apoapsis().
+                }
             }
         }
     }

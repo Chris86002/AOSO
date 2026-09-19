@@ -35,7 +35,19 @@ FUNCTION aoso_hohmann_dv_at_apoapsis_for_periapsis {
 FUNCTION aoso_hohmann_add_apoapsis_change {
     PARAMETER target_apo_alt.
     LOCAL dv IS aoso_hohmann_dv_at_periapsis_for_apoapsis(target_apo_alt).
-    LOCAL nd IS NODE(TIME:SECONDS + ETA:PERIAPSIS, 0, 0, dv).
+    LOCAL eta_pe IS ETA:PERIAPSIS.
+    IF aoso_orbit_is_hyperbolic() {
+        IF eta_pe < 40 {
+            aoso_log_warn("HOHMANN", "Already past periapsis on a hyperbola - no apoapsis-change node.").
+            RETURN 0.
+        }
+    } ELSE {
+        IF eta_pe < 45 {
+            LOCAL p_s IS aoso_orbit_period_s().
+            IF p_s > 80 { SET eta_pe TO eta_pe + p_s. }
+        }
+    }
+    LOCAL nd IS NODE(TIME:SECONDS + eta_pe, 0, 0, dv).
     ADD nd.
     aoso_log_info("HOHMANN", "Apoapsis-change node added: dv=" + ROUND(dv, 1) + " m/s at periapsis, target apo=" + ROUND(target_apo_alt, 0) + "m.").
     RETURN nd.

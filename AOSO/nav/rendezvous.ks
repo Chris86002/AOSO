@@ -230,6 +230,49 @@ FUNCTION aoso_rendezvous_apply_dv {
     RETURN TRUE.
 }
 
+FUNCTION aoso_rendezvous_porkchop_keep {
+    PARAMETER cands.
+    PARAMETER nd.
+    PARAMETER hop.
+    PARAMETER desired.
+    PARAMETER n_max.
+    LOCAL pe IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
+    LOCAL sc IS aoso_rendezvous_porkchop_score(nd, hop, desired).
+    IF sc < 0 { RETURN. }
+    LOCAL item IS LEXICON("ut", TIME:SECONDS + nd:ETA, "pg", nd:PROGRADE, "rad", nd:RADIALOUT, "nml", nd:NORMAL, "sc", sc, "dv", nd:DELTAV:MAG, "pe", pe).
+    IF cands:LENGTH < n_max {
+        cands:ADD(item).
+        RETURN.
+    }
+    LOCAL wi IS 0.
+    LOCAL wsc IS cands[0]["sc"].
+    LOCAL i IS 1.
+    UNTIL i >= cands:LENGTH {
+        IF cands[i]["sc"] > wsc {
+            SET wsc TO cands[i]["sc"].
+            SET wi TO i.
+        }
+        SET i TO i + 1.
+    }
+    IF sc < wsc { SET cands[wi] TO item. }
+}
+
+FUNCTION aoso_rendezvous_porkchop_best_txt {
+    PARAMETER cands.
+    IF cands:LENGTH = 0 { RETURN "none". }
+    LOCAL bi IS 0.
+    LOCAL bsc IS cands[0]["sc"].
+    LOCAL i IS 1.
+    UNTIL i >= cands:LENGTH {
+        IF cands[i]["sc"] < bsc {
+            SET bsc TO cands[i]["sc"].
+            SET bi TO i.
+        }
+        SET i TO i + 1.
+    }
+    RETURN ROUND(cands[bi]["pe"], 0) + "m dv=" + ROUND(cands[bi]["dv"], 0).
+}
+
 FUNCTION aoso_rendezvous_settle_long {
     WAIT 0.
     WAIT 0.
@@ -309,16 +352,10 @@ FUNCTION aoso_rendezvous_porkchop_search {
     ADD nd.
 
     LOCAL desired IS aoso_rendezvous_desired_pe(hop).
-    LOCAL best_sc IS 1e99.
-    LOCAL found IS FALSE.
-    LOCAL best_ut IS t_soon.
-    LOCAL best_pg IS 10.
-    LOCAL best_rad IS 0.
-    LOCAL best_nml IS 0.
+    LOCAL cands IS LIST().
     LOCAL n_hit IS 0.
     LOCAL n_ok IS 0.
     LOCAL n_done IS 0.
-    LOCAL best_pe_txt IS "none".
 
     LOCAL di2 IS 0.
     UNTIL di2 >= deps:LENGTH {
@@ -337,23 +374,12 @@ FUNCTION aoso_rendezvous_porkchop_search {
                     IF aoso_rendezvous_node_hits_body(nd, hop) {
                         SET n_hit TO n_hit + 1.
                         LOCAL pe_try IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
-                        LOCAL sc IS aoso_rendezvous_porkchop_score(nd, hop, desired).
                         IF aoso_rendezvous_pe_ok_value(pe_try, hop) { SET n_ok TO n_ok + 1. }
-                        IF sc >= 0 {
-                            IF sc < best_sc {
-                                SET best_sc TO sc.
-                                SET best_ut TO TIME:SECONDS + nd:ETA.
-                                SET best_pg TO nd:PROGRADE.
-                                SET best_rad TO nd:RADIALOUT.
-                                SET best_nml TO nd:NORMAL.
-                                SET found TO TRUE.
-                                SET best_pe_txt TO ROUND(pe_try, 0) + "m dv=" + ROUND(nd:DELTAV:MAG, 0).
-                            }
-                        }
+                        aoso_rendezvous_porkchop_keep(cands, nd, hop, desired, 20).
                     }
                 }
                 IF FLOOR(n_done / 8) * 8 = n_done {
-                    aoso_ui_pulse("Porkchop " + hop:NAME, n_done + "/" + n_tot + "  hits " + n_hit + "  capture " + n_ok + "  best " + best_pe_txt).
+                    aoso_ui_pulse("Porkchop " + hop:NAME, n_done + "/" + n_tot + "  hits " + n_hit + "  capture " + n_ok + "  keep " + cands:LENGTH + "  best " + aoso_rendezvous_porkchop_best_txt(cands)).
                 }
                 SET nmi TO nmi + 1.
             }
@@ -363,79 +389,120 @@ FUNCTION aoso_rendezvous_porkchop_search {
     }
 
     LOCAL dt_s IS TIME:SECONDS - t_start.
-    aoso_log_info("RENDEZVOUS", "Porkchop grid done in " + ROUND(dt_s, 0) + "s: hits=" + n_hit + " capture=" + n_ok + "/" + n_tot + " best " + best_pe_txt + ".").
+    aoso_log_info("RENDEZVOUS", "Porkchop grid done in " + ROUND(dt_s, 0) + "s: hits=" + n_hit + " capture=" + n_ok + "/" + n_tot + " kept " + cands:LENGTH + "  best " + aoso_rendezvous_porkchop_best_txt(cands) + ".").
 
-    IF NOT found {
-        aoso_log_warn("RENDEZVOUS", "Patched porkchop found no " + hop:NAME + " encounter - trying Lambert cells.").
-        LOCAL n_tof IS aoso_config_get("PORKCHOP_TOF_SAMPLES", 8).
-        IF n_tof < 5 { SET n_tof TO 5. }
-        LOCAL tofs IS LIST().
-        tofs:ADD(900).
-        tofs:ADD(1800).
-        tofs:ADD(3600).
-        tofs:ADD(7200).
-        LOCAL ti IS 0.
-        UNTIL ti >= n_tof {
-            LOCAL frac IS 0.08 + 1.5 * ti / MAX(1, n_tof - 1).
-            tofs:ADD(tof_h * frac).
-            SET ti TO ti + 1.
-        }
-        SET di2 TO 0.
-        UNTIL di2 >= deps:LENGTH {
-            LOCAL ti2 IS 0.
-            UNTIL ti2 >= tofs:LENGTH {
-                IF aoso_rendezvous_apply_lambert(nd, hop, deps[di2], tofs[ti2]) {
-                    aoso_rendezvous_settle_long().
-                    IF aoso_rendezvous_node_hits_body(nd, hop) {
-                        SET n_hit TO n_hit + 1.
-                        LOCAL pe_l IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
-                        LOCAL sc_l IS aoso_rendezvous_porkchop_score(nd, hop, desired).
-                        IF aoso_rendezvous_pe_ok_value(pe_l, hop) { SET n_ok TO n_ok + 1. }
-                        IF sc_l >= 0 {
-                            IF sc_l < best_sc {
-                                SET best_sc TO sc_l.
-                                SET best_ut TO TIME:SECONDS + nd:ETA.
-                                SET best_pg TO nd:PROGRADE.
-                                SET best_rad TO nd:RADIALOUT.
-                                SET best_nml TO nd:NORMAL.
-                                SET found TO TRUE.
-                                SET best_pe_txt TO ROUND(pe_l, 0) + "m dv=" + ROUND(nd:DELTAV:MAG, 0).
+    IF cands:LENGTH > 0 {
+        aoso_log_info("RENDEZVOUS", "Densifying around " + MIN(3, cands:LENGTH) + " hit(s) - looking for cheaper capture PEs.").
+        LOCAL hi IS 0.
+        UNTIL hi >= cands:LENGTH {
+            IF hi >= 3 { SET hi TO cands:LENGTH. }
+            IF hi < cands:LENGTH {
+                LOCAL seed IS cands[hi].
+                LOCAL tj IS 0.
+                UNTIL tj >= 7 {
+                    LOCAL t_r IS seed["ut"] + (tj - 3) * (p_ship / 14).
+                    LOCAL dj IS 0.
+                    UNTIL dj >= 7 {
+                        LOCAL dv_r IS seed["pg"] + (dj - 3) * 18.
+                        LOCAL nj IS 0.
+                        UNTIL nj >= 3 {
+                            LOCAL nml_r IS seed["nml"] + (nj - 1) * 20.
+                            SET n_done TO n_done + 1.
+                            IF aoso_rendezvous_apply_dv(nd, t_r, dv_r, nml_r) {
+                                aoso_rendezvous_settle_long().
+                                IF aoso_rendezvous_node_hits_body(nd, hop) {
+                                    SET n_hit TO n_hit + 1.
+                                    LOCAL pe_r IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
+                                    IF aoso_rendezvous_pe_ok_value(pe_r, hop) { SET n_ok TO n_ok + 1. }
+                                    aoso_rendezvous_porkchop_keep(cands, nd, hop, desired, 20).
+                                }
                             }
+                            SET nj TO nj + 1.
                         }
+                        SET dj TO dj + 1.
                     }
+                    SET tj TO tj + 1.
                 }
-                SET ti2 TO ti2 + 1.
             }
-            SET di2 TO di2 + 1.
+            SET hi TO hi + 1.
         }
+        aoso_log_info("RENDEZVOUS", "After densify: hits=" + n_hit + " capture=" + n_ok + " kept " + cands:LENGTH + "  best " + aoso_rendezvous_porkchop_best_txt(cands) + ".").
     }
 
-    IF NOT found {
+    IF cands:LENGTH = 0 {
         aoso_log_warn("RENDEZVOUS", "Porkchop found no patched " + hop:NAME + " encounter after the full grid.").
         REMOVE nd.
         RETURN 0.
     }
 
-    SET nd:ETA TO best_ut - TIME:SECONDS.
-    IF nd:ETA < 25 { SET nd:ETA TO 25. }
-    SET nd:PROGRADE TO best_pg.
-    SET nd:RADIALOUT TO best_rad.
-    SET nd:NORMAL TO best_nml.
-    aoso_rendezvous_settle_long().
-    LOCAL pe0 IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
-    aoso_log_info("RENDEZVOUS", "Porkchop best seed: dv=" + ROUND(nd:DELTAV:MAG, 1) + " m/s in " + ROUND(nd:ETA, 0) +
-        "s patchPE=" + ROUND(pe0, 0) + "m. B-plane trim next.").
-    aoso_ui_set("Aiming " + hop:NAME + " intercept", "porkchop PE " + ROUND(pe0, 0) + "m  dv " + ROUND(nd:DELTAV:MAG, 0)).
-
-    IF aoso_rendezvous_finalize_node(nd, hop) {
-        LOCAL pe1 IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
-        aoso_log_info("RENDEZVOUS", "Porkchop intercept accepted: PE " + ROUND(pe1, 0) + "m dv=" + ROUND(nd:DELTAV:MAG, 1) +
-            " m/s in " + ROUND(nd:ETA, 0) + "s.").
-        RETURN nd.
+    LOCAL a IS 0.
+    UNTIL a >= cands:LENGTH {
+        LOCAL b IS a + 1.
+        UNTIL b >= cands:LENGTH {
+            IF cands[b]["dv"] < cands[a]["dv"] {
+                LOCAL tmp IS cands[a].
+                SET cands[a] TO cands[b].
+                SET cands[b] TO tmp.
+            }
+            SET b TO b + 1.
+        }
+        SET a TO a + 1.
     }
-    aoso_log_warn("RENDEZVOUS", "Porkchop seed did not trim to a capture PE - dropping it.").
-    REMOVE nd.
-    RETURN 0.
+
+    LOCAL win_dv IS 1e99.
+    LOCAL win_ut IS 0.
+    LOCAL win_pg IS 0.
+    LOCAL win_rad IS 0.
+    LOCAL win_nml IS 0.
+    LOCAL win_pe IS -1.
+    LOCAL n_tried IS 0.
+    LOCAL n_cap IS 0.
+    LOCAL ci IS 0.
+    UNTIL ci >= cands:LENGTH {
+        IF n_tried >= 8 { SET ci TO cands:LENGTH. }
+        IF ci < cands:LENGTH {
+            LOCAL c IS cands[ci].
+            SET nd:ETA TO c["ut"] - TIME:SECONDS.
+            IF nd:ETA < 25 { SET nd:ETA TO 25. }
+            SET nd:PROGRADE TO c["pg"].
+            SET nd:RADIALOUT TO c["rad"].
+            SET nd:NORMAL TO c["nml"].
+            aoso_ui_pulse("Comparing intercepts", (n_tried + 1) + "/" + MIN(8, cands:LENGTH) + "  dv=" + ROUND(c["dv"], 0) + " PE=" + ROUND(c["pe"], 0) + "m").
+            IF aoso_rendezvous_finalize_node(nd, hop) {
+                SET n_cap TO n_cap + 1.
+                LOCAL pe_f IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
+                LOCAL dv_f IS nd:DELTAV:MAG.
+                aoso_log_info("RENDEZVOUS", "Candidate " + (n_tried + 1) + " capture PE=" + ROUND(pe_f, 0) + "m dv=" + ROUND(dv_f, 1) + " m/s in " + ROUND(nd:ETA, 0) + "s.").
+                IF dv_f < win_dv {
+                    SET win_dv TO dv_f.
+                    SET win_ut TO TIME:SECONDS + nd:ETA.
+                    SET win_pg TO nd:PROGRADE.
+                    SET win_rad TO nd:RADIALOUT.
+                    SET win_nml TO nd:NORMAL.
+                    SET win_pe TO pe_f.
+                }
+            }
+            SET n_tried TO n_tried + 1.
+        }
+        SET ci TO ci + 1.
+    }
+
+    IF win_pe < 0 {
+        aoso_log_warn("RENDEZVOUS", "Porkchop had " + cands:LENGTH + " seeds but none trimmed to a capture PE - dropping them.").
+        REMOVE nd.
+        RETURN 0.
+    }
+
+    SET nd:ETA TO win_ut - TIME:SECONDS.
+    IF nd:ETA < 25 { SET nd:ETA TO 25. }
+    SET nd:PROGRADE TO win_pg.
+    SET nd:RADIALOUT TO win_rad.
+    SET nd:NORMAL TO win_nml.
+    aoso_rendezvous_settle_long().
+    aoso_log_info("RENDEZVOUS", "Porkchop picked cheapest capture: PE " + ROUND(win_pe, 0) + "m dv=" + ROUND(nd:DELTAV:MAG, 1) +
+        " m/s in " + ROUND(nd:ETA, 0) + "s (compared " + n_tried + ", capture " + n_cap + ").").
+    aoso_ui_set("Aiming " + hop:NAME + " intercept", "cheapest PE " + ROUND(win_pe, 0) + "m  dv " + ROUND(nd:DELTAV:MAG, 0)).
+    RETURN nd.
 }
 
 FUNCTION aoso_rendezvous_porkchop_score {

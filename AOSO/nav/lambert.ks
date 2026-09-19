@@ -65,8 +65,15 @@ FUNCTION aoso_lambert_tof {
     LOCAL s_z IS aoso_lambert_s(z).
     LOCAL y_uni IS radius1 + radius2 - A * (1 - z * s_z) / SQRT(c_z).
     IF y_uni <= 1 { RETURN -1. }
-    LOCAL x_uni IS SQRT(y_uni / c_z).
-    RETURN (x_uni ^ 3 * s_z + A * SQRT(y_uni)) / SQRT(mu).
+    IF c_z <= 0 { RETURN -1. }
+    LOCAL y_over_c IS y_uni / c_z.
+    IF y_over_c <= 0 { RETURN -1. }
+    LOCAL x_uni IS SQRT(y_over_c).
+    LOCAL raw IS x_uni ^ 3 * s_z + A * SQRT(y_uni).
+    IF raw <= 0 { RETURN -1. }
+    LOCAL t IS raw / SQRT(mu).
+    IF t <= 0 { RETURN -1. }
+    RETURN t.
 }
 
 FUNCTION aoso_lambert_y {
@@ -129,7 +136,7 @@ FUNCTION aoso_lambert_solve {
         LOCAL z_try IS -24 + i * (62 / 27).
         IF ABS(z_try) < 0.05 { SET z_try TO 0.05. }
         LOCAL t_try IS aoso_lambert_tof(radius1, radius2, A, z_try, mu).
-        IF t_try > 0 {
+        IF t_try > 1 {
             LOCAL err IS ABS(t_try - tof_s).
             IF err < best_err {
                 SET best_err TO err.

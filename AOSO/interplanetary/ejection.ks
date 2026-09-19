@@ -306,16 +306,23 @@ FUNCTION aoso_interplanetary_add_capture_node {
 
     IF want_polar {
         IF polar_err > polar_tol {
-            LOCAL have_high_ap IS FALSE.
-            IF NOT aoso_orbit_is_hyperbolic() {
-                IF aoso_orbit_apoapsis_alt() >= high_ap * 0.7 { SET have_high_ap TO TRUE. }
+            LOCAL e_now IS SHIP:ORBIT:ECCENTRICITY.
+            IF e_now < 0.18 {
+                IF NOT aoso_orbit_is_hyperbolic() {
+                    LOCAL etas_p IS aoso_orbit_equatorial_node_etas(SHIP).
+                    LOCAL v_node IS 100000.
+                    IF etas_p:LENGTH > 0 {
+                        LOCAL v_vec_p IS aoso_orbit_velocity_at(SHIP, TIME:SECONDS + etas_p[0]).
+                        SET v_node TO v_vec_p:MAG.
+                    }
+                    LOCAL dv_pl IS aoso_planechange_dv_for_angle(polar_err, v_node).
+                    IF dv_pl < v_node * 0.4 {
+                        aoso_log_info("EJECTION", "Polar capture at " + SHIP:BODY:NAME + ": plane-changing at the slow AN/DN (inc=" + ROUND(SHIP:ORBIT:INCLINATION, 1) + " e=" + ROUND(e_now, 2) + ").").
+                        RETURN aoso_planechange_add_node_for_inclination(aoso_config_get("TOUR_POLAR_INCLINATION", 90), polar_tol).
+                    }
+                }
             }
-            IF have_high_ap {
-                aoso_log_info("EJECTION", "Polar capture at " + SHIP:BODY:NAME + ": plane-changing at the slow AN/DN (inc=" + ROUND(SHIP:ORBIT:INCLINATION, 1) + " e=" + ROUND(SHIP:ORBIT:ECCENTRICITY, 2) + ").").
-                RETURN aoso_planechange_add_node_for_inclination(aoso_config_get("TOUR_POLAR_INCLINATION", 90), polar_tol).
-            }
-            aoso_log_info("EJECTION", "Polar capture at " + SHIP:BODY:NAME + " PE: binding AP to " + ROUND(high_ap, 0) + "m first so the plane change is cheap at apoapsis (inc=" + ROUND(SHIP:ORBIT:INCLINATION, 1) + ").").
-            RETURN aoso_hohmann_add_apoapsis_change(high_ap).
+            aoso_log_info("EJECTION", "Polar capture deferred at " + SHIP:BODY:NAME + " - circularize/bind first (e=" + ROUND(SHIP:ORBIT:ECCENTRICITY, 2) + "). A 230 m/s plane-change at v=180 unbound Minmus.").
         }
     }
 

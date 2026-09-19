@@ -178,6 +178,15 @@ FUNCTION aoso_warp_approach {
             SET WARPMODE TO "RAILS".
             WAIT 0.
         }
+        IF eta_s > rails_lead_s + 180 {
+            LOCAL want IS 4.
+            IF eta_s > 600 { SET want TO 5. }
+            IF eta_s > 3600 { SET want TO 6. }
+            IF eta_s > 21600 { SET want TO 7. }
+            IF WARP <> want { SET WARP TO want. }
+            aoso_log_every(60, "WARP", "Rails coast eta=" + ROUND(eta_s, 0) + "s " + aoso_warp_diag_txt() + ".").
+            RETURN "rails".
+        }
         LOCAL jump IS eta_s - rails_lead_s.
         IF jump > 86400 { SET jump TO 86400. }
         IF jump < 8 { SET jump TO 8. }
