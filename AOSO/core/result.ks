@@ -2,7 +2,7 @@
 // Standard action result, decision, heartbeat, prediction lexicons.
 
 GLOBAL AOSO_DECIDE_SEQ IS 0.
-GLOBAL AOSO_DECIDE_OPEN IS LEXICON().
+GLOBAL AOSO_OPEN_DECISIONS IS LEXICON().
 GLOBAL AOSO_HB IS LEXICON().
 GLOBAL AOSO_LAST_RESULT IS LEXICON().
 
@@ -130,7 +130,7 @@ FUNCTION aoso_decide_open {
     PARAMETER predicted IS 0.
     SET AOSO_DECIDE_SEQ TO AOSO_DECIDE_SEQ + 1.
     LOCAL id IS AOSO_DECIDE_SEQ.
-    SET AOSO_DECIDE_OPEN[id] TO LEXICON(
+    SET AOSO_OPEN_DECISIONS[id] TO LEXICON(
         "id", id,
         "type", tag,
         "decision", decision,
@@ -145,8 +145,8 @@ FUNCTION aoso_decide_open {
 FUNCTION aoso_decide_close {
     PARAMETER id.
     PARAMETER res.
-    IF NOT AOSO_DECIDE_OPEN:HASKEY(id) { RETURN. }
-    LOCAL dec IS AOSO_DECIDE_OPEN[id].
+    IF NOT AOSO_OPEN_DECISIONS:HASKEY(id) { RETURN. }
+    LOCAL dec IS AOSO_OPEN_DECISIONS[id].
     LOCAL pred IS 0.
     IF dec:HASKEY("predicted") { SET pred TO dec["predicted"]. }
     LOCAL act IS 0.
@@ -154,5 +154,5 @@ FUNCTION aoso_decide_close {
     LOCAL err IS act - pred.
     aoso_log_info("DECIDE", "closed id=" + id + " " + dec["type"] + " sel=" + dec["selected"] +
         " pred=" + ROUND(pred, 1) + " act=" + ROUND(act, 1) + " err=" + ROUND(err, 1) + ".").
-    AOSO_DECIDE_OPEN:REMOVE(id).
+    AOSO_OPEN_DECISIONS:REMOVE(id).
 }

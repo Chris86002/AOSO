@@ -25,7 +25,7 @@ GLOBAL AOSO_CHECKPOINT IS LEXICON(
 FUNCTION aoso_checkpoints_context {
     LOCAL ctx IS LEXICON().
     SET ctx["cfg_id"] TO "".
-    IF DEFINED AOSO_CFG_ID { SET ctx["cfg_id"] TO AOSO_CFG_ID. }
+    IF DEFINED AOSO_CFG_IDENT { SET ctx["cfg_id"] TO AOSO_CFG_IDENT. }
     SET ctx["body"] TO SHIP:BODY:NAME.
     SET ctx["status"] TO SHIP:STATUS.
     SET ctx["topo_fp"] TO "".

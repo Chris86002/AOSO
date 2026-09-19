@@ -3,7 +3,7 @@
 // via aoso_ctx_set and dirty flags. Do not copy giant lexicons here.
 
 GLOBAL AOSO_CTX IS LEXICON().
-GLOBAL AOSO_CFG_ID IS "".
+GLOBAL AOSO_CFG_IDENT IS "".
 GLOBAL AOSO_CFG_LOCKED IS FALSE.
 
 FUNCTION aoso_ctx_init {
@@ -119,50 +119,50 @@ FUNCTION aoso_cfg_id_make {
 }
 
 FUNCTION aoso_cfg_id_save {
-    aoso_json_write(AOSO_CONST["CFG_ID_FILE"], LEXICON("id", AOSO_CFG_ID, "name", SHIP:NAME, "ut", TIME:SECONDS)).
+    aoso_json_write(AOSO_CONST["CFG_ID_FILE"], LEXICON("id", AOSO_CFG_IDENT, "name", SHIP:NAME, "ut", TIME:SECONDS)).
 }
 
 FUNCTION aoso_cfg_id_lock {
     IF AOSO_CFG_LOCKED {
         IF DEFINED AOSO_CTX {
-            SET AOSO_CTX["cfg_id"] TO AOSO_CFG_ID.
+            SET AOSO_CTX["cfg_id"] TO AOSO_CFG_IDENT.
         }
-        RETURN AOSO_CFG_ID.
+        RETURN AOSO_CFG_IDENT.
     }
     IF SHIP:STATUS = "PRELAUNCH" {
-        SET AOSO_CFG_ID TO aoso_cfg_id_make().
+        SET AOSO_CFG_IDENT TO aoso_cfg_id_make().
         aoso_cfg_id_save().
         SET AOSO_CFG_LOCKED TO TRUE.
-        SET AOSO_CTX["cfg_id"] TO AOSO_CFG_ID.
-        aoso_log_info("CTX", "Launch configuration locked: " + AOSO_CFG_ID + ".").
-        RETURN AOSO_CFG_ID.
+        SET AOSO_CTX["cfg_id"] TO AOSO_CFG_IDENT.
+        aoso_log_info("CTX", "Launch configuration locked: " + AOSO_CFG_IDENT + ".").
+        RETURN AOSO_CFG_IDENT.
     }
     LOCAL loaded IS aoso_json_read(AOSO_CONST["CFG_ID_FILE"], 0).
     IF loaded:ISTYPE("Lexicon") {
         IF loaded:HASKEY("id") {
             IF loaded["id"] <> "" {
-                SET AOSO_CFG_ID TO loaded["id"].
+                SET AOSO_CFG_IDENT TO loaded["id"].
                 SET AOSO_CFG_LOCKED TO TRUE.
-                SET AOSO_CTX["cfg_id"] TO AOSO_CFG_ID.
-                aoso_log_info("CTX", "Restored launch configuration: " + AOSO_CFG_ID + ".").
-                RETURN AOSO_CFG_ID.
+                SET AOSO_CTX["cfg_id"] TO AOSO_CFG_IDENT.
+                aoso_log_info("CTX", "Restored launch configuration: " + AOSO_CFG_IDENT + ".").
+                RETURN AOSO_CFG_IDENT.
             }
         }
     }
-    SET AOSO_CFG_ID TO aoso_cfg_id_make().
+    SET AOSO_CFG_IDENT TO aoso_cfg_id_make().
     aoso_cfg_id_save().
     SET AOSO_CFG_LOCKED TO TRUE.
-    SET AOSO_CTX["cfg_id"] TO AOSO_CFG_ID.
-    aoso_log_info("CTX", "Configuration identity: " + AOSO_CFG_ID + ".").
-    RETURN AOSO_CFG_ID.
+    SET AOSO_CTX["cfg_id"] TO AOSO_CFG_IDENT.
+    aoso_log_info("CTX", "Configuration identity: " + AOSO_CFG_IDENT + ".").
+    RETURN AOSO_CFG_IDENT.
 }
 
 FUNCTION aoso_cfg_id {
-    IF AOSO_CFG_ID <> "" { RETURN AOSO_CFG_ID. }
+    IF AOSO_CFG_IDENT <> "" { RETURN AOSO_CFG_IDENT. }
     IF SHIP:STATUS = "PRELAUNCH" { RETURN aoso_cfg_id_lock(). }
-    SET AOSO_CFG_ID TO aoso_cfg_id_make().
-    SET AOSO_CTX["cfg_id"] TO AOSO_CFG_ID.
-    RETURN AOSO_CFG_ID.
+    SET AOSO_CFG_IDENT TO aoso_cfg_id_make().
+    SET AOSO_CTX["cfg_id"] TO AOSO_CFG_IDENT.
+    RETURN AOSO_CFG_IDENT.
 }
 
 FUNCTION aoso_ctx_refresh_env {
@@ -177,7 +177,7 @@ FUNCTION aoso_ctx_refresh_env {
         IF AOSO_BUDGET:HASKEY("mission_dv") { SET AOSO_CTX["mission_dv"] TO AOSO_BUDGET["mission_dv"]. }
         IF AOSO_BUDGET:HASKEY("total_dv") { SET AOSO_CTX["total_dv"] TO AOSO_BUDGET["total_dv"]. }
     }
-    IF AOSO_CFG_ID <> "" { SET AOSO_CTX["cfg_id"] TO AOSO_CFG_ID. }
+    IF AOSO_CFG_IDENT <> "" { SET AOSO_CTX["cfg_id"] TO AOSO_CFG_IDENT. }
     SET AOSO_CTX["fuel_pct"] TO aoso_resource_pct("LiquidFuel").
     SET AOSO_CTX["ec_pct"] TO aoso_resource_pct("ElectricCharge").
 }

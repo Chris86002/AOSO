@@ -45,7 +45,7 @@ id, type, decision, selected, reason, predicted, created_at
 ```
 
 `aoso_decide` (5 args) still logs CSV; it also opens a decision when
-`AOSO_DECIDE_OPEN` exists.
+`AOSO_OPEN_DECISIONS` exists.
 
 ## Heartbeat (`aoso_hb_set`)
 
