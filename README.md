@@ -42,10 +42,15 @@ AOSO is a full autopilot. On boot it will raise `CONFIG:IPU` to **400** if it is
 
 The HUD is a **mission computer**, not a PRINT dump:
 
-- **GUI window** (draggable) with FLT / NAV / MSN / VEH / PRP / LND / STG / SYS / LOG / DBG pages
+- **GUI window** (draggable) with FLT / NAV / MSN / VEH / PRP / LND / STG / SYS / **TWIN** / LOG / DBG pages
+- **Digital Twin** schematic of the vessel AOSO is actually flying: tanks, engines, command, power. Geometry rebuilds on stage/dock/part-count; **fills update live** on the tanks that are feeding
 - **Tactical terminal strip** at the top of the kOS window (always on)
-- **Flight-director VECDRAW** arrows (PRO / TGT / BURN / LAND) — updated from the HUD tick, not `VECUPDATER` delegates
-- **HUDTEXT alerts** with cooldowns (low EC, watchdog, suicide burn, target lost, …)
+- **Flight-director VECDRAW** arrows (PRO / TGT / BURN / LAND) — `SET VEC`, not `VECUPDATER`
+- **HUDTEXT alerts** with cooldowns
+
+Buttons: **TAC** hides the GUI, **GUI** brings it back, **ENG** jumps to the Digital Twin. Click a twin node to `HIGHLIGHT` that part in the world. Flow tags are labelled **APPROXIMATE** — kOS does not expose a full crossfeed solver.
+
+Do not name locals `r`, `v`, or `q` — those clobber kOS builtins `R()`, `V()`, `Q()` (`CLOBBERBUILTINS`).
 
 Buttons: **TAC** hides the GUI (flight HUD only), **GUI** brings the computer back, **ENG** jumps to SYSTEMS. Data is cached at three rates (flight ~8 Hz, orbit/fuel ~2 Hz, vehicle from the existing profile ~0.4 Hz). The HUD never `LIST PARTS`. CPU HIGH slows cosmetic updates; CRITICAL keeps a 3-line strip only.
 

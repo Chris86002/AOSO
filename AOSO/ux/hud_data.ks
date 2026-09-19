@@ -41,9 +41,9 @@ FUNCTION aoso_hud_rates {
 }
 
 FUNCTION aoso_hud_local_g {
-    LOCAL r IS SHIP:BODY:RADIUS + ALTITUDE.
-    IF r <= 0 { RETURN 9.81. }
-    RETURN SHIP:BODY:MU / (r * r).
+    LOCAL rad IS SHIP:BODY:RADIUS + ALTITUDE.
+    IF rad <= 0 { RETURN 9.81. }
+    RETURN SHIP:BODY:MU / (rad * rad).
 }
 
 FUNCTION aoso_hud_collect_flight {
@@ -65,6 +65,7 @@ FUNCTION aoso_hud_collect_flight {
     SET f["hdg"] TO aoso_hud_heading_deg().
     SET f["pitch"] TO aoso_hud_pitch_deg().
     SET f["roll"] TO aoso_hud_roll_deg().
+    SET f["aoa"] TO aoso_hud_aoa_deg().
     SET f["q"] TO SHIP:Q.
     SET f["throttle"] TO THROTTLE.
     SET f["mass"] TO SHIP:MASS.
@@ -157,17 +158,17 @@ FUNCTION aoso_hud_collect_target {
 }
 
 FUNCTION aoso_hud_collect_res {
-    LOCAL r IS AOSO_HUD_DATA["res"].
-    SET r["lf"] TO aoso_resource_pct("LiquidFuel").
-    SET r["ox"] TO aoso_resource_pct("Oxidizer").
-    SET r["mp"] TO aoso_resource_pct("MonoPropellant").
-    SET r["ec"] TO aoso_power_ec_pct().
-    SET r["ore"] TO aoso_resource_pct("Ore").
-    SET r["stage_pct"] TO aoso_stage_propellant_pct().
-    SET r["lf_has"] TO aoso_resource_capacity("LiquidFuel") > 0.
-    SET r["ox_has"] TO aoso_resource_capacity("Oxidizer") > 0.
-    SET r["mp_has"] TO aoso_resource_capacity("MonoPropellant") > 0.
-    SET r["ore_has"] TO aoso_resource_capacity("Ore") > 0.
+    LOCAL rsrc IS AOSO_HUD_DATA["res"].
+    SET rsrc["lf"] TO aoso_resource_pct("LiquidFuel").
+    SET rsrc["ox"] TO aoso_resource_pct("Oxidizer").
+    SET rsrc["mp"] TO aoso_resource_pct("MonoPropellant").
+    SET rsrc["ec"] TO aoso_power_ec_pct().
+    SET rsrc["ore"] TO aoso_resource_pct("Ore").
+    SET rsrc["stage_pct"] TO aoso_stage_propellant_pct().
+    SET rsrc["lf_has"] TO aoso_resource_capacity("LiquidFuel") > 0.
+    SET rsrc["ox_has"] TO aoso_resource_capacity("Oxidizer") > 0.
+    SET rsrc["mp_has"] TO aoso_resource_capacity("MonoPropellant") > 0.
+    SET rsrc["ore_has"] TO aoso_resource_capacity("Ore") > 0.
     LOCAL mission_dv IS 0.
     LOCAL total_dv IS 0.
     LOCAL land_dv IS 0.
@@ -176,9 +177,9 @@ FUNCTION aoso_hud_collect_res {
         IF AOSO_BUDGET:HASKEY("total_dv") { SET total_dv TO AOSO_BUDGET["total_dv"]. }
         IF AOSO_BUDGET:HASKEY("landing_dv") { SET land_dv TO AOSO_BUDGET["landing_dv"]. }
     }
-    SET r["mission_dv"] TO mission_dv.
-    SET r["total_dv"] TO total_dv.
-    SET r["land_dv"] TO land_dv.
+    SET rsrc["mission_dv"] TO mission_dv.
+    SET rsrc["total_dv"] TO total_dv.
+    SET rsrc["land_dv"] TO land_dv.
 }
 
 FUNCTION aoso_hud_collect_mission {
@@ -194,6 +195,7 @@ FUNCTION aoso_hud_collect_mission {
     SET m["next"] TO "".
     SET m["feas"] TO "".
     SET m["class"] TO "".
+    SET m["timeline"] TO "".
     IF DEFINED AOSO_MISSION {
         SET m["mission"] TO AOSO_MISSION["current"].
         SET m["step"] TO aoso_mission_current_step_name().
@@ -232,6 +234,30 @@ FUNCTION aoso_hud_collect_mission {
             SET m["feas"] TO AOSO_FEAS_LAST["body"] + ": " + AOSO_FEAS_LAST["result"].
         }
     }
+    SET m["timeline"] TO aoso_hud_timeline_txt().
+}
+
+FUNCTION aoso_hud_timeline_txt {
+    IF NOT DEFINED AOSO_TOUR { RETURN "". }
+    IF NOT AOSO_TOUR:HASKEY("data") { RETURN "". }
+    IF NOT AOSO_TOUR["data"]:HASKEY("targets") { RETURN "". }
+    LOCAL targets IS AOSO_TOUR["data"]["targets"].
+    LOCAL idx IS AOSO_TOUR["data"]["index"].
+    LOCAL out IS "".
+    LOCAL i IS 0.
+    UNTIL i >= targets:LENGTH {
+        LOCAL mark IS "o".
+        IF i < idx { SET mark TO "x". }
+        IF i = idx { SET mark TO "*". }
+        IF out <> "" { SET out TO out + " ". }
+        SET out TO out + mark + targets[i].
+        SET i TO i + 1.
+        IF i >= 12 {
+            SET out TO out + " ...".
+            BREAK.
+        }
+    }
+    RETURN out.
 }
 
 FUNCTION aoso_hud_collect_landing {
@@ -359,44 +385,44 @@ FUNCTION aoso_hud_collect_systems {
 }
 
 FUNCTION aoso_hud_collect_vehicle {
-    LOCAL v IS AOSO_HUD_DATA["vehicle"].
-    SET v["name"] TO SHIP:NAME.
-    SET v["type"] TO SHIP:TYPE.
-    SET v["crew"] TO SHIP:CREW:LENGTH.
-    SET v["crew_cap"] TO SHIP:CREWCAPACITY.
-    SET v["parts"] TO 0.
-    SET v["engines"] TO 0.
-    SET v["class"] TO "".
-    SET v["land"] TO FALSE.
-    SET v["isru"] TO FALSE.
-    SET v["dock"] TO FALSE.
-    SET v["gear"] TO FALSE.
-    SET v["chutes"] TO FALSE.
-    SET v["antenna"] TO FALSE.
-    SET v["solar"] TO 0.
-    SET v["rcs"] TO FALSE.
+    LOCAL veh IS AOSO_HUD_DATA["vehicle"].
+    SET veh["name"] TO SHIP:NAME.
+    SET veh["type"] TO SHIP:TYPE.
+    SET veh["crew"] TO SHIP:CREW:LENGTH.
+    SET veh["crew_cap"] TO SHIP:CREWCAPACITY.
+    SET veh["parts"] TO 0.
+    SET veh["engines"] TO 0.
+    SET veh["class"] TO "".
+    SET veh["land"] TO FALSE.
+    SET veh["isru"] TO FALSE.
+    SET veh["dock"] TO FALSE.
+    SET veh["gear"] TO FALSE.
+    SET veh["chutes"] TO FALSE.
+    SET veh["antenna"] TO FALSE.
+    SET veh["solar"] TO 0.
+    SET veh["rcs"] TO FALSE.
     IF DEFINED AOSO_PROFILE {
-        IF AOSO_PROFILE:HASKEY("part_count") { SET v["parts"] TO AOSO_PROFILE["part_count"]. }
+        IF AOSO_PROFILE:HASKEY("part_count") { SET veh["parts"] TO AOSO_PROFILE["part_count"]. }
         IF AOSO_PROFILE:HASKEY("propulsion") {
-            SET v["engines"] TO AOSO_PROFILE["propulsion"]["engines"].
-            SET v["rcs"] TO AOSO_PROFILE["propulsion"]["has_rcs"].
+            SET veh["engines"] TO AOSO_PROFILE["propulsion"]["engines"].
+            SET veh["rcs"] TO AOSO_PROFILE["propulsion"]["has_rcs"].
         }
         IF AOSO_PROFILE:HASKEY("mobility") {
-            SET v["gear"] TO AOSO_PROFILE["mobility"]["has_gear"].
-            SET v["chutes"] TO AOSO_PROFILE["mobility"]["has_parachutes"].
+            SET veh["gear"] TO AOSO_PROFILE["mobility"]["has_gear"].
+            SET veh["chutes"] TO AOSO_PROFILE["mobility"]["has_parachutes"].
         }
         IF AOSO_PROFILE:HASKEY("navigation") {
-            SET v["antenna"] TO AOSO_PROFILE["navigation"]["has_antenna"].
+            SET veh["antenna"] TO AOSO_PROFILE["navigation"]["has_antenna"].
         }
         IF AOSO_PROFILE:HASKEY("power") {
-            SET v["solar"] TO AOSO_PROFILE["power"]["solar_count"].
+            SET veh["solar"] TO AOSO_PROFILE["power"]["solar_count"].
         }
-        SET v["land"] TO aoso_profile_capable("can_land").
-        SET v["isru"] TO aoso_profile_capable("can_isru").
-        SET v["dock"] TO aoso_profile_capable("can_dock").
+        SET veh["land"] TO aoso_profile_capable("can_land").
+        SET veh["isru"] TO aoso_profile_capable("can_isru").
+        SET veh["dock"] TO aoso_profile_capable("can_dock").
     }
     IF DEFINED AOSO_CLASS_LAST {
-        IF AOSO_CLASS_LAST:HASKEY("class") { SET v["class"] TO AOSO_CLASS_LAST["class"]. }
+        IF AOSO_CLASS_LAST:HASKEY("class") { SET veh["class"] TO AOSO_CLASS_LAST["class"]. }
     }
 }
 
@@ -421,6 +447,16 @@ FUNCTION aoso_hud_collect_debug {
     IF DEFINED AOSO_HUD_MODE { SET d["mode"] TO AOSO_HUD_MODE. }
     SET d["phase"] TO AOSO_OBS_PHASE.
     SET d["ctx"] TO AOSO_HUD_CTX.
+    SET d["twin"] TO "".
+    SET d["twin_parts"] TO 0.
+    SET d["twin_reason"] TO "".
+    IF DEFINED AOSO_TWIN {
+        IF AOSO_TWIN:HASKEY("status") {
+            SET d["twin"] TO AOSO_TWIN["status"].
+            SET d["twin_parts"] TO AOSO_TWIN["part_n"].
+            SET d["twin_reason"] TO AOSO_TWIN["reason"].
+        }
+    }
 }
 
 FUNCTION aoso_hud_refresh_context {

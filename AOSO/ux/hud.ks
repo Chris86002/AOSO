@@ -111,7 +111,7 @@ FUNCTION aoso_hud_mode_computer {
 FUNCTION aoso_hud_mode_eng {
     SET AOSO_HUD_MODE TO "ENGINEERING".
     aoso_hud_gui_show().
-    aoso_hud_show_page("SYS").
+    aoso_hud_show_page("TWIN").
     aoso_hud_alert("mode", "INFO", "ENGINEERING HUD", 4, 2).
 }
 
@@ -119,7 +119,7 @@ FUNCTION aoso_hud_term_tick {
     PARAMETER compact.
     LOCAL f IS AOSO_HUD_DATA["flight"].
     LOCAL o IS AOSO_HUD_DATA["orbit"].
-    LOCAL r IS AOSO_HUD_DATA["res"].
+    LOCAL rsrc IS AOSO_HUD_DATA["res"].
     LOCAL s IS AOSO_HUD_DATA["systems"].
     LOCAL d IS AOSO_HUD_DATA["debug"].
     LOCAL roll IS "NOMINAL".
@@ -130,7 +130,7 @@ FUNCTION aoso_hud_term_tick {
     IF compact {
         aoso_hud_line(0, "AOSO  " + roll + "  " + d["cpu"] + "  " + ROUND(100 * d["frac"], 0) + "%/" + d["ipu"]).
         aoso_hud_line(1, SHIP:NAME + "  " + doing).
-        aoso_hud_line(2, "EC " + ROUND(r["ec"], 0) + "%  " + f["body"] + "  " + f["status"]).
+        aoso_hud_line(2, "EC " + ROUND(rsrc["ec"], 0) + "%  " + f["body"] + "  " + f["status"]).
         aoso_hud_line(3, "").
         RETURN.
     }
@@ -149,7 +149,7 @@ FUNCTION aoso_hud_term_tick {
     aoso_hud_line(1, "DOING  " + doing).
     aoso_hud_line(2, "ALT " + aoso_hud_km(f["alt"]) + "  VS " + ROUND(f["vs"], 1) + "  GS " + ROUND(f["gs"], 0) + "  TWR " + ROUND(f["twr"], 2) + "  HDG " + ROUND(f["hdg"], 0)).
     aoso_hud_line(3, "AP " + ap_txt + "  PE " + aoso_hud_km(o["pe"]) + "  " + node_txt).
-    aoso_hud_line(4, "EC " + ROUND(r["ec"], 0) + "%  LF " + ROUND(r["lf"], 0) + "%  dV " + ROUND(r["mission_dv"], 0) + "/" + ROUND(r["total_dv"], 0) + "  " + patch_txt).
+    aoso_hud_line(4, "EC " + ROUND(rsrc["ec"], 0) + "%  LF " + ROUND(rsrc["lf"], 0) + "%  dV " + ROUND(rsrc["mission_dv"], 0) + "/" + ROUND(rsrc["total_dv"], 0) + "  " + patch_txt).
     LOCAL n IS 5.
     IF AOSO_HUD_MODE = "ENGINEERING" {
         aoso_hud_line(5, "CPU " + d["cpu"] + " " + ROUND(100 * d["frac"], 0) + "%/" + d["ipu"] + "  PWR " + s["pwr"] + "  WD " + s["wd"] + "  NAV " + s["nav"] + "  MSN " + s["msn"]).
@@ -173,6 +173,13 @@ FUNCTION aoso_hud_tick {
     IF compact { RETURN. }
     aoso_hud_watch_alerts().
     aoso_hud_fd_tick(rates["fd"]).
+    LOCAL twin_geom IS TRUE.
+    LOCAL twin_fill IS TRUE.
+    IF DEFINED AOSO_CPU_LEVEL {
+        IF AOSO_CPU_LEVEL >= 2 { SET twin_geom TO FALSE. }
+    }
+    IF rates["md"] > 1.5 { SET twin_fill TO rates["gui"]. }
+    aoso_twin_tick(twin_geom, twin_fill).
     aoso_hud_gui_tick(rates["gui"]).
 }
 
@@ -185,6 +192,7 @@ FUNCTION aoso_hud_init {
     aoso_hud_data_init().
     aoso_hud_alert_init().
     aoso_hud_fd_init().
+    aoso_twin_init().
     aoso_hud_gui_init().
     SET AOSO_HUD_MODE TO "COMPUTER".
     SET AOSO_HUD_READY TO TRUE.

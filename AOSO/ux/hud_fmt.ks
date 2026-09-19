@@ -61,10 +61,10 @@ FUNCTION aoso_hud_mute { PARAMETER s. RETURN aoso_hud_color("#8A93A6", s). }
 
 FUNCTION aoso_hud_st_glyph {
     PARAMETER st.
-    IF st = "NOM" { RETURN aoso_hud_ok("ON"). }
-    IF st = "DEG" { RETURN aoso_hud_warn("LIM"). }
-    IF st = "FAIL" { RETURN aoso_hud_bad("OFF"). }
-    IF st = "STBY" { RETURN aoso_hud_mute("STBY"). }
+    IF st = "NOM" { RETURN aoso_hud_ok("ONLINE"). }
+    IF st = "DEG" { RETURN aoso_hud_warn("LIMITED"). }
+    IF st = "FAIL" { RETURN aoso_hud_bad("OFFLINE"). }
+    IF st = "STBY" { RETURN aoso_hud_mute("STANDBY"). }
     RETURN aoso_hud_mute("N/A").
 }
 
@@ -87,4 +87,9 @@ FUNCTION aoso_hud_pitch_deg {
 
 FUNCTION aoso_hud_roll_deg {
     RETURN SHIP:FACING:ROLL.
+}
+
+FUNCTION aoso_hud_aoa_deg {
+    IF SHIP:VELOCITY:SURFACE:MAG < 1 { RETURN 0. }
+    RETURN VANG(SHIP:FACING:FOREVECTOR, SHIP:VELOCITY:SURFACE).
 }
