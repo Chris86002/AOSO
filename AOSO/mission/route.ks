@@ -104,9 +104,21 @@ FUNCTION aoso_route_expand {
         SET rest TO aoso_route_without(rest, planet_name).
     }
 
-    // Kerbin moons: ISRU/hopper prefers Minmus first (cheap refuel).
+    // Kerbin moons: Minmus first when this class prefers a cheap
+    // refuel, or when Minmus is a SHOULD and tanks are already low.
     IF planet_name = "Kerbin" {
-        IF aoso_classify_get("prefer_refuel_first", FALSE) {
+        LOCAL put_minmus IS FALSE.
+        IF aoso_classify_get("prefer_refuel_first", FALSE) { SET put_minmus TO TRUE. }
+        IF aoso_route_in_list(rest, "Minmus") {
+            LOCAL scored IS aoso_opp_get("Minmus").
+            IF scored["should"] {
+                LOCAL fuel_pct IS aoso_resource_pct("LiquidFuel").
+                IF fuel_pct < aoso_config_get("TOUR_REFUEL_BELOW_PCT", 60) {
+                    SET put_minmus TO TRUE.
+                }
+            }
+        }
+        IF put_minmus {
             IF aoso_route_in_list(rest, "Minmus") {
                 ordered:ADD("Minmus").
                 SET rest TO aoso_route_without(rest, "Minmus").
@@ -123,6 +135,22 @@ FUNCTION aoso_route_expand {
     RETURN ordered.
 }
 
+FUNCTION aoso_route_cluster_score {
+    PARAMETER planet_name.
+    LOCAL best IS 0.
+    LOCAL isru_bonus IS 0.
+    LOCAL members IS aoso_route_members(planet_name).
+    FOR dest_name IN members {
+        LOCAL scored IS aoso_opp_get(dest_name).
+        IF scored["score"] > best { SET best TO scored["score"]. }
+        LOCAL row IS aoso_matrix_get(dest_name).
+        IF row["can_refuel"] {
+            SET isru_bonus TO aoso_config_get("ROUTE_FUTURE_ISRU", 180).
+        }
+    }
+    RETURN LEXICON("score", best, "isru", isru_bonus).
+}
+
 FUNCTION aoso_route_hop_cost {
     PARAMETER from_planet.
     PARAMETER to_planet.
@@ -131,7 +159,9 @@ FUNCTION aoso_route_hop_cost {
     LOCAL w IS aoso_opp_weights().
     LOCAL wait_pen IS win["wait_days"] * 25 * w["time"].
     LOCAL eff_pen IS (1 - win["efficiency"]) * 200 * w["window"].
-    RETURN dv_cost + wait_pen + eff_pen.
+    LOCAL bonus IS aoso_route_cluster_score(to_planet).
+    LOCAL score_w IS aoso_config_get("ROUTE_SCORE_WEIGHT", 8).
+    RETURN dv_cost + wait_pen + eff_pen - bonus["score"] * score_w - bonus["isru"].
 }
 
 FUNCTION aoso_route_unique_planets {

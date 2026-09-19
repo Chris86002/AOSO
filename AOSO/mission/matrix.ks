@@ -68,6 +68,9 @@ FUNCTION aoso_matrix_row {
     IF report["can_return"] { SET return_conf TO MIN(0.97, 0.5 + have / 12000). }
     IF NOT report["can_return"] { SET return_conf TO 0.85. }
 
+    LOCAL cont IS "SAFE".
+    IF report:HASKEY("continuation") { SET cont TO report["continuation"]. }
+
     RETURN LEXICON(
         "body", dest_name,
         "result", report["result"],
@@ -76,6 +79,7 @@ FUNCTION aoso_matrix_row {
         "land", aoso_matrix_cell(land_ok, land_need, have, land_conf),
         "ret", aoso_matrix_cell(report["can_return"], return_need, have, return_conf),
         "can_refuel", report["can_refuel"],
+        "continuation", cont,
         "surface_twr", report["surface_twr"],
         "transfer_dv", report["transfer_dv"]
     ).
