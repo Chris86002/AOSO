@@ -20,7 +20,9 @@
 // Empty current-stage tanks still drop while other engines push (asparagus /
 // boosters) ONLY if the engine group that would fall off has MASSFLOW ~ 0.
 // Staging while that group is still thrusting is a hot-sep: the booster
-// flies into the core (Acacius MET 62, stage 7, TWR 1.48 after the drop).
+// flies into the core (Acacius MET 62, stage 7, TWR 1.42, thrust 3906 kN).
+// DECOUPLEDIN is often one index off STAGE:NUMBER, so "drop group" is the
+// parent decoupler that actually fires this STAGE(), not equality.
 // Disabled outright when AOSO_CONFIG["SAFE_MODE"] is set.
 //
 // aoso_staging_sense() fills one snapshot per check (STAGE:RESOURCES +
@@ -51,6 +53,8 @@ GLOBAL AOSO_STG_AIRBORNE IS FALSE.
 GLOBAL AOSO_STG_THRUST IS 0.
 GLOBAL AOSO_STG_DROP_FUEL IS -1.
 GLOBAL AOSO_STG_DROP_AT IS -99.
+GLOBAL AOSO_STG_FIRE_AT IS -99.
+GLOBAL AOSO_STG_FIRE_UIDS IS LIST().
 GLOBAL AOSO_STAGING_PRED_TWR IS 0.
 GLOBAL AOSO_STAGING_PRED_STG IS -1.
 
@@ -67,6 +71,8 @@ FUNCTION aoso_staging_after_stage {
     aoso_parts_cache_invalidate().
     SET AOSO_STG_DROP_FUEL TO -1.
     SET AOSO_STG_DROP_AT TO -99.
+    SET AOSO_STG_FIRE_AT TO -99.
+    SET AOSO_STG_FIRE_UIDS TO LIST().
     LOCAL cool IS aoso_config_get("STAGING_COOLDOWN_S", 1.2).
     LOCAL spool IS aoso_config_get("STAGING_SPOOL_S", 0.8).
     LOCAL now IS TIME:SECONDS.
@@ -194,6 +200,74 @@ FUNCTION aoso_staging_stage_has_fuel {
     RETURN FALSE.
 }
 
+// TRUE if this part is a decoupler, separator, or fairing.
+FUNCTION aoso_staging_is_sep {
+    PARAMETER prt.
+    IF prt:ISTYPE("Decoupler") { RETURN TRUE. }
+    IF prt:HASMODULE("ModuleDecouple") { RETURN TRUE. }
+    IF prt:HASMODULE("ModuleAnchoredDecoupler") { RETURN TRUE. }
+    IF prt:HASMODULE("ModuleProceduralFairing") { RETURN TRUE. }
+    RETURN FALSE.
+}
+
+// UIDs of separators KSP will fire on the next STAGE(). Prefer parts
+// whose PART:STAGE equals STAGE:NUMBER. If that set is empty (kOS
+// off-by-one), fall back to STAGE:NUMBER-1. Cached until we STAGE().
+// A 70 km fairing lives in this set but is not an ancestor of the
+// boosters, so those engines are still allowed to burn.
+FUNCTION aoso_staging_firing_seps {
+    LOCAL want IS STAGE:NUMBER.
+    IF AOSO_STG_FIRE_AT = want { RETURN AOSO_STG_FIRE_UIDS. }
+    LOCAL plist IS aoso_parts_list().
+    LOCAL seps IS LIST().
+    LOCAL act_stg IS -99.
+    FOR p IN plist {
+        SET act_stg TO -99.
+        IF p:HASSUFFIX("STAGE") { SET act_stg TO p:STAGE. }
+        IF act_stg = want {
+            IF aoso_staging_is_sep(p) { seps:ADD("" + p:UID). }
+        }
+    }
+    IF seps:LENGTH = 0 {
+        FOR p IN plist {
+            SET act_stg TO -99.
+            IF p:HASSUFFIX("STAGE") { SET act_stg TO p:STAGE. }
+            IF act_stg = want - 1 {
+                IF aoso_staging_is_sep(p) { seps:ADD("" + p:UID). }
+            }
+        }
+    }
+    SET AOSO_STG_FIRE_AT TO want.
+    SET AOSO_STG_FIRE_UIDS TO seps.
+    RETURN seps.
+}
+
+// TRUE if the next STAGE() would detach this part. Fairings that are
+// not ancestors return FALSE, so the core can keep burning at fairing
+// jettison. Radial booster decouplers are ancestors — those hold.
+FUNCTION aoso_staging_would_jettison {
+    PARAMETER prt.
+    IF prt:DECOUPLEDIN = STAGE:NUMBER { RETURN TRUE. }
+    LOCAL seps IS aoso_staging_firing_seps().
+    IF seps:LENGTH = 0 { RETURN FALSE. }
+    LOCAL walk IS prt.
+    LOCAL hops IS 0.
+    LOCAL uid IS "".
+    LOCAL i IS 0.
+    UNTIL hops > 40 {
+        IF NOT walk:HASPARENT { RETURN FALSE. }
+        SET walk TO walk:PARENT.
+        SET hops TO hops + 1.
+        SET uid TO "" + walk:UID.
+        SET i TO 0.
+        UNTIL i >= seps:LENGTH {
+            IF seps[i] = uid { RETURN TRUE. }
+            SET i TO i + 1.
+        }
+    }
+    RETURN FALSE.
+}
+
 // One snapshot: current-stage fuel + one walk of cached engines for
 // lit/flamed/flowing, unignited, and boosters-ready. Callers that need
 // several of these must sense once instead of LIST ENGINES per helper.
@@ -245,19 +319,15 @@ FUNCTION aoso_staging_sense {
     }
     SET AOSO_STG_BOOSTERS TO boosters.
 
-    // Highest-DECOUPLEDIN is the next *engine layer*, not the next KSP
-    // STAGE(). Acacius MET 139: STAGE:NUMBER=6 was a fairing, engines
-    // sit at DECOUPLEDIN=5. Treating max_d as the drop group blocked a
-    // fairing walk while the core burned, or (after flameout) predicted
-    // TWR 3.69 for a STAGE() that only jettisoned the shell.
-    LOCAL want IS STAGE:NUMBER.
+    // Do not STAGE() while a still-burning engine is attached to a
+    // decoupler that this STAGE() would fire. Matching DECOUPLEDIN to
+    // STAGE:NUMBER misses Acacius's radial boosters (DECOUPLEDIN=6,
+    // drop at STAGE:NUMBER=7) and hot-seps them into the core.
     LOCAL drop_flowing IS FALSE.
     FOR e IN elist {
-        IF e:DECOUPLEDIN = want {
-            IF e:IGNITION {
-                IF NOT e:FLAMEOUT {
-                    IF e:MASSFLOW > 0.0001 { SET drop_flowing TO TRUE. }
-                }
+        IF e:IGNITION {
+            IF NOT e:FLAMEOUT {
+                IF aoso_staging_would_jettison(e) { SET drop_flowing TO TRUE. }
             }
         }
     }
@@ -342,6 +412,10 @@ FUNCTION aoso_staging_should_stage {
                 }
             }
             IF still_pushing {
+                // STAGE:RESOURCES often reports empty SRB fuel while the
+                // radial LF tanks that this STAGE() would dump are still
+                // feeding. Refuse if those tanks still have propellant.
+                IF aoso_staging_next_drops_fuel() { RETURN FALSE. }
                 SET AOSO_STAGING_LAST_REASON TO "empty fuel".
                 RETURN TRUE.
             }
@@ -460,18 +534,25 @@ FUNCTION aoso_staging_next_drops_fuel {
     LOCAL plist IS aoso_parts_list().
     LOCAL drops IS FALSE.
     FOR p IN plist {
-        IF p:DECOUPLEDIN = drop_at {
-            FOR r IN p:RESOURCES {
-                LOCAL nm IS r:NAME.
-                LOCAL keep IS FALSE.
-                IF nm = "LiquidFuel" { SET keep TO TRUE. }
-                IF nm = "Oxidizer" { SET keep TO TRUE. }
-                IF nm = "SolidFuel" { SET keep TO TRUE. }
-                IF nm = "XenonGas" { SET keep TO TRUE. }
-                IF keep {
-                    IF r:AMOUNT > 10 { SET drops TO TRUE. }
-                }
+        LOCAL in_drop IS FALSE.
+        IF p:DECOUPLEDIN = drop_at { SET in_drop TO TRUE. }
+        LOCAL has_prop IS FALSE.
+        FOR r IN p:RESOURCES {
+            LOCAL nm IS r:NAME.
+            LOCAL keep IS FALSE.
+            IF nm = "LiquidFuel" { SET keep TO TRUE. }
+            IF nm = "Oxidizer" { SET keep TO TRUE. }
+            IF nm = "SolidFuel" { SET keep TO TRUE. }
+            IF nm = "XenonGas" { SET keep TO TRUE. }
+            IF keep {
+                IF r:AMOUNT > 10 { SET has_prop TO TRUE. }
             }
+        }
+        IF has_prop {
+            IF NOT in_drop {
+                IF aoso_staging_would_jettison(p) { SET in_drop TO TRUE. }
+            }
+            IF in_drop { SET drops TO TRUE. }
         }
     }
     SET AOSO_STG_DROP_AT TO drop_at.
