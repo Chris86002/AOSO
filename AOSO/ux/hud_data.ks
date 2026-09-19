@@ -257,26 +257,30 @@ FUNCTION aoso_hud_collect_mission {
 }
 
 FUNCTION aoso_hud_timeline_txt {
-    IF NOT DEFINED AOSO_TOUR { RETURN "". }
-    IF NOT AOSO_TOUR:HASKEY("data") { RETURN "". }
-    IF NOT AOSO_TOUR["data"]:HASKEY("targets") { RETURN "". }
-    LOCAL targets IS AOSO_TOUR["data"]["targets"].
-    LOCAL idx IS AOSO_TOUR["data"]["index"].
-    LOCAL out IS "".
-    LOCAL i IS 0.
-    UNTIL i >= targets:LENGTH {
-        LOCAL mark IS "o".
-        IF i < idx { SET mark TO "x". }
-        IF i = idx { SET mark TO "*". }
-        IF out <> "" { SET out TO out + " ". }
-        SET out TO out + mark + targets[i].
-        SET i TO i + 1.
-        IF i >= 12 {
-            SET out TO out + " ...".
-            BREAK.
+    IF DEFINED AOSO_TOUR {
+        IF AOSO_TOUR:HASKEY("data") {
+            IF AOSO_TOUR["data"]:HASKEY("targets") {
+                LOCAL targets IS AOSO_TOUR["data"]["targets"].
+                LOCAL idx IS AOSO_TOUR["data"]["index"].
+                LOCAL out IS "".
+                LOCAL i IS 0.
+                UNTIL i >= targets:LENGTH {
+                    LOCAL mark IS "o".
+                    IF i < idx { SET mark TO "x". }
+                    IF i = idx { SET mark TO "*". }
+                    IF out <> "" { SET out TO out + " ". }
+                    SET out TO out + mark + targets[i].
+                    SET i TO i + 1.
+                    IF i >= 12 {
+                        SET out TO out + " ...".
+                        BREAK.
+                    }
+                }
+                RETURN out.
+            }
         }
     }
-    RETURN out.
+    RETURN "".
 }
 
 FUNCTION aoso_hud_collect_landing {
