@@ -7,11 +7,21 @@
 GLOBAL AOSO_CLASS_LAST IS LEXICON().
 
 FUNCTION aoso_classify_engine_flags {
-    LOCAL elist IS aoso_parts_engines().
     LOCAL has_nuke IS FALSE.
     LOCAL has_ion IS FALSE.
     LOCAL lifting_n IS 0.
     LOCAL intake_n IS 0.
+    IF DEFINED AOSO_TOPO {
+        IF AOSO_TOPO:HASKEY("hw") {
+            LOCAL hw IS AOSO_TOPO["hw"].
+            IF hw["nuke"] > 0 { SET has_nuke TO TRUE. }
+            IF hw["ion"] > 0 { SET has_ion TO TRUE. }
+            SET lifting_n TO hw["lifting"].
+            SET intake_n TO hw["intakes"].
+            RETURN LEXICON("nuke", has_nuke, "ion", has_ion, "lifting", lifting_n, "intakes", intake_n).
+        }
+    }
+    LOCAL elist IS aoso_parts_engines().
     LOCAL plist IS aoso_parts_list().
     FOR p IN plist {
         IF p:HASMODULE("ModuleLiftingSurface") OR p:HASMODULE("ModuleControlSurface") {

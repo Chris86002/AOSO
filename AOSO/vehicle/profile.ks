@@ -34,16 +34,25 @@ FUNCTION aoso_profile_snapshot {
     LOCAL tank_n IS 0.
     LOCAL drill_n IS 0.
     LOCAL solar_n IS 0.
-    FOR p IN plist {
-        IF p:HASMODULE("ModuleDeployableSolarPanel") { SET solar_n TO solar_n + 1. }
-        IF p:HASMODULE("ModuleResourceHarvester") { SET drill_n TO drill_n + 1. }
-        LOCAL has_tank IS FALSE.
-        FOR res_item IN p:RESOURCES {
-            IF aoso_capabilities_is_propellant(res_item:NAME) {
-                IF res_item:CAPACITY > 0 { SET has_tank TO TRUE. }
-            }
+    IF DEFINED AOSO_TOPO {
+        IF AOSO_TOPO:HASKEY("hw") {
+            SET tank_n TO aoso_topo_hw_get("tanks", 0).
+            SET drill_n TO aoso_topo_hw_get("drill", 0).
+            SET solar_n TO aoso_topo_hw_get("solar", 0).
         }
-        IF has_tank { SET tank_n TO tank_n + 1. }
+    }
+    IF tank_n + drill_n + solar_n = 0 {
+        FOR p IN plist {
+            IF p:HASMODULE("ModuleDeployableSolarPanel") { SET solar_n TO solar_n + 1. }
+            IF p:HASMODULE("ModuleResourceHarvester") { SET drill_n TO drill_n + 1. }
+            LOCAL has_tank IS FALSE.
+            FOR res_item IN p:RESOURCES {
+                IF aoso_capabilities_is_propellant(res_item:NAME) {
+                    IF res_item:CAPACITY > 0 { SET has_tank TO TRUE. }
+                }
+            }
+            IF has_tank { SET tank_n TO tank_n + 1. }
+        }
     }
     LOCAL control_id IS "".
     IF SHIP:CONTROLPART:ISTYPE("Part") { SET control_id TO "" + SHIP:CONTROLPART:UID. }
@@ -97,6 +106,9 @@ FUNCTION aoso_profile_refresh {
     LOCAL prev_fp IS "".
     IF AOSO_PROFILE:HASKEY("fingerprint") { SET prev_fp TO AOSO_PROFILE["fingerprint"]. }
     aoso_parts_cache_invalidate().
+    IF DEFINED AOSO_TOPO {
+        aoso_topo_refresh(TRUE).
+    }
     aoso_vessel_scan().
     LOCAL persist_parts IS TRUE.
     IF DEFINED AOSO_CPU_LEVEL {
@@ -127,29 +139,55 @@ FUNCTION aoso_profile_refresh {
     LOCAL fairing_count IS 0.
     LOCAL decoupler_count IS 0.
     LOCAL has_rcs IS FALSE.
-
-    FOR p IN plist {
-        IF p:HASMODULE("ModuleDeployableSolarPanel") { SET solar_count TO solar_count + 1. }
-        IF p:HASMODULE("ModuleGenerator") { SET generator_count TO generator_count + 1. }
-        IF p:HASMODULE("ModuleWheelBase") OR p:HASMODULE("ModuleWheelDeployment") { SET wheel_count TO wheel_count + 1. }
-        IF p:HASMODULE("ModuleAblator") { SET heatshield_count TO heatshield_count + 1. }
-        IF p:HASMODULE("ModuleScienceExperiment") OR p:HASMODULE("ModuleScienceContainer") { SET science_count TO science_count + 1. }
-        IF p:HASMODULE("kOSProcessor") { SET kos_cpu_count TO kos_cpu_count + 1. }
-        IF p:HASMODULE("ModuleLiftingSurface") OR p:HASMODULE("ModuleControlSurface") { SET lifting_count TO lifting_count + 1. }
-        IF p:HASMODULE("ModuleParachute") { SET chute_count TO chute_count + 1. }
-        IF p:HASMODULE("ModuleLandingLeg") { SET leg_count TO leg_count + 1. }
-        IF p:HASMODULE("ModuleResourceHarvester") { SET drill_count TO drill_count + 1. }
-        IF p:HASMODULE("ModuleResourceConverter") { SET converter_count TO converter_count + 1. }
-        IF p:HASMODULE("ModuleDeployableRadiator") { SET radiator_count TO radiator_count + 1. }
-        IF p:HASMODULE("ModuleDataTransmitter") { SET antenna_count TO antenna_count + 1. }
-        IF p:HASMODULE("ModuleCargoBay") { SET cargo_count TO cargo_count + 1. }
-        IF p:HASMODULE("ModuleProceduralFairing") { SET fairing_count TO fairing_count + 1. }
-        IF p:HASMODULE("ModuleDecouple") OR p:HASMODULE("ModuleAnchoredDecoupler") OR p:HASMODULE("LaunchClamp") {
-            SET decoupler_count TO decoupler_count + 1.
+    LOCAL used_topo IS FALSE.
+    IF DEFINED AOSO_TOPO {
+        IF AOSO_TOPO:HASKEY("hw") {
+            LOCAL hw IS AOSO_TOPO["hw"].
+            SET solar_count TO hw["solar"].
+            SET generator_count TO hw["generator"].
+            SET fuelcell_count TO hw["fuelcell"].
+            SET wheel_count TO hw["wheels"].
+            SET heatshield_count TO hw["heatshield"].
+            SET science_count TO hw["science"].
+            SET kos_cpu_count TO hw["kos"].
+            SET lifting_count TO hw["lifting"].
+            SET chute_count TO hw["chute"].
+            SET leg_count TO hw["legs"].
+            SET drill_count TO hw["drill"].
+            SET converter_count TO hw["converter"].
+            SET radiator_count TO hw["radiator"].
+            SET antenna_count TO hw["antenna"].
+            SET cargo_count TO hw["cargo"].
+            SET fairing_count TO hw["fairing"].
+            SET decoupler_count TO hw["decoupler"].
+            IF hw["rcs"] > 0 { SET has_rcs TO TRUE. }
+            SET used_topo TO TRUE.
         }
-        IF p:HASMODULE("ModuleRCS") OR p:HASMODULE("ModuleRCSFX") { SET has_rcs TO TRUE. }
-        LOCAL title_lc IS p:TITLE:TOLOWER.
-        IF title_lc:CONTAINS("fuel cell") { SET fuelcell_count TO fuelcell_count + 1. }
+    }
+    IF NOT used_topo {
+        FOR p IN plist {
+            IF p:HASMODULE("ModuleDeployableSolarPanel") { SET solar_count TO solar_count + 1. }
+            IF p:HASMODULE("ModuleGenerator") { SET generator_count TO generator_count + 1. }
+            IF p:HASMODULE("ModuleWheelBase") OR p:HASMODULE("ModuleWheelDeployment") { SET wheel_count TO wheel_count + 1. }
+            IF p:HASMODULE("ModuleAblator") { SET heatshield_count TO heatshield_count + 1. }
+            IF p:HASMODULE("ModuleScienceExperiment") OR p:HASMODULE("ModuleScienceContainer") { SET science_count TO science_count + 1. }
+            IF p:HASMODULE("kOSProcessor") { SET kos_cpu_count TO kos_cpu_count + 1. }
+            IF p:HASMODULE("ModuleLiftingSurface") OR p:HASMODULE("ModuleControlSurface") { SET lifting_count TO lifting_count + 1. }
+            IF p:HASMODULE("ModuleParachute") { SET chute_count TO chute_count + 1. }
+            IF p:HASMODULE("ModuleLandingLeg") { SET leg_count TO leg_count + 1. }
+            IF p:HASMODULE("ModuleResourceHarvester") { SET drill_count TO drill_count + 1. }
+            IF p:HASMODULE("ModuleResourceConverter") { SET converter_count TO converter_count + 1. }
+            IF p:HASMODULE("ModuleDeployableRadiator") { SET radiator_count TO radiator_count + 1. }
+            IF p:HASMODULE("ModuleDataTransmitter") { SET antenna_count TO antenna_count + 1. }
+            IF p:HASMODULE("ModuleCargoBay") { SET cargo_count TO cargo_count + 1. }
+            IF p:HASMODULE("ModuleProceduralFairing") { SET fairing_count TO fairing_count + 1. }
+            IF p:HASMODULE("ModuleDecouple") OR p:HASMODULE("ModuleAnchoredDecoupler") OR p:HASMODULE("LaunchClamp") {
+                SET decoupler_count TO decoupler_count + 1.
+            }
+            IF p:HASMODULE("ModuleRCS") OR p:HASMODULE("ModuleRCSFX") { SET has_rcs TO TRUE. }
+            LOCAL title_lc IS p:TITLE:TOLOWER.
+            IF title_lc:CONTAINS("fuel cell") { SET fuelcell_count TO fuelcell_count + 1. }
+        }
     }
 
     IF kos_cpu_count < 1 { SET kos_cpu_count TO 1. }

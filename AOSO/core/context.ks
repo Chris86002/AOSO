@@ -31,13 +31,15 @@ FUNCTION aoso_ctx_init {
         "rev_world", 0,
         "rev_plan", 0,
         "rev_xp", 0,
+        "rev_topo", 0,
         "dirty_vehicle", TRUE,
         "dirty_cap", TRUE,
         "dirty_budget", TRUE,
         "dirty_feas", TRUE,
         "dirty_opp", TRUE,
         "dirty_route", TRUE,
-        "dirty_plan", TRUE
+        "dirty_plan", TRUE,
+        "dirty_topo", TRUE
     ).
     aoso_ctx_refresh_env().
 }
@@ -167,8 +169,9 @@ FUNCTION aoso_ctx_refresh_env {
     SET AOSO_CTX["body"] TO SHIP:BODY:NAME.
     SET AOSO_CTX["situation"] TO SHIP:STATUS.
     SET AOSO_CTX["mass"] TO SHIP:MASS.
-    IF DEFINED AOSO_CLASSIFY {
-        IF AOSO_CLASSIFY:HASKEY("name") { SET AOSO_CTX["class"] TO AOSO_CLASSIFY["name"]. }
+    IF DEFINED AOSO_CLASS_LAST {
+        IF AOSO_CLASS_LAST:HASKEY("class") { SET AOSO_CTX["class"] TO AOSO_CLASS_LAST["class"]. }
+        IF AOSO_CLASS_LAST:HASKEY("name") { SET AOSO_CTX["class"] TO AOSO_CLASS_LAST["name"]. }
     }
     IF DEFINED AOSO_BUDGET {
         IF AOSO_BUDGET:HASKEY("mission_dv") { SET AOSO_CTX["mission_dv"] TO AOSO_BUDGET["mission_dv"]. }
@@ -188,6 +191,15 @@ FUNCTION aoso_ctx_mark_vehicle {
     aoso_ctx_dirty("dirty_opp").
     aoso_ctx_dirty("dirty_route").
     aoso_ctx_dirty("dirty_plan").
+    aoso_ctx_dirty("dirty_topo").
+}
+
+FUNCTION aoso_ctx_mark_topo {
+    aoso_ctx_bump("rev_topo").
+    aoso_ctx_dirty("dirty_topo").
+    aoso_ctx_dirty("dirty_vehicle").
+    aoso_ctx_dirty("dirty_cap").
+    aoso_ctx_dirty("dirty_budget").
 }
 
 FUNCTION aoso_ctx_mark_budget {

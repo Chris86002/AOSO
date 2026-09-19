@@ -54,19 +54,39 @@ FUNCTION aoso_vessel_scan {
     LOCAL has_fairings IS FALSE.
     LOCAL parachute_count IS 0.
     LOCAL decoupler_count IS 0.
-    FOR p IN plist {
-        IF p:HASMODULE("ModuleRCS") OR p:HASMODULE("ModuleRCSFX") { SET has_rcs TO TRUE. }
-        IF p:HASMODULE("ModuleDeployableSolarPanel") { SET has_solar TO TRUE. }
-        IF p:HASMODULE("ModuleDataTransmitter") { SET has_antenna TO TRUE. }
-        IF p:HASMODULE("ModuleLandingLeg") { SET has_legs TO TRUE. }
-        IF p:HASMODULE("ModuleParachute") { SET parachute_count TO parachute_count + 1. }
-        IF p:HASMODULE("ModuleResourceHarvester") { SET has_harvesters TO TRUE. }
-        IF p:HASMODULE("ModuleResourceConverter") { SET has_converters TO TRUE. }
-        IF p:HASMODULE("ModuleDeployableRadiator") { SET has_radiators TO TRUE. }
-        IF p:HASMODULE("ModuleCargoBay") { SET has_bays TO TRUE. }
-        IF p:HASMODULE("ModuleProceduralFairing") { SET has_fairings TO TRUE. }
-        IF p:HASMODULE("ModuleDecouple") OR p:HASMODULE("ModuleAnchoredDecoupler") OR p:HASMODULE("LaunchClamp") {
-            SET decoupler_count TO decoupler_count + 1.
+    LOCAL used_topo IS FALSE.
+    IF DEFINED AOSO_TOPO {
+        IF AOSO_TOPO:HASKEY("hw") {
+            LOCAL hw IS AOSO_TOPO["hw"].
+            IF hw["rcs"] > 0 { SET has_rcs TO TRUE. }
+            IF hw["solar"] > 0 { SET has_solar TO TRUE. }
+            IF hw["antenna"] > 0 { SET has_antenna TO TRUE. }
+            IF hw["legs"] > 0 { SET has_legs TO TRUE. }
+            IF hw["drill"] > 0 { SET has_harvesters TO TRUE. }
+            IF hw["converter"] > 0 { SET has_converters TO TRUE. }
+            IF hw["radiator"] > 0 { SET has_radiators TO TRUE. }
+            IF hw["cargo"] > 0 { SET has_bays TO TRUE. }
+            IF hw["fairing"] > 0 { SET has_fairings TO TRUE. }
+            SET parachute_count TO hw["chute"].
+            SET decoupler_count TO hw["decoupler"].
+            SET used_topo TO TRUE.
+        }
+    }
+    IF NOT used_topo {
+        FOR p IN plist {
+            IF p:HASMODULE("ModuleRCS") OR p:HASMODULE("ModuleRCSFX") { SET has_rcs TO TRUE. }
+            IF p:HASMODULE("ModuleDeployableSolarPanel") { SET has_solar TO TRUE. }
+            IF p:HASMODULE("ModuleDataTransmitter") { SET has_antenna TO TRUE. }
+            IF p:HASMODULE("ModuleLandingLeg") { SET has_legs TO TRUE. }
+            IF p:HASMODULE("ModuleParachute") { SET parachute_count TO parachute_count + 1. }
+            IF p:HASMODULE("ModuleResourceHarvester") { SET has_harvesters TO TRUE. }
+            IF p:HASMODULE("ModuleResourceConverter") { SET has_converters TO TRUE. }
+            IF p:HASMODULE("ModuleDeployableRadiator") { SET has_radiators TO TRUE. }
+            IF p:HASMODULE("ModuleCargoBay") { SET has_bays TO TRUE. }
+            IF p:HASMODULE("ModuleProceduralFairing") { SET has_fairings TO TRUE. }
+            IF p:HASMODULE("ModuleDecouple") OR p:HASMODULE("ModuleAnchoredDecoupler") OR p:HASMODULE("LaunchClamp") {
+                SET decoupler_count TO decoupler_count + 1.
+            }
         }
     }
 

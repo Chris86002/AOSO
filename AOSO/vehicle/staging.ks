@@ -633,6 +633,16 @@ FUNCTION aoso_staging_auto_check {
         aoso_log_info("STAGING", "Auto-staging: " + reason + ", stage " + prev + " -> " + (prev - 1) +
             "  TWR " + ROUND(pred["twr_now"], 2) + " -> " + ROUND(pred["twr_next"], 2) +
             "  dV after " + ROUND(pred["dv_after"], 0) + " m/s.").
+        IF DEFINED AOSO_TOPO {
+            LOCAL nxt IS aoso_topo_get("next_stage", LEXICON()).
+            IF nxt:ISTYPE("Lexicon") {
+                IF nxt:HASKEY("parts_lost") {
+                    aoso_log_info("STAGING", "Topology drop: " + nxt["parts_lost"] + " parts / " +
+                        nxt["engines_lost"] + " engines / " + nxt["tanks_lost"] + " tanks / " +
+                        ROUND(nxt["wet_mass_lost"], 2) + " t  next mass " + ROUND(nxt["mass_next"], 2) + " t.").
+                }
+            }
+        }
 
         IF reason = "relight" OR reason = "thrust collapse" {
             SET AOSO_STAGING_RELIGHT_ATTEMPTS TO AOSO_STAGING_RELIGHT_ATTEMPTS + 1.
