@@ -108,7 +108,19 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "BRAIN_REPLAN_DEBOUNCE_S", 45,      // s minimum between full route rebuilds
     "ROUTE_SCORE_WEIGHT", 8,            // opportunity-score influence on cluster hop cost (higher = score matters more)
     "ROUTE_FUTURE_ISRU", 180,           // hop-cost discount when the destination can refill the tank
-    "WATCHDOG_PROGRESS_S", 90           // s of no controller heartbeat progress before a stall is considered
+    "WATCHDOG_PROGRESS_S", 90,          // s of no controller heartbeat progress before a stall is considered
+    "IPU_TARGET", 2000,                 // CONFIG:IPU headroom applied once at boot (not a utilization target)
+    "CPU_RESERVE_ABS", 400,             // leftover opcodes background work must not consume
+    "CPU_RESERVE_FRAC", 0.18,           // fraction of CONFIG:IPU also reserved
+    "CPU_RESERVE_ASCENT", 500,
+    "CPU_RESERVE_MANEUVER", 500,
+    "CPU_RESERVE_DESCENT", 650,
+    "CPU_RESERVE_DOCKING", 600,
+    "CPU_RESERVE_ORBIT", 350,
+    "CPU_RESERVE_COAST", 250,
+    "CORRECT_LOCAL_DV", 25,             // m/s residual treated as a local correction, not a replan
+    "REPLAN_DV_ERROR", 250,             // m/s prediction error that requests a strategic replan
+    "CPU_PROFILE", FALSE                // extra per-task opcode stats (also honors PROF_ENABLED)
 ).
 
 FUNCTION aoso_config_get {

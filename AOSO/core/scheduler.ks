@@ -121,7 +121,12 @@ FUNCTION aoso_sched_add {
         "last_error", "",
         "last_dt", 0,
         "sum_dt", 0,
-        "max_dt", 0
+        "max_dt", 0,
+        "last_op", 0,
+        "sum_op", 0,
+        "max_op", 0,
+        "deferred_n", 0,
+        "shed_n", 0
     )).
     SET AOSO_TASKS_DIRTY TO TRUE.
 }
@@ -175,6 +180,9 @@ FUNCTION aoso_sched_run {
         IF AOSO_CONFIG:HASKEY("PROF_ENABLED") {
             IF AOSO_CONFIG["PROF_ENABLED"] { SET prof TO TRUE. }
         }
+        IF AOSO_CONFIG:HASKEY("CPU_PROFILE") {
+            IF AOSO_CONFIG["CPU_PROFILE"] { SET prof TO TRUE. }
+        }
     }
     FOR t IN snap {
         IF TIME:SECONDS <> start_ut { RETURN. }
@@ -196,6 +204,7 @@ FUNCTION aoso_sched_run {
                     }
                     IF left0 < floor_n {
                         SET t["skip_n"] TO t["skip_n"] + 1.
+                        IF t:HASKEY("deferred_n") { SET t["deferred_n"] TO t["deferred_n"] + 1. }
                         IF t["prio"] > 0 {
                             SET run_it TO FALSE.
                             IF t["skip_n"] >= 10 {
@@ -214,6 +223,7 @@ FUNCTION aoso_sched_run {
                     }
                     SET t["run_count"] TO t["run_count"] + 1.
                     SET ran TO ran + 1.
+                    LOCAL op0 IS OPCODESLEFT.
                     IF prof {
                         LOCAL t0 IS KUNIVERSE:REALTIME.
                         t["fn"]:CALL().
@@ -224,14 +234,31 @@ FUNCTION aoso_sched_run {
                     } ELSE {
                         t["fn"]:CALL().
                     }
+                    LOCAL used_op IS op0 - OPCODESLEFT.
+                    IF used_op < 0 { SET used_op TO op0. }
+                    SET t["last_op"] TO used_op.
+                    IF t:HASKEY("sum_op") {
+                        SET t["sum_op"] TO t["sum_op"] + used_op.
+                        IF used_op > t["max_op"] { SET t["max_op"] TO used_op. }
+                    }
                     IF TIME:SECONDS <> start_ut { RETURN. }
                     IF OPCODESLEFT < room { RETURN. }
                 } ELSE {
                     IF NOT keep_it {
                         SET t["next_run"] TO now + t["interval"].
+                        IF t:HASKEY("shed_n") { SET t["shed_n"] TO t["shed_n"] + 1. }
                     }
                 }
             }
         }
     }
+}
+
+FUNCTION aoso_sched_stat_sum {
+    PARAMETER key_name.
+    LOCAL n IS 0.
+    FOR t IN AOSO_TASKS {
+        IF t:HASKEY(key_name) { SET n TO n + t[key_name]. }
+    }
+    RETURN n.
 }

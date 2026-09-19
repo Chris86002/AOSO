@@ -29,6 +29,7 @@ GLOBAL AOSO_CPU_RT0 IS 0.
 GLOBAL AOSO_CPU_SPILLS IS 0.
 GLOBAL AOSO_CPU_LAST_WALL IS 0.
 GLOBAL AOSO_CPU_FRAC IS 0.
+GLOBAL AOSO_CPU_USED IS 0.
 GLOBAL AOSO_CPU_LEFT IS 0.
 GLOBAL AOSO_CPU_STREAK IS 0.
 GLOBAL AOSO_CPU_LOG_UT IS 0.
@@ -350,10 +351,47 @@ FUNCTION aoso_prof_end {
 
 FUNCTION aoso_cpu_headroom {
     LOCAL ipu IS CONFIG:IPU.
-    LOCAL n IS FLOOR(ipu * 0.18).
+    LOCAL frac IS aoso_config_get("CPU_RESERVE_FRAC", 0.18).
+    LOCAL n IS FLOOR(ipu * frac).
+    LOCAL abs_n IS aoso_config_get("CPU_RESERVE_ABS", 400).
+    IF n < abs_n { SET n TO abs_n. }
+    LOCAL phase IS AOSO_OBS_PHASE.
+    LOCAL phase_n IS 0.
+    IF phase = "ASCENT" { SET phase_n TO aoso_config_get("CPU_RESERVE_ASCENT", 500). }
+    IF phase = "BURN" { SET phase_n TO aoso_config_get("CPU_RESERVE_MANEUVER", 500). }
+    IF phase = "DESCENT" { SET phase_n TO aoso_config_get("CPU_RESERVE_DESCENT", 650). }
+    IF phase = "LANDING" { SET phase_n TO aoso_config_get("CPU_RESERVE_DESCENT", 650). }
+    IF phase = "ORBIT" { SET phase_n TO aoso_config_get("CPU_RESERVE_ORBIT", 350). }
+    IF phase = "CRUISE" { SET phase_n TO aoso_config_get("CPU_RESERVE_COAST", 250). }
+    IF phase = "TRANSFER" { SET phase_n TO aoso_config_get("CPU_RESERVE_COAST", 250). }
+    IF phase_n > n { SET n TO phase_n. }
+    LOCAL half IS FLOOR(ipu * 0.5).
+    IF n > half { SET n TO half. }
     IF n < 80 { SET n TO 80. }
-    IF n > 360 { SET n TO 360. }
     RETURN n.
+}
+
+FUNCTION aoso_cpu_band {
+    LOCAL lvl IS 0.
+    IF DEFINED AOSO_CPU_LEVEL { SET lvl TO AOSO_CPU_LEVEL. }
+    IF lvl <= 0 { RETURN "GREEN". }
+    IF lvl = 1 { RETURN "YELLOW". }
+    IF lvl = 2 { RETURN "RED". }
+    RETURN "CRITICAL".
+}
+
+FUNCTION aoso_cpu_can_run {
+    PARAMETER prio_class.
+    RETURN aoso_cpu_allow(prio_class).
+}
+
+FUNCTION aoso_cpu_should_yield {
+    IF OPCODESLEFT < aoso_cpu_headroom() { RETURN TRUE. }
+    RETURN FALSE.
+}
+
+FUNCTION aoso_cpu_budget_remaining {
+    RETURN OPCODESLEFT.
 }
 
 FUNCTION aoso_cpu_allow {
@@ -483,7 +521,13 @@ FUNCTION aoso_observe_cpu_end {
         IF now_ut - AOSO_CPU_LOG_UT >= 8 {
             SET AOSO_CPU_LOG_UT TO now_ut.
             SET AOSO_CPU_LOG_NAME TO cname.
-            aoso_observe_event("CPU", "INFO", cname, "level=" + prev + "->" + level + " frac=" + ROUND(frac, 2) + " wall=" + ROUND(wall, 3)).
+            aoso_observe_event("CPU", "INFO", cname, "level=" + prev + "->" + level + " frac=" + ROUND(frac, 2) + " wall=" + ROUND(wall, 3) + " band=" + aoso_cpu_band()).
+            IF DEFINED AOSO_EVENTS {
+                IF level >= 3 { aoso_event_publish("CPU_LOAD_CRITICAL", "cpu", cname). }
+                ELSE {
+                    IF level >= 2 { aoso_event_publish("CPU_LOAD_HIGH", "cpu", cname). }
+                }
+            }
         }
     }
 }
