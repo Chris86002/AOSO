@@ -36,6 +36,8 @@ GLOBAL AOSO_STAGING_COOLDOWN_UNTIL IS 0.
 GLOBAL AOSO_STAGING_SPOOL_UNTIL IS 0.
 GLOBAL AOSO_STAGING_PENDING_RELIGHT IS FALSE.
 GLOBAL AOSO_STAGING_EXTRA_THIS IS 0.
+GLOBAL AOSO_STAGING_EMPTY_WALK IS 0.
+GLOBAL AOSO_STAGING_LIT_TRIED IS 0.
 GLOBAL AOSO_STG_DROP_FLOWING IS FALSE.
 GLOBAL AOSO_STAGING_HOTSEP_LOG IS 0.
 GLOBAL AOSO_STAGING_HOTSEP_STG IS -1.
@@ -349,10 +351,22 @@ FUNCTION aoso_staging_should_stage {
             }
             LOCAL ship_lf IS aoso_staging_ship_lf().
             IF ship_lf > 10 {
-                LOCAL max_relight IS aoso_config_get("STAGING_MAX_EXTRA", 1).
-                IF AOSO_STAGING_RELIGHT_ATTEMPTS < max_relight {
-                    SET AOSO_STAGING_LAST_REASON TO "relight".
-                    RETURN TRUE.
+                // Current-stage pool is empty but the ship still has LF
+                // (Acacius: stage 2 empty, 2988 units sitting in stage-1
+                // core tanks). Walk empty fairings/decouplers; never drop
+                // a group that still has fuel.
+                IF aoso_staging_next_drops_fuel() {
+                    LOCAL max_relight IS aoso_config_get("STAGING_MAX_EXTRA", 1).
+                    IF AOSO_STAGING_RELIGHT_ATTEMPTS < max_relight {
+                        SET AOSO_STAGING_LAST_REASON TO "relight".
+                        RETURN TRUE.
+                    }
+                } ELSE {
+                    LOCAL max_walk IS aoso_config_get("STAGING_MAX_EMPTY_WALK", 6).
+                    IF AOSO_STAGING_EMPTY_WALK < max_walk {
+                        SET AOSO_STAGING_LAST_REASON TO "relight".
+                        RETURN TRUE.
+                    }
                 }
             } ELSE {
                 SET AOSO_STAGING_LAST_REASON TO "empty fuel".
@@ -374,8 +388,15 @@ FUNCTION aoso_staging_should_stage {
     IF airborne {
         IF thrust_dead {
             IF AOSO_STG_UNIGNITED {
-                LOCAL max_relight IS aoso_config_get("STAGING_MAX_EXTRA", 1).
-                IF AOSO_STAGING_RELIGHT_ATTEMPTS < max_relight {
+                LOCAL allow_tc IS FALSE.
+                IF aoso_staging_next_drops_fuel() {
+                    LOCAL max_relight IS aoso_config_get("STAGING_MAX_EXTRA", 1).
+                    IF AOSO_STAGING_RELIGHT_ATTEMPTS < max_relight { SET allow_tc TO TRUE. }
+                } ELSE {
+                    LOCAL max_walk IS aoso_config_get("STAGING_MAX_EMPTY_WALK", 6).
+                    IF AOSO_STAGING_EMPTY_WALK < max_walk { SET allow_tc TO TRUE. }
+                }
+                IF allow_tc {
                     SET AOSO_STAGING_LAST_REASON TO "thrust collapse".
                     RETURN TRUE.
                 }
@@ -393,8 +414,15 @@ FUNCTION aoso_staging_should_stage {
     // Serial-stack relight: nothing ignited, next engines exist.
     IF AOSO_STG_LIT = 0 {
         IF airborne {
-            LOCAL max_relight IS aoso_config_get("STAGING_MAX_EXTRA", 1).
-            IF AOSO_STAGING_RELIGHT_ATTEMPTS < max_relight {
+            LOCAL allow_rl IS FALSE.
+            IF aoso_staging_next_drops_fuel() {
+                LOCAL max_relight IS aoso_config_get("STAGING_MAX_EXTRA", 1).
+                IF AOSO_STAGING_RELIGHT_ATTEMPTS < max_relight { SET allow_rl TO TRUE. }
+            } ELSE {
+                LOCAL max_walk IS aoso_config_get("STAGING_MAX_EMPTY_WALK", 6).
+                IF AOSO_STAGING_EMPTY_WALK < max_walk { SET allow_rl TO TRUE. }
+            }
+            IF allow_rl {
                 IF AOSO_STG_UNIGNITED {
                     IF commanded_throttle > 0 {
                         SET AOSO_STAGING_LAST_REASON TO "relight".
@@ -416,35 +444,113 @@ FUNCTION aoso_staging_should_stage {
     RETURN FALSE.
 }
 
+FUNCTION aoso_staging_reset_relight {
+    SET AOSO_STAGING_RELIGHT_ATTEMPTS TO 0.
+    SET AOSO_STAGING_EXTRA_THIS TO 0.
+    SET AOSO_STAGING_EMPTY_WALK TO 0.
+    SET AOSO_STAGING_DEAD_SINCE TO 0.
+    SET AOSO_STAGING_LIT_TRIED TO 0.
+}
+
+// TRUE if the next STAGE() would jettison a tank that still has burnable
+// propellant. Fairings, empty boosters, and decouplers are FALSE so we
+// can walk them to light the next engine group.
+FUNCTION aoso_staging_next_drops_fuel {
+    LOCAL drop_at IS STAGE:NUMBER.
+    IF drop_at <= 0 { RETURN FALSE. }
+    LOCAL plist IS aoso_parts_list().
+    FOR p IN plist {
+        IF p:DECOUPLEDIN = drop_at {
+            FOR r IN p:RESOURCES {
+                LOCAL nm IS r:NAME.
+                LOCAL keep IS FALSE.
+                IF nm = "LiquidFuel" { SET keep TO TRUE. }
+                IF nm = "Oxidizer" { SET keep TO TRUE. }
+                IF nm = "SolidFuel" { SET keep TO TRUE. }
+                IF nm = "XenonGas" { SET keep TO TRUE. }
+                IF keep {
+                    IF r:AMOUNT > 10 { RETURN TRUE. }
+                }
+            }
+        }
+    }
+    RETURN FALSE.
+}
+
+FUNCTION aoso_staging_eng_activate_stage {
+    PARAMETER e.
+    IF e:HASSUFFIX("STAGE") { RETURN e:STAGE. }
+    RETURN -99.
+}
+
+// Light engines that are sitting dark on a later KSP stage without
+// firing the next decoupler. Acacius transfer: STAGE:NUMBER=2 (empty
+// booster drop), core engines on stage 1, 2988 LF still on the ship.
+// Old path required MAXTHRUST>0 which is 0 until those engines are in
+// the current stage, then refused to STAGE because ship LF remained.
 FUNCTION aoso_staging_light_unlit {
+    LOCAL want IS STAGE:NUMBER.
+    LOCAL engs IS aoso_parts_engines().
     LOCAL lit_n IS 0.
-    LOCAL engs IS LIST().
-    LIST ENGINES IN engs.
+
     FOR e IN engs {
-        IF e:MAXTHRUST > 0.05 {
+        IF NOT e:IGNITION {
             IF NOT e:FLAMEOUT {
-                IF NOT e:IGNITION {
-                    e:ACTIVATE.
-                    SET lit_n TO lit_n + 1.
+                IF e:DECOUPLEDIN <> want {
+                    LOCAL es IS aoso_staging_eng_activate_stage(e).
+                    IF es = want {
+                        e:ACTIVATE.
+                        SET lit_n TO lit_n + 1.
+                    }
+                }
+            }
+        }
+    }
+    IF lit_n = 0 {
+        FOR e IN engs {
+            IF NOT e:IGNITION {
+                IF NOT e:FLAMEOUT {
+                    IF e:DECOUPLEDIN <> want {
+                        LOCAL es2 IS aoso_staging_eng_activate_stage(e).
+                        IF es2 = want - 1 {
+                            e:ACTIVATE.
+                            SET lit_n TO lit_n + 1.
+                        }
+                    }
+                }
+            }
+        }
+    }
+    IF lit_n = 0 {
+        FOR e IN engs {
+            IF NOT e:IGNITION {
+                IF NOT e:FLAMEOUT {
+                    LOCAL d IS e:DECOUPLEDIN.
+                    LOCAL ok IS FALSE.
+                    IF d < 0 { SET ok TO TRUE. }
+                    ELSE {
+                        IF d < want { SET ok TO TRUE. }
+                    }
+                    IF ok {
+                        e:ACTIVATE.
+                        SET lit_n TO lit_n + 1.
+                    }
                 }
             }
         }
     }
     IF lit_n > 0 {
-        aoso_log_info("STAGING", "Activated " + lit_n + " unlit engine(s) without staging.").
+        aoso_log_info("STAGING", "Activated " + lit_n + " unlit engine(s) without staging (want=" + want + ").").
     }
     RETURN lit_n.
 }
 
-// After dropping a spent stage, one extra STAGE is allowed only if the
-// NEW current stage is also empty (jettison-then-ignite serial). Never
-// dump a stage that still has fuel -- that is how Acacius lost the booster.
+// After dropping a spent stage, walk empty fairing/decoupler stages and
+// ACTIVATE the next engine group. Never dump a stage that still has fuel.
 FUNCTION aoso_staging_finish_relight {
     SET AOSO_STAGING_PENDING_RELIGHT TO FALSE.
     IF SHIP:AVAILABLETHRUST > 0.05 {
-        SET AOSO_STAGING_RELIGHT_ATTEMPTS TO 0.
-        SET AOSO_STAGING_DEAD_SINCE TO 0.
-        SET AOSO_STAGING_EXTRA_THIS TO 0.
+        aoso_staging_reset_relight().
         RETURN.
     }
     aoso_staging_sense(1).
@@ -453,20 +559,32 @@ FUNCTION aoso_staging_finish_relight {
         SET AOSO_STAGING_EXTRA_THIS TO 0.
         RETURN.
     }
+
+    LOCAL nlit IS aoso_staging_light_unlit().
+    IF nlit > 0 {
+        IF AOSO_STAGING_LIT_TRIED < 1 {
+            SET AOSO_STAGING_LIT_TRIED TO 1.
+            SET AOSO_STAGING_SPOOL_UNTIL TO TIME:SECONDS + 0.4.
+            SET AOSO_STAGING_PENDING_RELIGHT TO TRUE.
+            RETURN.
+        }
+    }
+
+    LOCAL drops_fuel IS aoso_staging_next_drops_fuel().
     IF aoso_staging_stage_has_fuel() {
-        LOCAL nlit IS aoso_staging_light_unlit().
-        IF nlit > 0 { RETURN. }
         aoso_log_warn("STAGING", "No thrust after staging but current stage still has fuel - not dumping it.").
         SET AOSO_STAGING_EXTRA_THIS TO 0.
         RETURN.
     }
-    LOCAL max_extra IS aoso_config_get("STAGING_MAX_EXTRA", 1).
-    IF max_extra < 0 { SET max_extra TO 0. }
-    IF AOSO_STAGING_EXTRA_THIS >= max_extra {
-        LOCAL nlit2 IS aoso_staging_light_unlit().
-        IF nlit2 > 0 { RETURN. }
-        aoso_log_warn("STAGING", "Relight: still no thrust after " + AOSO_STAGING_EXTRA_THIS + " extra stage event(s) with LF remaining; not walking the stack.").
+    IF drops_fuel {
+        aoso_log_warn("STAGING", "No thrust after staging but next stage still has fuel - lighting engines, not dumping tanks.").
         SET AOSO_STAGING_EXTRA_THIS TO 0.
+        RETURN.
+    }
+
+    LOCAL max_walk IS aoso_config_get("STAGING_MAX_EMPTY_WALK", 6).
+    IF AOSO_STAGING_EMPTY_WALK >= max_walk {
+        aoso_log_warn("STAGING", "Relight: still no thrust after walking " + AOSO_STAGING_EMPTY_WALK + " empty stage(s); unlit engines=" + AOSO_STG_UNIGNITED + " ship LF=" + ROUND(aoso_staging_ship_lf(), 0) + ".").
         RETURN.
     }
     IF STAGE:NUMBER <= 0 { RETURN. }
@@ -480,6 +598,7 @@ FUNCTION aoso_staging_finish_relight {
     STAGE.
     aoso_staging_after_stage().
     SET AOSO_STAGING_EXTRA_THIS TO AOSO_STAGING_EXTRA_THIS + 1.
+    SET AOSO_STAGING_EMPTY_WALK TO AOSO_STAGING_EMPTY_WALK + 1.
     SET AOSO_STAGING_RELIGHT_ATTEMPTS TO AOSO_STAGING_RELIGHT_ATTEMPTS + 1.
     SET AOSO_STAGING_PENDING_RELIGHT TO TRUE.
 }
@@ -508,6 +627,9 @@ FUNCTION aoso_staging_auto_check {
 
         IF reason = "relight" OR reason = "thrust collapse" {
             SET AOSO_STAGING_RELIGHT_ATTEMPTS TO AOSO_STAGING_RELIGHT_ATTEMPTS + 1.
+            IF NOT aoso_staging_next_drops_fuel() {
+                SET AOSO_STAGING_EMPTY_WALK TO AOSO_STAGING_EMPTY_WALK + 1.
+            }
         }
 
         STAGE.
@@ -534,16 +656,30 @@ FUNCTION aoso_staging_ensure_thrust {
     IF AOSO_STG_THRUST > 0.05 { RETURN TRUE. }
     LOCAL nlit0 IS aoso_staging_light_unlit().
     IF nlit0 > 0 {
+        SET AOSO_STAGING_SPOOL_UNTIL TO TIME:SECONDS + 0.4.
         IF SHIP:AVAILABLETHRUST > 0.05 { RETURN TRUE. }
+        RETURN TRUE.
     }
     IF NOT AOSO_STG_AIRBORNE { RETURN FALSE. }
     IF AOSO_CONFIG["SAFE_MODE"] { RETURN FALSE. }
     IF STAGE:NUMBER <= 0 { RETURN FALSE. }
     IF NOT STAGE:READY { RETURN FALSE. }
     IF TIME:SECONDS < AOSO_STAGING_COOLDOWN_UNTIL { RETURN FALSE. }
+    IF TIME:SECONDS < AOSO_STAGING_SPOOL_UNTIL { RETURN FALSE. }
     IF AOSO_STG_DROP_FLOWING { RETURN FALSE. }
-    LOCAL max_relight IS aoso_config_get("STAGING_MAX_EXTRA", 1).
-    IF AOSO_STAGING_RELIGHT_ATTEMPTS >= max_relight { RETURN FALSE. }
+
+    LOCAL drops_fuel IS aoso_staging_next_drops_fuel().
+    IF drops_fuel {
+        IF NOT AOSO_STG_FUEL_GONE { RETURN FALSE. }
+    }
+
+    LOCAL max_walk IS aoso_config_get("STAGING_MAX_EMPTY_WALK", 6).
+    IF drops_fuel {
+        LOCAL max_relight IS aoso_config_get("STAGING_MAX_EXTRA", 1).
+        IF AOSO_STAGING_RELIGHT_ATTEMPTS >= max_relight { RETURN FALSE. }
+    } ELSE {
+        IF AOSO_STAGING_EMPTY_WALK >= max_walk { RETURN FALSE. }
+    }
 
     LOCAL can_drop IS FALSE.
     IF AOSO_STG_FUEL_GONE { SET can_drop TO TRUE. }
@@ -559,6 +695,9 @@ FUNCTION aoso_staging_ensure_thrust {
 
     aoso_log_info("STAGING", "Ensuring thrust for upcoming burn, staging (" + STAGE:NUMBER + ").").
     SET AOSO_STAGING_RELIGHT_ATTEMPTS TO AOSO_STAGING_RELIGHT_ATTEMPTS + 1.
+    IF NOT drops_fuel {
+        SET AOSO_STAGING_EMPTY_WALK TO AOSO_STAGING_EMPTY_WALK + 1.
+    }
     LOCAL prev IS STAGE:NUMBER.
     LOCAL pred IS aoso_capabilities_predict_next().
     STAGE.

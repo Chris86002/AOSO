@@ -29,6 +29,7 @@ FUNCTION aoso_maneuver_reset_exec {
     SET AOSO_MANEUVER_LOCK TO V(0, 0, 0).
     SET AOSO_MANEUVER_LAST_REMAINING TO 0.
     SET AOSO_MANEUVER_NO_THRUST_TICKS TO 0.
+    aoso_staging_reset_relight().
 }
 
 FUNCTION aoso_maneuver_set_apo_cap {
@@ -403,6 +404,7 @@ FUNCTION aoso_maneuver_execute_next {
         SET AOSO_MANEUVER_BURNING TO TRUE.
         SET AOSO_MANEUVER_LAST_REMAINING TO remaining.
         SET AOSO_MANEUVER_NO_THRUST_TICKS TO 0.
+        aoso_staging_reset_relight().
         SET AOSO_MANEUVER_RESULT TO "ok".
         LOCAL accel0 IS aoso_maneuver_current_accel().
         LOCAL t0 IS 0.
@@ -433,6 +435,14 @@ FUNCTION aoso_maneuver_execute_next {
         aoso_staging_auto_check().
         aoso_staging_ensure_thrust().
         IF SHIP:AVAILABLETHRUST <= 0 {
+            LOCAL waiting IS FALSE.
+            IF TIME:SECONDS < AOSO_STAGING_SPOOL_UNTIL { SET waiting TO TRUE. }
+            IF TIME:SECONDS < AOSO_STAGING_COOLDOWN_UNTIL { SET waiting TO TRUE. }
+            IF AOSO_STAGING_PENDING_RELIGHT { SET waiting TO TRUE. }
+            IF waiting {
+                aoso_throttle_set(0).
+                RETURN FALSE.
+            }
             SET AOSO_MANEUVER_NO_THRUST_TICKS TO AOSO_MANEUVER_NO_THRUST_TICKS + 1.
             LOCAL patience IS AOSO_CONFIG["MANEUVER_NO_THRUST_TICKS"].
             IF AOSO_MANEUVER_NO_THRUST_TICKS < patience {

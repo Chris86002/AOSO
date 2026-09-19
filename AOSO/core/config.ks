@@ -41,8 +41,9 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "STAGING_DEAD_S", 0.2,              // s of AVAILABLETHRUST~0 before a thrust-collapse stage
     "STAGING_SPOOL_S", 0.8,             // s after STAGE before we judge thrust (no WAIT; timestamp)
     "STAGING_COOLDOWN_S", 1.2,          // s after STAGE before another auto-stage (flameout still allowed)
-    "STAGING_MAX_EXTRA", 1,             // extra STAGE only if the NEW current stage is also empty
-    "MANEUVER_NO_THRUST_TICKS", 20,     // execute_next retries staging this many ticks before declaring a burn dead
+    "STAGING_MAX_EXTRA", 1,             // extra STAGE that may drop leftover fuel (relight only)
+    "STAGING_MAX_EMPTY_WALK", 6,        // empty fairing/decoupler stages we may walk to reach the next engines
+    "MANEUVER_NO_THRUST_TICKS", 40,     // execute_next retries staging this many ticks before declaring a burn dead
     "MANEUVER_FEATHER_S", 2,            // s, remaining burn-time window over which maneuver throttle fades to cut
     "MANEUVER_ALIGN_S", 50,             // s rails lead before ignition; physics 2x after that until WARP_CRUCIAL_S
     "MANEUVER_PHYSICS_UNTIL_S", 10,     // s of 1x remaining (burns / SOI). Align uses physics 2x, not 4x (4x slewed Acacius)
