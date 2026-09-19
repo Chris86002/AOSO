@@ -30,15 +30,31 @@ GLOBAL AOSO_WATCHDOG IS LEXICON(
     "tripped", FALSE
 ).
 
-// A cheap "did anything happen" fingerprint: AOSO_MISSION's own history
-// length while the mission layer is active, or -1 (never stalled) if it
-// isn't running at all.
+// Watchdog: no mission/tour history growth AND no controller heartbeat
+// movement, plus a genuinely critical fuel/EC condition, forces abort.
+// Heartbeats (`aoso_hb_set`) only advance progress_at when state or
+// progress actually moved, so a stuck suicide burn is visible.
 FUNCTION aoso_watchdog_progress_marker {
+    LOCAL n IS 0.
+    LOCAL live IS FALSE.
     IF DEFINED AOSO_MISSION {
         IF AOSO_MISSION["current"] <> "" {
-            RETURN AOSO_MISSION["history"]:LENGTH.
+            SET live TO TRUE.
+            SET n TO n + AOSO_MISSION["history"]:LENGTH.
         }
     }
+    IF DEFINED AOSO_TOUR {
+        IF AOSO_TOUR["current"] <> "" {
+            SET live TO TRUE.
+            SET n TO n + AOSO_TOUR["history"]:LENGTH * 1000.
+            IF AOSO_TOUR:HASKEY("data") {
+                IF AOSO_TOUR["data"]:HASKEY("index") {
+                    SET n TO n + AOSO_TOUR["data"]["index"].
+                }
+            }
+        }
+    }
+    IF live { RETURN n. }
     RETURN -1.
 }
 
@@ -89,10 +105,27 @@ FUNCTION aoso_watchdog_tick {
         SET AOSO_WATCHDOG["last_progress_at"] TO TIME:SECONDS.
         RETURN.
     }
-    IF marker < 0 { RETURN. } // no mission layer running - nothing to watch
 
-    LOCAL stalled_s IS TIME:SECONDS - AOSO_WATCHDOG["last_progress_at"].
-    IF stalled_s < AOSO_CONFIG["WATCHDOG_TIMEOUT"] { RETURN. }
+    LOCAL hb_at IS 0.
+    IF DEFINED AOSO_HB {
+        SET hb_at TO aoso_hb_any_progress_at().
+    }
+    LOCAL progress_at IS AOSO_WATCHDOG["last_progress_at"].
+    IF hb_at > progress_at { SET progress_at TO hb_at. }
+
+    IF marker < 0 {
+        IF hb_at <= 0 { RETURN. }
+    }
+
+    LOCAL stalled_s IS TIME:SECONDS - progress_at.
+    LOCAL hist_limit IS AOSO_CONFIG["WATCHDOG_TIMEOUT"].
+    LOCAL hb_limit IS aoso_config_get("WATCHDOG_PROGRESS_S", 90).
+    LOCAL stalled IS FALSE.
+    IF stalled_s >= hist_limit { SET stalled TO TRUE. }
+    IF hb_at > 0 {
+        IF TIME:SECONDS - hb_at < hb_limit { SET stalled TO FALSE. }
+    }
+    IF NOT stalled { RETURN. }
 
     IF aoso_watchdog_critical_condition() {
         aoso_watchdog_trip().
