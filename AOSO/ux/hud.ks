@@ -188,16 +188,21 @@ FUNCTION aoso_hud_tick {
     IF NOT compact {
         aoso_hud_watch_alerts().
         aoso_hud_fd_tick(rates["fd"]).
-        LOCAL twin_geom IS TRUE.
-        LOCAL twin_fill IS TRUE.
-        IF DEFINED AOSO_CPU_LEVEL {
-            IF AOSO_CPU_LEVEL >= 2 { SET twin_geom TO FALSE. }
+        LOCAL want_twin IS FALSE.
+        IF AOSO_HUD_PAGE = "TWIN" { SET want_twin TO TRUE. }
+        IF rates["lo"] > 0 {
+            IF TIME:SECONDS - AOSO_HUD_LAST_LO >= rates["lo"] { SET want_twin TO TRUE. }
         }
-        IF rates["md"] > 1.5 { SET twin_fill TO rates["gui"]. }
-        aoso_twin_tick(twin_geom, twin_fill).
+        IF want_twin {
+            LOCAL twin_geom IS TRUE.
+            LOCAL twin_fill IS TRUE.
+            IF DEFINED AOSO_CPU_LEVEL {
+                IF AOSO_CPU_LEVEL >= 2 { SET twin_geom TO FALSE. }
+            }
+            IF AOSO_HUD_PAGE <> "TWIN" { SET twin_geom TO FALSE. }
+            aoso_twin_tick(twin_geom, twin_fill).
+        }
     }
-    // Always paint the GUI, even at CPU CRITICAL. Skipping it after a
-    // tab click leaves SHOWONLY on a stale/half-built page (the LND glitch).
     aoso_hud_gui_tick(TRUE).
     aoso_log_every(8, "HUD_HB", aoso_hud_debug_line()).
     IF AOSO_HUD_PAGE = "DBG" {
@@ -257,8 +262,8 @@ FUNCTION aoso_hud_debug_snap {
         "page", AOSO_HUD_PAGE,
         "ctx", AOSO_HUD_CTX,
         "gui_on", gui_on,
-        "doing", AOSO_UI["doing"],
-        "detail", AOSO_UI["detail"],
+        "doing", AOSO_HUD_DATA["flight"]["doing"],
+        "detail", AOSO_HUD_DATA["flight"]["detail"],
         "sys", roll,
         "why", why,
         "cpu", d["cpu"],

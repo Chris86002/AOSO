@@ -24,11 +24,6 @@ FUNCTION aoso_hud_set {
     }
     SET AOSO_HUD_LAST[key] TO txt.
     SET AOSO_HUD_W[key]:TEXT TO txt.
-    IF txt = "" {
-        SET AOSO_HUD_W[key]:VISIBLE TO FALSE.
-    } ELSE {
-        SET AOSO_HUD_W[key]:VISIBLE TO TRUE.
-    }
 }
 
 FUNCTION aoso_hud_lab {
@@ -68,6 +63,7 @@ FUNCTION aoso_hud_gui_dispose {
 FUNCTION aoso_hud_add_page {
     PARAMETER name.
     LOCAL p IS AOSO_HUD_STACK:ADDVLAYOUT().
+    SET p:VISIBLE TO FALSE.
     SET AOSO_HUD_PAGES[name] TO p.
     RETURN p.
 }
@@ -79,7 +75,9 @@ FUNCTION aoso_hud_show_page {
     IF AOSO_HUD_PAGE = name { RETURN. }
     SET AOSO_HUD_TAB_LOCK TO TRUE.
     SET AOSO_HUD_PAGE TO name.
-    AOSO_HUD_STACK:SHOWONLY(AOSO_HUD_PAGES[name]).
+    FOR pk IN AOSO_HUD_PAGES:KEYS {
+        SET AOSO_HUD_PAGES[pk]:VISIBLE TO (pk = name).
+    }
     FOR k IN AOSO_HUD_TABS:KEYS {
         LOCAL lab IS k.
         IF AOSO_HUD_TABLABEL:HASKEY(k) { SET lab TO AOSO_HUD_TABLABEL[k]. }
@@ -330,7 +328,7 @@ FUNCTION aoso_hud_gui_init {
     aoso_hud_add_tab(row2, "LOG", "LOG").
     aoso_hud_add_tab(row2, "DBG", "DBG").
 
-    SET AOSO_HUD_STACK TO g:ADDSTACK().
+    SET AOSO_HUD_STACK TO g:ADDVLAYOUT().
     aoso_hud_gui_build_flight(aoso_hud_add_page("FLT")).
     aoso_hud_gui_build_nav(aoso_hud_add_page("NAV")).
     aoso_hud_gui_build_mission(aoso_hud_add_page("MSN")).

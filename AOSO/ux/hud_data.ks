@@ -593,9 +593,11 @@ FUNCTION aoso_hud_collect {
         RETURN rates.
     }
     aoso_hud_collect_flight().
-    IF AOSO_HUD_PAGE = "FLT" {
+    LOCAL pg IS AOSO_HUD_PAGE.
+    IF pg = "FLT" OR pg = "NAV" OR pg = "DBG" {
         aoso_hud_collect_orbit().
         aoso_hud_refresh_context().
+        SET AOSO_HUD_LAST_HI TO now.
     } ELSE {
         IF (now - AOSO_HUD_LAST_HI) >= rates["hi"] {
             aoso_hud_collect_orbit().
@@ -603,10 +605,13 @@ FUNCTION aoso_hud_collect {
             SET AOSO_HUD_LAST_HI TO now.
         }
     }
-    IF AOSO_HUD_PAGE = "DBG" {
-        aoso_hud_collect_debug().
-        aoso_hud_collect_systems().
-    }
+    IF pg = "DBG" OR pg = "SYS" { aoso_hud_collect_debug(). }
+    IF pg = "SYS" OR pg = "DBG" { aoso_hud_collect_systems(). }
+    IF pg = "NAV" { aoso_hud_collect_target(). }
+    IF pg = "MSN" { aoso_hud_collect_mission(). }
+    IF pg = "LND" { aoso_hud_collect_landing(). }
+    IF pg = "PRP" OR pg = "STG" { aoso_hud_collect_res(). }
+    IF pg = "VEH" { aoso_hud_collect_vehicle(). }
     IF (now - AOSO_HUD_LAST_MD) >= rates["md"] {
         aoso_hud_collect_orbit().
         aoso_hud_collect_target().
