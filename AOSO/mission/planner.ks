@@ -24,6 +24,7 @@ FUNCTION aoso_plan_build {
     aoso_matrix_build().
     aoso_opp_build().
     aoso_route_build().
+    aoso_project_route().
 
     LOCAL order IS LIST().
     IF AOSO_ROUTE_LAST:HASKEY("order") { SET order TO AOSO_ROUTE_LAST["order"]. }
@@ -62,10 +63,18 @@ FUNCTION aoso_plan_build {
         "full_tank_dv", aoso_feas_full_tank_dv(),
         "isru", aoso_profile_capable("can_isru"),
         "provisional", provisional,
+        "rev", aoso_ctx_get("rev_plan", 0),
+        "rev_topo", aoso_ctx_get("rev_topo", 0),
+        "rev_cap", aoso_ctx_get("rev_cap", 0),
+        "rev_budget", aoso_ctx_get("rev_budget", 0),
+        "rev_world", aoso_ctx_get("rev_world", 0),
+        "rev_xp", aoso_ctx_get("rev_xp", 0),
+        "built_at", TIME:SECONDS,
         "at", TIME:SECONDS
     ).
     aoso_json_write(AOSO_CONST["ROUTE_FILE"], AOSO_PLAN_LAST).
     aoso_plan_log().
+    aoso_ctx_mark_plan().
     RETURN AOSO_PLAN_LAST.
 }
 
@@ -108,4 +117,12 @@ FUNCTION aoso_plan_targets {
     aoso_plan_build().
     IF AOSO_PLAN_LAST:HASKEY("targets") { RETURN AOSO_PLAN_LAST["targets"]. }
     RETURN LIST().
+}
+
+FUNCTION aoso_plan_stale {
+    IF NOT AOSO_PLAN_LAST:HASKEY("rev_topo") { RETURN TRUE. }
+    IF AOSO_PLAN_LAST["rev_topo"] <> aoso_ctx_get("rev_topo", 0) { RETURN TRUE. }
+    IF AOSO_PLAN_LAST["rev_budget"] <> aoso_ctx_get("rev_budget", 0) { RETURN TRUE. }
+    IF AOSO_PLAN_LAST["rev_world"] <> aoso_ctx_get("rev_world", 0) { RETURN TRUE. }
+    RETURN FALSE.
 }

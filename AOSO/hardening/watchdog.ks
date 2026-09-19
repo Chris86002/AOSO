@@ -27,7 +27,9 @@
 GLOBAL AOSO_WATCHDOG IS LEXICON(
     "last_progress_marker", -1,
     "last_progress_at", 0,
-    "tripped", FALSE
+    "tripped", FALSE,
+    "recovery", "",
+    "last_stall_action_at", 0
 ).
 
 // Watchdog: no mission/tour history growth AND no controller heartbeat
@@ -75,6 +77,59 @@ FUNCTION aoso_watchdog_critical_condition {
 
 // Cuts throttle/steering and aborts the mission machine exactly once; safe
 // to call repeatedly (subsequent calls are no-ops until aoso_watchdog_reset()).
+FUNCTION aoso_watchdog_in_critical_flight {
+    LOCAL phase IS "".
+    IF DEFINED AOSO_OBS_PHASE { SET phase TO AOSO_OBS_PHASE. }
+    LOCAL ctl IS "".
+    IF DEFINED AOSO_CTX { SET ctl TO aoso_ctx_get("controller", ""). }
+    IF phase = "ASCENT" { RETURN TRUE. }
+    IF phase = "DESCENT" { RETURN TRUE. }
+    IF phase = "LANDING" { RETURN TRUE. }
+    IF ctl = "ascent" { RETURN TRUE. }
+    IF ctl = "descent" { RETURN TRUE. }
+    RETURN FALSE.
+}
+
+FUNCTION aoso_watchdog_recovery_kind {
+    PARAMETER stalled.
+    PARAMETER critical.
+    PARAMETER flying.
+    IF NOT stalled { RETURN "NONE". }
+    IF critical { RETURN "ABORT". }
+    IF flying { RETURN "NONE". }
+    RETURN "REPLAN".
+}
+
+FUNCTION aoso_watchdog_recover {
+    IF AOSO_WATCHDOG["tripped"] { RETURN. }
+    LOCAL now IS TIME:SECONDS.
+    IF now - AOSO_WATCHDOG["last_stall_action_at"] < aoso_config_get("WATCHDOG_PROGRESS_S", 90) {
+        RETURN.
+    }
+    SET AOSO_WATCHDOG["last_stall_action_at"] TO now.
+    LOCAL ctl IS "".
+    IF DEFINED AOSO_CTX { SET ctl TO aoso_ctx_get("controller", ""). }
+    aoso_throttle_set(0).
+    IF HASNODE {
+        REMOVE NEXTNODE.
+    }
+    IF ctl = "refuel" {
+        IF DEFINED AOSO_REFUEL {
+            SET DRILLS TO FALSE.
+            SET ISRU TO FALSE.
+        }
+    }
+    SET AOSO_WATCHDOG["recovery"] TO "REPLAN".
+    aoso_event_publish("REPLAN_REQUESTED", "watchdog", "stall " + ctl).
+    aoso_log_warn("WATCHDOG", "Stalled without critical resources; requesting replan (" + ctl + ").").
+    IF AOSO_WATCHDOG["recovery"] = "REPLAN" {
+        IF now - AOSO_WATCHDOG["last_progress_at"] > aoso_config_get("WATCHDOG_TIMEOUT", 120) * 2 {
+            aoso_safe_hold("watchdog stall hold").
+            SET AOSO_WATCHDOG["recovery"] TO "HOLD".
+        }
+    }
+}
+
 FUNCTION aoso_watchdog_trip {
     IF AOSO_WATCHDOG["tripped"] { RETURN. }
     SET AOSO_WATCHDOG["tripped"] TO TRUE.
@@ -127,9 +182,13 @@ FUNCTION aoso_watchdog_tick {
     }
     IF NOT stalled { RETURN. }
 
+    LOCAL flying IS aoso_watchdog_in_critical_flight().
     IF aoso_watchdog_critical_condition() {
         aoso_watchdog_trip().
+        RETURN.
     }
+    IF flying { RETURN. }
+    aoso_watchdog_recover().
 }
 
 FUNCTION aoso_watchdog_is_tripped {

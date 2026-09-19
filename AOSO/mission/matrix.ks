@@ -71,6 +71,9 @@ FUNCTION aoso_matrix_row {
     LOCAL cont IS "SAFE".
     IF report:HASKEY("continuation") { SET cont TO report["continuation"]. }
 
+    LOCAL leftover IS 0.
+    IF report:HASKEY("leftover_dv") { SET leftover TO report["leftover_dv"]. }
+
     RETURN LEXICON(
         "body", dest_name,
         "result", report["result"],
@@ -81,7 +84,9 @@ FUNCTION aoso_matrix_row {
         "can_refuel", report["can_refuel"],
         "continuation", cont,
         "surface_twr", report["surface_twr"],
-        "transfer_dv", report["transfer_dv"]
+        "transfer_dv", report["transfer_dv"],
+        "leftover_dv", leftover,
+        "hop_budget", have
     ).
 }
 

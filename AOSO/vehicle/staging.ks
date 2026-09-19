@@ -80,6 +80,28 @@ FUNCTION aoso_staging_after_stage {
     SET AOSO_STAGING_SPOOL_UNTIL TO now + spool.
 }
 
+FUNCTION aoso_staging_do {
+    IF DEFINED AOSO_AUTH {
+        IF NOT aoso_auth_can_cmd("STAGING") {
+            LOCAL owner IS aoso_auth_owner("STAGING").
+            IF owner <> "ascent" {
+                IF owner <> "maneuver" {
+                    IF owner <> "descent" {
+                        IF owner <> "goto" {
+                            IF owner <> "auto_staging" {
+                                aoso_log_warn("STAGING", "STAGE blocked; owned by " + owner + ".").
+                                RETURN FALSE.
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    STAGE.
+    RETURN TRUE.
+}
+
 FUNCTION aoso_staging_emit {
     PARAMETER prev.
     PARAMETER reason.
@@ -94,8 +116,18 @@ FUNCTION aoso_staging_emit {
     IF reason = "relight" { SET cat TO "relight". }
     IF reason = "thrust collapse" { SET cat TO "relight". }
     IF reason = "drop boosters" { SET cat TO "boosters". }
-    aoso_decide("STAGING", "stage", reason, cat, "stg=" + prev + " twr_now=" + twr_now + " twr_next=" + twr_next).
     aoso_event_publish("STAGE_COMPLETE", "staging", reason).
+    LOCAL pred_mass IS SHIP:MASS.
+    IF pred:HASKEY("mass_next") { SET pred_mass TO pred["mass_next"]. }
+    LOCAL did_s IS aoso_decide("STAGING", "stage", reason, cat, "stg=" + prev + " twr_now=" + twr_now + " twr_next=" + twr_next, pred_mass).
+    LOCAL act_s IS aoso_action_create(did_s, "STAGING", "" + prev, pred_mass).
+    aoso_action_begin(act_s).
+    LOCAL res_s IS aoso_result_from_action(act_s, "SUCCESS", reason).
+    SET res_s["predicted_dv"] TO pred_mass.
+    SET res_s["actual_dv"] TO SHIP:MASS.
+    SET res_s["predicted_fuel"] TO pred["twr_next"].
+    SET res_s["actual_fuel"] TO actual_twr.
+    aoso_result_emit(res_s).
     // THRUST_MISMATCH is judged after spool in aoso_staging_judge_mismatch.
     // Measuring AVAILABLETHRUST in the same tick as STAGE() is always ~0.
 }
@@ -701,11 +733,12 @@ FUNCTION aoso_staging_finish_relight {
             IF STAGE:READY {
                 LOCAL prev_lit IS STAGE:NUMBER.
                 aoso_log_info("STAGING", "Relight: lighting unlit engines on stage " + prev_lit + ".").
-                STAGE.
-                aoso_staging_after_stage().
-                SET AOSO_STAGING_EMPTY_WALK TO AOSO_STAGING_EMPTY_WALK + 1.
-                SET AOSO_STAGING_RELIGHT_ATTEMPTS TO AOSO_STAGING_RELIGHT_ATTEMPTS + 1.
-                SET AOSO_STAGING_PENDING_RELIGHT TO TRUE.
+                IF aoso_staging_do() {
+                    aoso_staging_after_stage().
+                    SET AOSO_STAGING_EMPTY_WALK TO AOSO_STAGING_EMPTY_WALK + 1.
+                    SET AOSO_STAGING_RELIGHT_ATTEMPTS TO AOSO_STAGING_RELIGHT_ATTEMPTS + 1.
+                    SET AOSO_STAGING_PENDING_RELIGHT TO TRUE.
+                }
                 RETURN.
             }
         }
@@ -739,12 +772,13 @@ FUNCTION aoso_staging_finish_relight {
     LOCAL prev IS STAGE:NUMBER.
     aoso_log_info("STAGING", "Relight: no thrust after staging, lighting next empty stage (" + prev + ").").
     aoso_observe_event("RELIGHT", "INFO", "relight", "stg=" + prev).
-    STAGE.
-    aoso_staging_after_stage().
-    SET AOSO_STAGING_EXTRA_THIS TO AOSO_STAGING_EXTRA_THIS + 1.
-    SET AOSO_STAGING_EMPTY_WALK TO AOSO_STAGING_EMPTY_WALK + 1.
-    SET AOSO_STAGING_RELIGHT_ATTEMPTS TO AOSO_STAGING_RELIGHT_ATTEMPTS + 1.
-    SET AOSO_STAGING_PENDING_RELIGHT TO TRUE.
+    IF aoso_staging_do() {
+        aoso_staging_after_stage().
+        SET AOSO_STAGING_EXTRA_THIS TO AOSO_STAGING_EXTRA_THIS + 1.
+        SET AOSO_STAGING_EMPTY_WALK TO AOSO_STAGING_EMPTY_WALK + 1.
+        SET AOSO_STAGING_RELIGHT_ATTEMPTS TO AOSO_STAGING_RELIGHT_ATTEMPTS + 1.
+        SET AOSO_STAGING_PENDING_RELIGHT TO TRUE.
+    }
 }
 
 FUNCTION aoso_staging_auto_check {
@@ -786,15 +820,16 @@ FUNCTION aoso_staging_auto_check {
             }
         }
 
-        STAGE.
-        aoso_staging_after_stage().
-        SET AOSO_STAGING_EXTRA_THIS TO 0.
-        SET AOSO_STAGING_PENDING_RELIGHT TO TRUE.
-        SET AOSO_STAGING_PRED_TWR TO pred["twr_next"].
-        SET AOSO_STAGING_PRED_STG TO prev.
+        IF aoso_staging_do() {
+            aoso_staging_after_stage().
+            SET AOSO_STAGING_EXTRA_THIS TO 0.
+            SET AOSO_STAGING_PENDING_RELIGHT TO TRUE.
+            SET AOSO_STAGING_PRED_TWR TO pred["twr_next"].
+            SET AOSO_STAGING_PRED_STG TO prev.
 
-        aoso_staging_emit(prev, reason, pred).
-        SET AOSO_PROFILE_PENDING TO "staging".
+            aoso_staging_emit(prev, reason, pred).
+            SET AOSO_PROFILE_PENDING TO "staging".
+        }
     }
 }
 
@@ -856,7 +891,7 @@ FUNCTION aoso_staging_ensure_thrust {
     }
     LOCAL prev IS STAGE:NUMBER.
     LOCAL pred IS aoso_capabilities_predict_next().
-    STAGE.
+    IF NOT aoso_staging_do() { RETURN FALSE. }
     aoso_staging_after_stage().
     SET AOSO_STAGING_EXTRA_THIS TO 0.
     SET AOSO_STAGING_PENDING_RELIGHT TO TRUE.

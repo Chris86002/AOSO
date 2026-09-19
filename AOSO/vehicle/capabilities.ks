@@ -43,6 +43,9 @@ FUNCTION aoso_capabilities_engine_thrust {
 }
 
 FUNCTION aoso_capabilities_refresh {
+    IF DEFINED AOSO_TOPO {
+        IF AOSO_TOPO:HASKEY("rev") { aoso_topo_refresh_dynamic(). }
+    }
     LOCAL elist IS aoso_parts_engines().
     LOCAL plist IS aoso_parts_list().
 
@@ -143,31 +146,66 @@ FUNCTION aoso_capabilities_stage_breakdown {
 
     LOCAL groups IS LEXICON().
     LOCAL fuel_types IS LIST().
-
-    FOR p IN plist {
-        LOCAL dkey IS "" + p:DECOUPLEDIN.
-        IF NOT groups:HASKEY(dkey) {
-            SET groups[dkey] TO LEXICON(
-                "decoupled_in", p:DECOUPLEDIN,
-                "engines", 0,
-                "thrust_vac", 0,
-                "isp_vac_weighted", 0,
-                "prop_mass", 0,
-                "dry_mass", 0,
-                "wet_mass", 0
-            ).
-        }
-        SET groups[dkey]["wet_mass"] TO groups[dkey]["wet_mass"] + p:MASS.
-        SET groups[dkey]["dry_mass"] TO groups[dkey]["dry_mass"] + p:DRYMASS.
-        FOR res_item IN p:RESOURCES {
-            IF aoso_capabilities_is_propellant(res_item:NAME) {
-                SET groups[dkey]["prop_mass"] TO groups[dkey]["prop_mass"] + (res_item:AMOUNT * res_item:DENSITY).
-                LOCAL already IS FALSE.
-                FOR ft IN fuel_types {
-                    IF ft = res_item:NAME { SET already TO TRUE. }
+    LOCAL used_topo IS FALSE.
+    IF DEFINED AOSO_TOPO_GROUPS {
+        IF AOSO_TOPO_GROUPS:KEYS:LENGTH > 0 {
+            SET used_topo TO TRUE.
+            FOR k IN AOSO_TOPO_GROUPS:KEYS {
+                LOCAL tg IS AOSO_TOPO_GROUPS[k].
+                LOCAL prop_mass IS (tg["lf"] + tg["ox"]) * 0.005 + tg["sf"] * 0.0075 + tg["xe"] * 0.0001 + tg["mp"] * 0.004.
+                SET groups[k] TO LEXICON(
+                    "decoupled_in", tg["decoupled_in"],
+                    "engines", 0,
+                    "thrust_vac", 0,
+                    "isp_vac_weighted", 0,
+                    "prop_mass", prop_mass,
+                    "dry_mass", tg["dry_mass"],
+                    "wet_mass", tg["wet_mass"]
+                ).
+                IF tg["lf"] > 0 {
+                    LOCAL already_lf IS FALSE.
+                    FOR ft IN fuel_types {
+                        IF ft = "LiquidFuel" { SET already_lf TO TRUE. }
+                    }
+                    IF NOT already_lf { fuel_types:ADD("LiquidFuel"). }
                 }
-                IF NOT already {
-                    IF res_item:AMOUNT > 0 { fuel_types:ADD(res_item:NAME). }
+                IF tg["ox"] > 0 {
+                    LOCAL already_ox IS FALSE.
+                    FOR ft IN fuel_types {
+                        IF ft = "Oxidizer" { SET already_ox TO TRUE. }
+                    }
+                    IF NOT already_ox { fuel_types:ADD("Oxidizer"). }
+                }
+            }
+        }
+    }
+
+    IF NOT used_topo {
+        FOR p IN plist {
+            LOCAL dkey IS "" + p:DECOUPLEDIN.
+            IF NOT groups:HASKEY(dkey) {
+                SET groups[dkey] TO LEXICON(
+                    "decoupled_in", p:DECOUPLEDIN,
+                    "engines", 0,
+                    "thrust_vac", 0,
+                    "isp_vac_weighted", 0,
+                    "prop_mass", 0,
+                    "dry_mass", 0,
+                    "wet_mass", 0
+                ).
+            }
+            SET groups[dkey]["wet_mass"] TO groups[dkey]["wet_mass"] + p:MASS.
+            SET groups[dkey]["dry_mass"] TO groups[dkey]["dry_mass"] + p:DRYMASS.
+            FOR res_item IN p:RESOURCES {
+                IF aoso_capabilities_is_propellant(res_item:NAME) {
+                    SET groups[dkey]["prop_mass"] TO groups[dkey]["prop_mass"] + (res_item:AMOUNT * res_item:DENSITY).
+                    LOCAL already IS FALSE.
+                    FOR ft IN fuel_types {
+                        IF ft = res_item:NAME { SET already TO TRUE. }
+                    }
+                    IF NOT already {
+                        IF res_item:AMOUNT > 0 { fuel_types:ADD(res_item:NAME). }
+                    }
                 }
             }
         }
@@ -330,4 +368,131 @@ FUNCTION aoso_capabilities_predict_next {
     }
     SET AOSO_CAPS["prediction"] TO pred.
     RETURN pred.
+}
+
+// Future-operation TWR. LANDER/CORE exclude booster engines and booster
+// mass so Tylo/Eve feasibility is not inflated by still-attached boosters.
+FUNCTION aoso_caps_surface_twr_for_config {
+    PARAMETER config_name.
+    PARAMETER body_name.
+    PARAMETER mass_t IS 0.
+    IF body_name = "Sun" { RETURN 0. }
+    IF body_name = "Jool" { RETURN 0. }
+    LOCAL body_ref IS BODY(body_name).
+    LOCAL g_surf IS body_ref:MU / (body_ref:RADIUS * body_ref:RADIUS).
+    IF g_surf <= 0 { RETURN 0. }
+    LOCAL pressure_atm IS 0.
+    IF body_ref:ATM:EXISTS { SET pressure_atm TO body_ref:ATM:SEALEVELPRESSURE. }
+
+    LOCAL want_core IS FALSE.
+    LOCAL want_lander IS FALSE.
+    LOCAL want_booster IS FALSE.
+    LOCAL want_all IS FALSE.
+    IF config_name = "CORE" { SET want_core TO TRUE. }
+    IF config_name = "LANDER" { SET want_lander TO TRUE. SET want_core TO TRUE. }
+    IF config_name = "BOOSTER" { SET want_booster TO TRUE. }
+    IF config_name = "ALL" { SET want_all TO TRUE. }
+    IF config_name = "" { SET want_all TO TRUE. }
+
+    LOCAL elist IS aoso_parts_engines().
+    LOCAL best_d IS -999.
+    IF want_booster {
+        FOR eng IN elist {
+            IF eng:DECOUPLEDIN > best_d { SET best_d TO eng:DECOUPLEDIN. }
+        }
+    }
+    LOCAL lander_d IS -1.
+    IF DEFINED AOSO_TOPO {
+        LOCAL pg IS aoso_topo_prop_of("LANDER").
+        IF pg["engines"] > 0 { SET lander_d TO pg["stage"]. }
+    }
+
+    LOCAL thrust_sum IS 0.
+    FOR e IN elist {
+        LOCAL use_e IS FALSE.
+        IF want_all { SET use_e TO TRUE. }
+        IF want_core {
+            IF e:DECOUPLEDIN < 0 { SET use_e TO TRUE. }
+        }
+        IF want_lander {
+            IF e:DECOUPLEDIN = lander_d { SET use_e TO TRUE. }
+            IF e:DECOUPLEDIN < 0 { SET use_e TO TRUE. }
+        }
+        IF want_booster {
+            IF e:DECOUPLEDIN = best_d { SET use_e TO TRUE. }
+        }
+        IF use_e {
+            IF NOT e:FLAMEOUT {
+                SET thrust_sum TO thrust_sum + aoso_capabilities_engine_thrust(e, pressure_atm).
+            }
+        }
+    }
+
+    IF mass_t <= 0.1 {
+        SET mass_t TO 0.
+        IF want_all {
+            SET mass_t TO SHIP:MASS.
+        } ELSE {
+            IF DEFINED AOSO_TOPO_GROUPS {
+                FOR k IN AOSO_TOPO_GROUPS:KEYS {
+                    LOCAL g IS AOSO_TOPO_GROUPS[k].
+                    LOCAL include_g IS FALSE.
+                    IF want_core {
+                        IF g["decoupled_in"] < 0 { SET include_g TO TRUE. }
+                    }
+                    IF want_lander {
+                        IF g["decoupled_in"] < 0 { SET include_g TO TRUE. }
+                        IF g["decoupled_in"] = lander_d { SET include_g TO TRUE. }
+                    }
+                    IF want_booster {
+                        IF g["decoupled_in"] = best_d { SET include_g TO TRUE. }
+                    }
+                    IF include_g { SET mass_t TO mass_t + g["wet_mass"]. }
+                }
+            }
+        }
+        IF mass_t <= 0.1 { SET mass_t TO SHIP:MASS. }
+    }
+    IF mass_t <= 0 { RETURN 0. }
+    RETURN thrust_sum / (mass_t * g_surf).
+}
+
+FUNCTION aoso_caps_twr_for_state {
+    PARAMETER proj_state.
+    PARAMETER body_name.
+    LOCAL mass_t IS SHIP:MASS.
+    IF proj_state:ISTYPE("Lexicon") {
+        IF proj_state:HASKEY("mass") {
+            IF proj_state["mass"] > 0.1 { SET mass_t TO proj_state["mass"]. }
+        }
+    }
+    RETURN aoso_caps_surface_twr_for_config("LANDER", body_name, mass_t).
+}
+
+FUNCTION aoso_caps_dv_for_config {
+    PARAMETER config_name.
+    LOCAL layers IS aoso_caps_get("stages", LIST()).
+    LOCAL total IS 0.
+    FOR layer IN layers {
+        LOCAL role_n IS "".
+        IF layer:HASKEY("role") { SET role_n TO layer["role"]. }
+        LOCAL use_l IS FALSE.
+        IF config_name = "ALL" { SET use_l TO TRUE. }
+        IF config_name = "" { SET use_l TO TRUE. }
+        IF config_name = "CORE" {
+            IF layer["decoupled_in"] < 0 { SET use_l TO TRUE. }
+        }
+        IF config_name = "LANDER" {
+            IF layer["decoupled_in"] < 0 { SET use_l TO TRUE. }
+            IF role_n = "LANDER" { SET use_l TO TRUE. }
+            IF role_n = "CORE" { SET use_l TO TRUE. }
+        }
+        IF config_name = "BOOSTER" {
+            IF role_n = "BOOSTER" { SET use_l TO TRUE. }
+        }
+        IF use_l {
+            IF layer:HASKEY("dv_vac") { SET total TO total + layer["dv_vac"]. }
+        }
+    }
+    RETURN total.
 }

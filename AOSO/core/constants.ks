@@ -29,6 +29,7 @@ GLOBAL AOSO_CONST IS LEXICON(
     "EVENTS_FILE", "0:/aoso_events.csv",
     "FLIGHTREC_FILE", "0:/aoso_flightrec.txt",
     "HUD_FILE", "0:/aoso_hud.json",
+    "SCHEMA_VERSION", 2,
     "SOI_RADIUS_INFINITE", 1000000000000000  // sentinel (m) for a body with no SOI boundary (e.g. the Sun), since kOS cannot push a real Infinity value onto its stack
 ).
 

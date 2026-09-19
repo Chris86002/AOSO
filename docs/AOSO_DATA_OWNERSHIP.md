@@ -5,20 +5,43 @@ One writer per fact. Readers go through the owning accessor.
 | Fact | Owner | Readers |
 |---|---|---|
 | Part lists / engine list / docks | `parts.ks` cache | topology, staging, capabilities |
-| Structure, hw census, stage groups | `topology.ks` | profile, vessel, classify, cert, surface, staging log |
-| Capability flags / TWR / dV stack | `capabilities.ks` + `budget.ks` | planner, feas, HUD |
+| Structure, hw census, stage groups, prop roles | `topology.ks` | profile, vessel, classify, cert, surface, staging log |
+| Dynamic group fuel / mass | `aoso_topo_refresh_dynamic` | capabilities stage dV |
+| Capability flags / live TWR / dV stack | `capabilities.ks` + `budget.ks` | planner, feas, HUD |
+| Future LANDER/CORE TWR | `aoso_caps_surface_twr_for_config` | feas, cert, depart |
 | Human/planner summary | `profile.ks` (view over topology) | classify, cert, HUD VEH |
 | Class label | `classify.ks` (`AOSO_CLASS_LAST`) | CTX, HUD, route |
 | World / body numbers | `bodydb.ks` + `world/body.ks` | feas, cert, matrix |
-| Experience models | `experience.ks` keyed `cfg_id\|body\|OP` | feas costs |
+| Sequential leftover / projected state | `project.ks` `AOSO_PROJECT_LAST` | feas, matrix leftover, score, cert, assure, surface fill |
+| Experience models | `experience.ks` keyed `cfg_id\|body\|OP` | feas / project costs |
+| Ascent leftover-LF diary | `learn.ks` (demoted) | operator stats only |
+| Ascent start-speed search | `ascent_opt.ks` | pad trials |
 | Plan / targets | `planner.ks` `AOSO_PLAN_LAST` | tour, assure, HUD |
 | Events | `events.ks` queue | brain drain only |
-| Action results / heartbeats | `result.ks` | XP, watchdog, HUD |
-| Authority | `authority.ks` | steering wrappers |
+| Open action / result identity | `result.ks` `AOSO_ACTION_CUR` | XP, watchdog, HUD |
+| Authority | `authority.ks` | steering wrappers, `aoso_staging_do` |
 | Warp deadlines | `warp.ks` | `aoso_warp_request` |
 | Cert / assure snapshots | `certify.ks` / `assurance.ks` | brain, HUD, tour launch |
+| Surface executive phase | `surface/operations.ks` `AOSO_SURFACE_LAST` | tour REFUEL |
 | Checkpoints | `checkpoints.ks` | boot compare, mission resume |
 | CPU load | `observe.ks` | scheduler, HUD, brain |
+| Current system snapshot | `context.ks` `AOSO_CTX` | everyone (read) |
+| Replan policy | `brain.ks` | — |
+
+## Who answers what
+
+| Question | Answer |
+|---|---|
+| Who owns vessel structure? | topology |
+| Who owns dynamic resource state? | topology `refresh_dynamic` + resources for vessel totals |
+| Who predicts stage performance? | capabilities from topology groups + live engines |
+| Who predicts mission costs? | projected-state / feasibility |
+| Who chooses destination? | planner (route from scores; CAN from matrix) |
+| Who starts an action? | controller via `aoso_decide` + `aoso_action_create/begin` |
+| Who owns controls? | authority (`STEERING`/`THROTTLE`/`STAGING`/`WARP`/…) |
+| Who determines success? | verifier (`core/verify.ks`) |
+| Who stores learned corrections? | experience |
+| Who requests replans? | brain (events + watchdog REPLAN + dirty flags) |
 
 ## Persist files
 
@@ -30,12 +53,14 @@ One writer per fact. Readers go through the owning accessor.
 | `0:/aoso_checkpoints.json` | checkpoints | yes, loaded every boot |
 | `0:/aoso_profile.json` | profile | overwritten |
 | `0:/aoso_route.json` | planner | overwritten |
+| `0:/aoso_matrix.json` | matrix | overwritten |
 | `0:/aoso_log.txt` / events / telemetry | observe/logger | **wiped every boot** |
 
-Topology, cert, and assure are RAM-only. After a restart, rebuild
-topology from the live ship, compare checkpoint `topo_fp` / body /
-status, then re-certify. Prefer observed state over the saved
-expectation.
+Topology, cert, assure, and projected route are RAM-only. After a
+restart, rebuild topology from the live ship, compare checkpoint
+`topo_fp` / body / status, then re-certify. Prefer observed state
+over the saved expectation.
 
 Persistent schema changes require a migration in the loader, not a
-silent new required key.
+silent new required key. Current `SCHEMA_VERSION` is 2. Missing key
+on read = v1.

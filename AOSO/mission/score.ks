@@ -82,6 +82,21 @@ FUNCTION aoso_opp_score {
             SET total TO total + 3.
         }
     }
+    LOCAL look IS 0.
+    IF DEFINED AOSO_PROJECT_LAST {
+        SET look TO aoso_project_lookahead_bonus(dest_name).
+    }
+    IF look = 0 {
+        IF row:HASKEY("leftover_dv") {
+            IF row["can_refuel"] {
+                IF row["leftover_dv"] >= 1500 { SET look TO 8. }
+                ELSE {
+                    IF row["leftover_dv"] >= 600 { SET look TO 3. }
+                }
+            }
+        }
+    }
+    SET total TO total + look.
     IF NOT can_go { SET total TO 0. }
     IF total < 0 { SET total TO 0. }
     IF total > 100 { SET total TO 100. }

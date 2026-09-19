@@ -66,9 +66,11 @@ stay queued until that window (or until CPU is not HIGH while flying).
 
 ## Flight-control first
 
-Do not put `LIST PARTS`, JSON writes, route searches, or HUD redraws
-inside ascent/descent/maneuver ticks. Topology rebuilds are
-event-driven. HUD rates already drop under HIGH/CRITICAL.
+Do not put `LIST PARTS`, JSON writes, route searches, HUD redraws,
+or `aoso_project_route` inside ascent/descent/maneuver ticks.
+Topology **rebuilds** are event-driven. `aoso_topo_refresh_dynamic`
+is a fuel/mass walk (no HASMODULE census) from capabilities refresh,
+not from steering. HUD rates already drop under HIGH/CRITICAL.
 
 ## Future modules
 

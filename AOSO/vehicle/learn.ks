@@ -1,10 +1,10 @@
 // AOSO/vehicle/learn.ks
-// Flight-performance database. Every completed ascent (and later, other
-// events) is stored against a vessel fingerprint + body, so the next
-// flight of the same stack can say "I've flown this 7 times, best LF
-// remaining was 4382, this one is 2.7% worse -- possible early gravity
-// turn." Persists to LEARN_FILE across reboots; the per-attempt log still
-// starts clean.
+// DEMOTE: legacy ascent leftover-LF diary. Not an operational prediction
+// authority. Feasibility corrections live in experience.ks (bounded
+// actual/predicted). Ascent start-speed search lives in ascent_opt.ks.
+// This file keeps the operator "flown N times / best LF" stats and the
+// one-shot XP circ migration source. Do not add new aoso_learn_record_*
+// operations. Do not feed these stats into feasibility.
 
 GLOBAL AOSO_LEARN IS LEXICON("loaded", FALSE, "store", LEXICON()).
 GLOBAL AOSO_LEARN_LAST IS LEXICON().

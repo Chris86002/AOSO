@@ -540,6 +540,8 @@ FUNCTION aoso_goto_coast_execute {
             LOCAL ver_t IS aoso_verify_transfer(hop_name).
             aoso_log_info("GOTO", "Transfer verify vs " + hop_name + ": " + ver_t["status"] + " " + ver_t["reason"] + ".").
             LOCAL res_t IS aoso_result_make("TRANSFER", ver_t["status"], ver_t["reason"]).
+            IF data:HASKEY("pred_xfer") { SET res_t["predicted_dv"] TO data["pred_xfer"]. }
+            IF ver_t:HASKEY("patch_body") { SET res_t["anomalies"] TO ver_t["patch_body"]. }
             SET res_t TO aoso_verify_apply_result(res_t, ver_t).
             aoso_result_emit(res_t).
         }
@@ -765,11 +767,18 @@ FUNCTION aoso_goto_done_entry {
     SET WARP TO 0.
     aoso_throttle_set(0).
     aoso_steer_release().
+    LOCAL cap_pred IS 0.
+    IF data:HASKEY("pred_cap") { SET cap_pred TO data["pred_cap"]. }
+    LOCAL did_c IS aoso_decide("GOTO", "capture", data["goal"], "arrive", "pred=" + ROUND(cap_pred, 0), cap_pred).
+    LOCAL act_c IS aoso_action_create(did_c, "CAPTURE", data["goal"], cap_pred).
+    aoso_action_begin(act_c).
+    LOCAL ver_c IS aoso_verify_capture(data["goal"]).
+    LOCAL res_c IS aoso_result_from_action(act_c, ver_c["status"], ver_c["reason"]).
+    SET res_c["predicted_dv"] TO cap_pred.
+    SET res_c TO aoso_verify_apply_result(res_c, ver_c).
+    aoso_result_emit(res_c).
     LOCAL ver_x IS aoso_verify_transfer(data["goal"]).
-    LOCAL res_g IS aoso_result_make("TRANSFER", "SUCCESS", "arrived").
-    SET res_g TO aoso_verify_apply_result(res_g, ver_x).
-    aoso_result_emit(res_g).
-    aoso_log_info("GOTO", "Arrived at " + data["goal"] + " verify=" + ver_x["reason"] + ".").
+    aoso_log_info("GOTO", "Arrived at " + data["goal"] + " capture=" + ver_c["reason"] + " transfer=" + ver_x["reason"] + ".").
 }
 
 FUNCTION aoso_goto_aborted_entry {
@@ -795,6 +804,15 @@ FUNCTION aoso_goto_start {
     aoso_goto_define_states().
     SET AOSO_GOTO["data"] TO LEXICON("goal", body_name, "hop", "", "burn_kind", "", "depart_body", SHIP:BODY:NAME, "window_ut", 0, "coast_since", 0, "retry_ut", 0, "corrected", FALSE, "correct_count", 0, "last_patch_ut", 0, "expect_body", "", "expect_ut", 0, "patch_lost_ut", 0, "capture_fails", 0, "skip_capture", FALSE).
     aoso_log_info("GOTO", "Navigating to " + body_name + ".").
+    LOCAL pred_g IS aoso_feas_transfer_cost(SHIP:BODY:NAME, body_name).
+    LOCAL cap_g IS aoso_feas_body_stat(body_name, "capture", 0).
+    LOCAL xfer_g IS aoso_project_xfer_only(pred_g, cap_g).
+    SET AOSO_GOTO["data"]["pred_xfer"] TO xfer_g.
+    SET AOSO_GOTO["data"]["pred_cap"] TO cap_g.
+    LOCAL did_g IS aoso_decide("GOTO", "start", body_name, "transfer", "pred=" + ROUND(xfer_g, 0), xfer_g).
+    LOCAL act_g IS aoso_action_create(did_g, "TRANSFER", body_name, xfer_g).
+    aoso_action_begin(act_g).
+    SET AOSO_GOTO["data"]["action_id"] TO did_g.
     // Do not run PLAN on the tour/mission stack - that blew kOS's 3000-slot
     // argument stack at aoso_goto_update (Acacius). Queue it; the sibling
     // "goto" scheduler task runs PLAN from a shallow stack next tick.

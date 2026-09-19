@@ -209,6 +209,11 @@ FUNCTION aoso_json_parse_number {
 FUNCTION aoso_json_write {
     PARAMETER file_path.
     PARAMETER value.
+    IF value:ISTYPE("Lexicon") {
+        IF NOT value:HASKEY("schema_version") {
+            SET value["schema_version"] TO aoso_const_get("SCHEMA_VERSION").
+        }
+    }
     IF aoso_addon_simplejson_available() {
         aoso_addon_simplejson_write(file_path, value).
         RETURN TRUE.
@@ -233,14 +238,30 @@ FUNCTION aoso_json_read {
     PARAMETER default_value IS LEXICON().
     IF NOT EXISTS(file_path) { RETURN default_value. }
     IF aoso_addon_simplejson_available() {
-        RETURN aoso_addon_simplejson_read(file_path, default_value).
+        RETURN aoso_json_migrate(aoso_addon_simplejson_read(file_path, default_value)).
     }
     // READALL() returns a FileContent, which only supports :STRING/:BINARY/
     // :ITERATOR - it has no :LENGTH-as-line-count or :POP suffix like a List.
     LOCAL f IS OPEN(file_path).
     LOCAL text IS f:READALL():STRING.
     IF text:LENGTH = 0 { RETURN default_value. }
-    RETURN aoso_json_decode(text).
+    RETURN aoso_json_migrate(aoso_json_decode(text)).
+}
+
+FUNCTION aoso_json_schema_of {
+    PARAMETER value.
+    IF NOT value:ISTYPE("Lexicon") { RETURN 0. }
+    IF value:HASKEY("schema_version") { RETURN value["schema_version"]. }
+    RETURN 1.
+}
+
+FUNCTION aoso_json_migrate {
+    PARAMETER value.
+    IF NOT value:ISTYPE("Lexicon") { RETURN value. }
+    IF NOT value:HASKEY("schema_version") {
+        SET value["schema_version"] TO 1.
+    }
+    RETURN value.
 }
 
 // Archive volume survives revert-to-VAB / new launches; 0:/ is wiped with
@@ -274,7 +295,9 @@ FUNCTION aoso_json_read_persistent {
     PARAMETER archive_path.
     PARAMETER default_value IS LEXICON().
     IF aoso_json_archive_ok() {
-        IF EXISTS(archive_path) { RETURN aoso_json_read(archive_path, default_value). }
+        IF EXISTS(archive_path) {
+            RETURN aoso_json_migrate(aoso_json_read(archive_path, default_value)).
+        }
     }
-    RETURN aoso_json_read(local_path, default_value).
+    RETURN aoso_json_migrate(aoso_json_read(local_path, default_value)).
 }

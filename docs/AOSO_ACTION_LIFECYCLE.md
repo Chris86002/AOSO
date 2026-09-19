@@ -14,6 +14,51 @@ PLAN → DECISION → ACTION
   → RE-CERTIFY / REPLAN if needed
 ```
 
+Identity must correspond:
+
+```
+DECISION 41  TRANSFER Duna  predicted 1080 m/s
+ACTION   41  START
+ACTION   41  COMPLETE
+RESULT   41  actual 1127  error +47  SUCCESS
+```
+
+Do not stamp results from the latest global sequence. `aoso_decide`
+**returns** the id. `aoso_action_create(id, type, target, predicted_dv)`
+builds the lexicon. `aoso_action_begin` sets `AOSO_ACTION_CUR`.
+`aoso_result_make` / `aoso_result_from_action` copy that id.
+`aoso_result_emit` closes the decision, ingests XP, and clears
+`AOSO_ACTION_CUR`.
+
+Never name `GLOBAL AOSO_ACTION` (collides with `FUNCTION aoso_action_*`
+if someone adds `aoso_action`). The current object is
+`AOSO_ACTION_CUR`.
+
+## Action schema
+
+```
+action_id, decision_id, type, target, controller,
+predicted_dv, predicted_fuel, predicted_duration, confidence,
+start_body, start_mass, start_fuel, started_at,
+topology_revision, vehicle_revision, plan_revision
+```
+
+Types used as XP ops: `ASCENT`, `CIRCULARIZATION`, `MANEUVER`,
+`TRANSFER`, `CAPTURE`, `LANDING`, `TAKEOFF`, `STAGING`, `REFUEL`,
+`RETURN`.
+
+## Who starts what
+
+| Action | Where |
+|---|---|
+| ASCENT / TAKEOFF | `ascent_start` — TAKEOFF if landed off-Kerbin |
+| MANEUVER | `maneuver` finish; creates action if `ACTION_CUR` empty |
+| TRANSFER | `goto_start` with `xfer_only` (capture not mixed in) |
+| CAPTURE | `goto_done` + `aoso_verify_capture(goal)` |
+| LANDING | `descent_start`; touchdown verifies srf/vs/tilt |
+| REFUEL | `refuel_start`; stow classifies SUCCESS/PARTIAL/FAILED |
+| STAGING | `aoso_staging_emit` after `aoso_staging_do` (pred mass vs actual) |
+
 ## Preconditions
 
 Examples the machines already enforce:
@@ -35,8 +80,10 @@ A named controller calls `aoso_auth_use(who)` then
 (backward compatible). Higher prio preempts; equal prio is denied.
 
 Ascent (prio 3), maneuver (3), descent (4) acquire on start and
-`aoso_auth_release_all` on done/abort. Tracking locks
-(`prograde` / `srf_retro` / `up`) now honor `aoso_auth_can_cmd`.
+`aoso_auth_release_all` on done/abort. `aoso_staging_do` allows
+ascent / maneuver / descent / goto / auto_staging (WHO-empty still
+bypasses until callers all set identity).
+
 `aoso_steer_release` stays ungated so HOLD can always drop the lock.
 
 ## Execution
@@ -45,20 +92,22 @@ Existing FSMs fly the ship. The brain never steers.
 
 Warp: controllers should `aoso_warp_deadline_set` then
 `aoso_warp_request`. Actual `SET WARP` / `WARPTO` still live in
-`aoso_warp_approach`. Maneuver registers the node UT so a long rails
-coast cannot skip ignition.
+`aoso_warp_approach`. Many controllers still `SET WARP TO 0` as a
+hard stop (proven, not aesthetic purity). Maneuver registers the
+node UT so a long rails coast cannot skip ignition.
 
 ## Postconditions — `core/verify.ks`
 
 | Action | Verifier | Success means |
 |---|---|---|
-| Ascent / takeoff | `aoso_verify_ascent` | Bound orbit, PE above atmo/floor |
+| Ascent / takeoff | `aoso_verify_ascent` / `takeoff` | Bound orbit, PE above atmo/floor |
 | Maneuver | `aoso_verify_maneuver` | Burn result not missed/incomplete/no-thrust |
-| Transfer | `aoso_verify_transfer` | In goal SOI or a live patch to it |
-| Capture | `aoso_verify_capture` | Bound, PE safe |
-| Landing | `aoso_verify_landing` | LANDED/SPLASHED, not sliding, not falling |
+| Transfer | `aoso_verify_transfer` | In goal SOI or a live patch; `patch_body`, periapsis, encounter ETA |
+| Capture | `aoso_verify_capture(expect_body)` | Correct body, bound, PE safe |
+| Landing | `aoso_verify_landing` | LANDED/SPLASHED, not sliding, not falling, tilt ≤ 55° |
+| Refuel | classify start/end/target | SUCCESS / PARTIAL / FAILED / ABORTED |
 
-Statuses: `SUCCESS` / `PARTIAL` / `FAILED`.
+Statuses: `SUCCESS` / `PARTIAL` / `FAILED` / `ABORTED`.
 
 `aoso_verify_apply_result` copies that onto the action result before
 `aoso_result_emit`.
@@ -80,4 +129,6 @@ seed → Hohmann windows. Each step is explainable in the log.
 ## Learning
 
 `aoso_result_emit` still ingests XP when predicted dV > 0. Learning
-must change the next feasibility cost (`aoso_xp_apply`).
+must change the next feasibility cost (`aoso_xp_apply`). REFUEL uses
+fuel-pct, not a dV model. STAGING uses predicted vs actual mass
+(stored in the dV fields).
