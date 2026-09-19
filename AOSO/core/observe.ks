@@ -30,6 +30,8 @@ GLOBAL AOSO_CPU_SPILLS IS 0.
 GLOBAL AOSO_CPU_LAST_WALL IS 0.
 GLOBAL AOSO_CPU_FRAC IS 0.
 GLOBAL AOSO_CPU_USED IS 0.
+GLOBAL AOSO_CPU_LOG_UT IS 0.
+GLOBAL AOSO_CPU_LOG_NAME IS "NORMAL".
 GLOBAL AOSO_TELEM_FLUSH_NOW IS FALSE.
 
 FUNCTION aoso_observe_init {
@@ -49,6 +51,8 @@ FUNCTION aoso_observe_init {
     SET AOSO_CPU_SPILLS TO 0.
     SET AOSO_CPU_FRAC TO 0.
     SET AOSO_CPU_USED TO 0.
+    SET AOSO_CPU_LOG_UT TO 0.
+    SET AOSO_CPU_LOG_NAME TO "NORMAL".
     SET AOSO_PROF TO LEXICON().
     SET AOSO_PROF_NAME TO "".
     SET AOSO_OBS_TELEM_LAST TO 0.
@@ -347,8 +351,12 @@ FUNCTION aoso_observe_cpu_end {
     SET AOSO_CPU_LAST_WALL TO wall.
     SET AOSO_CPU_FRAC TO frac.
     SET AOSO_CPU_USED TO op_used.
-    IF level <> prev {
-        aoso_observe_event("CPU", "INFO", cname, "level=" + prev + "->" + level + " frac=" + ROUND(frac, 2) + " wall=" + ROUND(wall, 3)).
+    IF cname <> AOSO_CPU_LOG_NAME {
+        IF TIME:SECONDS - AOSO_CPU_LOG_UT >= 8 {
+            SET AOSO_CPU_LOG_UT TO TIME:SECONDS.
+            SET AOSO_CPU_LOG_NAME TO cname.
+            aoso_observe_event("CPU", "INFO", cname, "level=" + prev + "->" + level + " frac=" + ROUND(frac, 2) + " wall=" + ROUND(wall, 3)).
+        }
     }
 }
 

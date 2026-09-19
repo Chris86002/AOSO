@@ -111,8 +111,41 @@ FUNCTION aoso_rendezvous_dv_max {
     RETURN dv_max.
 }
 
+FUNCTION aoso_rendezvous_search_step_s {
+    PARAMETER hop.
+    LOCAL r2 IS hop:ORBIT:SEMIMAJORAXIS.
+    LOCAL soi IS hop:SOIRADIUS.
+    LOCAL frac IS soi / MAX(1, r2).
+    IF frac > 0.999 { SET frac TO 0.999. }
+    LOCAL ang IS 2 * ARCSIN(frac).
+    LOCAL p_ship IS aoso_orbit_period_s().
+    IF p_ship < 80 { SET p_ship TO 600. }
+    LOCAL p_hop IS hop:ORBIT:PERIOD.
+    IF p_hop < 80 { SET p_hop TO p_ship. }
+    LOCAL rel IS ABS((360 / p_ship) - (360 / p_hop)).
+    IF rel < 0.002 { RETURN 12. }
+    LOCAL win IS ang / rel.
+    LOCAL step IS win / 5.
+    IF step < 3 { SET step TO 3. }
+    IF step > 18 { SET step TO 18. }
+    RETURN step.
+}
+
+FUNCTION aoso_rendezvous_sample_hit {
+    PARAMETER nd.
+    PARAMETER hop.
+    PARAMETER t_ut.
+    IF t_ut <= TIME:SECONDS + 25 { RETURN -1. }
+    SET nd:ETA TO t_ut - TIME:SECONDS.
+    WAIT 0.
+    IF NOT aoso_rendezvous_node_hits_body(nd, hop) { RETURN -1. }
+    RETURN aoso_rendezvous_pe_score(nd, hop, aoso_rendezvous_desired_pe(hop)).
+}
+
 // Keep the *best* patched PE, not the first clip. First-hit at T+219s
 // was a 61 km Minmus graze; the Hohmann window (~15 km PE) was later.
+// Step size tracks SOI angular width: Minmus's departure window is ~15 s,
+// so a 25 s walk skipped the intercept entirely.
 FUNCTION aoso_rendezvous_search_intercept {
     PARAMETER nd.
     PARAMETER hop.
@@ -129,7 +162,12 @@ FUNCTION aoso_rendezvous_search_intercept {
     LOCAL period IS aoso_orbit_period_s().
     IF period < 80 { SET period TO 600. }
     LOCAL t_center IS TIME:SECONDS + nd:ETA.
-    aoso_ui_pulse("Searching " + hop:NAME + " intercept", "Hohmann window first, then best PE").
+    LOCAL step_s IS aoso_rendezvous_search_step_s(hop).
+    LOCAL fine_span IS 120.
+    IF fine_span > period * 0.3 { SET fine_span TO period * 0.3. }
+    IF fine_span < step_s * 8 { SET fine_span TO step_s * 8. }
+    aoso_log_info("RENDEZVOUS", hop:NAME + " search step=" + ROUND(step_s, 1) + "s fine=±" + ROUND(fine_span, 0) + "s (SOI-sized; 25s used to miss Minmus).").
+    aoso_ui_pulse("Searching " + hop:NAME + " intercept", "step " + ROUND(step_s, 0) + "s  Hohmann first").
 
     LOCAL best_sc IS 1000000000000.
     LOCAL best_ut IS t_center.
@@ -150,48 +188,49 @@ FUNCTION aoso_rendezvous_search_intercept {
             LOCAL dv_try IS dv_use * scales[si].
             IF dv_try > dv_max { SET dv_try TO dv_max. }
             SET nd:PROGRADE TO dv_try.
-            LOCAL step_s IS 25.
-            IF si > 0 { SET step_s TO 40. }
-            LOCAL delta IS 0.
-            UNTIL delta > period {
-                LOCAL t_ut IS t_center + delta.
-                IF t_ut > TIME:SECONDS + 25 {
-                    SET nd:ETA TO t_ut - TIME:SECONDS.
-                    WAIT 0.
-                    IF aoso_rendezvous_node_hits_body(nd, hop) {
-                        LOCAL sc IS aoso_rendezvous_pe_score(nd, hop, desired).
-                        IF sc < best_sc {
-                            SET best_sc TO sc.
-                            SET best_ut TO TIME:SECONDS + nd:ETA.
-                            SET best_pg TO nd:PROGRADE.
-                            SET found TO TRUE.
-                        }
-                    }
-                    SET n_chk TO n_chk + 1.
+            LOCAL pass IS 0.
+            UNTIL pass >= 2 {
+                LOCAL span IS fine_span.
+                LOCAL use_step IS step_s.
+                IF pass = 1 {
+                    SET span TO period.
+                    SET use_step TO step_s * 2.
+                    IF found { SET pass TO 2. }
                 }
-                IF delta > 0 {
-                    SET t_ut TO t_center - delta.
-                    IF t_ut > TIME:SECONDS + 25 {
-                        SET nd:ETA TO t_ut - TIME:SECONDS.
-                        WAIT 0.
-                        IF aoso_rendezvous_node_hits_body(nd, hop) {
-                            LOCAL sc2 IS aoso_rendezvous_pe_score(nd, hop, desired).
-                            IF sc2 < best_sc {
-                                SET best_sc TO sc2.
+                IF pass < 2 {
+                    LOCAL delta IS 0.
+                    UNTIL delta > span {
+                        LOCAL sc IS aoso_rendezvous_sample_hit(nd, hop, t_center + delta).
+                        IF sc >= 0 {
+                            IF sc < best_sc {
+                                SET best_sc TO sc.
                                 SET best_ut TO TIME:SECONDS + nd:ETA.
                                 SET best_pg TO nd:PROGRADE.
                                 SET found TO TRUE.
                             }
                         }
                         SET n_chk TO n_chk + 1.
+                        IF delta > 0 {
+                            LOCAL sc2 IS aoso_rendezvous_sample_hit(nd, hop, t_center - delta).
+                            IF sc2 >= 0 {
+                                IF sc2 < best_sc {
+                                    SET best_sc TO sc2.
+                                    SET best_ut TO TIME:SECONDS + nd:ETA.
+                                    SET best_pg TO nd:PROGRADE.
+                                    SET found TO TRUE.
+                                }
+                            }
+                            SET n_chk TO n_chk + 1.
+                        }
+                        SET delta TO delta + use_step.
+                        IF n_chk >= 8 {
+                            LOCAL pe_txt IS "none yet".
+                            IF found { SET pe_txt TO ROUND(best_sc, 0) + " score". }
+                            aoso_ui_pulse("Searching " + hop:NAME + " intercept", "window ±" + ROUND(delta, 0) + "s  best " + pe_txt).
+                            SET n_chk TO 0.
+                        }
                     }
-                }
-                SET delta TO delta + step_s.
-                IF n_chk >= 8 {
-                    LOCAL pe_txt IS "none yet".
-                    IF found { SET pe_txt TO ROUND(best_sc, 0) + " score". }
-                    aoso_ui_pulse("Searching " + hop:NAME + " intercept", "window ±" + ROUND(delta, 0) + "s  best " + pe_txt).
-                    SET n_chk TO 0.
+                    SET pass TO pass + 1.
                 }
             }
             SET si TO si + 1.
@@ -310,7 +349,7 @@ FUNCTION aoso_rendezvous_search_apo_passages {
     LOCAL best_pg IS 0.
     LOCAL found IS FALSE.
     LOCAL k IS 0.
-    UNTIL k >= 3 {
+    UNTIL k >= 10 {
         LOCAL di IS 0.
         UNTIL di >= dvs:LENGTH {
             SET nd:PROGRADE TO dvs[di].
@@ -333,7 +372,7 @@ FUNCTION aoso_rendezvous_search_apo_passages {
             }
             SET di TO di + 1.
         }
-        aoso_ui_pulse("Phasing to " + hop:NAME, "apoapsis pass " + (k + 1) + "/3").
+        aoso_ui_pulse("Phasing to " + hop:NAME, "apoapsis pass " + (k + 1) + "/10").
         SET k TO k + 1.
     }
     IF found {
@@ -436,17 +475,25 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
 
     LOCAL nd IS NODE(TIME:SECONDS + node_wait, 0, 0, dv).
     ADD nd.
-    aoso_log_info("RENDEZVOUS", "Searching " + target_orbitable:NAME + " intercept at Hohmann dv=" + ROUND(dv, 1) + " m/s (escape " + ROUND(dv_esc, 1) + ") in " + ROUND(node_wait, 0) + "s.").
+    LOCAL polar_hop IS FALSE.
+    IF DEFINED AOSO_WANT_POLAR {
+        IF AOSO_WANT_POLAR { SET polar_hop TO TRUE. }
+    }
+    LOCAL rel_now IS aoso_orbit_relative_inclination_deg(SHIP, target_orbitable).
+    IF rel_now >= 0.5 {
+        IF NOT polar_hop {
+            aoso_log_info("RENDEZVOUS", "Matching " + ROUND(rel_now, 1) + " deg plane to " + target_orbitable:NAME + " before intercept search (equatorial Hohmann misses Minmus SOI).").
+            aoso_planechange_apply_to_node(nd, target_orbitable).
+            WAIT 0.
+        }
+    }
+    aoso_log_info("RENDEZVOUS", "Searching " + target_orbitable:NAME + " intercept at Hohmann dv=" + ROUND(dv, 1) + " m/s (escape " + ROUND(dv_esc, 1) + ") in " + ROUND(node_wait, 0) + "s rel_inc=" + ROUND(rel_now, 1) + "deg.").
     aoso_ui_set("Searching " + target_orbitable:NAME + " intercept", "Hohmann " + ROUND(dv, 0) + " m/s  window " + ROUND(node_wait, 0) + "s").
 
     LOCAL hit IS aoso_rendezvous_search_intercept(nd, target_orbitable, dv).
 
     IF hit {
-        LOCAL polar_hop IS FALSE.
-        IF DEFINED AOSO_WANT_POLAR {
-            IF AOSO_WANT_POLAR { SET polar_hop TO TRUE. }
-        }
-        LOCAL rel_now IS aoso_orbit_rel_inc_from_orbit(nd:ORBIT, target_orbitable).
+        SET rel_now TO aoso_orbit_rel_inc_from_orbit(nd:ORBIT, target_orbitable).
         IF rel_now >= 0.15 {
             IF NOT polar_hop {
                 LOCAL sc_before IS aoso_rendezvous_pe_score(nd, target_orbitable, aoso_rendezvous_desired_pe(target_orbitable)).

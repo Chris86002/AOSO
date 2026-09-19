@@ -258,7 +258,6 @@ FUNCTION aoso_goto_plan_entry {
     LOCAL rel_incl IS aoso_orbit_relative_inclination_deg(SHIP, hop).
     LOCAL match_plane IS TRUE.
     IF AOSO_WANT_POLAR { SET match_plane TO FALSE. }
-    IF aoso_addon_available("ASTROGATOR") { SET match_plane TO FALSE. }
     IF rel_incl > 2 {
         IF match_plane {
             LOCAL nd_pc IS aoso_planechange_add_node_for_target(hop).
@@ -268,9 +267,7 @@ FUNCTION aoso_goto_plan_entry {
                 RETURN.
             }
         } ELSE {
-            LOCAL why IS "polar arrival".
-            IF aoso_addon_available("ASTROGATOR") { SET why TO "Astrogator will own the intercept/plane". }
-            aoso_log_info("GOTO", "Skipping " + ROUND(rel_incl, 1) + " deg plane-match to " + hop:NAME + " (" + why + ").").
+            aoso_log_info("GOTO", "Skipping " + ROUND(rel_incl, 1) + " deg plane-match to " + hop:NAME + " (polar arrival).").
         }
     }
 
