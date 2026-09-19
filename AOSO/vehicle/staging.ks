@@ -51,6 +51,8 @@ GLOBAL AOSO_STG_AIRBORNE IS FALSE.
 GLOBAL AOSO_STG_THRUST IS 0.
 GLOBAL AOSO_STG_DROP_FUEL IS -1.
 GLOBAL AOSO_STG_DROP_AT IS -99.
+GLOBAL AOSO_STAGING_PRED_TWR IS 0.
+GLOBAL AOSO_STAGING_PRED_STG IS -1.
 
 FUNCTION aoso_staging_airborne {
     LOCAL st IS SHIP:STATUS.
@@ -88,11 +90,8 @@ FUNCTION aoso_staging_emit {
     IF reason = "drop boosters" { SET cat TO "boosters". }
     aoso_decide("STAGING", "stage", reason, cat, "stg=" + prev + " twr_now=" + twr_now + " twr_next=" + twr_next).
     aoso_event_publish("STAGE_COMPLETE", "staging", reason).
-    IF pred["twr_next"] > 1.2 {
-        IF actual_twr < 0.5 {
-            aoso_observe_anomaly("THRUST_MISMATCH", "HIGH", pred["twr_next"], actual_twr).
-        }
-    }
+    // THRUST_MISMATCH is judged after spool in aoso_staging_judge_mismatch.
+    // Measuring AVAILABLETHRUST in the same tick as STAGE() is always ~0.
 }
 
 // Burnable propellant pooled to the current stage. Ore / EC / Ablator are
@@ -246,26 +245,21 @@ FUNCTION aoso_staging_sense {
     }
     SET AOSO_STG_BOOSTERS TO boosters.
 
-    // Highest DECOUPLEDIN group falls off on the next STAGE(). If any of
-    // those engines still have MASSFLOW, staging is a hot-sep and the
-    // booster flies into the core (Acacius MET 62, stage 7, TWR 1.48).
-    LOCAL max_d IS -1.
-    FOR e IN elist {
-        IF e:DECOUPLEDIN > max_d { SET max_d TO e:DECOUPLEDIN. }
-    }
+    // Highest-DECOUPLEDIN is the next *engine layer*, not the next KSP
+    // STAGE(). Acacius MET 139: STAGE:NUMBER=6 was a fairing, engines
+    // sit at DECOUPLEDIN=5. Treating max_d as the drop group blocked a
+    // fairing walk while the core burned, or (after flameout) predicted
+    // TWR 3.69 for a STAGE() that only jettisoned the shell.
+    LOCAL want IS STAGE:NUMBER.
     LOCAL drop_flowing IS FALSE.
-    IF max_d >= 0 {
-        FOR e IN elist {
-            IF e:DECOUPLEDIN = max_d {
-                IF e:IGNITION {
-                    IF NOT e:FLAMEOUT {
-                        IF e:MASSFLOW > 0.0001 { SET drop_flowing TO TRUE. }
-                    }
+    FOR e IN elist {
+        IF e:DECOUPLEDIN = want {
+            IF e:IGNITION {
+                IF NOT e:FLAMEOUT {
+                    IF e:MASSFLOW > 0.0001 { SET drop_flowing TO TRUE. }
                 }
             }
         }
-    } ELSE {
-        IF flowing > 0 { SET drop_flowing TO TRUE. }
     }
     SET AOSO_STG_DROP_FLOWING TO drop_flowing.
 }
@@ -486,6 +480,43 @@ FUNCTION aoso_staging_next_drops_fuel {
     RETURN drops.
 }
 
+FUNCTION aoso_staging_drop_has_unlit {
+    LOCAL want IS STAGE:NUMBER.
+    LOCAL engs IS aoso_parts_engines().
+    LOCAL in_drop IS FALSE.
+    LOCAL es IS -99.
+    FOR e IN engs {
+        SET in_drop TO FALSE.
+        IF NOT e:IGNITION {
+            IF NOT e:FLAMEOUT {
+                IF e:DECOUPLEDIN = want { SET in_drop TO TRUE. }
+                SET es TO aoso_staging_eng_activate_stage(e).
+                IF es = want { SET in_drop TO TRUE. }
+                IF in_drop { RETURN TRUE. }
+            }
+        }
+    }
+    RETURN FALSE.
+}
+
+FUNCTION aoso_staging_judge_mismatch {
+    IF AOSO_STAGING_PRED_TWR <= 1.2 {
+        SET AOSO_STAGING_PRED_TWR TO 0.
+        RETURN.
+    }
+    IF SHIP:AVAILABLETHRUST > 0.05 {
+        SET AOSO_STAGING_PRED_TWR TO 0.
+        RETURN.
+    }
+    LOCAL actual_twr IS aoso_perf_twr().
+    IF actual_twr < 0.5 {
+        aoso_observe_anomaly("THRUST_MISMATCH", "HIGH", AOSO_STAGING_PRED_TWR, actual_twr).
+        aoso_log_warn("STAGING", "Thrust mismatch after spool: predicted TWR " + ROUND(AOSO_STAGING_PRED_TWR, 2) +
+            " actual " + ROUND(actual_twr, 2) + " stg=" + STAGE:NUMBER + " unlit=" + AOSO_STG_UNIGNITED + ".").
+    }
+    SET AOSO_STAGING_PRED_TWR TO 0.
+}
+
 FUNCTION aoso_staging_eng_activate_stage {
     PARAMETER e.
     IF e:HASSUFFIX("STAGE") { RETURN e:STAGE. }
@@ -559,6 +590,7 @@ FUNCTION aoso_staging_light_unlit {
 FUNCTION aoso_staging_finish_relight {
     SET AOSO_STAGING_PENDING_RELIGHT TO FALSE.
     IF SHIP:AVAILABLETHRUST > 0.05 {
+        SET AOSO_STAGING_PRED_TWR TO 0.
         aoso_staging_reset_relight().
         RETURN.
     }
@@ -566,6 +598,7 @@ FUNCTION aoso_staging_finish_relight {
     IF AOSO_STG_DROP_FLOWING {
         aoso_log_warn("STAGING", "No thrust after staging but next drop group still thrusting - not dumping it.").
         SET AOSO_STAGING_EXTRA_THIS TO 0.
+        aoso_staging_judge_mismatch().
         RETURN.
     }
 
@@ -579,21 +612,42 @@ FUNCTION aoso_staging_finish_relight {
         }
     }
 
+    // Serial ignition: the next KSP stage has unlit engines. STAGE() is
+    // how those engines light, even when their tanks still have fuel.
+    // Refusing that drop is what left Acacius at TWR 0 after a fairing.
+    IF aoso_staging_drop_has_unlit() {
+        IF STAGE:NUMBER > 0 {
+            IF STAGE:READY {
+                LOCAL prev_lit IS STAGE:NUMBER.
+                aoso_log_info("STAGING", "Relight: lighting unlit engines on stage " + prev_lit + ".").
+                STAGE.
+                aoso_staging_after_stage().
+                SET AOSO_STAGING_EMPTY_WALK TO AOSO_STAGING_EMPTY_WALK + 1.
+                SET AOSO_STAGING_RELIGHT_ATTEMPTS TO AOSO_STAGING_RELIGHT_ATTEMPTS + 1.
+                SET AOSO_STAGING_PENDING_RELIGHT TO TRUE.
+                RETURN.
+            }
+        }
+    }
+
     LOCAL drops_fuel IS aoso_staging_next_drops_fuel().
     IF aoso_staging_stage_has_fuel() {
         aoso_log_warn("STAGING", "No thrust after staging but current stage still has fuel - not dumping it.").
         SET AOSO_STAGING_EXTRA_THIS TO 0.
+        aoso_staging_judge_mismatch().
         RETURN.
     }
     IF drops_fuel {
         aoso_log_warn("STAGING", "No thrust after staging but next stage still has fuel - lighting engines, not dumping tanks.").
         SET AOSO_STAGING_EXTRA_THIS TO 0.
+        aoso_staging_judge_mismatch().
         RETURN.
     }
 
     LOCAL max_walk IS aoso_config_get("STAGING_MAX_EMPTY_WALK", 6).
     IF AOSO_STAGING_EMPTY_WALK >= max_walk {
         aoso_log_warn("STAGING", "Relight: still no thrust after walking " + AOSO_STAGING_EMPTY_WALK + " empty stage(s); unlit engines=" + AOSO_STG_UNIGNITED + " ship LF=" + ROUND(aoso_staging_ship_lf(), 0) + ".").
+        aoso_staging_judge_mismatch().
         RETURN.
     }
     IF STAGE:NUMBER <= 0 { RETURN. }
@@ -655,6 +709,8 @@ FUNCTION aoso_staging_auto_check {
         aoso_staging_after_stage().
         SET AOSO_STAGING_EXTRA_THIS TO 0.
         SET AOSO_STAGING_PENDING_RELIGHT TO TRUE.
+        SET AOSO_STAGING_PRED_TWR TO pred["twr_next"].
+        SET AOSO_STAGING_PRED_STG TO prev.
 
         aoso_staging_emit(prev, reason, pred).
         SET AOSO_PROFILE_PENDING TO "staging".
@@ -723,6 +779,8 @@ FUNCTION aoso_staging_ensure_thrust {
     aoso_staging_after_stage().
     SET AOSO_STAGING_EXTRA_THIS TO 0.
     SET AOSO_STAGING_PENDING_RELIGHT TO TRUE.
+    SET AOSO_STAGING_PRED_TWR TO pred["twr_next"].
+    SET AOSO_STAGING_PRED_STG TO prev.
     aoso_staging_emit(prev, "relight", pred).
     SET AOSO_PROFILE_PENDING TO "ensure_thrust".
     RETURN SHIP:AVAILABLETHRUST > 0.05.

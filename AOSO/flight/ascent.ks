@@ -183,7 +183,20 @@ FUNCTION aoso_ascent_steer {
         LOCAL cmd IS aoso_ascent_program_pitch(data).
         LOCAL fpa IS aoso_ascent_flight_path_pitch().
         LOCAL max_aoa IS aoso_ascent_max_aoa().
-        LOCAL lo IS fpa - max_aoa.
+        // Asymmetric AoA: 7 deg nose-up is a structural/aero limit.
+        // Nose-down is how a tall stack catches a lofted flight path.
+        // Symmetric ±7 left Acacius at FPA 83 deg at 25 km.
+        LOCAL down_aoa IS max_aoa + 8.
+        IF down_aoa > 18 { SET down_aoa TO 18. }
+        LOCAL lofting IS FALSE.
+        IF fpa - cmd > max_aoa { SET lofting TO TRUE. }
+        IF data:HASKEY("loft_flagged") {
+            IF data["loft_flagged"] { SET lofting TO TRUE. }
+        }
+        IF lofting {
+            IF down_aoa < 15 { SET down_aoa TO 15. }
+        }
+        LOCAL lo IS fpa - down_aoa.
         LOCAL hi IS fpa + max_aoa.
         IF cmd < lo { SET cmd TO lo. }
         IF cmd > hi { SET cmd TO hi. }
@@ -291,9 +304,20 @@ FUNCTION aoso_ascent_turn_throttle {
     IF APOAPSIS >= target_apo { RETURN 0. }
 
     LOCAL fpa IS aoso_ascent_flight_path_pitch().
-    // Steep + in air: TWR cap is the only loft lever. Full throttle here
-    // is why Acacius lofted (TWR 2.6, FPA 83 deg at 30 km).
+    // Steep + in air: TWR cap is the loft lever. Full throttle here is
+    // why Acacius lofted (TWR 2.6, FPA 83 deg at 30 km). Tighten further
+    // when the path is already near vertical so gravity can pull it over.
     IF aoso_ascent_in_atmosphere() {
+        IF fpa > 55 {
+            LOCAL steep_lim IS 1.45.
+            IF fpa > 70 { SET steep_lim TO 1.25. }
+            LOCAL twr_now IS aoso_perf_twr().
+            IF twr_now > steep_lim {
+                LOCAL sth IS steep_lim / twr_now.
+                IF sth < 0.35 { SET sth TO 0.35. }
+                IF sth < twr_th { SET twr_th TO sth. }
+            }
+        }
         IF fpa > 42 {
             RETURN MIN(q_mult, twr_th).
         }
@@ -554,11 +578,16 @@ FUNCTION aoso_ascent_turn_execute {
 
     IF NOT data:HASKEY("loft_flagged") { SET data["loft_flagged"] TO FALSE. }
     IF NOT data["loft_flagged"] {
-        IF ALTITUDE > 25000 {
-            LOCAL fpa_now IS aoso_ascent_flight_path_pitch().
-            IF fpa_now > 75 {
+        LOCAL fpa_now IS aoso_ascent_flight_path_pitch().
+        LOCAL loft_alt IS 12000.
+        LOCAL loft_fpa IS 70.
+        IF ALTITUDE > loft_alt {
+            IF fpa_now > loft_fpa {
                 SET data["loft_flagged"] TO TRUE.
                 aoso_observe_anomaly("LOFT", "HIGH", 45, fpa_now).
+                aoso_log_warn("ASCENT", "Loft: FPA=" + ROUND(fpa_now, 1) + " facing=" + ROUND(aoso_ascent_facing_pitch(), 1) +
+                    " program=" + ROUND(aoso_ascent_program_pitch(data), 1) + " alt=" + ROUND(ALTITUDE, 0) +
+                    " TWR=" + ROUND(aoso_perf_twr(), 2) + " - pitching down, capping TWR.").
             }
         }
     }
@@ -837,6 +866,14 @@ FUNCTION aoso_ascent_start {
         "circ_now", FALSE,
         "circ_dv", 0
     ).
+    LOCAL opt_row IS aoso_ascent_opt_row().
+    IF opt_row["status"] = "locked" {
+        IF opt_row["best"]:HASKEY("turn_speed") {
+            SET AOSO_ASCENT["data"]["pitchover_speed"] TO opt_row["best"]["turn_speed"].
+            SET AOSO_ASCENT_OPT["applied_speed"] TO opt_row["best"]["turn_speed"].
+            SET AOSO_ASCENT_OPT["applied_mode"] TO "locked".
+        }
+    }
     aoso_auth_acquire("ascent", "STEERING", 3).
     aoso_auth_acquire("ascent", "THROTTLE", 3).
     aoso_auth_acquire("ascent", "STAGING", 3).

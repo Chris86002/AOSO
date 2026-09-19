@@ -212,11 +212,14 @@ FUNCTION aoso_profile_refresh {
 
     LOCAL can_launch IS FALSE.
     LOCAL launch_conf IS 0.4.
+    LOCAL home_twr IS aoso_profile_surface_twr(SHIP:BODY:NAME).
     IF on_ground {
-        IF twr_now >= 1.15 {
+        LOCAL pad_twr IS twr_now.
+        IF home_twr > pad_twr { SET pad_twr TO home_twr. }
+        IF pad_twr >= 1.15 {
             SET can_launch TO TRUE.
-            SET launch_conf TO MIN(0.98, 0.55 + (twr_now - 1.15) * 0.25).
-        } ELSE IF twr_now >= 1.02 {
+            SET launch_conf TO MIN(0.98, 0.55 + (pad_twr - 1.15) * 0.25).
+        } ELSE IF pad_twr >= 1.02 {
             SET can_launch TO TRUE.
             SET launch_conf TO 0.6.
         } ELSE {
@@ -257,7 +260,6 @@ FUNCTION aoso_profile_refresh {
 
     LOCAL can_takeoff IS FALSE.
     LOCAL takeoff_conf IS 0.5.
-    LOCAL home_twr IS aoso_profile_surface_twr(SHIP:BODY:NAME).
     LOCAL min_twr IS aoso_config_get("TOUR_MIN_LAND_TWR", 1.4).
     IF home_twr >= min_twr {
         SET can_takeoff TO TRUE.

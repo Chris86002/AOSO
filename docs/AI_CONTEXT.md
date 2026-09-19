@@ -46,6 +46,9 @@ they watch the kOS terminal and the HUD.
 - Background work stops before the protected opcode reserve.
 - Full topology scans are event-driven. Replan may wait for a quiet
   window. HUD/telemetry must never starve flight control.
+- Ascent AoA limit is **asymmetric**: tight nose-up, wider nose-down
+  so a lofted flight path can still catch the pitch program. Do not
+  judge THRUST_MISMATCH in the same tick as `STAGE()`.
 
 ## Think windows
 
