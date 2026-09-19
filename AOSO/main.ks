@@ -27,6 +27,9 @@ RUN ONCE "AOSO/core/config".
 RUN ONCE "AOSO/core/state".
 RUN ONCE "AOSO/core/scheduler".
 RUN ONCE "AOSO/core/observe".
+RUN ONCE "AOSO/core/context".
+RUN ONCE "AOSO/core/events".
+RUN ONCE "AOSO/core/result".
 RUN ONCE "AOSO/core/boot".
 
 // --- Vehicle ----------------------------------------------------------------
@@ -39,6 +42,7 @@ RUN ONCE "AOSO/vehicle/staging".
 RUN ONCE "AOSO/vehicle/profile".
 RUN ONCE "AOSO/vehicle/budget".
 RUN ONCE "AOSO/vehicle/learn".
+RUN ONCE "AOSO/vehicle/experience".
 RUN ONCE "AOSO/vehicle/classify".
 
 // --- Basic flight -----------------------------------------------------------
@@ -97,6 +101,8 @@ RUN ONCE "AOSO/mission/goto".
 RUN ONCE "AOSO/mission/tour".
 RUN ONCE "AOSO/mission/mission".
 
+RUN ONCE "AOSO/core/brain".
+
 // --- Advanced --------------------------------------------------------------
 RUN ONCE "AOSO/advanced/docking".
 
@@ -123,6 +129,7 @@ FUNCTION aoso_main_register_tasks {
     aoso_power_register_task().
     aoso_checkpoints_register_task().
     aoso_watchdog_register_task().
+    aoso_brain_register_task().
     aoso_hud_register_task().
     aoso_telemetry_register_task().
 }

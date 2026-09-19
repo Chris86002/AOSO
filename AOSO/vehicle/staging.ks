@@ -87,6 +87,7 @@ FUNCTION aoso_staging_emit {
     IF reason = "thrust collapse" { SET cat TO "relight". }
     IF reason = "drop boosters" { SET cat TO "boosters". }
     aoso_decide("STAGING", "stage", reason, cat, "stg=" + prev + " twr_now=" + twr_now + " twr_next=" + twr_next).
+    aoso_event_publish("STAGE_COMPLETE", "staging", reason).
     IF pred["twr_next"] > 1.2 {
         IF actual_twr < 0.5 {
             aoso_observe_anomaly("THRUST_MISMATCH", "HIGH", pred["twr_next"], actual_twr).

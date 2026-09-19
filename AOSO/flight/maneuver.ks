@@ -19,6 +19,7 @@
 GLOBAL AOSO_MANEUVER_LOCK IS V(0, 0, 0).
 GLOBAL AOSO_MANEUVER_BURNING IS FALSE.
 GLOBAL AOSO_MANEUVER_LAST_REMAINING IS 0.
+GLOBAL AOSO_MANEUVER_START_DV IS 0.
 GLOBAL AOSO_MANEUVER_RESULT IS "ok".
 GLOBAL AOSO_MANEUVER_NO_THRUST_TICKS IS 0.
 GLOBAL AOSO_MANEUVER_APO_CAP IS -1.
@@ -301,6 +302,16 @@ FUNCTION aoso_maneuver_finish_node {
     aoso_log_info("MANEUVER", "Node executed (" + reason + ").").
     aoso_observe_event("BURN", "INFO", reason, "left=" + ROUND(left, 2)).
     aoso_decide("MANEUVER", "finish", reason, AOSO_MANEUVER_RESULT, "left=" + ROUND(left, 2)).
+    IF AOSO_MANEUVER_RESULT = "ok" {
+        LOCAL res_ok IS aoso_result_make("MANEUVER", "SUCCESS", reason).
+        SET res_ok["predicted_dv"] TO AOSO_MANEUVER_START_DV.
+        SET res_ok["actual_dv"] TO AOSO_MANEUVER_START_DV - left.
+        IF res_ok["actual_dv"] < 0 { SET res_ok["actual_dv"] TO 0. }
+        aoso_result_emit(res_ok).
+    } ELSE {
+        LOCAL res_f IS aoso_result_make("MANEUVER", "FAILED", reason).
+        aoso_result_emit(res_f).
+    }
     IF reason = "missed" {
         aoso_observe_anomaly("BURN_MISSED", "HIGH", 0, left).
     } ELSE {
@@ -334,6 +345,17 @@ FUNCTION aoso_maneuver_execute_next {
     LOCAL nd IS NEXTNODE.
     LOCAL remaining_vec IS nd:BURNVECTOR.
     LOCAL remaining IS remaining_vec:MAG.
+    LOCAL hb_p IS 0.
+    LOCAL hb_st IS "WAIT".
+    IF AOSO_MANEUVER_BURNING {
+        SET hb_st TO "BURN".
+        IF AOSO_MANEUVER_START_DV > 0.1 { SET hb_p TO 1 - remaining / AOSO_MANEUVER_START_DV. }
+    } ELSE {
+        IF nd:ETA > 0 { SET hb_p TO 1 - nd:ETA / (nd:ETA + 3600). }
+    }
+    IF hb_p < 0 { SET hb_p TO 0. }
+    IF hb_p > 1 { SET hb_p TO 1. }
+    aoso_hb_set("maneuver", hb_st, hb_p).
 
     IF remaining < 0.08 {
         IF aoso_maneuver_peri_unsafe(2000) {
@@ -431,6 +453,7 @@ FUNCTION aoso_maneuver_execute_next {
         SET AOSO_MANEUVER_LOCK TO remaining_vec.
         SET AOSO_MANEUVER_BURNING TO TRUE.
         SET AOSO_MANEUVER_LAST_REMAINING TO remaining.
+        SET AOSO_MANEUVER_START_DV TO remaining.
         SET AOSO_MANEUVER_NO_THRUST_TICKS TO 0.
         aoso_staging_reset_relight().
         SET AOSO_MANEUVER_RESULT TO "ok".

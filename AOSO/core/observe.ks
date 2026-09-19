@@ -257,6 +257,9 @@ FUNCTION aoso_decide {
     PARAMETER reason.
     PARAMETER inputs_str.
     aoso_observe_event("DECIDE", "INFO", tag, "dec=" + decision + " sel=" + selected + " why=" + reason + " in=" + inputs_str).
+    IF DEFINED AOSO_DECIDE_OPEN {
+        aoso_decide_open(tag, decision, selected, reason, 0).
+    }
 }
 
 FUNCTION aoso_observe_anomaly {

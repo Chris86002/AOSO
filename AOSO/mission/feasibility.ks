@@ -186,6 +186,20 @@ FUNCTION aoso_feas_step {
     RETURN LEXICON("name", step_name, "dv", dv_need, "available", dv_have, "pass", passed, "note", remark).
 }
 
+FUNCTION aoso_feas_continuation_of {
+    PARAMETER can_land.
+    PARAMETER can_takeoff.
+    PARAMETER leftover.
+    PARAMETER return_dv.
+    IF NOT can_land { RETURN "SAFE". }
+    IF NOT can_takeoff { RETURN "DEAD_END". }
+    IF leftover < 50 { RETURN "DEAD_END". }
+    IF leftover >= return_dv { RETURN "SAFE". }
+    IF leftover >= return_dv * 0.45 { RETURN "LOW". }
+    IF leftover >= 350 { RETURN "LOW". }
+    RETURN "DEAD_END".
+}
+
 FUNCTION aoso_feas_evaluate {
     PARAMETER dest_name.
 
@@ -202,14 +216,25 @@ FUNCTION aoso_feas_evaluate {
     LOCAL from_name IS SHIP:BODY:NAME.
     LOCAL home_name IS aoso_config_get("HOME_BODY", "Kerbin").
 
-    LOCAL transfer_dv IS aoso_feas_transfer_cost(from_name, dest_name) * margin.
-    LOCAL capture_dv IS 0.
+    LOCAL transfer_raw IS aoso_feas_transfer_cost(from_name, dest_name).
+    LOCAL capture_raw IS 0.
     IF from_name <> dest_name {
-        SET capture_dv TO aoso_feas_body_stat(dest_name, "capture", 0) * margin.
+        SET capture_raw TO aoso_feas_body_stat(dest_name, "capture", 0).
     }
-    LOCAL land_dv IS aoso_feas_land_cost(dest_name) * margin.
-    LOCAL takeoff_dv IS aoso_feas_takeoff_cost(dest_name) * margin.
-    LOCAL return_dv IS aoso_feas_return_cost(dest_name) * margin.
+    LOCAL land_raw IS aoso_feas_land_cost(dest_name).
+    LOCAL takeoff_raw IS aoso_feas_takeoff_cost(dest_name).
+    LOCAL return_raw IS aoso_feas_return_cost(dest_name).
+    IF DEFINED AOSO_XP {
+        SET transfer_raw TO aoso_xp_apply("TRANSFER", dest_name, transfer_raw).
+        SET capture_raw TO aoso_xp_apply("CAPTURE", dest_name, capture_raw).
+        SET land_raw TO aoso_xp_apply("LANDING", dest_name, land_raw).
+        SET takeoff_raw TO aoso_xp_apply("TAKEOFF", dest_name, takeoff_raw).
+    }
+    LOCAL transfer_dv IS transfer_raw * margin.
+    LOCAL capture_dv IS capture_raw * margin.
+    LOCAL land_dv IS land_raw * margin.
+    LOCAL takeoff_dv IS takeoff_raw * margin.
+    LOCAL return_dv IS return_raw * margin.
     LOCAL reserve_dv IS aoso_budget_get("reserve_dv", 0).
 
     LOCAL surface_twr IS 0.
@@ -373,6 +398,16 @@ FUNCTION aoso_feas_evaluate {
         }
     }
 
+    LOCAL leftover IS hop_budget - land_dv - takeoff_dv.
+    IF can_refuel { SET leftover TO hop_budget - takeoff_dv. }
+    LOCAL continuation IS aoso_feas_continuation_of(can_land, can_takeoff, leftover, return_dv).
+    IF result_name = "FEASIBLE" {
+        IF continuation = "DEAD_END" {
+            SET result_name TO "ORBIT_ONLY".
+            SET reason TO "dead-end landing: leftover " + ROUND(leftover, 0) + " m/s after takeoff".
+        }
+    }
+
     LOCAL steps IS LIST().
     steps:ADD(aoso_feas_step("TRANSFER", transfer_dv, hop_budget, can_reach, reach_note)).
     steps:ADD(aoso_feas_step("CAPTURE", capture_dv, hop_budget, can_orbit, "")).
@@ -394,6 +429,8 @@ FUNCTION aoso_feas_evaluate {
         "can_refuel", can_refuel,
         "can_return", can_return,
         "can_abort", can_abort,
+        "continuation", continuation,
+        "leftover_dv", leftover,
         "transfer_dv", transfer_dv,
         "capture_dv", capture_dv,
         "land_dv", land_dv,
@@ -428,8 +465,10 @@ FUNCTION aoso_feas_cached {
 
 FUNCTION aoso_feas_log_report {
     PARAMETER report.
+    LOCAL cont_txt IS "".
+    IF report:HASKEY("continuation") { SET cont_txt TO "  cont=" + report["continuation"]. }
     aoso_log_info("FEAS", report["body"] + " from " + report["from"] +
-        "  RESULT=" + report["result"] + "  (" + report["reason"] + ")").
+        "  RESULT=" + report["result"] + cont_txt + "  (" + report["reason"] + ")").
     FOR row IN report["steps"] {
         LOCAL mark IS "FAIL".
         IF row["pass"] { SET mark TO "PASS". }

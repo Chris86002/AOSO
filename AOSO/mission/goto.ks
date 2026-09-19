@@ -533,6 +533,7 @@ FUNCTION aoso_goto_coast_execute {
         SET data["capture_fails"] TO 0.
         SET data["skip_capture"] TO FALSE.
         aoso_log_info("GOTO", "SOI change: " + data["depart_body"] + " -> " + SHIP:BODY:NAME + ".").
+        aoso_event_publish("SOI_CHANGED", "goto", data["depart_body"] + "->" + SHIP:BODY:NAME).
         aoso_state_transition(AOSO_GOTO, "PLAN").
         RETURN.
     }
@@ -812,6 +813,15 @@ FUNCTION aoso_goto_update {
     }
     aoso_state_update(AOSO_GOTO).
     SET cur TO AOSO_GOTO["current"].
+    LOCAL p_g IS 0.2.
+    IF cur = "PLAN" { SET p_g TO 0.15. }
+    IF cur = "WAIT" { SET p_g TO 0.25. }
+    IF cur = "LAUNCH" { SET p_g TO 0.35. }
+    IF cur = "BURN" { SET p_g TO 0.55. }
+    IF cur = "COAST" { SET p_g TO 0.7. }
+    IF cur = "CAPTURE" { SET p_g TO 0.85. }
+    IF cur = "DONE" { SET p_g TO 1. }
+    aoso_hb_set("goto", cur, p_g).
     IF NOT aoso_goto_task_pending_entry() {
         IF cur = "DONE" { aoso_sched_remove("goto"). }
         IF cur = "ABORTED" { aoso_sched_remove("goto"). }

@@ -42,9 +42,7 @@ FUNCTION aoso_tour_landable {
     PARAMETER body_name.
     IF body_name = "Jool" OR body_name = "Sun" { RETURN FALSE. }
     LOCAL report IS aoso_feas_cached(body_name).
-    IF report["can_land"] {
-        IF report["can_takeoff"] { RETURN TRUE. }
-    }
+    IF report["result"] = "FEASIBLE" { RETURN TRUE. }
     aoso_log_info("TOUR", "Skipping landing on " + body_name + " (" + report["reason"] + ").").
     RETURN FALSE.
 }
@@ -52,8 +50,7 @@ FUNCTION aoso_tour_landable {
 FUNCTION aoso_tour_should_refuel {
     PARAMETER body_name.
     LOCAL report IS aoso_feas_cached(body_name).
-    IF NOT report["can_land"] { RETURN FALSE. }
-    IF NOT report["can_takeoff"] { RETURN FALSE. }
+    IF report["result"] <> "FEASIBLE" { RETURN FALSE. }
     IF NOT report["can_refuel"] { RETURN FALSE. }
     LOCAL fuel_pct IS aoso_resource_pct("LiquidFuel").
     LOCAL need IS aoso_config_get("TOUR_REFUEL_BELOW_PCT", 60).
@@ -135,9 +132,25 @@ FUNCTION aoso_tour_advance {
     }
 }
 
+FUNCTION aoso_tour_replan_remaining {
+    PARAMETER data.
+    IF DEFINED AOSO_BRAIN {
+        aoso_brain_wait_think("tour replan").
+    }
+    aoso_log_info("TOUR", "Replanning remaining tour against current dV.").
+    aoso_profile_refresh("tour_replan").
+    aoso_plan_build().
+    LOCAL next_targets IS aoso_plan_targets().
+    IF next_targets:LENGTH > 0 {
+        SET data["targets"] TO next_targets.
+        SET data["index"] TO 0.
+    }
+}
+
 FUNCTION aoso_tour_boot_entry {
     PARAMETER data.
     IF SHIP:STATUS = "PRELAUNCH" OR SHIP:STATUS = "LANDED" {
+        aoso_tour_replan_remaining(data).
         LOCAL park IS aoso_goto_parking_alt(SHIP:BODY).
         aoso_log_info("TOUR", "Launching from " + SHIP:BODY:NAME + " to begin the grand tour.").
         aoso_ascent_start(90, park).
@@ -155,14 +168,7 @@ FUNCTION aoso_tour_ascend_execute {
         RETURN.
     }
     IF aoso_ascent_is_done() {
-        aoso_log_info("TOUR", "Orbit reached - replanning the tour against remaining dV.").
-        aoso_profile_refresh("orbit_replan").
-        aoso_plan_build().
-        LOCAL next_targets IS aoso_plan_targets().
-        IF next_targets:LENGTH > 0 {
-            SET data["targets"] TO next_targets.
-            SET data["index"] TO 0.
-        }
+        aoso_tour_replan_remaining(data).
         aoso_state_transition(AOSO_TOUR, "GOTO").
     }
 }
@@ -557,7 +563,8 @@ FUNCTION aoso_tour_launch_execute {
         RETURN.
     }
     IF aoso_ascent_is_done() {
-        aoso_tour_advance(data).
+        aoso_tour_replan_remaining(data).
+        aoso_state_transition(AOSO_TOUR, "GOTO").
     }
 }
 

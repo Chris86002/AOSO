@@ -100,7 +100,15 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "DOCKING_MAX_FINAL_SPEED", 0.3,      // m/s, closing speed cap during the direct final approach onto the port
     "DOCKING_ALIGN_TOLERANCE_DEG", 5,    // deg, facing error allowed before advanced/docking.ks starts translating
     "DOCKING_CLOSING_GAIN", 0.3,         // unitless, distance(m) * gain = desired closing speed (m/s), capped above
-    "DOCKING_RCS_GAIN", 0.5              // unitless, velocity error(m/s) * gain = RCS translation command (-1..1, clamped)
+    "DOCKING_RCS_GAIN", 0.5,             // unitless, velocity error(m/s) * gain = RCS translation command (-1..1, clamped)
+    "XP_MIN_SAMPLES", 3,                // samples before a learned correction has moderate influence
+    "XP_MAX_CORRECTION", 0.35,          // max |corr-1|; 0.35 => 0.65x..1.35x
+    "BRAIN_THINK_LEAD_S", 600,          // s of node ETA required before expensive nav/plan work
+    "BRAIN_THINK_WAIT_S", 90,           // s to sit in orbit waiting for a quiet window
+    "BRAIN_REPLAN_DEBOUNCE_S", 45,      // s minimum between full route rebuilds
+    "ROUTE_SCORE_WEIGHT", 8,            // opportunity-score influence on cluster hop cost (higher = score matters more)
+    "ROUTE_FUTURE_ISRU", 180,           // hop-cost discount when the destination can refill the tank
+    "WATCHDOG_PROGRESS_S", 90           // s of no controller heartbeat progress before a stall is considered
 ).
 
 FUNCTION aoso_config_get {

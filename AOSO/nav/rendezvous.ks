@@ -298,6 +298,9 @@ FUNCTION aoso_rendezvous_porkchop_search {
     aoso_warp_hard_stop().
     aoso_steer_release().
     aoso_maneuver_clear_all().
+    IF DEFINED AOSO_BRAIN {
+        aoso_brain_wait_think("porkchop intercept").
+    }
 
     LOCAL tof_h IS aoso_rendezvous_porkchop_tof_hoh(hop).
     LOCAL n_dep IS aoso_config_get("PORKCHOP_DEP_SAMPLES", 24).
@@ -1188,6 +1191,11 @@ FUNCTION aoso_rendezvous_add_correction_node {
 
     LOCAL eta_p IS SHIP:ORBIT:NEXTPATCHETA.
     IF eta_p < 150 { RETURN 0. }
+    IF DEFINED AOSO_BRAIN {
+        IF eta_p > aoso_config_get("BRAIN_THINK_LEAD_S", 600) {
+            aoso_brain_wait_think("mid-course correction").
+        }
+    }
     // ~30% of the remaining coast: early enough to turn a SOI-graze into
     // a real encounter before a long rails warp, late enough that a few
     // m/s still moves PE. (A 0.3 placement on Minmus was 18 h out; that

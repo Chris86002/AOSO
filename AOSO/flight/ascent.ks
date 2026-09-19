@@ -724,6 +724,19 @@ FUNCTION aoso_ascent_done_entry {
     aoso_steer_release().
     aoso_log_info("ASCENT", "Ascent complete. Apo=" + ROUND(APOAPSIS, 0) + " Peri=" + ROUND(PERIAPSIS, 0)).
     aoso_ascent_persist_run(data).
+    LOCAL res IS aoso_result_make("ASCENT", "SUCCESS", "orbit").
+    IF data:HASKEY("pad_lf") {
+        SET res["actual_fuel"] TO aoso_resource_amount("LiquidFuel").
+        SET res["fuel_used"] TO data["pad_lf"] - res["actual_fuel"].
+    }
+    IF data:HASKEY("circ_dv") { SET res["actual_dv"] TO data["circ_dv"]. }
+    aoso_result_emit(res).
+    IF data:HASKEY("circ_dv") {
+        IF data["circ_dv"] > 1 {
+            aoso_xp_record("CIRCULARIZATION", SHIP:BODY:NAME, 80, data["circ_dv"], FALSE).
+        }
+    }
+    aoso_event_publish("ORBIT_ACHIEVED", "ascent", SHIP:BODY:NAME).
 }
 
 FUNCTION aoso_ascent_aborted_entry {
@@ -756,6 +769,12 @@ FUNCTION aoso_ascent_aborted_entry {
         }
         aoso_ascent_opt_commit(rec).
     }
+    LOCAL res_a IS aoso_result_make("ASCENT", "ABORTED", "aborted").
+    IF data:HASKEY("pad_lf") {
+        SET res_a["actual_fuel"] TO aoso_resource_amount("LiquidFuel").
+        SET res_a["fuel_used"] TO data["pad_lf"] - res_a["actual_fuel"].
+    }
+    aoso_result_emit(res_a).
 }
 
 FUNCTION aoso_ascent_define_states {
@@ -826,6 +845,19 @@ FUNCTION aoso_ascent_update {
         IF st <> "DONE" {
             IF st <> "ABORTED" {
                 aoso_ui_set("Ascent  " + st, "ap " + ROUND(APOAPSIS, 0) + "  pe " + ROUND(PERIAPSIS, 0)).
+                LOCAL p IS 0.1.
+                IF st = "GRAVITY_TURN" { SET p TO 0.35. }
+                IF st = "COAST" { SET p TO 0.65. }
+                IF st = "CIRCULARIZE" { SET p TO 0.85. }
+                LOCAL tgt IS 80000.
+                IF AOSO_ASCENT["data"]:HASKEY("target_apo") { SET tgt TO AOSO_ASCENT["data"]["target_apo"]. }
+                IF tgt > 0 {
+                    LOCAL frac IS ALTITUDE / tgt.
+                    IF frac > 1 { SET frac TO 1. }
+                    IF st = "LIFTOFF" { SET p TO 0.05 + 0.1 * frac. }
+                    IF st = "GRAVITY_TURN" { SET p TO 0.15 + 0.45 * frac. }
+                }
+                aoso_hb_set("ascent", st, p).
             }
         }
     }

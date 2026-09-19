@@ -340,6 +340,8 @@ FUNCTION aoso_descent_touchdown_entry {
     aoso_steer_release().
     aoso_log_info("DESCENT", "Touchdown, throttle cut.").
     aoso_observe_event("TOUCHDOWN", "INFO", "TOUCHDOWN", "radar=" + ROUND(aoso_descent_true_radar(), 1)).
+    LOCAL res_l IS aoso_result_make("LANDING", "SUCCESS", "touchdown").
+    aoso_result_emit(res_l).
 }
 
 FUNCTION aoso_descent_poll {
@@ -387,6 +389,16 @@ FUNCTION aoso_descent_tick {
     }
     aoso_state_update(AOSO_DESCENT).
     SET cur TO AOSO_DESCENT["current"].
+    LOCAL p_d IS 0.2.
+    IF cur = "FREEFALL" { SET p_d TO 0.3. }
+    IF cur = "BURN" { SET p_d TO 0.7. }
+    IF cur = "FINAL_APPROACH" { SET p_d TO 0.9. }
+    IF cur = "TOUCHDOWN" { SET p_d TO 1. }
+    LOCAL rad IS aoso_descent_true_radar().
+    IF rad > 0 {
+        IF rad < 50000 { SET p_d TO p_d + (1 - rad / 50000) * 0.05. }
+    }
+    aoso_hb_set("descent", cur, p_d).
     SET pending TO FALSE.
     IF AOSO_DESCENT:HASKEY("need_entry") {
         IF AOSO_DESCENT["need_entry"] { SET pending TO TRUE. }

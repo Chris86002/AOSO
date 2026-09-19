@@ -30,6 +30,9 @@ FUNCTION aoso_boot {
 
     aoso_body_database_load().
     aoso_profile_refresh("boot").
+    aoso_brain_init().
+    aoso_cfg_id_lock().
+    aoso_xp_load().
     aoso_world_refresh("boot").
     aoso_checkpoints_load().
 
