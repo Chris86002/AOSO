@@ -294,7 +294,7 @@ FUNCTION aoso_tour_polar_execute {
         RETURN.
     }
     LOCAL nd IS NEXTNODE.
-    aoso_ui_set("Polar / stabilize T-" + aoso_hud_eta(nd:ETA), ROUND(nd:DELTAV:MAG, 1) + " m/s  " + aoso_hud_warp_txt()).
+    aoso_ui_set("Polar / stabilize T-" + aoso_hud_eta(nd:ETA), ROUND(nd:DELTAV:MAG, 1) + " m/s  " + aoso_warp_diag_txt()).
     IF NOT data["polar_warp_logged"] {
         aoso_log_info("TOUR", "Rails-warping " + ROUND(nd:ETA, 0) + "s to polar/stabilize burn (" + ROUND(nd:DELTAV:MAG, 1) + " m/s). Physics 2x until 10 s, then 1x.").
         SET data["polar_warp_logged"] TO TRUE.
@@ -358,7 +358,7 @@ FUNCTION aoso_tour_scan_execute {
                 SET data["scan_next_sample"] TO now + 25.
             }
             LOCAL left IS data["scan_until"] - now.
-            aoso_ui_set("Scanning landing sites", aoso_hud_eta(left) + "  " + data["scan_orbits"] + " orbit confirm  " + aoso_hud_warp_txt()).
+            aoso_ui_set("Scanning landing sites", aoso_hud_eta(left) + "  " + data["scan_orbits"] + " orbit confirm  " + aoso_warp_diag_txt()).
             aoso_steer_release().
             aoso_warp_approach(left, 15, 8).
             RETURN.
@@ -454,7 +454,7 @@ FUNCTION aoso_tour_deorbit_execute {
             IF site_ang >= 90 { SET guess TO period * 0.08. }
             IF site_ang >= 110 { SET guess TO 25. }
             IF guess < 20 { SET guess TO 20. }
-            aoso_ui_set("Waiting for site over horizon", "ang=" + ROUND(site_ang, 0) + "  " + aoso_hud_warp_txt()).
+            aoso_ui_set("Waiting for site over horizon", "ang=" + ROUND(site_ang, 0) + "  " + aoso_warp_diag_txt()).
             IF NOT data:HASKEY("deorbit_warp_logged") {
                 aoso_log_info("TOUR", "Rails-warping until the landing site is opposite before deorbit (up to ~" + ROUND(period, 0) + "s). site lat=" +
                     ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) + " ship lat=" +

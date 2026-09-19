@@ -203,7 +203,7 @@ FUNCTION aoso_descent_freefall_execute {
         " PE=" + ROUND(PERIAPSIS, 0) + " vs=" + ROUND(VERTICALSPEED, 1) + " radar=" + ROUND(radar, 0) +
         " trig=" + ROUND(trigger, 0) + " peEta=" + ROUND(pe_eta, 0) + "s tti=" + ROUND(tti, 0) +
         "s coastEta=" + ROUND(coast_eta, 0) + "s " + aoso_warp_diag_txt() + ".").
-    aoso_ui_set("Descent coast to PE", "T-" + aoso_hud_eta(coast_eta) + "  radar " + ROUND(radar, 0) + "m  " + aoso_hud_warp_txt()).
+    aoso_ui_set("Descent coast to PE", "T-" + aoso_hud_eta(coast_eta) + "  radar " + ROUND(radar, 0) + "m  " + aoso_warp_diag_txt()).
 
     IF radar < (trigger * 2) {
         SET WARP TO 0.

@@ -579,7 +579,7 @@ FUNCTION aoso_goto_coast_execute {
             LOCAL align_s IS aoso_maneuver_align_s().
             aoso_steer_release().
             LOCAL wst IS aoso_warp_approach(eta_p, align_s, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
-            aoso_ui_set("Coasting to " + np, "SOI " + aoso_hud_eta(eta_p) + "  " + aoso_hud_warp_txt()).
+            aoso_ui_set("Coasting to " + np, "SOI " + aoso_hud_eta(eta_p) + "  " + aoso_warp_diag_txt()).
         } ELSE {
             SET WARP TO 0.
         }
@@ -614,7 +614,7 @@ FUNCTION aoso_goto_coast_execute {
                 aoso_steer_release().
                 aoso_warp_approach(eta_saved, aoso_maneuver_align_s(), aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
                 aoso_log_every(60, "GOTO", "No live patch, trusting " + expect_body + " SOI in " + ROUND(eta_saved, 0) + "s " + aoso_warp_diag_txt() + ".").
-                aoso_ui_set("Trusting " + expect_body + " intercept", aoso_hud_eta(eta_saved) + "  " + aoso_hud_warp_txt()).
+                aoso_ui_set("Trusting " + expect_body + " intercept", aoso_hud_eta(eta_saved) + "  " + aoso_warp_diag_txt()).
             } ELSE {
                 SET WARP TO 0.
                 aoso_ui_set("Waiting on " + expect_body + " SOI", "conics still empty").
@@ -723,7 +723,7 @@ FUNCTION aoso_goto_capture_execute {
     } ELSE {
         IF HASNODE {
             LOCAL ndc IS NEXTNODE.
-            aoso_ui_set("Capture burn T-" + aoso_hud_eta(ndc:ETA), ROUND(ndc:DELTAV:MAG, 1) + " m/s  " + aoso_hud_warp_txt()).
+            aoso_ui_set("Capture burn T-" + aoso_hud_eta(ndc:ETA), ROUND(ndc:DELTAV:MAG, 1) + " m/s  " + aoso_warp_diag_txt()).
         }
     }
 }
