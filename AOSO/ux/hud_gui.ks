@@ -51,6 +51,15 @@ FUNCTION aoso_hud_title {
     RETURN w.
 }
 
+FUNCTION aoso_hud_hint {
+    PARAMETER box.
+    PARAMETER txt.
+    LOCAL w IS box:ADDLABEL(txt).
+    SET w:STYLE:HSTRETCH TO TRUE.
+    SET w:STYLE:WORDWRAP TO TRUE.
+    RETURN w.
+}
+
 FUNCTION aoso_hud_gui_dispose {
     aoso_twin_clear_hl().
     IF AOSO_HUD_GUI:ISTYPE("GUI") {
@@ -207,6 +216,11 @@ FUNCTION aoso_hud_home {
     aoso_hud_show_page("FLT", FALSE).
 }
 
+FUNCTION aoso_hud_help_click {
+    IF AOSO_HUD_COMPACT { aoso_hud_set_compact(FALSE). }
+    aoso_hud_show_page("HELP").
+}
+
 FUNCTION aoso_hud_set_compact {
     PARAMETER on.
     SET AOSO_HUD_COMPACT TO on.
@@ -231,6 +245,7 @@ FUNCTION aoso_hud_toggle_compact {
 FUNCTION aoso_hud_gui_build_flight {
     PARAMETER p.
     aoso_hud_title(p, "FLIGHT").
+    aoso_hud_hint(p, "Live ship state. Display only — AOSO is already flying.").
     aoso_hud_lab(p, "flt_body", "BODY  -").
     aoso_hud_lab(p, "flt_alt", "ALT  -").
     aoso_hud_lab(p, "flt_spd", "SPEED  -").
@@ -247,7 +262,8 @@ FUNCTION aoso_hud_gui_build_flight {
 FUNCTION aoso_hud_gui_build_nav {
     PARAMETER p.
     aoso_hud_title(p, "NAVIGATION").
-    aoso_hud_lab(p, "nav_soi", "SOI  -").
+    aoso_hud_hint(p, "Orbit, target, and burn node. GOTO = transfer autopilot state. Does not retarget.").
+    aoso_hud_lab(p, "nav_soi", "SPHERE OF INFLUENCE  -").
     aoso_hud_lab(p, "nav_orb", "ORBIT  -").
     aoso_hud_lab(p, "nav_tgt", "TARGET  NO TARGET").
     aoso_hud_lab(p, "nav_rel", "REL VEL  -").
@@ -260,6 +276,7 @@ FUNCTION aoso_hud_gui_build_nav {
 FUNCTION aoso_hud_gui_build_mission {
     PARAMETER p.
     aoso_hud_title(p, "MISSION CONTROL").
+    aoso_hud_hint(p, "Grand-tour plan AOSO is flying. This page does not pick destinations.").
     aoso_hud_lab(p, "msn_name", "MISSION  -").
     aoso_hud_lab(p, "msn_prog", "PROGRESS  -").
     aoso_hud_lab(p, "msn_cur", "CURRENT  -").
@@ -268,21 +285,23 @@ FUNCTION aoso_hud_gui_build_mission {
     aoso_hud_lab(p, "msn_obj", "OBJECTIVE  -").
     aoso_hud_lab(p, "msn_ret", "RETURN  KERBIN -> KSC").
     aoso_hud_lab(p, "msn_stat", "STATUS  -").
-    aoso_hud_lab(p, "msn_feas", "FEAS  -").
+    aoso_hud_lab(p, "msn_feas", "FEASIBLE  -").
     aoso_hud_lab(p, "msn_class", "CLASS  -").
     aoso_hud_lab(p, "msn_time", "ROUTE  -").
+    aoso_hud_lab(p, "msn_legend", "now = current hop.  done = already visited.  unmarked = still ahead.").
     aoso_hud_lab(p, "msn_skip", "").
 }
 
 FUNCTION aoso_hud_gui_build_vehicle {
     PARAMETER p.
     aoso_hud_title(p, "VEHICLE").
+    aoso_hud_hint(p, "What this ship is and what AOSO thinks it can do.").
     aoso_hud_lab(p, "veh_id", "SHIP  -").
     aoso_hud_lab(p, "veh_cls", "CLASS  -").
     aoso_hud_lab(p, "veh_crew", "CREW  -").
     aoso_hud_lab(p, "veh_hw", "HARDWARE  -").
     aoso_hud_lab(p, "veh_mob", "MOBILITY  -").
-    aoso_hud_lab(p, "veh_cap", "CAPABLE  -").
+    aoso_hud_lab(p, "veh_cap", "CAPABILITIES  -").
     aoso_hud_lab(p, "veh_pwr", "POWER  -").
     aoso_hud_lab(p, "veh_twin", "TWIN  -").
 }
@@ -290,21 +309,22 @@ FUNCTION aoso_hud_gui_build_vehicle {
 FUNCTION aoso_hud_gui_build_prop {
     PARAMETER p.
     aoso_hud_title(p, "PROPULSION").
+    aoso_hud_hint(p, "Fuel and engines. LF=liquid fuel  OX=oxidizer  MP=monopropellant  EC=electric charge  dV=delta-v. Does not throttle.").
     aoso_hud_lab(p, "prp_thr", "THRUST  -").
     aoso_hud_lab(p, "prp_twr", "TWR / STAGE  -").
-    aoso_hud_lab(p, "prp_dv", "dV  -").
+    aoso_hud_lab(p, "prp_dv", "DELTA-V  -").
     aoso_hud_lab(p, "prp_eng", "ENGINES  -").
-    aoso_hud_lab(p, "prp_lf", "LF   -").
-    aoso_hud_lab(p, "prp_ox", "OX   -").
-    aoso_hud_lab(p, "prp_mp", "MP   -").
-    aoso_hud_lab(p, "prp_ec", "EC   -").
+    aoso_hud_lab(p, "prp_lf", "LIQUID FUEL  -").
+    aoso_hud_lab(p, "prp_ox", "OXIDIZER  -").
+    aoso_hud_lab(p, "prp_mp", "MONOPROP  -").
+    aoso_hud_lab(p, "prp_ec", "ELECTRIC  -").
     aoso_hud_lab(p, "prp_next", "NEXT STAGE  -").
 }
 
 FUNCTION aoso_hud_gui_build_land {
     PARAMETER p.
     aoso_hud_title(p, "LANDING").
-    aoso_hud_lab(p, "lnd_note", "DISPLAY ONLY  AOSO flies the landing. HUD does not STAGE/ABORT/LAND.").
+    aoso_hud_hint(p, "Landing radar and suicide-burn numbers. The LAND light is an arrow, not a land command. AOSO flies the landing.").
     aoso_hud_lab(p, "lnd_st", "LANDING SYSTEM  STANDBY").
     aoso_hud_lab(p, "lnd_site", "SITE  -").
     aoso_hud_lab(p, "lnd_alt", "RADAR  -").
@@ -322,6 +342,7 @@ FUNCTION aoso_hud_gui_build_land {
 FUNCTION aoso_hud_gui_build_stg {
     PARAMETER p.
     aoso_hud_title(p, "STAGING").
+    aoso_hud_hint(p, "Current stage fuel and thrust. AOSO stages by itself — this page does not press SPACE.").
     aoso_hud_lab(p, "stg_cur", "CURRENT  -").
     aoso_hud_lab(p, "stg_fuel", "STAGE FUEL  -").
     aoso_hud_lab(p, "stg_thr", "THRUST  -").
@@ -332,8 +353,10 @@ FUNCTION aoso_hud_gui_build_stg {
 FUNCTION aoso_hud_gui_build_sys {
     PARAMETER p.
     aoso_hud_title(p, "SYSTEMS").
+    aoso_hud_hint(p, "Health board. NOMINAL=ok  DEGRADED=weak  FAIL=broken. WHY is the reason. CPU busy is not a ship failure.").
     aoso_hud_lab(p, "sys_roll", "AOSO  -").
     aoso_hud_lab(p, "sys_why", "").
+    aoso_hud_lab(p, "sys_cpu_note", "").
     aoso_hud_lab(p, "sys_guid", "GUIDANCE     -").
     aoso_hud_lab(p, "sys_nav", "NAVIGATION   -").
     aoso_hud_lab(p, "sys_steer", "STEERING     -").
@@ -350,6 +373,7 @@ FUNCTION aoso_hud_gui_build_sys {
 FUNCTION aoso_hud_gui_build_log {
     PARAMETER p.
     aoso_hud_title(p, "EVENT LOG").
+    aoso_hud_hint(p, "Latest AOSO decisions and events. Newest at the bottom.").
     aoso_hud_lab(p, "log_0", "-").
     aoso_hud_lab(p, "log_1", "-").
     aoso_hud_lab(p, "log_2", "-").
@@ -365,6 +389,7 @@ FUNCTION aoso_hud_gui_build_log {
 FUNCTION aoso_hud_gui_build_dbg {
     PARAMETER p.
     aoso_hud_title(p, "DEBUG  (entire HUD)").
+    aoso_hud_hint(p, "Internal HUD clocks and dump. DUMP HUD writes 0:/aoso_hud.json on the kOS archive.").
     LOCAL row IS p:ADDHLAYOUT().
     LOCAL dump_btn IS row:ADDBUTTON("DUMP HUD").
     SET dump_btn:ONCLICK TO aoso_hud_debug_dump@.
@@ -383,6 +408,20 @@ FUNCTION aoso_hud_gui_build_dbg {
     aoso_hud_lab(p, "dbg_last", "LAST  -").
     aoso_hud_lab(p, "dbg_twin", "TWIN  -").
     aoso_hud_lab(p, "dbg_file", "FILE  0:/aoso_hud.json").
+}
+
+FUNCTION aoso_hud_gui_build_help {
+    PARAMETER p.
+    aoso_hud_title(p, "HOW TO USE THIS HUD").
+    aoso_hud_hint(p, "This window is a display. AOSO flies the ship. Nothing here STAGES, ABORTS, or LANDS.").
+    aoso_hud_hint(p, "TABS  FLT=flight  NAV=orbit/target  MSN=mission plan  VEH=this ship  PRP=fuel  LND=landing view  STG=staging  SYS=health  TWIN=tanks/engines  LOG=events  DBG=dump").
+    aoso_hud_hint(p, "GREEN LIGHTS  3D arrows drawn on the ship. They do not steer. PRO=prograde (where you are going)  RET=retrograde (opposite)  NML=orbit-normal (out of plane)  TGT=toward target  REL=relative velocity  BURN=maneuver node  LAND=surface-retrograde.").
+    aoso_hud_hint(p, "FD master switch turns all arrows off. Lights that are on still only draw; AOSO keeps flying.").
+    aoso_hud_hint(p, "CPU HIGH / load-shed  kOS is using most of its instruction budget (usually during a burn or staging). AOSO pauses extra HUD/profile work so steering and staging still run. Not a hardware failure. SYS tab has the WHY line.").
+    aoso_hud_hint(p, "SYS  NOMINAL=all good  DEGRADED=something weak  FAIL=something broken. Open SYS and read WHY.").
+    aoso_hud_hint(p, "ROUTE  (now)=current hop  (done)=already visited  unmarked=still ahead.").
+    aoso_hud_hint(p, "CHROME  BACK=previous tab  HOME=flight page  HELP=this page  A-/A+=size  X=collapse to header  OPEN=expand.").
+    aoso_hud_hint(p, "MODES  TAC=terminal strip only  GUI=this computer  ENG=engineering + twin. Drag the window by its top.").
 }
 
 FUNCTION aoso_hud_fd_cb_master { PARAMETER on. aoso_hud_fd_enable(on). aoso_hud_trace("FD master=" + on). }
@@ -416,6 +455,8 @@ FUNCTION aoso_hud_gui_init {
     SET b_back:ONCLICK TO aoso_hud_back@.
     LOCAL b_home IS chrome:ADDBUTTON("HOME").
     SET b_home:ONCLICK TO aoso_hud_home@.
+    LOCAL b_help IS chrome:ADDBUTTON("HELP").
+    SET b_help:ONCLICK TO aoso_hud_help_click@.
     LOCAL b_minus IS chrome:ADDBUTTON("A-").
     SET b_minus:ONCLICK TO aoso_hud_scale_down@.
     aoso_hud_lab(chrome, "chrome_pct", "100%").
@@ -454,6 +495,7 @@ FUNCTION aoso_hud_gui_init {
     SET c3:ONTOGGLE TO aoso_hud_fd_cb_burn@.
     LOCAL c4 IS fdrow:ADDCHECKBOX("LAND", FALSE).
     SET c4:ONTOGGLE TO aoso_hud_fd_cb_land@.
+    aoso_hud_hint(body, "FD lights draw 3D arrows on the ship. They do not fly it. PRO=prograde  RET=retrograde  NML=orbit-normal  TGT=target  REL=relative vel  BURN=node  LAND=surface-retro. HELP tab explains all of this.").
 
     LOCAL row1 IS body:ADDHLAYOUT().
     aoso_hud_add_tab(row1, "FLT", "FLT").
@@ -468,6 +510,7 @@ FUNCTION aoso_hud_gui_init {
     aoso_hud_add_tab(row2, "TWIN", "TWIN").
     aoso_hud_add_tab(row2, "LOG", "LOG").
     aoso_hud_add_tab(row2, "DBG", "DBG").
+    aoso_hud_add_tab(row2, "HELP", "HELP").
 
     SET AOSO_HUD_STACK TO body:ADDVLAYOUT().
     aoso_hud_gui_build_flight(aoso_hud_add_page("FLT")).
@@ -481,6 +524,7 @@ FUNCTION aoso_hud_gui_init {
     aoso_twin_view_build(aoso_hud_add_page("TWIN")).
     aoso_hud_gui_build_log(aoso_hud_add_page("LOG")).
     aoso_hud_gui_build_dbg(aoso_hud_add_page("DBG")).
+    aoso_hud_gui_build_help(aoso_hud_add_page("HELP")).
 
     aoso_hud_apply_scale().
     aoso_hud_set_compact(AOSO_HUD_COMPACT).
@@ -667,7 +711,7 @@ FUNCTION aoso_hud_gui_upd_nav {
     LOCAL o IS AOSO_HUD_DATA["orbit"].
     LOCAL t IS AOSO_HUD_DATA["target"].
     LOCAL m IS AOSO_HUD_DATA["mission"].
-    aoso_hud_set("nav_soi", "SOI  " + o["body"]).
+    aoso_hud_set("nav_soi", "SPHERE OF INFLUENCE  " + o["body"]).
     LOCAL ap_txt IS aoso_hud_km(o["ap"]).
     IF o["hyper"] { SET ap_txt TO "hyper". }
     aoso_hud_set("nav_orb", "AP " + ap_txt + " T-" + aoso_hud_eta(o["ap_eta"]) + "   PE " + aoso_hud_km(o["pe"]) + " T-" + aoso_hud_eta(o["pe_eta"])).
@@ -724,8 +768,10 @@ FUNCTION aoso_hud_gui_upd_mission {
     aoso_hud_set("msn_obj", "OBJECTIVE  " + obj).
     aoso_hud_set("msn_ret", "RETURN  KERBIN -> KSC").
     aoso_hud_set("msn_stat", "STATUS  " + aoso_hud_st_glyph(sys["msn"]) + "  " + AOSO_HUD_DATA["systems"]["rollup"]).
-    aoso_hud_set("msn_feas", "FEAS  " + m["feas"]).
-    aoso_hud_set("msn_class", "CLASS  " + m["class"]).
+    aoso_hud_set("msn_feas", "FEASIBLE  " + m["feas"]).
+    LOCAL cls IS m["class"].
+    IF cls = "hopper" { SET cls TO "hopper (land, mine, hop to the next body)". }
+    aoso_hud_set("msn_class", "CLASS  " + cls).
     LOCAL tl IS "".
     IF m:HASKEY("timeline") { SET tl TO m["timeline"]. }
     IF tl = "" { SET tl TO aoso_hud_na(). }
@@ -756,7 +802,7 @@ FUNCTION aoso_hud_gui_upd_vehicle {
     IF veh["isru"] { SET cap TO cap + "ISRU Y  ". } ELSE { SET cap TO cap + "ISRU n  ". }
     IF veh["dock"] { SET cap TO cap + "DOCK Y  ". } ELSE { SET cap TO cap + "DOCK n  ". }
     IF veh["home"] { SET cap TO cap + "HOME Y". } ELSE { SET cap TO cap + "HOME n". }
-    aoso_hud_set("veh_cap", "CAPABLE  " + cap).
+    aoso_hud_set("veh_cap", "CAPABILITIES  " + cap).
     aoso_hud_set("veh_pwr", "POWER  SOLAR " + veh["solar"] + "  EC " + ROUND(AOSO_HUD_DATA["res"]["ec"], 0) + "%").
     LOCAL tw IS "TWIN  -".
     IF DEFINED AOSO_TWIN {
@@ -773,15 +819,15 @@ FUNCTION aoso_hud_gui_upd_prop {
     LOCAL veh IS AOSO_HUD_DATA["vehicle"].
     aoso_hud_set("prp_thr", "THRUST  " + ROUND(f["thrust"], 1) + " kN   THROTTLE " + ROUND(f["throttle"] * 100, 0) + "%").
     aoso_hud_set("prp_twr", "TWR " + ROUND(f["twr"], 2) + "   STAGE " + f["stage"]).
-    aoso_hud_set("prp_dv", "dV  " + ROUND(rsrc["mission_dv"], 0) + " / " + ROUND(rsrc["total_dv"], 0) + " m/s").
+    aoso_hud_set("prp_dv", "DELTA-V  " + ROUND(rsrc["mission_dv"], 0) + " / " + ROUND(rsrc["total_dv"], 0) + " m/s").
     aoso_hud_set("prp_eng", "ENGINES  " + veh["engines"]).
-    IF rsrc["lf_has"] { aoso_hud_set("prp_lf", "LF   " + aoso_hud_bar(rsrc["lf"])). }
-    ELSE { aoso_hud_set("prp_lf", "LF   " + aoso_hud_na()). }
-    IF rsrc["ox_has"] { aoso_hud_set("prp_ox", "OX   " + aoso_hud_bar(rsrc["ox"])). }
-    ELSE { aoso_hud_set("prp_ox", "OX   " + aoso_hud_na()). }
-    IF rsrc["mp_has"] { aoso_hud_set("prp_mp", "MP   " + aoso_hud_bar(rsrc["mp"])). }
-    ELSE { aoso_hud_set("prp_mp", "MP   " + aoso_hud_na()). }
-    aoso_hud_set("prp_ec", "EC   " + aoso_hud_bar(rsrc["ec"])).
+    IF rsrc["lf_has"] { aoso_hud_set("prp_lf", "LIQUID FUEL  " + aoso_hud_bar(rsrc["lf"])). }
+    ELSE { aoso_hud_set("prp_lf", "LIQUID FUEL  " + aoso_hud_na()). }
+    IF rsrc["ox_has"] { aoso_hud_set("prp_ox", "OXIDIZER  " + aoso_hud_bar(rsrc["ox"])). }
+    ELSE { aoso_hud_set("prp_ox", "OXIDIZER  " + aoso_hud_na()). }
+    IF rsrc["mp_has"] { aoso_hud_set("prp_mp", "MONOPROP  " + aoso_hud_bar(rsrc["mp"])). }
+    ELSE { aoso_hud_set("prp_mp", "MONOPROP  " + aoso_hud_na()). }
+    aoso_hud_set("prp_ec", "ELECTRIC  " + aoso_hud_bar(rsrc["ec"])).
     LOCAL nxt IS "NEXT STAGE  -".
     IF rsrc:HASKEY("twr_next") {
         SET nxt TO "NEXT STAGE  TWR " + ROUND(rsrc["twr_next"], 2) + "  now " + ROUND(rsrc["twr_now"], 2).
@@ -886,6 +932,10 @@ FUNCTION aoso_hud_gui_upd_sys {
     aoso_hud_set("sys_com", "COMMS        " + aoso_hud_st_glyph(s["com"]) + aoso_hud_sys_suffix("com", s)).
     aoso_hud_set("sys_wd", "WATCHDOG     " + aoso_hud_st_glyph(s["wd"])).
     aoso_hud_set("sys_cpu", "CPU          " + aoso_hud_st_glyph(s["cpu"]) + "  " + AOSO_HUD_DATA["debug"]["cpu"] + aoso_hud_sys_suffix("cpu", s)).
+    LOCAL cpu_note IS "CPU has spare instructions. HUD running at full rate.".
+    IF s["cpu"] = "DEG" { SET cpu_note TO "kOS is busy (often a burn). Extra HUD/profile work is paused so steering and staging keep running. Not a ship failure.". }
+    IF s["cpu"] = "FAIL" { SET cpu_note TO "kOS is overloaded. HUD may skip frames so burns/staging still run. Not a ship failure.". }
+    aoso_hud_set("sys_cpu_note", cpu_note).
 }
 
 FUNCTION aoso_hud_sys_suffix {
@@ -960,4 +1010,5 @@ FUNCTION aoso_hud_gui_tick {
     IF pg = "TWIN" { aoso_twin_view_tick(). RETURN. }
     IF pg = "LOG" { aoso_hud_gui_upd_log(). RETURN. }
     IF pg = "DBG" { aoso_hud_gui_upd_dbg(). RETURN. }
+    IF pg = "HELP" { RETURN. }
 }

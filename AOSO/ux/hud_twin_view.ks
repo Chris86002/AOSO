@@ -108,6 +108,7 @@ FUNCTION aoso_twin_view_rebuild_user {
 FUNCTION aoso_twin_view_build {
     PARAMETER page.
     aoso_hud_title(page, "DIGITAL TWIN").
+    aoso_hud_hint(page, "Live model of tanks and engines. NORM/EXP/STG are views. REBUILD rescans parts. Display only.").
     aoso_hud_lab(page, "tw_st", "TWIN  UPDATING").
     aoso_hud_lab(page, "tw_tot", "TOTALS  -").
     aoso_hud_lab(page, "tw_eng", "ENGINES  -").

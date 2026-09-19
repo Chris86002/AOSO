@@ -265,14 +265,14 @@ FUNCTION aoso_hud_timeline_txt {
                 LOCAL out IS "".
                 LOCAL i IS 0.
                 UNTIL i >= targets:LENGTH {
-                    LOCAL mark IS "o".
-                    IF i < idx { SET mark TO "x". }
-                    IF i = idx { SET mark TO "*". }
-                    IF out <> "" { SET out TO out + " ". }
-                    SET out TO out + mark + targets[i].
+                    LOCAL tag IS "".
+                    IF i < idx { SET tag TO " (done)". }
+                    IF i = idx { SET tag TO " (now)". }
+                    IF out <> "" { SET out TO out + " > ". }
+                    SET out TO out + targets[i] + tag.
                     SET i TO i + 1.
-                    IF i >= 12 {
-                        SET out TO out + " ...".
+                    IF i >= 10 {
+                        SET out TO out + " > ...".
                         BREAK.
                     }
                 }
@@ -431,10 +431,8 @@ FUNCTION aoso_hud_sys_reason {
     PARAMETER key.
     PARAMETER s.
     IF key = "cpu" {
-        LOCAL nm IS "HIGH".
-        IF DEFINED AOSO_CPU_NAME { SET nm TO AOSO_CPU_NAME. }
-        IF s["cpu"] = "FAIL" { RETURN "CRITICAL load-shed". }
-        RETURN nm + " load-shed".
+        IF s["cpu"] = "FAIL" { RETURN "overloaded - HUD skipped so burns/staging keep running". }
+        RETURN "busy - extra HUD/profile paused, flight still running".
     }
     IF key = "pwr" {
         RETURN "EC " + ROUND(AOSO_HUD_DATA["res"]["ec"], 0) + "%".
