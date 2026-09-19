@@ -1031,12 +1031,21 @@ FUNCTION aoso_hud_gui_upd_sys {
     aoso_hud_set("sys_pwr", "POWER        " + aoso_hud_st_glyph(s["pwr"]) + "  " + ROUND(AOSO_HUD_DATA["res"]["ec"], 0) + "%" + aoso_hud_sys_suffix("pwr", s)).
     aoso_hud_set("sys_com", "COMMS        " + aoso_hud_st_glyph(s["com"]) + aoso_hud_sys_suffix("com", s)).
     aoso_hud_set("sys_wd", "WATCHDOG     " + aoso_hud_st_glyph(s["wd"])).
-    aoso_hud_set("sys_cpu", "CPU          " + aoso_hud_st_glyph(s["cpu"]) + "  " + AOSO_HUD_DATA["debug"]["cpu"] + aoso_hud_sys_suffix("cpu", s)).
+    LOCAL cpu_line IS AOSO_HUD_DATA["debug"]["cpu"].
+    IF AOSO_HUD_DATA["debug"]:HASKEY("band") { SET cpu_line TO cpu_line + " / " + AOSO_HUD_DATA["debug"]["band"]. }
+    aoso_hud_set("sys_cpu", "CPU          " + aoso_hud_st_glyph(s["cpu"]) + "  " + cpu_line + aoso_hud_sys_suffix("cpu", s)).
     LOCAL cpu_note IS "CPU has spare instructions. HUD running at full rate.".
     IF DEFINED AOSO_CPU_NAME {
         IF AOSO_CPU_NAME = "ELEVATED" { SET cpu_note TO "kOS is working. HUD still updating.". }
         IF AOSO_CPU_NAME = "HIGH" { SET cpu_note TO "kOS is busy (often a burn). HUD still updating. Twin/profile paused. Not a ship failure.". }
         IF AOSO_CPU_NAME = "CRITICAL" { SET cpu_note TO "kOS is very busy. HUD still updating, flight first. Not a ship failure.". }
+    }
+    IF DEFINED AOSO_HUD_DATA {
+        IF AOSO_HUD_DATA["debug"]:HASKEY("band") {
+            IF AOSO_HUD_DATA["debug"]["band"] = "YELLOW" { SET cpu_note TO "CPU YELLOW - background work slowed.". }
+            IF AOSO_HUD_DATA["debug"]["band"] = "RED" { SET cpu_note TO "CPU RED - strategic work deferred. Flight first.". }
+            IF AOSO_HUD_DATA["debug"]["band"] = "CRITICAL" { SET cpu_note TO "CPU CRITICAL - only flight/safety tasks. Not a ship failure.". }
+        }
     }
     aoso_hud_set("sys_cpu_note", cpu_note).
 }
@@ -1069,7 +1078,11 @@ FUNCTION aoso_hud_gui_upd_dbg {
     LOCAL d IS AOSO_HUD_DATA["debug"].
     LOCAL m IS AOSO_HUD_DATA["mission"].
     aoso_hud_set("dbg_cpu", "CPU  " + snap["cpu"] + "  used " + ROUND(snap["used"], 0) + "  spills " + snap["spills"] + "  hud_dt " + ROUND(snap["hud_dt"], 3) + "s").
-    aoso_hud_set("dbg_ipu", "IPU  " + snap["ipu"] + "   left " + snap["left"]).
+    LOCAL band_txt IS "".
+    LOCAL def_txt IS "".
+    IF d:HASKEY("band") { SET band_txt TO "  band " + d["band"]. }
+    IF d:HASKEY("deferred") { SET def_txt TO "  def " + d["deferred"] + "  shed " + d["shed"]. }
+    aoso_hud_set("dbg_ipu", "IPU  " + snap["ipu"] + "   left " + snap["left"] + band_txt + def_txt).
     aoso_hud_set("dbg_page", "PAGE  " + snap["page"] + "   MODE " + snap["mode"] + "   ready=" + snap["ready"]).
     aoso_hud_set("dbg_ctx", "CTX  " + snap["ctx"] + "   PHASE " + d["phase"] + "   body " + snap["body"] + " " + snap["status"]).
     aoso_hud_set("dbg_gui", "GUI  on=" + snap["gui_on"] + "  collect hi/md/lo age " + ROUND(snap["hi_age"], 1) + "/" + ROUND(snap["md_age"], 1) + "/" + ROUND(snap["lo_age"], 1) + "s").
@@ -1077,7 +1090,13 @@ FUNCTION aoso_hud_gui_upd_dbg {
     IF why = "" { SET why TO "nominal". }
     aoso_hud_set("dbg_sys", "SYS  " + snap["sys"] + "  " + why).
     aoso_hud_set("dbg_fd", "FD  " + snap["fd"]).
-    aoso_hud_set("dbg_st", "MSN " + m["mission"] + " / " + m["step"] + "  TOUR " + m["tour"] + "  GOTO " + m["goto"] + "  ASC " + m["ascent"]).
+    LOCAL cert_txt IS "".
+    LOCAL health_txt IS "".
+    LOCAL weak_txt IS "".
+    IF m:HASKEY("cert") { SET cert_txt TO m["cert"]. }
+    IF m:HASKEY("health") { SET health_txt TO m["health"]. }
+    IF m:HASKEY("weak") { SET weak_txt TO m["weak"]. }
+    aoso_hud_set("dbg_st", "MSN " + m["mission"] + " / " + m["step"] + "  TOUR " + m["tour"] + "  GOTO " + m["goto"] + "  ASC " + m["ascent"] + "  CERT " + cert_txt + "  " + health_txt + "  weak " + weak_txt).
     aoso_hud_set("dbg_do", "DOING  " + snap["doing"] + "  " + snap["detail"]).
     aoso_hud_set("dbg_flt", "FLT  alt " + ROUND(snap["alt"], 0) + "  vs " + ROUND(snap["vs"], 1) + "  twr " + ROUND(snap["twr"], 2) + "  thr " + ROUND(100 * snap["throttle"], 0) + "%  stg " + snap["stage"]).
     aoso_hud_set("dbg_warn", "WARN  " + snap["warn_n"] + "  " + snap["last_warn"]).

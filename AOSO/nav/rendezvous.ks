@@ -433,7 +433,9 @@ FUNCTION aoso_rendezvous_porkchop_search {
     }
 
     IF cands:LENGTH = 0 {
-        aoso_log_warn("RENDEZVOUS", "Porkchop found no patched " + hop:NAME + " encounter after the full grid.").
+        aoso_log_warn("RENDEZVOUS", "NAV_FALLBACK porkchop hits=0 for " + hop:NAME + " after " + n_tot + " cells.").
+        aoso_observe_event("NAV_FALLBACK", "WARN", "porkchop", "hits=0 body=" + hop:NAME).
+        IF DEFINED AOSO_EVENTS { aoso_event_publish("NAV_FALLBACK", "rendezvous", "porkchop 0 " + hop:NAME). }
         REMOVE nd.
         RETURN 0.
     }
@@ -823,6 +825,9 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
         aoso_ui_clear().
         RETURN nd_pc.
     }
+    aoso_log_warn("RENDEZVOUS", "NAV_FALLBACK porkchop miss -> Astrogator for " + target_orbitable:NAME + ".").
+    aoso_observe_event("NAV_FALLBACK", "WARN", "astrogator", target_orbitable:NAME).
+    IF DEFINED AOSO_EVENTS { aoso_event_publish("NAV_FALLBACK", "rendezvous", "astrogator " + target_orbitable:NAME). }
 
     // Astrogator is a seed, not a burn. Its first Minmus node was a 503 km
     // graze; mid-course never made that a capture. NASA/B-plane: aim PE
@@ -843,6 +848,9 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
         aoso_log_warn("RENDEZVOUS", "Astrogator PE was still a graze after aiming - dropping it and searching Hohmann windows.").
         aoso_maneuver_clear_all().
     }
+    aoso_log_warn("RENDEZVOUS", "NAV_FALLBACK Astrogator miss -> Hohmann for " + target_orbitable:NAME + ".").
+    aoso_observe_event("NAV_FALLBACK", "WARN", "hohmann", target_orbitable:NAME).
+    IF DEFINED AOSO_EVENTS { aoso_event_publish("NAV_FALLBACK", "rendezvous", "hohmann " + target_orbitable:NAME). }
     aoso_log_info("RENDEZVOUS", "Searching Hohmann intercept windows for " + target_orbitable:NAME + ".").
 
     LOCAL wait_s IS aoso_rendezvous_wait_time_to_transfer_s(target_orbitable).

@@ -534,6 +534,15 @@ FUNCTION aoso_goto_coast_execute {
         SET data["skip_capture"] TO FALSE.
         aoso_log_info("GOTO", "SOI change: " + data["depart_body"] + " -> " + SHIP:BODY:NAME + ".").
         aoso_event_publish("SOI_CHANGED", "goto", data["depart_body"] + "->" + SHIP:BODY:NAME).
+        LOCAL hop_name IS "".
+        IF data:HASKEY("hop") { SET hop_name TO data["hop"]. }
+        IF hop_name <> "" {
+            LOCAL ver_t IS aoso_verify_transfer(hop_name).
+            aoso_log_info("GOTO", "Transfer verify vs " + hop_name + ": " + ver_t["status"] + " " + ver_t["reason"] + ".").
+            LOCAL res_t IS aoso_result_make("TRANSFER", ver_t["status"], ver_t["reason"]).
+            SET res_t TO aoso_verify_apply_result(res_t, ver_t).
+            aoso_result_emit(res_t).
+        }
         aoso_state_transition(AOSO_GOTO, "PLAN").
         RETURN.
     }
@@ -756,7 +765,11 @@ FUNCTION aoso_goto_done_entry {
     SET WARP TO 0.
     aoso_throttle_set(0).
     aoso_steer_release().
-    aoso_log_info("GOTO", "Arrived at " + data["goal"] + ".").
+    LOCAL ver_x IS aoso_verify_transfer(data["goal"]).
+    LOCAL res_g IS aoso_result_make("TRANSFER", "SUCCESS", "arrived").
+    SET res_g TO aoso_verify_apply_result(res_g, ver_x).
+    aoso_result_emit(res_g).
+    aoso_log_info("GOTO", "Arrived at " + data["goal"] + " verify=" + ver_x["reason"] + ".").
 }
 
 FUNCTION aoso_goto_aborted_entry {

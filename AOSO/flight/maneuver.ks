@@ -54,6 +54,10 @@ FUNCTION aoso_maneuver_last_result {
 
 FUNCTION aoso_maneuver_align_s {
     LOCAL s IS aoso_config_get("MANEUVER_ALIGN_S", 50).
+    IF DEFINED AOSO_TOPO {
+        LOCAL lead IS aoso_topo_turn_lead_s().
+        IF lead > s { SET s TO lead. }
+    }
     IF s < 35 { SET s TO 35. }
     RETURN s.
 }
@@ -307,11 +311,18 @@ FUNCTION aoso_maneuver_finish_node {
         SET res_ok["predicted_dv"] TO AOSO_MANEUVER_START_DV.
         SET res_ok["actual_dv"] TO AOSO_MANEUVER_START_DV - left.
         IF res_ok["actual_dv"] < 0 { SET res_ok["actual_dv"] TO 0. }
+        LOCAL ver_m IS aoso_verify_maneuver(AOSO_MANEUVER_RESULT).
+        SET res_ok TO aoso_verify_apply_result(res_ok, ver_m).
         aoso_result_emit(res_ok).
     } ELSE {
         LOCAL res_f IS aoso_result_make("MANEUVER", "FAILED", reason).
+        LOCAL ver_f IS aoso_verify_maneuver(AOSO_MANEUVER_RESULT).
+        SET res_f TO aoso_verify_apply_result(res_f, ver_f).
         aoso_result_emit(res_f).
     }
+    aoso_warp_deadline_clear("node").
+    aoso_auth_release_all("maneuver").
+    aoso_auth_use("").
     IF reason = "missed" {
         aoso_observe_anomaly("BURN_MISSED", "HIGH", 0, left).
     } ELSE {
@@ -342,6 +353,7 @@ FUNCTION aoso_maneuver_execute_next {
         RETURN TRUE.
     }
 
+    aoso_auth_use("maneuver").
     LOCAL nd IS NEXTNODE.
     LOCAL remaining_vec IS nd:BURNVECTOR.
     LOCAL remaining IS remaining_vec:MAG.
@@ -386,6 +398,13 @@ FUNCTION aoso_maneuver_execute_next {
         LOCAL align_s IS aoso_maneuver_align_s().
         LOCAL warp_lead IS ignite_lead + align_s.
         LOCAL physics_until IS ignite_lead + aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10).
+        IF nd:ETA > 0 {
+            aoso_warp_deadline_set("node", TIME:SECONDS + nd:ETA).
+        }
+        aoso_auth_acquire("maneuver", "STEERING", 3).
+        aoso_auth_acquire("maneuver", "THROTTLE", 3).
+        aoso_auth_acquire("maneuver", "WARP", 2).
+        aoso_auth_use("maneuver").
 
         // Do not LOCK STEERING until the align window. Rails WARPTO is a
         // no-op while steering is locked, which is why the 8 m/s Minmus
@@ -394,7 +413,7 @@ FUNCTION aoso_maneuver_execute_next {
             IF NOT peri_unsafe {
                 aoso_steer_release().
                 RCS OFF.
-                aoso_warp_approach(nd:ETA, warp_lead, physics_until).
+                aoso_warp_request(nd:ETA, warp_lead, physics_until).
                 aoso_throttle_set(0).
                 RETURN FALSE.
             }
@@ -404,7 +423,7 @@ FUNCTION aoso_maneuver_execute_next {
         RCS ON.
         aoso_steer_to_vector(remaining_vec).
 
-        LOCAL wstate IS aoso_warp_approach(nd:ETA, warp_lead, physics_until).
+        LOCAL wstate IS aoso_warp_request(nd:ETA, warp_lead, physics_until).
         IF wstate = "rails" OR wstate = "physics" {
             aoso_throttle_set(0).
             RETURN FALSE.
@@ -622,6 +641,7 @@ FUNCTION aoso_maneuver_clear_all {
     UNTIL NOT HASNODE {
         REMOVE NEXTNODE.
     }
+    aoso_warp_deadline_clear("node").
     aoso_maneuver_reset_exec().
     aoso_maneuver_clear_apo_cap().
 }

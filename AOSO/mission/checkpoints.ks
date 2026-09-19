@@ -22,16 +22,44 @@ GLOBAL AOSO_CHECKPOINT IS LEXICON(
     "saved_at", 0
 ).
 
+FUNCTION aoso_checkpoints_context {
+    LOCAL ctx IS LEXICON().
+    SET ctx["cfg_id"] TO "".
+    IF DEFINED AOSO_CFG_ID { SET ctx["cfg_id"] TO AOSO_CFG_ID. }
+    SET ctx["body"] TO SHIP:BODY:NAME.
+    SET ctx["status"] TO SHIP:STATUS.
+    SET ctx["topo_fp"] TO "".
+    IF DEFINED AOSO_TOPO {
+        IF AOSO_TOPO:HASKEY("fp") { SET ctx["topo_fp"] TO AOSO_TOPO["fp"]. }
+    }
+    SET ctx["tour_index"] TO -1.
+    IF DEFINED AOSO_TOUR {
+        IF AOSO_TOUR:HASKEY("data") {
+            IF AOSO_TOUR["data"]:HASKEY("index") {
+                SET ctx["tour_index"] TO AOSO_TOUR["data"]["index"].
+            }
+        }
+    }
+    RETURN ctx.
+}
+
 FUNCTION aoso_checkpoints_save {
     PARAMETER step_index.
     PARAMETER step_name IS "".
     PARAMETER data IS LEXICON().
     PARAMETER quiet IS FALSE.
 
+    LOCAL merged IS data.
+    IF NOT merged:ISTYPE("Lexicon") { SET merged TO LEXICON(). }
+    LOCAL ctx IS aoso_checkpoints_context().
+    FOR k IN ctx:KEYS {
+        SET merged[k] TO ctx[k].
+    }
+
     SET AOSO_CHECKPOINT TO LEXICON(
         "step_index", step_index,
         "step_name", step_name,
-        "data", data,
+        "data", merged,
         "saved_at", TIME:SECONDS
     ).
     aoso_json_write(AOSO_CONST["CHECKPOINT_FILE"], AOSO_CHECKPOINT).

@@ -441,6 +441,8 @@ FUNCTION aoso_ascent_on_abort {
     PARAMETER data.
     aoso_throttle_set(0).
     aoso_ascent_restore_steering(data).
+    aoso_auth_release_all("ascent").
+    aoso_auth_use("").
     aoso_state_transition(AOSO_ASCENT, "ABORTED").
 }
 
@@ -730,7 +732,11 @@ FUNCTION aoso_ascent_done_entry {
         SET res["fuel_used"] TO data["pad_lf"] - res["actual_fuel"].
     }
     IF data:HASKEY("circ_dv") { SET res["actual_dv"] TO data["circ_dv"]. }
+    LOCAL ver_a IS aoso_verify_ascent().
+    SET res TO aoso_verify_apply_result(res, ver_a).
     aoso_result_emit(res).
+    aoso_auth_release_all("ascent").
+    aoso_auth_use("").
     IF data:HASKEY("circ_dv") {
         IF data["circ_dv"] > 1 {
             aoso_xp_record("CIRCULARIZATION", SHIP:BODY:NAME, 80, data["circ_dv"], FALSE).
@@ -775,6 +781,8 @@ FUNCTION aoso_ascent_aborted_entry {
         SET res_a["fuel_used"] TO data["pad_lf"] - res_a["actual_fuel"].
     }
     aoso_result_emit(res_a).
+    aoso_auth_release_all("ascent").
+    aoso_auth_use("").
 }
 
 FUNCTION aoso_ascent_define_states {
@@ -829,6 +837,10 @@ FUNCTION aoso_ascent_start {
         "circ_now", FALSE,
         "circ_dv", 0
     ).
+    aoso_auth_acquire("ascent", "STEERING", 3).
+    aoso_auth_acquire("ascent", "THROTTLE", 3).
+    aoso_auth_acquire("ascent", "STAGING", 3).
+    aoso_auth_use("ascent").
     LOCAL shape_now IS aoso_ascent_turn_shape().
     LOCAL start_a IS aoso_config_get("ASCENT_TURN_START_ALT", 1000).
     LOCAL end_a IS aoso_ascent_turn_end_alt().
@@ -840,6 +852,7 @@ FUNCTION aoso_ascent_start {
 }
 
 FUNCTION aoso_ascent_update {
+    aoso_auth_use("ascent").
     LOCAL st IS AOSO_ASCENT["current"].
     IF st <> "" {
         IF st <> "DONE" {

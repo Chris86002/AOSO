@@ -9,7 +9,8 @@ GLOBAL AOSO_BRAIN IS LEXICON(
     "replan_reason", "",
     "pending_replan", "",
     "last_think", 0,
-    "last_body", ""
+    "last_body", "",
+    "last_cert", 0
 ).
 
 FUNCTION aoso_brain_init {
@@ -18,6 +19,7 @@ FUNCTION aoso_brain_init {
     SET AOSO_BRAIN["pending_replan"] TO "".
     SET AOSO_BRAIN["last_think"] TO 0.
     SET AOSO_BRAIN["last_body"] TO SHIP:BODY:NAME.
+    SET AOSO_BRAIN["last_cert"] TO 0.
     aoso_ctx_init().
     aoso_event_init().
 }
@@ -77,8 +79,8 @@ FUNCTION aoso_brain_wait_think {
 FUNCTION aoso_brain_on_event {
     PARAMETER ev.
     LOCAL etype IS ev["type"].
-    IF etype = "STAGE_COMPLETE" { aoso_ctx_mark_vehicle(). }
-    IF etype = "VEHICLE_CHANGED" { aoso_ctx_mark_vehicle(). }
+    IF etype = "STAGE_COMPLETE" { aoso_ctx_mark_vehicle(). aoso_ctx_mark_topo(). }
+    IF etype = "VEHICLE_CHANGED" { aoso_ctx_mark_vehicle(). aoso_ctx_mark_topo(). }
     IF etype = "PROFILE_UPDATED" { aoso_ctx_mark_budget(). }
     IF etype = "CAPABILITY_CHANGED" { aoso_ctx_mark_vehicle(). }
     IF etype = "SOI_CHANGED" { aoso_ctx_mark_world(). aoso_brain_consider_replan("soi"). }
@@ -91,6 +93,8 @@ FUNCTION aoso_brain_on_event {
     IF etype = "MANEUVER_FAILED" { aoso_brain_consider_replan("maneuver_fail"). }
     IF etype = "MODEL_UPDATED" { aoso_ctx_dirty("dirty_feas"). }
     IF etype = "REPLAN_REQUESTED" { aoso_brain_consider_replan(ev["data"]). }
+    IF etype = "CORRECT_REQUESTED" { aoso_log_info("BRAIN", "Local correction indicated: " + ev["data"]). }
+    IF etype = "HOLD" { aoso_log_warn("BRAIN", "Safe hold: " + ev["data"]). }
 }
 
 FUNCTION aoso_brain_consider_replan {
@@ -101,6 +105,11 @@ FUNCTION aoso_brain_consider_replan {
 FUNCTION aoso_brain_do_replan {
     PARAMETER reason.
     IF NOT DEFINED AOSO_PLAN_LAST { RETURN. }
+    IF DEFINED AOSO_CPU_LEVEL {
+        IF AOSO_CPU_LEVEL >= 2 {
+            IF NOT aoso_brain_is_quiet() { RETURN. }
+        }
+    }
     IF NOT aoso_brain_think_ok() { RETURN. }
     aoso_log_info("BRAIN", "Replanning (" + reason + ").").
     aoso_ui_set("Replanning", reason).
@@ -121,6 +130,12 @@ FUNCTION aoso_brain_do_replan {
 
 FUNCTION aoso_brain_refresh_dirty {
     IF NOT aoso_brain_think_ok() { RETURN. }
+    IF aoso_ctx_is_dirty("dirty_topo") {
+        IF NOT aoso_ctx_is_dirty("dirty_vehicle") {
+            aoso_topo_refresh(FALSE).
+        }
+        aoso_ctx_clear_dirty("dirty_topo").
+    }
     IF aoso_ctx_is_dirty("dirty_vehicle") {
         aoso_profile_refresh("brain_dirty").
         aoso_ctx_clear_dirty("dirty_vehicle").
@@ -149,6 +164,13 @@ FUNCTION aoso_brain_tick {
         LOCAL debounce IS aoso_config_get("BRAIN_REPLAN_DEBOUNCE_S", 45).
         IF TIME:SECONDS - AOSO_BRAIN["last_replan"] >= debounce {
             aoso_brain_do_replan(AOSO_BRAIN["pending_replan"]).
+        }
+    }
+    IF aoso_brain_is_quiet() {
+        IF TIME:SECONDS - AOSO_BRAIN["last_cert"] >= 30 {
+            aoso_cert_eval("grand_tour").
+            aoso_assure_eval().
+            SET AOSO_BRAIN["last_cert"] TO TIME:SECONDS.
         }
     }
     SET AOSO_BRAIN["last_think"] TO TIME:SECONDS.

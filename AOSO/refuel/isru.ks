@@ -28,6 +28,13 @@ FUNCTION aoso_refuel_available {
 FUNCTION aoso_refuel_targets_full {
     PARAMETER target_names.
     LOCAL target_pct IS aoso_config_get("REFUEL_TARGET_PCT", 95).
+    IF DEFINED AOSO_REFUEL {
+        IF AOSO_REFUEL:HASKEY("data") {
+            IF AOSO_REFUEL["data"]:HASKEY("target_pct") {
+                SET target_pct TO AOSO_REFUEL["data"]["target_pct"].
+            }
+        }
+    }
     FOR name IN target_names {
         IF aoso_resource_pct(name) < target_pct { RETURN FALSE. }
     }
@@ -81,6 +88,31 @@ FUNCTION aoso_refuel_harvest_entry {
 
 FUNCTION aoso_refuel_harvest_execute {
     PARAMETER data.
+    IF NOT aoso_surface_stable() {
+        SET DRILLS TO FALSE.
+        SET ISRU TO FALSE.
+        SET data["ec_paused"] TO TRUE.
+        aoso_log_every(20, "REFUEL", "Harvest paused - surface not stable.").
+        aoso_hb_set("refuel", "UNSTABLE", aoso_resource_pct("LiquidFuel") / 100).
+        RETURN.
+    }
+    LOCAL ec_now IS aoso_power_ec_pct().
+    IF ec_now < 8 {
+        SET DRILLS TO FALSE.
+        SET ISRU TO FALSE.
+        SET data["ec_paused"] TO TRUE.
+        aoso_log_every(20, "REFUEL", "Harvest paused EC=" + ROUND(ec_now, 1) + "% (need >=8).").
+        aoso_hb_set("refuel", "EC_WAIT", ec_now / 100).
+        RETURN.
+    }
+    IF data:HASKEY("ec_paused") {
+        IF data["ec_paused"] {
+            SET DRILLS TO TRUE.
+            SET ISRU TO TRUE.
+            SET data["ec_paused"] TO FALSE.
+            aoso_log_info("REFUEL", "Harvest resumed EC=" + ROUND(ec_now, 1) + "%.").
+        }
+    }
     aoso_warp_set_physics_cruise().
     IF aoso_refuel_ore_depleted() {
         aoso_log_warn("REFUEL", "Ore depleted before targets were full.").
@@ -138,9 +170,11 @@ FUNCTION aoso_refuel_start {
     aoso_state_define(AOSO_REFUEL, "DONE", 0, 0, 0).
     aoso_state_define(AOSO_REFUEL, "ABORTED", 0, 0, 0).
 
-    SET AOSO_REFUEL["data"] TO LEXICON("targets", target_names).
+    LOCAL pct IS aoso_config_get("REFUEL_TARGET_PCT", 95).
+    SET pct TO aoso_refuel_needed_pct().
+    SET AOSO_REFUEL["data"] TO LEXICON("targets", target_names, "target_pct", pct, "ec_paused", FALSE).
     aoso_state_transition(AOSO_REFUEL, "DEPLOY").
-    aoso_log_info("REFUEL", "Refuel sequence started.").
+    aoso_log_info("REFUEL", "Refuel sequence started, target " + pct + "%.").
     RETURN TRUE.
 }
 

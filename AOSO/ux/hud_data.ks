@@ -308,6 +308,16 @@ FUNCTION aoso_hud_collect_mission {
             }
         }
     }
+    SET m["cert"] TO "".
+    SET m["health"] TO "".
+    SET m["weak"] TO "".
+    IF DEFINED AOSO_CERT_LAST {
+        IF AOSO_CERT_LAST:HASKEY("status") { SET m["cert"] TO AOSO_CERT_LAST["status"]. }
+    }
+    IF DEFINED AOSO_ASSURE_LAST {
+        IF AOSO_ASSURE_LAST:HASKEY("health") { SET m["health"] TO AOSO_ASSURE_LAST["health"]. }
+        IF AOSO_ASSURE_LAST:HASKEY("weak_body") { SET m["weak"] TO AOSO_ASSURE_LAST["weak_body"]. }
+    }
 }
 
 FUNCTION aoso_hud_timeline_txt {
@@ -562,8 +572,25 @@ FUNCTION aoso_hud_collect_debug {
     SET d["used"] TO used.
     SET d["frac"] TO frac.
     SET d["cpu"] TO cname.
+    SET d["band"] TO aoso_cpu_band().
     SET d["spills"] TO 0.
     IF DEFINED AOSO_CPU_SPILLS { SET d["spills"] TO AOSO_CPU_SPILLS. }
+    SET d["deferred"] TO 0.
+    SET d["shed"] TO 0.
+    IF DEFINED AOSO_TASKS {
+        SET d["deferred"] TO aoso_sched_stat_sum("deferred_n").
+        SET d["shed"] TO aoso_sched_stat_sum("shed_n").
+    }
+    SET d["cert"] TO "UNKNOWN".
+    IF DEFINED AOSO_CERT_LAST {
+        IF AOSO_CERT_LAST:HASKEY("status") { SET d["cert"] TO AOSO_CERT_LAST["status"]. }
+    }
+    SET d["weak"] TO "".
+    SET d["health"] TO "".
+    IF DEFINED AOSO_ASSURE_LAST {
+        IF AOSO_ASSURE_LAST:HASKEY("weak_body") { SET d["weak"] TO AOSO_ASSURE_LAST["weak_body"]. }
+        IF AOSO_ASSURE_LAST:HASKEY("health") { SET d["health"] TO AOSO_ASSURE_LAST["health"]. }
+    }
     SET d["page"] TO "".
     SET d["mode"] TO "".
     IF DEFINED AOSO_HUD_PAGE { SET d["page"] TO AOSO_HUD_PAGE. }

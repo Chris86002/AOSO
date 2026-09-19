@@ -120,6 +120,18 @@ FUNCTION aoso_tour_current_name {
     RETURN data["targets"][data["index"]].
 }
 
+FUNCTION aoso_tour_mark {
+    PARAMETER data.
+    PARAMETER body_name.
+    PARAMETER mark_st.
+    IF body_name = "" { RETURN. }
+    IF NOT data:HASKEY("accomplished") {
+        SET data["accomplished"] TO LEXICON().
+    }
+    SET data["accomplished"][body_name] TO mark_st.
+    aoso_log_info("TOUR", body_name + " marked " + mark_st + ".").
+}
+
 FUNCTION aoso_tour_advance {
     PARAMETER data.
     SET data["index"] TO data["index"] + 1.
@@ -150,6 +162,12 @@ FUNCTION aoso_tour_replan_remaining {
 FUNCTION aoso_tour_boot_entry {
     PARAMETER data.
     IF SHIP:STATUS = "PRELAUNCH" OR SHIP:STATUS = "LANDED" {
+        LOCAL dep IS aoso_depart_certify().
+        IF dep["status"] = "NOT_READY" {
+            aoso_log_warn("TOUR", "Pad/surface not ready: " + dep["reason"] + " - holding.").
+            aoso_ui_set("HOLD", dep["reason"]).
+            RETURN.
+        }
         aoso_tour_replan_remaining(data).
         LOCAL park IS aoso_goto_parking_alt(SHIP:BODY).
         aoso_log_info("TOUR", "Launching from " + SHIP:BODY:NAME + " to begin the grand tour.").
@@ -187,6 +205,7 @@ FUNCTION aoso_tour_goto_entry {
         SET data["feas_result"] TO report["result"].
         IF report["result"] = "SKIP" {
             aoso_log_warn("TOUR", "Skipping " + name + " - " + report["reason"] + ".").
+            aoso_tour_mark(data, name, "SKIPPED").
             SET data["index"] TO data["index"] + 1.
         } ELSE {
             SET AOSO_WANT_POLAR TO FALSE.
@@ -216,6 +235,7 @@ FUNCTION aoso_tour_goto_execute {
                 aoso_state_transition(AOSO_TOUR, "POLAR").
             }
         } ELSE {
+            aoso_tour_mark(data, name, "ORBITED").
             aoso_tour_advance(data).
         }
     }
@@ -507,13 +527,16 @@ FUNCTION aoso_tour_descend_execute {
     IF aoso_descent_is_aborted() {
         aoso_log_warn("TOUR", "Landing aborted at " + SHIP:BODY:NAME + " - continuing the tour from orbit if possible.").
         IF SHIP:STATUS = "LANDED" {
+            aoso_tour_mark(data, SHIP:BODY:NAME, "LANDED").
             aoso_state_transition(AOSO_TOUR, "LAUNCH").
         } ELSE {
+            aoso_tour_mark(data, aoso_tour_current_name(data), "ORBITED").
             aoso_tour_advance(data).
         }
         RETURN.
     }
     IF aoso_descent_is_landed() {
+        aoso_tour_mark(data, aoso_tour_current_name(data), "LANDED").
         aoso_state_transition(AOSO_TOUR, "REFUEL").
     }
 }
@@ -529,6 +552,11 @@ FUNCTION aoso_tour_refuel_entry {
         aoso_state_transition(AOSO_TOUR, "LAUNCH").
         RETURN.
     }
+    IF NOT aoso_surface_stable() {
+        aoso_log_warn("TOUR", "Surface not stable - waiting before ISRU.").
+        aoso_ui_set("HOLD", "waiting for a stable surface before ISRU").
+        RETURN.
+    }
     LOCAL started IS aoso_refuel_start().
     IF NOT started {
         aoso_state_transition(AOSO_TOUR, "LAUNCH").
@@ -537,6 +565,18 @@ FUNCTION aoso_tour_refuel_entry {
 
 FUNCTION aoso_tour_refuel_execute {
     PARAMETER data.
+    IF AOSO_REFUEL["current"] = "" {
+        IF aoso_surface_stable() {
+            IF aoso_refuel_available() {
+                aoso_refuel_start().
+            } ELSE {
+                aoso_state_transition(AOSO_TOUR, "LAUNCH").
+            }
+        } ELSE {
+            aoso_ui_set("HOLD", "waiting for a stable surface before ISRU").
+        }
+        RETURN.
+    }
     aoso_refuel_tick().
     IF aoso_refuel_is_aborted() {
         aoso_log_warn("TOUR", "Refuel aborted at " + SHIP:BODY:NAME + " - launching on remaining propellant.").
@@ -550,19 +590,36 @@ FUNCTION aoso_tour_refuel_execute {
 
 FUNCTION aoso_tour_launch_entry {
     PARAMETER data.
-    LOCAL park IS aoso_goto_parking_alt(SHIP:BODY).
-    aoso_log_info("TOUR", "Launching from " + SHIP:BODY:NAME + " toward parking " + ROUND(park, 0) + "m.").
-    aoso_ascent_start(90, park).
+    SET data["depart_ok"] TO FALSE.
 }
 
 FUNCTION aoso_tour_launch_execute {
     PARAMETER data.
+    IF NOT data:HASKEY("depart_ok") { SET data["depart_ok"] TO FALSE. }
+    IF NOT data["depart_ok"] {
+        IF NOT aoso_surface_stable() {
+            aoso_ui_set("HOLD", "waiting for surface stability").
+            aoso_log_every(20, "TOUR", "Holding launch - surface not stable.").
+            RETURN.
+        }
+        LOCAL dep IS aoso_depart_certify().
+        IF dep["status"] = "NOT_READY" {
+            aoso_ui_set("HOLD", dep["reason"]).
+            aoso_log_every(20, "TOUR", "Departure not ready: " + dep["reason"] + ".").
+            RETURN.
+        }
+        SET data["depart_ok"] TO TRUE.
+        LOCAL park IS aoso_goto_parking_alt(SHIP:BODY).
+        aoso_log_info("TOUR", "Launching from " + SHIP:BODY:NAME + " toward parking " + ROUND(park, 0) + "m (" + dep["status"] + ").").
+        aoso_ascent_start(90, park).
+    }
     aoso_ascent_update().
     IF aoso_ascent_is_aborted() {
         aoso_state_abort(AOSO_TOUR).
         RETURN.
     }
     IF aoso_ascent_is_done() {
+        aoso_tour_mark(data, SHIP:BODY:NAME, "COMPLETED").
         aoso_tour_replan_remaining(data).
         aoso_state_transition(AOSO_TOUR, "GOTO").
     }
@@ -638,7 +695,7 @@ FUNCTION aoso_tour_aborted_entry {
 }
 
 FUNCTION aoso_tour_define_states {
-    aoso_state_define(AOSO_TOUR, "BOOT", aoso_tour_boot_entry@, 0, 0, 0, 0, aoso_tour_on_abort@).
+    aoso_state_define(AOSO_TOUR, "BOOT", aoso_tour_boot_entry@, aoso_tour_boot_entry@, 0, 0, 0, aoso_tour_on_abort@).
     aoso_state_define(AOSO_TOUR, "ASCEND", 0, aoso_tour_ascend_execute@, 0, 0, 0, aoso_tour_on_abort@).
     aoso_state_define(AOSO_TOUR, "GOTO", aoso_tour_goto_entry@, aoso_tour_goto_execute@, 0, 0, 0, aoso_tour_on_abort@).
     aoso_state_define(AOSO_TOUR, "POLAR", aoso_tour_polar_entry@, aoso_tour_polar_execute@, 0, 0, 0, aoso_tour_on_abort@).
@@ -661,7 +718,7 @@ FUNCTION aoso_tour_start {
     }
 
     aoso_tour_define_states().
-    SET AOSO_TOUR["data"] TO LEXICON("targets", targets, "index", 0, "site_lat", 0, "site_lng", 0, "site_alt", 0, "site_score", -1, "deorbit_wait_since", 0, "polar_warp_logged", FALSE, "scan_until", 0, "scan_next_sample", 0, "scan_orbits", 2).
+    SET AOSO_TOUR["data"] TO LEXICON("targets", targets, "index", 0, "site_lat", 0, "site_lng", 0, "site_alt", 0, "site_score", -1, "deorbit_wait_since", 0, "polar_warp_logged", FALSE, "scan_until", 0, "scan_next_sample", 0, "scan_orbits", 2, "accomplished", LEXICON(), "depart_ok", FALSE).
     aoso_log_info("TOUR", "Grand tour armed: " + targets:LENGTH + " bodies (" + aoso_classify_name() + "), then KSC return.").
     aoso_decide("TOUR", "arm", "" + targets:LENGTH, aoso_classify_name(), "n=" + targets:LENGTH).
     aoso_state_transition(AOSO_TOUR, "BOOT").

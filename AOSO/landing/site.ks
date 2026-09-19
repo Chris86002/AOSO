@@ -109,6 +109,67 @@ FUNCTION aoso_landing_site_score {
     RETURN score.
 }
 
+FUNCTION aoso_landing_site_quality {
+    PARAMETER geo.
+    PARAMETER target_geo IS 0.
+    LOCAL sc IS aoso_landing_site_score(geo, target_geo).
+    LOCAL slope IS 0.
+    LOCAL alt_m IS 0.
+    LOCAL water IS FALSE.
+    LOCAL lat_n IS 0.
+    LOCAL lng_n IS 0.
+    IF geo:ISTYPE("GeoCoordinates") {
+        SET slope TO aoso_landing_site_slope_deg(geo).
+        SET alt_m TO geo:TERRAINHEIGHT.
+        SET water TO aoso_landing_site_is_water(geo).
+        SET lat_n TO geo:LAT.
+        SET lng_n TO geo:LNG.
+    }
+    LOCAL max_slope IS aoso_config_get("MAX_SLOPE_DEG", 15).
+    LOCAL slope_score IS 0.
+    IF max_slope > 0 { SET slope_score TO 1 - (slope / max_slope). }
+    IF slope_score < 0 { SET slope_score TO 0. }
+    LOCAL sun_score IS 1 - (ABS(lat_n) / 90).
+    IF sun_score < 0 { SET sun_score TO 0. }
+    LOCAL takeoff_score IS 0.6.
+    IF SHIP:BODY:ATM:EXISTS {
+        LOCAL bonus IS alt_m / 8000.
+        IF bonus > 0.5 { SET bonus TO 0.5. }
+        IF bonus < 0 { SET bonus TO 0. }
+        SET takeoff_score TO 0.4 + bonus.
+    } ELSE {
+        IF alt_m > 5000 { SET takeoff_score TO 0.4. }
+        ELSE { SET takeoff_score TO 0.7. }
+    }
+    LOCAL safety_score IS slope_score.
+    IF water { SET safety_score TO 0. }
+    LOCAL resource_score IS 0.5.
+    IF DEFINED AOSO_PROFILE {
+        IF aoso_profile_capable("can_isru") { SET resource_score TO 0.6. }
+    }
+    LOCAL overall IS 0.35 * safety_score + 0.2 * sun_score + 0.25 * takeoff_score + 0.2 * resource_score.
+    LOCAL ok IS FALSE.
+    IF sc >= 0 { SET ok TO TRUE. }
+    LOCAL conf IS 0.55.
+    RETURN LEXICON(
+        "lat", lat_n,
+        "lng", lng_n,
+        "slope_score", ROUND(slope_score, 3),
+        "elevation_score", ROUND(takeoff_score, 3),
+        "resource_score", ROUND(resource_score, 3),
+        "sun_score", ROUND(sun_score, 3),
+        "takeoff_score", ROUND(takeoff_score, 3),
+        "safety_score", ROUND(safety_score, 3),
+        "overall_score", ROUND(overall, 3),
+        "confidence", conf,
+        "slope_deg", ROUND(slope, 2),
+        "score", sc,
+        "alt", alt_m,
+        "water", water,
+        "ok", ok
+    ).
+}
+
 // Instant orbital scan: samples the ground track over the next N periods
 // (kOS can query TERRAINHEIGHT of any lat/lng from anywhere, so this does
 // not require actually flying over the sites). Tour still warps LANDING_SCAN_ORBITS
@@ -156,14 +217,20 @@ FUNCTION aoso_landing_site_scan_orbit {
     }
 
     LOCAL slope IS aoso_landing_site_slope_deg(best_geo).
+    LOCAL q IS aoso_landing_site_quality(best_geo).
     aoso_log_info("SITE", "Best landing site lat=" + ROUND(best_geo:LAT, 2) + " lng=" + ROUND(best_geo:LNG, 2) +
         " alt=" + ROUND(best_geo:TERRAINHEIGHT, 0) + "m slope=" + ROUND(slope, 1) +
-        " deg score=" + ROUND(best_score, 2) + " (" + samples + " samples / " + orbits + " orbits).").
+        " deg score=" + ROUND(best_score, 2) + " quality=" + q["overall_score"] +
+        " sun=" + q["sun_score"] + " takeoff=" + q["takeoff_score"] +
+        " (" + samples + " samples / " + orbits + " orbits).").
     RETURN LEXICON(
         "lat", best_geo:LAT,
         "lng", best_geo:LNG,
         "score", best_score,
         "slope", slope,
-        "alt", best_geo:TERRAINHEIGHT
+        "alt", best_geo:TERRAINHEIGHT,
+        "quality", q["overall_score"],
+        "sun", q["sun_score"],
+        "takeoff", q["takeoff_score"]
     ).
 }

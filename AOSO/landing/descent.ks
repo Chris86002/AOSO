@@ -131,6 +131,8 @@ FUNCTION aoso_descent_on_abort {
     PARAMETER data.
     aoso_throttle_set(0).
     aoso_steer_release().
+    aoso_auth_release_all("descent").
+    aoso_auth_use("").
     aoso_state_transition(AOSO_DESCENT, "ABORTED").
 }
 
@@ -340,8 +342,12 @@ FUNCTION aoso_descent_touchdown_entry {
     aoso_steer_release().
     aoso_log_info("DESCENT", "Touchdown, throttle cut.").
     aoso_observe_event("TOUCHDOWN", "INFO", "TOUCHDOWN", "radar=" + ROUND(aoso_descent_true_radar(), 1)).
+    LOCAL ver_l IS aoso_verify_landing().
     LOCAL res_l IS aoso_result_make("LANDING", "SUCCESS", "touchdown").
+    SET res_l TO aoso_verify_apply_result(res_l, ver_l).
     aoso_result_emit(res_l).
+    aoso_auth_release_all("descent").
+    aoso_auth_use("").
 }
 
 FUNCTION aoso_descent_poll {
@@ -365,6 +371,9 @@ FUNCTION aoso_descent_start {
 
     aoso_state_queue(AOSO_DESCENT, "FREEFALL").
     aoso_sched_add("descent", 0, aoso_descent_tick@).
+    aoso_auth_acquire("descent", "STEERING", 4).
+    aoso_auth_acquire("descent", "THROTTLE", 4).
+    aoso_auth_use("descent").
     aoso_log_info("DESCENT", "Descent guidance started in FREEFALL. AP=" + ROUND(aoso_orbit_apoapsis_alt(), 0) +
         " PE=" + ROUND(PERIAPSIS, 0) + " alt=" + ROUND(ALTITUDE, 0) + " vs=" + ROUND(VERTICALSPEED, 1) +
         " " + aoso_warp_diag_txt() + ".").
@@ -372,6 +381,7 @@ FUNCTION aoso_descent_start {
 
 FUNCTION aoso_descent_tick {
     IF AOSO_DESCENT["current"] = "" { RETURN. }
+    aoso_auth_use("descent").
     LOCAL cur IS AOSO_DESCENT["current"].
     LOCAL pending IS FALSE.
     IF AOSO_DESCENT:HASKEY("need_entry") {
