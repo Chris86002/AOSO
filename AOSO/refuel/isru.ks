@@ -90,6 +90,8 @@ FUNCTION aoso_refuel_harvest_execute {
     IF aoso_refuel_targets_full(data["targets"]) {
         aoso_state_transition(AOSO_REFUEL, "STOW").
     }
+    LOCAL fuel_p IS aoso_resource_pct("LiquidFuel") / 100.
+    aoso_hb_set("refuel", "HARVEST", fuel_p).
 }
 
 FUNCTION aoso_refuel_stow_entry {
@@ -99,6 +101,9 @@ FUNCTION aoso_refuel_stow_entry {
     IF aoso_vessel_get("has_radiators", FALSE) { SET RADIATORS TO FALSE. }
     SET DEPLOYDRILLS TO FALSE.
     aoso_log_info("REFUEL", "Harvest complete; drills/converters stowed.").
+    LOCAL res_r IS aoso_result_make("REFUEL", "SUCCESS", "stow").
+    SET res_r["actual_fuel"] TO aoso_resource_pct("LiquidFuel").
+    aoso_result_emit(res_r).
     aoso_state_transition(AOSO_REFUEL, "DONE").
 }
 

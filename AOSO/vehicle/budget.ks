@@ -14,6 +14,8 @@
 GLOBAL AOSO_BUDGET IS LEXICON().
 
 FUNCTION aoso_budget_refresh {
+    LOCAL prev_dv IS 0.
+    IF AOSO_BUDGET:HASKEY("mission_dv") { SET prev_dv TO AOSO_BUDGET["mission_dv"]. }
     LOCAL total_dv IS aoso_caps_get("dv_total_vac", 0).
     LOCAL unusable_dv IS aoso_caps_get("dv_unusable", 0).
     LOCAL usable_raw IS total_dv - unusable_dv.
@@ -83,6 +85,10 @@ FUNCTION aoso_budget_refresh {
         " return=" + ROUND(return_dv, 0) +
         " abort=" + ROUND(abort_dv, 0) +
         " mission=" + ROUND(mission_dv, 0)).
+
+    IF ABS(mission_dv - prev_dv) > 25 {
+        aoso_event_publish("MODEL_UPDATED", "budget", "dv=" + ROUND(mission_dv, 0)).
+    }
 
     RETURN AOSO_BUDGET.
 }

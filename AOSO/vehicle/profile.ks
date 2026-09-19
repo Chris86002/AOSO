@@ -94,6 +94,8 @@ FUNCTION aoso_profile_refresh {
     PARAMETER reason IS "manual".
 
     aoso_prof_start("profile_refresh").
+    LOCAL prev_fp IS "".
+    IF AOSO_PROFILE:HASKEY("fingerprint") { SET prev_fp TO AOSO_PROFILE["fingerprint"]. }
     aoso_parts_cache_invalidate().
     aoso_vessel_scan().
     LOCAL persist_parts IS TRUE.
@@ -381,6 +383,9 @@ FUNCTION aoso_profile_refresh {
 
     aoso_classify_refresh().
     aoso_observe_on_fingerprint().
+    IF fingerprint <> prev_fp {
+        aoso_event_publish("PROFILE_UPDATED", "profile", reason).
+    }
     aoso_prof_end().
 
     RETURN AOSO_PROFILE.
