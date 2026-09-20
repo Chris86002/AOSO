@@ -88,10 +88,14 @@ FUNCTION aoso_selftest {
     LOCAL act1 IS aoso_action_create(id1, "TRANSFER", "Duna", 1080).
     LOCAL act2 IS aoso_action_create(id2, "TRANSFER", "Eve", 2000).
     aoso_action_begin(act1).
+    SET act1["predicted_duration"] TO 12.
+    LOCAL detached_res IS aoso_result_from_action(act2, "SUCCESS", "detached").
+    SET fail TO aoso_selftest_check("detached result keeps parent action", AOSO_ACTION_CUR["action_id"] = id1, fail).
     LOCAL res_act IS aoso_result_from_action(act1, "SUCCESS", "ok").
     SET fail TO aoso_selftest_check("action id not latest seq", res_act["action_id"] = id1, fail).
     SET fail TO aoso_selftest_check("action id not id2", res_act["action_id"] <> id2, fail).
     SET fail TO aoso_selftest_check("action predicted", res_act["predicted_dv"] = 1080, fail).
+    SET fail TO aoso_selftest_check("action predicted duration", res_act["predicted_duration"] = 12, fail).
     aoso_action_clear().
     aoso_decide_close(id1, res_act).
     aoso_decide_close(id2, res_act).
@@ -120,7 +124,12 @@ FUNCTION aoso_selftest {
     LOCAL m1 IS aoso_xp_record("TRANSFER", "SelftestBody", 1000, 1100, FALSE).
     LOCAL m2 IS aoso_xp_record("TRANSFER", "SelftestBody", 1000, 1100, FALSE).
     LOCAL m3 IS aoso_xp_record("TRANSFER", "SelftestBody", 1000, 1100, FALSE).
+    LOCAL tm1 IS aoso_xp_record_metric("MANEUVER", "SelftestBody", "BURN_TIME", 10, 12, FALSE).
+    LOCAL tm2 IS aoso_xp_record_metric("MANEUVER", "SelftestBody", "BURN_TIME", 10, 12, FALSE).
+    LOCAL tm3 IS aoso_xp_record_metric("MANEUVER", "SelftestBody", "BURN_TIME", 10, 12, FALSE).
     SET fail TO aoso_selftest_check("xp corr rises", m3["corr"] > 1, fail).
+    SET fail TO aoso_selftest_check("xp time corr rises", tm3["corr"] > 1, fail).
+    SET fail TO aoso_selftest_check("xp time apply changes estimate", aoso_xp_metric_apply("MANEUVER", "SelftestBody", "BURN_TIME", 10) > 10, fail).
     SET fail TO aoso_selftest_check("xp corr bounded", m3["corr"] <= 1.35, fail).
     SET AOSO_XP["store"] TO xp_store.
     SET AOSO_XP["loaded"] TO xp_loaded.
