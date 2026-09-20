@@ -366,6 +366,9 @@ FUNCTION aoso_capabilities_predict_next {
             SET pred["twr_next"] TO cur["thrust_vac"] / (mass_next * g_now).
         }
     }
+    IF DEFINED AOSO_XP {
+        SET pred["twr_next"] TO aoso_xp_metric_apply("STAGING", SHIP:BODY:NAME, "TWR", pred["twr_next"]).
+    }
     SET AOSO_CAPS["prediction"] TO pred.
     RETURN pred.
 }
