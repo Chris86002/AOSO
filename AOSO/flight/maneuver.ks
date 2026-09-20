@@ -20,6 +20,8 @@ GLOBAL AOSO_MANEUVER_LOCK IS V(0, 0, 0).
 GLOBAL AOSO_MANEUVER_BURNING IS FALSE.
 GLOBAL AOSO_MANEUVER_LAST_REMAINING IS 0.
 GLOBAL AOSO_MANEUVER_START_DV IS 0.
+GLOBAL AOSO_MANEUVER_BURN_STARTED_AT IS 0.
+GLOBAL AOSO_MANEUVER_PREDICTED_TIME IS 0.
 GLOBAL AOSO_MANEUVER_RESULT IS "ok".
 GLOBAL AOSO_MANEUVER_NO_THRUST_TICKS IS 0.
 GLOBAL AOSO_MANEUVER_APO_CAP IS -1.
@@ -29,6 +31,9 @@ FUNCTION aoso_maneuver_reset_exec {
     SET AOSO_MANEUVER_BURNING TO FALSE.
     SET AOSO_MANEUVER_LOCK TO V(0, 0, 0).
     SET AOSO_MANEUVER_LAST_REMAINING TO 0.
+    SET AOSO_MANEUVER_START_DV TO 0.
+    SET AOSO_MANEUVER_BURN_STARTED_AT TO 0.
+    SET AOSO_MANEUVER_PREDICTED_TIME TO 0.
     SET AOSO_MANEUVER_NO_THRUST_TICKS TO 0.
     aoso_staging_reset_relight().
 }
@@ -284,6 +289,21 @@ FUNCTION aoso_maneuver_finish_node {
     PARAMETER nd.
     PARAMETER reason.
     LOCAL left IS AOSO_MANEUVER_LAST_REMAINING.
+    LOCAL start_dv IS AOSO_MANEUVER_START_DV.
+    LOCAL burn_started IS AOSO_MANEUVER_BURN_STARTED_AT.
+    LOCAL burn_pred IS AOSO_MANEUVER_PREDICTED_TIME.
+    LOCAL burn_actual IS 0.
+    IF burn_started > 0 { SET burn_actual TO MAX(0, TIME:SECONDS - burn_started). }
+    LOCAL burn_used IS start_dv - left.
+    IF burn_used < 0 { SET burn_used TO 0. }
+
+    LOCAL parent_type IS "".
+    LOCAL owns_action IS FALSE.
+    IF AOSO_ACTION_CUR:ISTYPE("Lexicon") {
+        IF AOSO_ACTION_CUR:HASKEY("type") { SET parent_type TO AOSO_ACTION_CUR["type"]. }
+        IF parent_type = "MANEUVER" { SET owns_action TO TRUE. }
+    }
+
     SET WARP TO 0.
     aoso_yield_hud().
     SET WARPMODE TO "RAILS".
@@ -293,6 +313,7 @@ FUNCTION aoso_maneuver_finish_node {
     IF HASNODE { REMOVE nd. }
     aoso_maneuver_reset_exec().
     aoso_maneuver_clear_apo_cap().
+
     IF reason = "missed" { SET AOSO_MANEUVER_RESULT TO "missed". }
     ELSE {
         IF reason = "no thrust" OR reason = "incomplete" { SET AOSO_MANEUVER_RESULT TO "incomplete". }
@@ -303,42 +324,42 @@ FUNCTION aoso_maneuver_finish_node {
             } ELSE { SET AOSO_MANEUVER_RESULT TO "ok". }
         }
     }
+
     aoso_log_info("MANEUVER", "Node executed (" + reason + ").").
-    aoso_observe_event("BURN", "INFO", reason, "left=" + ROUND(left, 2)).
-    LOCAL did_m IS aoso_decide("MANEUVER", "finish", reason, AOSO_MANEUVER_RESULT, "left=" + ROUND(left, 2), AOSO_MANEUVER_START_DV).
-    IF NOT AOSO_ACTION_CUR:ISTYPE("Lexicon") {
-        LOCAL act_m IS aoso_action_create(did_m, "MANEUVER", SHIP:BODY:NAME, AOSO_MANEUVER_START_DV).
-        aoso_action_begin(act_m).
+    aoso_observe_event("BURN", "INFO", reason,
+        "left=" + ROUND(left, 2) + " used=" + ROUND(burn_used, 2) +
+        " pred_t=" + ROUND(burn_pred, 2) + " act_t=" + ROUND(burn_actual, 2)).
+
+    LOCAL failed IS AOSO_MANEUVER_RESULT <> "ok".
+    IF parent_type <> "" {
+        IF parent_type <> "MANEUVER" {
+            IF parent_type <> "ASCENT" AND parent_type <> "TAKEOFF" {
+                aoso_action_add_actual_dv(burn_used).
+            }
+            IF start_dv > 0 { aoso_xp_record("MANEUVER", SHIP:BODY:NAME, start_dv, burn_used, failed). }
+            IF burn_pred > 0 { aoso_xp_record_metric("MANEUVER", SHIP:BODY:NAME, "BURN_TIME", burn_pred, burn_actual, failed). }
+        }
     }
-    IF AOSO_MANEUVER_RESULT = "ok" {
-        LOCAL res_ok IS aoso_result_make("MANEUVER", "SUCCESS", reason).
-        SET res_ok["predicted_dv"] TO AOSO_MANEUVER_START_DV.
-        SET res_ok["actual_dv"] TO AOSO_MANEUVER_START_DV - left.
-        IF res_ok["actual_dv"] < 0 { SET res_ok["actual_dv"] TO 0. }
+
+    IF owns_action {
+        LOCAL res_m IS aoso_result_make("MANEUVER", "SUCCESS", reason).
+        IF failed { SET res_m["status"] TO "FAILED". }
+        SET res_m["predicted_dv"] TO start_dv.
+        SET res_m["actual_dv"] TO burn_used.
+        SET res_m["predicted_duration"] TO burn_pred.
         LOCAL ver_m IS aoso_verify_maneuver(AOSO_MANEUVER_RESULT).
-        SET res_ok TO aoso_verify_apply_result(res_ok, ver_m).
-        aoso_result_emit(res_ok).
-    } ELSE {
-        LOCAL res_f IS aoso_result_make("MANEUVER", "FAILED", reason).
-        SET res_f["predicted_dv"] TO AOSO_MANEUVER_START_DV.
-        SET res_f["actual_dv"] TO AOSO_MANEUVER_START_DV - left.
-        IF res_f["actual_dv"] < 0 { SET res_f["actual_dv"] TO 0. }
-        LOCAL ver_f IS aoso_verify_maneuver(AOSO_MANEUVER_RESULT).
-        SET res_f TO aoso_verify_apply_result(res_f, ver_f).
-        aoso_result_emit(res_f).
+        SET res_m TO aoso_verify_apply_result(res_m, ver_m).
+        aoso_result_emit(res_m).
     }
+
     aoso_warp_deadline_clear("node").
     aoso_auth_release_all("maneuver").
     aoso_auth_use("").
     IF reason = "missed" {
         aoso_observe_anomaly("BURN_MISSED", "HIGH", 0, left).
     } ELSE {
-        IF reason = "incomplete" {
+        IF reason = "incomplete" OR reason = "no thrust" {
             aoso_observe_anomaly("BURN_INCOMPLETE", "HIGH", 0, left).
-        } ELSE {
-            IF reason = "no thrust" {
-                aoso_observe_anomaly("BURN_INCOMPLETE", "HIGH", 0, left).
-            }
         }
     }
 }
@@ -482,14 +503,27 @@ FUNCTION aoso_maneuver_execute_next {
         SET AOSO_MANEUVER_BURNING TO TRUE.
         SET AOSO_MANEUVER_LAST_REMAINING TO remaining.
         SET AOSO_MANEUVER_START_DV TO remaining.
+        SET AOSO_MANEUVER_BURN_STARTED_AT TO TIME:SECONDS.
+        SET AOSO_MANEUVER_PREDICTED_TIME TO burn_time.
         SET AOSO_MANEUVER_NO_THRUST_TICKS TO 0.
         aoso_staging_reset_relight().
         SET AOSO_MANEUVER_RESULT TO "ok".
         LOCAL accel0 IS aoso_maneuver_current_accel().
-        LOCAL t0 IS 0.
-        IF accel0 > 0.05 { SET t0 TO remaining / accel0. }
+        LOCAL t0 IS burn_time.
+        IF t0 <= 0 {
+            IF accel0 > 0.05 { SET t0 TO remaining / accel0. }
+        }
         aoso_observe_event("BURN", "INFO", "start", "dv=" + ROUND(remaining, 1) + " t=" + ROUND(t0, 1)).
-        aoso_decide("MANEUVER", "ignite", "burn", "node", "dv=" + ROUND(remaining, 1) + " t=" + ROUND(t0, 1)).
+        IF NOT AOSO_ACTION_CUR:ISTYPE("Lexicon") {
+            LOCAL did_i IS aoso_decide("MANEUVER", "ignite", "burn", "node",
+                "dv=" + ROUND(remaining, 1) + " t=" + ROUND(t0, 1), remaining).
+            LOCAL act_i IS aoso_action_create(did_i, "MANEUVER", SHIP:BODY:NAME, remaining).
+            SET act_i["predicted_duration"] TO t0.
+            aoso_action_begin(act_i).
+        } ELSE {
+            aoso_observe_event("DECIDE", "INFO", "MANEUVER",
+                "embedded ignite dv=" + ROUND(remaining, 1) + " t=" + ROUND(t0, 1)).
+        }
         LOCAL follow IS FALSE.
         IF t0 > AOSO_CONFIG["MANEUVER_FOLLOW_ABOVE_S"] { SET follow TO TRUE. }
         // Pure-normal / huge-vs-orbital-speed burns must lock. Following the
