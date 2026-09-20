@@ -789,6 +789,23 @@ FUNCTION aoso_ascent_circularize_execute {
     }
 }
 
+FUNCTION aoso_ascent_measure_dv {
+    PARAMETER data.
+    LOCAL now IS TIME:SECONDS.
+    IF NOT data:HASKEY("actual_dv") { SET data["actual_dv"] TO 0. }
+    IF NOT data:HASKEY("dv_last_ut") {
+        SET data["dv_last_ut"] TO now.
+        RETURN.
+    }
+    LOCAL dt IS now - data["dv_last_ut"].
+    SET data["dv_last_ut"] TO now.
+    IF dt <= 0 { RETURN. }
+    IF dt > 2 { RETURN. }
+    IF SHIP:MASS <= 0 { RETURN. }
+    IF SHIP:THRUST <= 0 { RETURN. }
+    SET data["actual_dv"] TO data["actual_dv"] + (SHIP:THRUST / SHIP:MASS) * dt.
+}
+
 FUNCTION aoso_ascent_done_entry {
     PARAMETER data.
     SET WARP TO 0.
@@ -806,7 +823,7 @@ FUNCTION aoso_ascent_done_entry {
         SET res["fuel_used"] TO data["pad_lf"] - res["actual_fuel"].
         SET res["predicted_fuel"] TO data["pad_lf"].
     }
-    IF data:HASKEY("circ_dv") { SET res["actual_dv"] TO data["circ_dv"]. }
+    IF data:HASKEY("actual_dv") { SET res["actual_dv"] TO data["actual_dv"]. }
     LOCAL ver_a IS aoso_verify_ascent().
     IF data:HASKEY("from_surface") {
         IF data["from_surface"] { SET ver_a TO aoso_verify_takeoff(). }
@@ -815,11 +832,6 @@ FUNCTION aoso_ascent_done_entry {
     aoso_result_emit(res).
     aoso_auth_release_all("ascent").
     aoso_auth_use("").
-    IF data:HASKEY("circ_dv") {
-        IF data["circ_dv"] > 1 {
-            aoso_xp_record("CIRCULARIZATION", SHIP:BODY:NAME, 80, data["circ_dv"], FALSE).
-        }
-    }
     aoso_event_publish("ORBIT_ACHIEVED", "ascent", SHIP:BODY:NAME).
 }
 
@@ -857,6 +869,7 @@ FUNCTION aoso_ascent_aborted_entry {
     LOCAL abort_op IS "ASCENT".
     IF data:HASKEY("action_op") { SET abort_op TO data["action_op"]. }
     LOCAL res_a IS aoso_result_make(abort_op, "ABORTED", "aborted").
+    IF data:HASKEY("actual_dv") { SET res_a["actual_dv"] TO data["actual_dv"]. }
     IF data:HASKEY("pad_lf") {
         SET res_a["actual_fuel"] TO aoso_resource_amount("LiquidFuel").
         SET res_a["fuel_used"] TO data["pad_lf"] - res_a["actual_fuel"].
@@ -916,7 +929,9 @@ FUNCTION aoso_ascent_start {
         "com_frac", -1,
         "stack_length", 0,
         "circ_now", FALSE,
-        "circ_dv", 0
+        "circ_dv", 0,
+        "actual_dv", 0,
+        "dv_last_ut", TIME:SECONDS
     ).
     LOCAL opt_row IS aoso_ascent_opt_row().
     IF opt_row["status"] = "locked" {
@@ -955,6 +970,11 @@ FUNCTION aoso_ascent_start {
 FUNCTION aoso_ascent_update {
     aoso_auth_use("ascent").
     LOCAL st IS AOSO_ASCENT["current"].
+    IF st <> "" {
+        IF st <> "DONE" {
+            IF st <> "ABORTED" { aoso_ascent_measure_dv(AOSO_ASCENT["data"]). }
+        }
+    }
     IF st <> "" {
         IF st <> "DONE" {
             IF st <> "ABORTED" {
