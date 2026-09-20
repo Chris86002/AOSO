@@ -94,23 +94,34 @@ FUNCTION aoso_assist_eval {
     ).
 }
 
-FUNCTION aoso_assist_candidates {
-    PARAMETER dest.
+// Walk a body-db lexicon for siblings of dest under parent_name whose
+// SMA is inside dest. Skip non-lexicon values: a JSON/simpleJson load can
+// leave scalars in the map, and e["PARENT"] on a number is
+// "Can't iterate on Scalar IntValue" (Acacius tour replan after LKO).
+FUNCTION aoso_assist_parent_siblings {
+    PARAMETER db.
+    PARAMETER parent_name.
+    PARAMETER dest_name.
+    PARAMETER dest_sma.
+    PARAMETER skip_name.
     LOCAL found IS LIST().
-    IF AOSO_BODY_DB:LENGTH = 0 { RETURN found. }
-    LOCAL parent_name IS dest:BODY:NAME.
-    IF parent_name = SUN:NAME {
-        SET parent_name TO dest:BODY:NAME.
-    }
-    LOCAL dest_sma IS dest:ORBIT:SEMIMAJORAXIS.
-    FOR k IN AOSO_BODY_DB:KEYS {
-        LOCAL e IS AOSO_BODY_DB[k].
-        IF e["PARENT"] = parent_name {
-            IF k <> dest:NAME {
-                IF k <> SHIP:BODY:NAME {
-                    IF e["SMA"] > 0 {
-                        IF e["SMA"] < dest_sma * 0.85 {
-                            found:ADD(k).
+    IF NOT db:ISTYPE("Lexicon") { RETURN found. }
+    LOCAL ks IS db:KEYS.
+    IF NOT ks:ISTYPE("List") { RETURN found. }
+    FOR k IN ks {
+        LOCAL e IS db[k].
+        IF e:ISTYPE("Lexicon") {
+            IF e:HASKEY("PARENT") {
+                IF e:HASKEY("SMA") {
+                    IF e["PARENT"] = parent_name {
+                        IF k <> dest_name {
+                            IF k <> skip_name {
+                                IF e["SMA"] > 0 {
+                                    IF e["SMA"] < dest_sma * 0.85 {
+                                        found:ADD(k).
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -120,9 +131,20 @@ FUNCTION aoso_assist_candidates {
     RETURN found.
 }
 
+FUNCTION aoso_assist_candidates {
+    PARAMETER dest.
+    LOCAL found IS LIST().
+    IF NOT dest:ISTYPE("Body") { RETURN found. }
+    IF AOSO_BODY_DB:LENGTH = 0 { RETURN found. }
+    LOCAL parent_name IS dest:BODY:NAME.
+    LOCAL dest_sma IS dest:ORBIT:SEMIMAJORAXIS.
+    RETURN aoso_assist_parent_siblings(AOSO_BODY_DB, parent_name, dest:NAME, dest_sma, SHIP:BODY:NAME).
+}
+
 // Returns the via BODY if a flyby should be used, otherwise 0.
 FUNCTION aoso_assist_should_flyby {
     PARAMETER dest.
+    IF NOT dest:ISTYPE("Body") { RETURN 0. }
     LOCAL names IS aoso_assist_candidates(dest).
     IF names:LENGTH = 0 { RETURN 0. }
     LOCAL best_name IS "".

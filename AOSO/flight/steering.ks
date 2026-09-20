@@ -48,6 +48,24 @@ FUNCTION aoso_steer_heading_pitch {
     }
 }
 
+// Compass pitch without HEADING()'s roll-to-upright. A 44 m lander-can
+// stack hunting that roll showed navball heading 345→270→178 while
+// velocity was east. SIN/COS are degrees in kOS.
+FUNCTION aoso_steer_heading_pitch_vector {
+    PARAMETER hdg.
+    PARAMETER pitch.
+    LOCAL upv IS SHIP:UP:VECTOR.
+    LOCAL east IS VXCL(upv, HEADING(hdg, 0):VECTOR).
+    IF east:MAG < 0.01 { RETURN upv. }
+    RETURN upv * SIN(pitch) + east:NORMALIZED * COS(pitch).
+}
+
+FUNCTION aoso_steer_heading_pitch_noroll {
+    PARAMETER hdg.
+    PARAMETER pitch.
+    aoso_steer_to_vector(aoso_steer_heading_pitch_vector(hdg, pitch)).
+}
+
 FUNCTION aoso_steer_to_vector {
     PARAMETER dir_vector.
     IF DEFINED AOSO_AUTH {

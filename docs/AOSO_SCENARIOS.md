@@ -17,6 +17,7 @@ Pad craft with working boosters + core. Boot AOSO, wait for
 Expect:
 
 - Gravity turn, no lofted mismatch abort in the STAGE() tick.
+- Navball heading stays near 90 east, not spinning 345→270→178.
 - Boosters drop only when that group's MASSFLOW is ~0 (no hot-sep).
 - Bound parking, `ASCENT` result with `predicted_dv > 0` ingested.
 - Circularize node actually burns (log has `Burn started` / `Node executed`, not a wall of `AUTH maneuver denied STEERING`).

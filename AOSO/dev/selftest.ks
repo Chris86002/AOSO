@@ -21,6 +21,8 @@ RUN ONCE "AOSO/mission/project".
 RUN ONCE "AOSO/refuel/isru".
 RUN ONCE "AOSO/surface/operations".
 RUN ONCE "AOSO/hardening/watchdog".
+RUN ONCE "AOSO/interplanetary/bodydb".
+RUN ONCE "AOSO/interplanetary/assist".
 
 FUNCTION aoso_selftest_check {
     PARAMETER name.
@@ -208,6 +210,20 @@ FUNCTION aoso_selftest {
     SET fail TO aoso_selftest_check("circ handoff after yield", handoff, fail).
     SET fail TO aoso_selftest_check("circ handoff owner", aoso_auth_owner("STEERING") = "maneuver", fail).
     aoso_auth_release("maneuver", "STEERING").
+
+    LOCAL fake_db IS LEXICON(
+        "Mun", LEXICON("PARENT", "Kerbin", "SMA", 12000000),
+        "Minmus", LEXICON("PARENT", "Kerbin", "SMA", 47000000),
+        "Duna", LEXICON("PARENT", "Sun", "SMA", 20726155264),
+        "broken", 42
+    ).
+    LOCAL sibs IS aoso_assist_parent_siblings(fake_db, "Kerbin", "Minmus", 47000000, "Kerbin").
+    SET fail TO aoso_selftest_check("assist skips scalar db entries", sibs:LENGTH = 1, fail).
+    IF sibs:LENGTH > 0 {
+        SET fail TO aoso_selftest_check("assist picks inner moon", sibs[0] = "Mun", fail).
+    }
+    LOCAL empty_sibs IS aoso_assist_parent_siblings(42, "Kerbin", "Minmus", 47000000, "Kerbin").
+    SET fail TO aoso_selftest_check("assist scalar db is empty", empty_sibs:LENGTH = 0, fail).
 
     LOCAL stab IS aoso_surface_stable().
     SET fail TO aoso_selftest_check("surface_stable boolean", stab = TRUE OR stab = FALSE, fail).

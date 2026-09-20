@@ -63,29 +63,50 @@ FUNCTION aoso_ascent_cache_stack_layout {
     SET data["stack_length"] TO layout["length"].
     aoso_log_info("ASCENT", "Stack CoM frac=" + ROUND(data["com_frac"], 2) + " length=" + ROUND(data["stack_length"], 1) + " m (0.5=mid, >0.58=nose-heavy).").
 
-    // Enough slowing to not snap a long stick, not so much that a 3 deg
-    // lead never appears (Acacius: MAXSTOPPINGTIME 8 left STARTTURN AoA
-    // at 0.1 deg and then could not point at the circ node).
+    // Damp a long nose-control stack while we own steering. Restore on
+    // coast/circ so the node align is still snappy (MAXSTOPPINGTIME 8
+    // left Acacius unable to point at the circ node when it was left on).
     IF NOT data:HASKEY("steering_stopping_saved") {
         SET data["steering_stopping_saved"] TO STEERINGMANAGER:MAXSTOPPINGTIME.
         SET data["steering_pitchts_saved"] TO STEERINGMANAGER:PITCHTS.
+        SET data["steering_yawts_saved"] TO STEERINGMANAGER:YAWTS.
+        SET data["steering_rollts_saved"] TO STEERINGMANAGER:ROLLTS.
+        SET data["steering_rollrange_saved"] TO STEERINGMANAGER:ROLLCONTROLANGLERANGE.
         LOCAL stop_s IS data["steering_stopping_saved"].
         LOCAL pitch_ts IS data["steering_pitchts_saved"].
+        LOCAL yaw_ts IS data["steering_yawts_saved"].
+        LOCAL roll_ts IS data["steering_rollts_saved"].
+        LOCAL roll_range IS data["steering_rollrange_saved"].
         IF data["stack_length"] > 16 {
-            SET stop_s TO MAX(stop_s, 3.0).
-            SET pitch_ts TO MAX(pitch_ts, 2.4).
+            SET stop_s TO MAX(stop_s, 5).
+            SET pitch_ts TO MAX(pitch_ts, 6).
+            SET yaw_ts TO MAX(yaw_ts, 6).
+            SET roll_ts TO MAX(roll_ts, 10).
+            SET roll_range TO 180.
         }
         IF data["stack_length"] > 30 {
-            SET stop_s TO MAX(stop_s, 3.0).
-            SET pitch_ts TO MAX(pitch_ts, 2.4).
+            SET stop_s TO MAX(stop_s, 6.5).
+            SET pitch_ts TO MAX(pitch_ts, 8).
+            SET yaw_ts TO MAX(yaw_ts, 8).
+            SET roll_ts TO MAX(roll_ts, 12).
+            SET roll_range TO 180.
+        }
+        IF data["com_frac"] < 0.45 {
+            SET stop_s TO MAX(stop_s, 6).
+            SET pitch_ts TO MAX(pitch_ts, 8).
+            SET yaw_ts TO MAX(yaw_ts, 8).
         }
         IF data["com_frac"] > 0.55 {
-            SET stop_s TO MAX(stop_s, 3.0).
-            SET pitch_ts TO MAX(pitch_ts, 2.4).
+            SET stop_s TO MAX(stop_s, 5).
+            SET pitch_ts TO MAX(pitch_ts, 6).
+            SET yaw_ts TO MAX(yaw_ts, 6).
         }
-        IF stop_s > 3.2 { SET stop_s TO 3.2. }
         SET STEERINGMANAGER:MAXSTOPPINGTIME TO stop_s.
         SET STEERINGMANAGER:PITCHTS TO pitch_ts.
+        SET STEERINGMANAGER:YAWTS TO yaw_ts.
+        SET STEERINGMANAGER:ROLLTS TO roll_ts.
+        SET STEERINGMANAGER:ROLLCONTROLANGLERANGE TO roll_range.
+        aoso_log_info("ASCENT", "Steer damp stop=" + ROUND(stop_s, 1) + "s pitchTS=" + ROUND(pitch_ts, 1) + " yawTS=" + ROUND(yaw_ts, 1) + " rollRange=" + ROUND(roll_range, 0) + ".").
     }
 }
 
@@ -96,6 +117,15 @@ FUNCTION aoso_ascent_restore_steering {
     }
     IF data:HASKEY("steering_pitchts_saved") {
         SET STEERINGMANAGER:PITCHTS TO data["steering_pitchts_saved"].
+    }
+    IF data:HASKEY("steering_yawts_saved") {
+        SET STEERINGMANAGER:YAWTS TO data["steering_yawts_saved"].
+    }
+    IF data:HASKEY("steering_rollts_saved") {
+        SET STEERINGMANAGER:ROLLTS TO data["steering_rollts_saved"].
+    }
+    IF data:HASKEY("steering_rollrange_saved") {
+        SET STEERINGMANAGER:ROLLCONTROLANGLERANGE TO data["steering_rollrange_saved"].
     }
 }
 
@@ -204,7 +234,7 @@ FUNCTION aoso_ascent_steer {
         IF cmd > hi { SET cmd TO hi. }
         IF cmd < 0 { SET cmd TO 0. }
         IF cmd > 90 { SET cmd TO 90. }
-        aoso_steer_heading_pitch(data["heading"], cmd).
+        aoso_steer_heading_pitch_noroll(data["heading"], cmd).
     } ELSE {
         aoso_steer_prograde().
     }
@@ -538,7 +568,7 @@ FUNCTION aoso_ascent_liftoff_execute {
         RETURN.
     }
 
-    aoso_steer_heading_pitch(data["heading"], 90).
+    aoso_steer_heading_pitch_noroll(data["heading"], 90).
     aoso_throttle_set(1).
     aoso_staging_auto_check().
     IF SHIP:VELOCITY:SURFACE:MAG > 5 {
@@ -658,7 +688,7 @@ FUNCTION aoso_ascent_coast_execute {
     // Circularization attitude: east and horizontal. Prograde while
     // still climbing is pitched up; rails warp then freezes the wrong
     // inertial facing. Point at the burn before we warp.
-    aoso_steer_heading_pitch(data["heading"], 0).
+    aoso_steer_heading_pitch_noroll(data["heading"], 0).
     aoso_staging_auto_check().
     IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
 

@@ -75,8 +75,10 @@ they watch the kOS terminal and the HUD.
   flight path is lofted (FPA above the pitch program). Do not leave a
   wider down-AoA on all the time — that flattens a low-TWR stack into
   dense air. Circularize must `aoso_ascent_yield_burn` so maneuver can
-  take STEERING/THROTTLE (equal prio cannot preempt). Do not judge
-  THRUST_MISMATCH in the same tick as `STAGE()`.
+  take STEERING/THROTTLE (equal prio cannot preempt). Gravity-turn
+  steering is a pitch/heading **vector** (no HEADING() roll-upright) and
+  damps PITCHTS=YAWTS on long stacks; stock steering is restored before
+  the circ node. Do not judge THRUST_MISMATCH in the same tick as `STAGE()`.
 - Tank Ore near zero is not biome-empty. ISRU progress is fuel/ore
   movement; stall is `REFUEL_STALL_S`. STOW is SUCCESS / PARTIAL /
   FAILED / ABORTED.
