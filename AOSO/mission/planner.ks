@@ -124,5 +124,11 @@ FUNCTION aoso_plan_stale {
     IF AOSO_PLAN_LAST["rev_topo"] <> aoso_ctx_get("rev_topo", 0) { RETURN TRUE. }
     IF AOSO_PLAN_LAST["rev_budget"] <> aoso_ctx_get("rev_budget", 0) { RETURN TRUE. }
     IF AOSO_PLAN_LAST["rev_world"] <> aoso_ctx_get("rev_world", 0) { RETURN TRUE. }
+    IF AOSO_PLAN_LAST:HASKEY("rev_cap") {
+        IF AOSO_PLAN_LAST["rev_cap"] <> aoso_ctx_get("rev_cap", 0) { RETURN TRUE. }
+    }
+    IF AOSO_PLAN_LAST:HASKEY("rev_xp") {
+        IF AOSO_PLAN_LAST["rev_xp"] <> aoso_ctx_get("rev_xp", 0) { RETURN TRUE. }
+    }
     RETURN FALSE.
 }
