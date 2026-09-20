@@ -705,7 +705,7 @@ FUNCTION aoso_staging_light_unlit {
 FUNCTION aoso_staging_finish_relight {
     SET AOSO_STAGING_PENDING_RELIGHT TO FALSE.
     IF SHIP:AVAILABLETHRUST > 0.05 {
-        SET AOSO_STAGING_PRED_TWR TO 0.
+        aoso_staging_judge_mismatch().
         aoso_staging_reset_relight().
         RETURN.
     }
