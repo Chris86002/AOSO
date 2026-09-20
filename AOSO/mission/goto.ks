@@ -712,6 +712,27 @@ FUNCTION aoso_goto_capture_entry {
             }
         }
     }
+    IF nd <> 0 {
+        LOCAL cap_pred IS aoso_feas_body_stat(SHIP:BODY:NAME, "capture", 0).
+        LOCAL did_c IS aoso_decide("GOTO", "capture", SHIP:BODY:NAME, "burn",
+            "pred=" + ROUND(cap_pred, 0), cap_pred).
+        LOCAL act_c IS aoso_action_create(did_c, "CAPTURE", SHIP:BODY:NAME, cap_pred).
+        aoso_action_begin(act_c).
+    }
+}
+
+FUNCTION aoso_goto_close_capture_action {
+    PARAMETER result_status.
+    PARAMETER reason.
+    IF NOT AOSO_ACTION_CUR:ISTYPE("Lexicon") { RETURN. }
+    IF AOSO_ACTION_CUR["type"] <> "CAPTURE" { RETURN. }
+    LOCAL expect_body IS AOSO_ACTION_CUR["target"].
+    LOCAL res_c IS aoso_action_finish(result_status, reason).
+    IF result_status = "SUCCESS" {
+        LOCAL ver_c IS aoso_verify_capture(expect_body).
+        SET res_c TO aoso_verify_apply_result(res_c, ver_c).
+    }
+    aoso_result_emit(res_c).
 }
 
 FUNCTION aoso_goto_capture_execute {
@@ -722,12 +743,14 @@ FUNCTION aoso_goto_capture_execute {
     }
     IF NOT HASNODE {
         IF aoso_goto_orbit_is_parked() {
+            aoso_goto_close_capture_action("SUCCESS", "parked").
             IF SHIP:BODY:NAME = data["goal"] {
                 aoso_state_transition(AOSO_GOTO, "DONE").
             } ELSE {
                 aoso_state_transition(AOSO_GOTO, "PLAN").
             }
         } ELSE {
+            aoso_goto_close_capture_action("FAILED", "capture node lost").
             aoso_state_transition(AOSO_GOTO, "PLAN").
         }
         RETURN.
@@ -735,6 +758,7 @@ FUNCTION aoso_goto_capture_execute {
     IF aoso_maneuver_execute_next() {
         LOCAL cap_res IS aoso_maneuver_last_result().
         IF cap_res = "missed" OR cap_res = "incomplete" {
+            aoso_goto_close_capture_action("FAILED", "capture " + cap_res).
             LOCAL misses IS 0.
             IF data:HASKEY("capture_misses") { SET misses TO data["capture_misses"]. }
             SET data["capture_misses"] TO misses + 1.
@@ -753,6 +777,7 @@ FUNCTION aoso_goto_capture_execute {
             aoso_state_transition(AOSO_GOTO, "PLAN").
             RETURN.
         }
+        aoso_goto_close_capture_action("SUCCESS", "capture burn complete").
         aoso_state_transition(AOSO_GOTO, "PLAN").
     } ELSE {
         IF HASNODE {
@@ -767,16 +792,19 @@ FUNCTION aoso_goto_done_entry {
     SET WARP TO 0.
     aoso_throttle_set(0).
     aoso_steer_release().
-    LOCAL cap_pred IS 0.
-    IF data:HASKEY("pred_cap") { SET cap_pred TO data["pred_cap"]. }
-    LOCAL did_c IS aoso_decide("GOTO", "capture", data["goal"], "arrive", "pred=" + ROUND(cap_pred, 0), cap_pred).
-    LOCAL act_c IS aoso_action_create(did_c, "CAPTURE", data["goal"], cap_pred).
-    aoso_action_begin(act_c).
+    IF AOSO_ACTION_CUR:ISTYPE("Lexicon") {
+        IF AOSO_ACTION_CUR["type"] = "CAPTURE" {
+            aoso_goto_close_capture_action("SUCCESS", "arrived").
+        } ELSE {
+            IF AOSO_ACTION_CUR["type"] = "TRANSFER" {
+                LOCAL ver_t0 IS aoso_verify_transfer(data["goal"]).
+                LOCAL res_t0 IS aoso_action_finish(ver_t0["status"], ver_t0["reason"]).
+                SET res_t0 TO aoso_verify_apply_result(res_t0, ver_t0).
+                aoso_result_emit(res_t0).
+            }
+        }
+    }
     LOCAL ver_c IS aoso_verify_capture(data["goal"]).
-    LOCAL res_c IS aoso_result_from_action(act_c, ver_c["status"], ver_c["reason"]).
-    SET res_c["predicted_dv"] TO cap_pred.
-    SET res_c TO aoso_verify_apply_result(res_c, ver_c).
-    aoso_result_emit(res_c).
     LOCAL ver_x IS aoso_verify_transfer(data["goal"]).
     aoso_log_info("GOTO", "Arrived at " + data["goal"] + " capture=" + ver_c["reason"] + " transfer=" + ver_x["reason"] + ".").
 }
@@ -785,6 +813,13 @@ FUNCTION aoso_goto_aborted_entry {
     PARAMETER data.
     SET WARP TO 0.
     aoso_throttle_set(0).
+    IF AOSO_ACTION_CUR:ISTYPE("Lexicon") {
+        LOCAL typ IS AOSO_ACTION_CUR["type"].
+        IF typ = "TRANSFER" OR typ = "CAPTURE" {
+            LOCAL res_a IS aoso_action_finish("ABORTED", "goto aborted").
+            aoso_result_emit(res_a).
+        }
+    }
     aoso_log_error("GOTO", "Goto " + data["goal"] + " aborted.").
 }
 
