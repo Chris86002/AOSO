@@ -52,8 +52,8 @@ REPLAN IF NEEDED
 | EXECUTE | Existing FSMs | `ascent`, `goto`, `maneuver`, `descent` |
 | AUTHORITY | Who may command steering/throttle/warp/stage | `authority.ks`, `aoso_staging_do` |
 | MEASURE | Heartbeats + **verified** action results | `verify.ks`, `aoso_hb_set`, `aoso_result_emit` |
-| LEARN | `actual/predicted` into XP models | `experience.ks` |
-| UPDATE MODELS | Dirty feas/route after XP or profile | events `MODEL_UPDATED`, `PROFILE_UPDATED` |
+| LEARN | bounded primary cost plus secondary TIME / BURN_TIME / TWR corrections | `experience.ks` |
+| UPDATE MODELS | XP/profile revisions dirty downstream feasibility/opportunity/route/plan state | events `MODEL_UPDATED`, `PROFILE_UPDATED` |
 | REPLAN | Debounced `aoso_plan_build` when quiet | `aoso_brain_do_replan`, `aoso_plan_stale` |
 
 ## Source of truth (one writer per fact)
