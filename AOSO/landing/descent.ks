@@ -266,6 +266,23 @@ FUNCTION aoso_descent_freefall_execute {
     }
 }
 
+FUNCTION aoso_descent_measure_dv {
+    PARAMETER data.
+    LOCAL now IS TIME:SECONDS.
+    IF NOT data:HASKEY("actual_dv") { SET data["actual_dv"] TO 0. }
+    IF NOT data:HASKEY("dv_last_ut") {
+        SET data["dv_last_ut"] TO now.
+        RETURN.
+    }
+    LOCAL dt IS now - data["dv_last_ut"].
+    SET data["dv_last_ut"] TO now.
+    IF dt <= 0 { RETURN. }
+    IF dt > 2 { RETURN. }
+    IF SHIP:MASS <= 0 { RETURN. }
+    IF SHIP:THRUST <= 0 { RETURN. }
+    SET data["actual_dv"] TO data["actual_dv"] + (SHIP:THRUST / SHIP:MASS) * dt.
+}
+
 FUNCTION aoso_descent_burn_entry {
     PARAMETER data.
     SET WARP TO 0.
@@ -276,6 +293,7 @@ FUNCTION aoso_descent_burn_entry {
 
 FUNCTION aoso_descent_burn_execute {
     PARAMETER data.
+    aoso_descent_measure_dv(data).
     aoso_parachute_auto_check().
     SET WARP TO 0.
 
@@ -311,6 +329,7 @@ FUNCTION aoso_descent_final_approach_entry {
 
 FUNCTION aoso_descent_final_approach_execute {
     PARAMETER data.
+    aoso_descent_measure_dv(data).
     // If we somehow picked up speed again (bounce, slope), go back to the
     // hoverslam instead of holding a 3 m/s vertical while sliding sideways.
     IF NOT aoso_descent_should_final_approach() {
@@ -338,6 +357,8 @@ FUNCTION aoso_descent_final_approach_execute {
 
 FUNCTION aoso_descent_touchdown_entry {
     PARAMETER data.
+    aoso_descent_measure_dv(data).
+    IF data:HASKEY("actual_dv") { aoso_action_add_actual_dv(data["actual_dv"]). }
     aoso_throttle_set(0).
     aoso_steer_release().
     aoso_log_info("DESCENT", "Touchdown, throttle cut.").
@@ -345,11 +366,22 @@ FUNCTION aoso_descent_touchdown_entry {
     LOCAL ver_l IS aoso_verify_landing().
     LOCAL res_l IS aoso_result_make("LANDING", "SUCCESS", "touchdown").
     IF data:HASKEY("pred_land") { SET res_l["predicted_dv"] TO data["pred_land"]. }
-    SET res_l["actual_dv"] TO ABS(VERTICALSPEED).
     SET res_l TO aoso_verify_apply_result(res_l, ver_l).
     aoso_result_emit(res_l).
     aoso_auth_release_all("descent").
     aoso_auth_use("").
+}
+
+FUNCTION aoso_descent_aborted_entry {
+    PARAMETER data.
+    aoso_descent_measure_dv(data).
+    IF AOSO_ACTION_CUR:ISTYPE("Lexicon") {
+        IF AOSO_ACTION_CUR["type"] = "LANDING" {
+            IF data:HASKEY("actual_dv") { aoso_action_add_actual_dv(data["actual_dv"]). }
+            LOCAL res_a IS aoso_action_finish("ABORTED", "descent aborted").
+            aoso_result_emit(res_a).
+        }
+    }
 }
 
 FUNCTION aoso_descent_poll {
@@ -369,8 +401,9 @@ FUNCTION aoso_descent_start {
     aoso_state_define(AOSO_DESCENT, "BURN", aoso_descent_burn_entry@, aoso_descent_burn_execute@, 0, 0, 0, aoso_descent_on_abort@).
     aoso_state_define(AOSO_DESCENT, "FINAL_APPROACH", aoso_descent_final_approach_entry@, aoso_descent_final_approach_execute@, 0, 0, 0, aoso_descent_on_abort@).
     aoso_state_define(AOSO_DESCENT, "TOUCHDOWN", aoso_descent_touchdown_entry@, 0, 0).
-    aoso_state_define(AOSO_DESCENT, "ABORTED", 0, 0, 0).
+    aoso_state_define(AOSO_DESCENT, "ABORTED", aoso_descent_aborted_entry@, 0, 0).
 
+    SET AOSO_DESCENT["data"] TO LEXICON("actual_dv", 0, "dv_last_ut", TIME:SECONDS).
     aoso_state_queue(AOSO_DESCENT, "FREEFALL").
     aoso_sched_add("descent", 0, aoso_descent_tick@).
     aoso_auth_acquire("descent", "STEERING", 4).
