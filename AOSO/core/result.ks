@@ -13,12 +13,18 @@ FUNCTION aoso_result_make {
     PARAMETER reason IS "".
     LOCAL aid IS AOSO_DECIDE_SEQ.
     LOCAL pred_dv IS 0.
+    LOCAL pred_dur IS 0.
+    LOCAL actual_dv_accum IS 0.
+    LOCAL result_conf IS 0.5.
     LOCAL started IS 0.
     LOCAL start_b IS SHIP:BODY:NAME.
     LOCAL start_fuel_amt IS 0.
     IF AOSO_ACTION_CUR:ISTYPE("Lexicon") {
         IF AOSO_ACTION_CUR:HASKEY("action_id") { SET aid TO AOSO_ACTION_CUR["action_id"]. }
         IF AOSO_ACTION_CUR:HASKEY("predicted_dv") { SET pred_dv TO AOSO_ACTION_CUR["predicted_dv"]. }
+        IF AOSO_ACTION_CUR:HASKEY("predicted_duration") { SET pred_dur TO AOSO_ACTION_CUR["predicted_duration"]. }
+        IF AOSO_ACTION_CUR:HASKEY("actual_dv_accum") { SET actual_dv_accum TO AOSO_ACTION_CUR["actual_dv_accum"]. }
+        IF AOSO_ACTION_CUR:HASKEY("confidence") { SET result_conf TO AOSO_ACTION_CUR["confidence"]. }
         IF AOSO_ACTION_CUR:HASKEY("started_at") { SET started TO AOSO_ACTION_CUR["started_at"]. }
         IF AOSO_ACTION_CUR:HASKEY("start_body") { SET start_b TO AOSO_ACTION_CUR["start_body"]. }
         IF AOSO_ACTION_CUR:HASKEY("start_fuel") { SET start_fuel_amt TO AOSO_ACTION_CUR["start_fuel"]. }
@@ -40,18 +46,21 @@ FUNCTION aoso_result_make {
         "start_body", start_b,
         "end_body", SHIP:BODY:NAME,
         "predicted_dv", pred_dv,
-        "actual_dv", 0,
+        "actual_dv", actual_dv_accum,
         "dv_error", 0,
+        "predicted_duration", pred_dur,
+        "duration_error", 0,
         "predicted_fuel", 0,
         "actual_fuel", start_fuel_amt,
         "fuel_used", 0,
-        "confidence", 0.5,
+        "confidence", result_conf,
         "anomalies", ""
     ).
 }
 
 FUNCTION aoso_result_emit {
     PARAMETER res.
+    PARAMETER clear_current IS TRUE.
     SET AOSO_LAST_RESULT TO res.
     IF res:HASKEY("predicted_dv") {
         IF res:HASKEY("actual_dv") {
@@ -70,13 +79,20 @@ FUNCTION aoso_result_emit {
             }
         }
     }
+    IF res:HASKEY("predicted_duration") {
+        IF res:HASKEY("duration") {
+            IF res["predicted_duration"] > 0 {
+                SET res["duration_error"] TO res["duration"] - res["predicted_duration"].
+            }
+        }
+    }
     IF DEFINED AOSO_XP {
         aoso_xp_ingest_result(res).
     }
     IF res:HASKEY("action_id") {
         aoso_decide_close(res["action_id"], res).
     }
-    SET AOSO_ACTION_CUR TO 0.
+    IF clear_current { SET AOSO_ACTION_CUR TO 0. }
     aoso_event_publish(res["action_type"] + "_" + res["status"], "result", res["reason"]).
 }
 
@@ -208,6 +224,7 @@ FUNCTION aoso_action_create {
         "predicted_dv", predicted_dv,
         "predicted_fuel", 0,
         "predicted_duration", 0,
+        "actual_dv_accum", 0,
         "confidence", 0.5,
         "start_body", SHIP:BODY:NAME,
         "start_mass", SHIP:MASS,
@@ -232,18 +249,37 @@ FUNCTION aoso_result_from_action {
     PARAMETER act.
     PARAMETER result_status.
     PARAMETER reason IS "".
+    LOCAL saved_action IS AOSO_ACTION_CUR.
     SET AOSO_ACTION_CUR TO act.
     LOCAL res IS aoso_result_make(act["type"], result_status, reason).
+    SET AOSO_ACTION_CUR TO saved_action.
     SET res["action_id"] TO act["action_id"].
     SET res["decision_id"] TO act["decision_id"].
     SET res["predicted_dv"] TO act["predicted_dv"].
     IF act:HASKEY("predicted_fuel") { SET res["predicted_fuel"] TO act["predicted_fuel"]. }
+    IF act:HASKEY("predicted_duration") { SET res["predicted_duration"] TO act["predicted_duration"]. }
+    IF act:HASKEY("actual_dv_accum") { SET res["actual_dv"] TO act["actual_dv_accum"]. }
+    IF act:HASKEY("confidence") { SET res["confidence"] TO act["confidence"]. }
     SET res["started_at"] TO act["started_at"].
     SET res["start_body"] TO act["start_body"].
     IF act["started_at"] > 0 {
         SET res["duration"] TO TIME:SECONDS - act["started_at"].
     }
     RETURN res.
+}
+
+FUNCTION aoso_action_add_actual_dv {
+    PARAMETER dv_inc.
+    IF dv_inc <= 0 { RETURN. }
+    IF NOT AOSO_ACTION_CUR:ISTYPE("Lexicon") { RETURN. }
+    IF NOT AOSO_ACTION_CUR:HASKEY("actual_dv_accum") { SET AOSO_ACTION_CUR["actual_dv_accum"] TO 0. }
+    SET AOSO_ACTION_CUR["actual_dv_accum"] TO AOSO_ACTION_CUR["actual_dv_accum"] + dv_inc.
+}
+
+FUNCTION aoso_action_set_predicted_duration {
+    PARAMETER duration_s.
+    IF NOT AOSO_ACTION_CUR:ISTYPE("Lexicon") { RETURN. }
+    SET AOSO_ACTION_CUR["predicted_duration"] TO MAX(0, duration_s).
 }
 
 FUNCTION aoso_action_finish {
