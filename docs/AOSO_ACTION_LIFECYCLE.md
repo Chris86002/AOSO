@@ -27,8 +27,15 @@ Do not stamp results from the latest global sequence. `aoso_decide`
 **returns** the id. `aoso_action_create(id, type, target, predicted_dv)`
 builds the lexicon. `aoso_action_begin` sets `AOSO_ACTION_CUR`.
 `aoso_result_make` / `aoso_result_from_action` copy that id.
-`aoso_result_emit` closes the decision, ingests XP, and clears
+`aoso_result_emit` closes the decision, ingests XP, and normally clears
 `AOSO_ACTION_CUR`.
+
+`AOSO_ACTION_CUR` is the mission-level owner, not a scratch slot. Embedded
+MANEUVER burns accumulate measured dV into the owning TRANSFER / CAPTURE /
+LANDING / RETURN action without replacing it. STAGING emits a detached
+result and also leaves the parent action intact. A standalone MANEUVER
+creates its own action at ignition so elapsed burn time is measured from
+ignition rather than from completion.
 
 Never name `GLOBAL AOSO_ACTION` (collides with `FUNCTION aoso_action_*`
 if someone adds `aoso_action`). The current object is
@@ -39,6 +46,7 @@ if someone adds `aoso_action`). The current object is
 ```
 action_id, decision_id, type, target, controller,
 predicted_dv, predicted_fuel, predicted_duration, confidence,
+actual_dv_accum,
 start_body, start_mass, start_fuel, started_at,
 topology_revision, vehicle_revision, plan_revision
 ```
@@ -52,9 +60,9 @@ Types used as XP ops: `ASCENT`, `CIRCULARIZATION`, `MANEUVER`,
 | Action | Where |
 |---|---|
 | ASCENT / TAKEOFF | `ascent_start` — TAKEOFF if landed off-Kerbin |
-| MANEUVER | `maneuver` finish; creates action if `ACTION_CUR` empty |
-| TRANSFER | `goto_start` with `xfer_only` (capture not mixed in) |
-| CAPTURE | `goto_done` + `aoso_verify_capture(goal)` |
+| MANEUVER | standalone burn at ignition; embedded burns stay under the parent action |
+| TRANSFER | `goto` PLAN, once the actual hop is known and after any surface launch |
+| CAPTURE | `goto` capture entry, spanning the actual capture burn |
 | LANDING | `descent_start`; touchdown verifies srf/vs/tilt |
 | REFUEL | `refuel_start`; stow classifies SUCCESS/PARTIAL/FAILED |
 | STAGING | `aoso_staging_emit` after `aoso_staging_do` (pred mass vs actual) |
@@ -131,7 +139,16 @@ seed → Hohmann windows. Each step is explainable in the log.
 
 ## Learning
 
-`aoso_result_emit` still ingests XP when predicted dV > 0. Learning
-must change the next feasibility cost (`aoso_xp_apply`). REFUEL uses
-fuel-pct, not a dV model. STAGING uses predicted vs actual mass
-(stored in the dV fields).
+`aoso_result_emit` ingests the primary predicted-vs-actual cost when one
+exists. Learning changes later feasibility/projected costs through
+`aoso_xp_apply` and publishes `MODEL_UPDATED`, so the brain dirties and
+rebuilds feasibility, opportunity, route, and plan state when quiet.
+
+Secondary bounded metrics share the same persistent experience store without
+pretending they are dV: `MANEUVER|BURN_TIME` corrects the analytical burn-time
+estimate, `STAGING|TWR` corrects future-stage TWR prediction, and result
+`TIME` learns `predicted_duration` versus `duration` whenever a controller
+supplies a duration prediction. REFUEL continues to use fuel percentage.
+STAGING still stores predicted versus actual mass in the primary dV slots for
+the generic ratio, but mass residuals are excluded from dV correction/replan
+thresholds.
