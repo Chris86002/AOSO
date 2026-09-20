@@ -7,8 +7,7 @@ the operator runs in stock KSP + kOS. After each, keep the kOS log,
 Self-test (`run "AOSO/dev/selftest".`) covers the synthetic cases
 without touching the ship. It must not STAGE, LOCK, WARP, or THROTTLE.
 
-Work from branch `aoso-v2-integration`. Do not merge to `main` unless
-authorized. `Watch-AOSO` still tracks `main`.
+Work on `main`. `Watch-AOSO` tracks it.
 
 ## Scenario 1 — Kerbin ascent
 

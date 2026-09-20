@@ -114,9 +114,8 @@ See `docs/AOSO_PROJECTION.md`. Sequential leftover is the cost truth.
 
 ## Branching
 
-Work lives on `aoso-v2-integration`. Do not merge to `main` unless the
-user authorizes it. `Watch-AOSO.ps1` still tracks `main`, so a flying
-copy does not auto-overwrite onto this branch.
+Work on `main`. `Watch-AOSO.ps1` tracks it. v2.2 is merged; do not
+revive `aoso-v2-integration`.
 
 ## Self-test
 
