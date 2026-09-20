@@ -150,6 +150,7 @@ FUNCTION aoso_xp_record {
 
     IF TIME:SECONDS - AOSO_XP["save_at"] > 8 { aoso_xp_save(). }
     aoso_ctx_bump("rev_xp").
+    IF DEFINED AOSO_EVENTS { aoso_event_publish("MODEL_UPDATED", "xp", op_name + " cost"). }
     aoso_log_info("XP", op_name + " " + body_name + " n=" + m["n"] + " corr=" + ROUND(corr, 3) +
         " pred=" + ROUND(predicted, 1) + " act=" + ROUND(actual, 1) + " conf=" + ROUND(conf, 2) + ".").
     RETURN m.
@@ -181,12 +182,108 @@ FUNCTION aoso_xp_predict {
     RETURN aoso_prediction_make(analytical * corr, m["n"], corr).
 }
 
+FUNCTION aoso_xp_metric_key {
+    PARAMETER op_name.
+    PARAMETER body_name.
+    PARAMETER metric_name.
+    RETURN aoso_xp_key(op_name, body_name) + "|" + metric_name.
+}
+
+FUNCTION aoso_xp_metric_model {
+    PARAMETER op_name.
+    PARAMETER body_name.
+    PARAMETER metric_name.
+    LOCAL store IS aoso_xp_load().
+    LOCAL mk IS aoso_xp_metric_key(op_name, body_name, metric_name).
+    IF store["models"]:HASKEY(mk) { RETURN store["models"][mk]. }
+    RETURN aoso_xp_blank().
+}
+
+FUNCTION aoso_xp_record_metric {
+    PARAMETER op_name.
+    PARAMETER body_name.
+    PARAMETER metric_name.
+    PARAMETER predicted.
+    PARAMETER actual.
+    PARAMETER failed IS FALSE.
+    IF predicted <= 0.01 { RETURN aoso_xp_metric_model(op_name, body_name, metric_name). }
+    IF actual < 0 { RETURN aoso_xp_metric_model(op_name, body_name, metric_name). }
+    LOCAL ratio IS actual / predicted.
+    LOCAL max_c IS aoso_config_get("XP_MAX_CORRECTION", 0.35).
+    IF ratio < 1 - max_c { SET ratio TO 1 - max_c. }
+    IF ratio > 1 + max_c { SET ratio TO 1 + max_c. }
+    IF failed { IF ratio > 1.15 { SET ratio TO 1.15. } }
+    LOCAL store IS aoso_xp_load().
+    LOCAL mk IS aoso_xp_metric_key(op_name, body_name, metric_name).
+    IF NOT store["models"]:HASKEY(mk) { SET store["models"][mk] TO aoso_xp_blank(). }
+    LOCAL m IS store["models"][mk].
+    SET m["n"] TO m["n"] + 1.
+    SET m["sum_ratio"] TO m["sum_ratio"] + ratio.
+    SET m["mean_ratio"] TO m["sum_ratio"] / m["n"].
+    IF ratio < m["best"] { SET m["best"] TO ratio. }
+    IF ratio > m["worst"] { SET m["worst"] TO ratio. }
+    LOCAL min_n IS aoso_config_get("XP_MIN_SAMPLES", 3).
+    LOCAL blend IS m["n"] / (m["n"] + min_n).
+    LOCAL corr IS 1 + (m["mean_ratio"] - 1) * blend.
+    IF corr < 1 - max_c { SET corr TO 1 - max_c. }
+    IF corr > 1 + max_c { SET corr TO 1 + max_c. }
+    SET m["corr"] TO corr.
+    LOCAL conf IS 0.3.
+    IF m["n"] >= min_n { SET conf TO 0.6. }
+    IF m["n"] >= min_n * 2 { SET conf TO 0.82. }
+    SET m["conf"] TO conf.
+    SET store["models"][mk] TO m.
+    store["samples"]:ADD(LEXICON("op", op_name, "body", body_name, "metric", metric_name,
+        "pred", predicted, "act", actual, "ratio", ratio, "fail", failed, "ut", TIME:SECONDS)).
+    UNTIL store["samples"]:LENGTH <= 40 { store["samples"]:REMOVE(0). }
+    IF TIME:SECONDS - AOSO_XP["save_at"] > 8 { aoso_xp_save(). }
+    aoso_ctx_bump("rev_xp").
+    IF DEFINED AOSO_EVENTS { aoso_event_publish("MODEL_UPDATED", "xp", op_name + " " + metric_name). }
+    aoso_log_info("XP", op_name + " " + metric_name + " " + body_name +
+        " n=" + m["n"] + " corr=" + ROUND(corr, 3) + " pred=" + ROUND(predicted, 2) +
+        " act=" + ROUND(actual, 2) + " conf=" + ROUND(conf, 2) + ".").
+    RETURN m.
+}
+
+FUNCTION aoso_xp_metric_corr {
+    PARAMETER op_name.
+    PARAMETER body_name.
+    PARAMETER metric_name.
+    LOCAL m IS aoso_xp_metric_model(op_name, body_name, metric_name).
+    IF m["n"] < 1 { RETURN 1. }
+    RETURN m["corr"].
+}
+
+FUNCTION aoso_xp_metric_apply {
+    PARAMETER op_name.
+    PARAMETER body_name.
+    PARAMETER metric_name.
+    PARAMETER analytical.
+    RETURN analytical * aoso_xp_metric_corr(op_name, body_name, metric_name).
+}
+
+FUNCTION aoso_xp_metric_predict {
+    PARAMETER op_name.
+    PARAMETER body_name.
+    PARAMETER metric_name.
+    PARAMETER analytical.
+    LOCAL m IS aoso_xp_metric_model(op_name, body_name, metric_name).
+    LOCAL corr IS 1.
+    IF m["n"] >= 1 { SET corr TO m["corr"]. }
+    RETURN aoso_prediction_make(analytical * corr, m["n"], corr).
+}
+
 FUNCTION aoso_xp_ingest_result {
     PARAMETER res.
     IF NOT res:ISTYPE("Lexicon") { RETURN. }
     LOCAL op_name IS "".
     IF res:HASKEY("action_type") { SET op_name TO res["action_type"]. }
     IF op_name = "" { RETURN. }
+    LOCAL failed IS FALSE.
+    IF res["status"] = "FAILED" { SET failed TO TRUE. }
+    IF res["status"] = "ABORTED" { SET failed TO TRUE. }
+    LOCAL body_n IS SHIP:BODY:NAME.
+    IF res:HASKEY("end_body") { SET body_n TO res["end_body"]. }
     LOCAL pred IS 0.
     LOCAL act IS 0.
     IF res:HASKEY("predicted_dv") { SET pred TO res["predicted_dv"]. }
@@ -195,11 +292,10 @@ FUNCTION aoso_xp_ingest_result {
         IF res:HASKEY("predicted_fuel") { SET pred TO res["predicted_fuel"]. }
         IF res:HASKEY("fuel_used") { SET act TO res["fuel_used"]. }
     }
-    IF pred <= 0 { RETURN. }
-    LOCAL failed IS FALSE.
-    IF res["status"] = "FAILED" { SET failed TO TRUE. }
-    IF res["status"] = "ABORTED" { SET failed TO TRUE. }
-    LOCAL body_n IS SHIP:BODY:NAME.
-    IF res:HASKEY("end_body") { SET body_n TO res["end_body"]. }
-    aoso_xp_record(op_name, body_n, pred, act, failed).
+    IF pred > 0 { aoso_xp_record(op_name, body_n, pred, act, failed). }
+    LOCAL pred_t IS 0.
+    LOCAL act_t IS 0.
+    IF res:HASKEY("predicted_duration") { SET pred_t TO res["predicted_duration"]. }
+    IF res:HASKEY("duration") { SET act_t TO res["duration"]. }
+    IF pred_t > 0 { aoso_xp_record_metric(op_name, body_n, "TIME", pred_t, act_t, failed). }
 }
