@@ -91,7 +91,13 @@ FUNCTION aoso_brain_on_event {
     IF etype = "TAKEOFF_COMPLETE" { aoso_ctx_mark_budget(). aoso_brain_consider_replan("takeoff"). }
     IF etype = "ENGINE_ANOMALY" { aoso_ctx_mark_vehicle(). aoso_brain_consider_replan("engine"). }
     IF etype = "MANEUVER_FAILED" { aoso_brain_consider_replan("maneuver_fail"). }
-    IF etype = "MODEL_UPDATED" { aoso_ctx_dirty("dirty_feas"). }
+    IF etype = "MODEL_UPDATED" {
+        aoso_ctx_dirty("dirty_feas").
+        aoso_ctx_dirty("dirty_opp").
+        aoso_ctx_dirty("dirty_route").
+        aoso_ctx_dirty("dirty_plan").
+        aoso_brain_consider_replan("model " + ev["data"]).
+    }
     IF etype = "REPLAN_REQUESTED" { aoso_brain_consider_replan(ev["data"]). }
     IF etype = "CORRECT_REQUESTED" { aoso_log_info("BRAIN", "Local correction indicated: " + ev["data"]). }
     IF etype = "HOLD" { aoso_log_warn("BRAIN", "Safe hold: " + ev["data"]). }
