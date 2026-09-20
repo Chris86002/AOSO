@@ -71,7 +71,20 @@ Mandatory before surface / pad launch.
 |---|---|
 | `READY` | TWR, fuel, and station-keeping look launchable |
 | `READY_WITH_WARNING` | Launchable, but TWR/legs/takeoff table is tight |
-| `NOT_READY` | Hard inability: LANDER TWR < 1.05, no propulsion, fuel < 8%, takeoff_dv > mission_dv, or still moving |
+| `NOT_READY` | Hard inability: launch TWR < 1.05, fuel < 8%, takeoff_dv > mission_dv, or still moving |
+
+Pad / `PRELAUNCH` TWR is **ALL engines**
+(`aoso_caps_surface_twr_for_config("ALL")`, same as
+`aoso_profile_surface_twr`). That is the live ship on the clamps,
+boosters included. `LANDED` takeoff TWR is **LANDER-config** (core
+hopper, no boosters). Do not score a Kerbin pad launch as LANDER TWR —
+Acacius sat at 0.17 (vacuum core at ASL) with boosters that give ~1.57.
+If a landed stack still has boosters and LANDER TWR cannot lift, pad
+TWR is used instead.
+
+`AVAILABLETHRUST` is zero until ascent lights engines. Possible thrust
+already passed the TWR gate, so unlit pad engines are not
+`no propulsion`.
 
 Tour `LAUNCH` (and pad `BOOT`) will **not** call `aoso_ascent_start`
 while the status is `NOT_READY`. It holds and retries.

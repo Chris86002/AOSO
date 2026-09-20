@@ -42,9 +42,27 @@ FUNCTION aoso_depart_certify {
         }
     }
     LOCAL warn IS LIST().
+    // Pad / PRELAUNCH is the live stack, boosters included.
+    // LANDER TWR is the stripped hopper after those boosters are gone.
+    // Scoring a Kerbin pad launch as LANDER is why Acacius sat at TWR
+    // 0.17 (vacuum core at ASL) with boosters that give ~1.57.
     LOCAL twr IS aoso_profile_surface_twr(SHIP:BODY:NAME).
+    LOCAL twr_cfg IS "pad".
     IF DEFINED AOSO_CAPS {
-        SET twr TO aoso_caps_surface_twr_for_config("LANDER", SHIP:BODY:NAME, 0).
+        IF st = "PRELAUNCH" {
+            SET twr TO aoso_caps_surface_twr_for_config("ALL", SHIP:BODY:NAME, SHIP:MASS).
+            SET twr_cfg TO "pad".
+        } ELSE {
+            SET twr TO aoso_caps_surface_twr_for_config("LANDER", SHIP:BODY:NAME, 0).
+            SET twr_cfg TO "lander".
+            IF twr < 1.05 {
+                LOCAL stack_twr IS aoso_caps_surface_twr_for_config("ALL", SHIP:BODY:NAME, SHIP:MASS).
+                IF stack_twr > twr {
+                    SET twr TO stack_twr.
+                    SET twr_cfg TO "pad".
+                }
+            }
+        }
     }
     LOCAL min_twr IS aoso_config_get("TOUR_MIN_LAND_TWR", 1.4).
     LOCAL fuel_pct IS aoso_resource_pct("LiquidFuel").
@@ -56,13 +74,9 @@ FUNCTION aoso_depart_certify {
     IF twr < 1.05 {
         RETURN LEXICON("status", "NOT_READY", "reason", "surface TWR " + ROUND(twr, 2), "warnings", warn).
     }
-    IF SHIP:AVAILABLETHRUST <= 0.05 {
-        LOCAL unlit_n IS 0.
-        IF DEFINED AOSO_STG_UNIGNITED { SET unlit_n TO AOSO_STG_UNIGNITED. }
-        IF unlit_n < 1 {
-            RETURN LEXICON("status", "NOT_READY", "reason", "no propulsion", "warnings", warn).
-        }
-    }
+    // AVAILABLETHRUST is 0 until ascent lights engines. POSSIBLE
+    // thrust already passed the TWR gate above, so unlit engines on
+    // the pad or a landed hopper are not "no propulsion".
     IF twr < min_twr { warn:ADD("TWR " + ROUND(twr, 2) + " below tour minimum " + min_twr). }
     IF fuel_pct < 8 {
         RETURN LEXICON("status", "NOT_READY", "reason", "fuel " + ROUND(fuel_pct, 0) + "%", "warnings", warn).
@@ -84,7 +98,7 @@ FUNCTION aoso_depart_certify {
         RETURN LEXICON("status", "NOT_READY", "reason", "not stationary", "warnings", warn).
     }
     IF warn:LENGTH > 0 { SET status_name TO "READY_WITH_WARNING". SET reason TO warn[0]. }
-    aoso_log_info("DEPART", status_name + " twr=" + ROUND(twr, 2) + " fuel=" + ROUND(fuel_pct, 0) + "% " + reason + ".").
+    aoso_log_info("DEPART", status_name + " twr=" + ROUND(twr, 2) + " (" + twr_cfg + ") fuel=" + ROUND(fuel_pct, 0) + "% " + reason + ".").
     RETURN LEXICON("status", status_name, "reason", reason, "warnings", warn, "twr", twr, "fuel_pct", fuel_pct).
 }
 

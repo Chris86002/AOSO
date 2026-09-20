@@ -36,6 +36,9 @@ they watch the kOS terminal and the HUD.
   a summary/view, not an independent structural truth. Future TWR
   (Tylo/Eve lander) uses `aoso_caps_surface_twr_for_config("LANDER")`,
   not pad all-engine TWR.
+- Pad / PRELAUNCH departure cert uses ALL-engine TWR
+  (`aoso_caps_surface_twr_for_config("ALL")`). LANDED takeoff uses
+  LANDER-config. Never score a Kerbin pad launch as LANDER TWR.
 - Mission costs are sequential leftover from `mission/project.ks`, not
   independent comparisons of every cost to the original hop budget.
   Capture is split out of transfer (`aoso_project_xfer_only`).
@@ -50,7 +53,8 @@ they watch the kOS terminal and the HUD.
 - Mission strategy is re-certified after meaningful spacecraft changes.
   `aoso_plan_stale` is topo/budget/world rev drift.
 - Surface takeoff requires departure certification. Hard inability
-  (TWR, no propulsion, takeoff_dv, sliding) is `NOT_READY`.
+  (TWR, takeoff_dv, sliding, fuel) is `NOT_READY`. Unlit pad engines
+  are not `no propulsion` — `AVAILABLETHRUST` is 0 until ignition.
 - Persistent files stamp `schema_version` (current 2). Missing key
   migrates as v1. Do not add required keys without a loader migrate.
 - One authoritative body knowledge source (`bodydb` + `world/body`).
