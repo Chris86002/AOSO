@@ -65,7 +65,13 @@ FUNCTION aoso_result_emit {
     IF res:HASKEY("predicted_dv") {
         IF res:HASKEY("actual_dv") {
             SET res["dv_error"] TO res["actual_dv"] - res["predicted_dv"].
-            IF res["predicted_dv"] > 0 {
+            LOCAL use_dv_error IS TRUE.
+            IF res:HASKEY("action_type") {
+                // STAGING stores predicted/actual mass in the dV slots for
+                // the generic XP ratio. A mass residual is not a m/s error.
+                IF res["action_type"] = "STAGING" { SET use_dv_error TO FALSE. }
+            }
+            IF res["predicted_dv"] > 0 AND use_dv_error {
                 LOCAL mag IS ABS(res["dv_error"]).
                 LOCAL replan_n IS aoso_config_get("REPLAN_DV_ERROR", 250).
                 LOCAL local_n IS aoso_config_get("CORRECT_LOCAL_DV", 25).
