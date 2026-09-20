@@ -26,6 +26,8 @@ topology_revision, vehicle_revision, plan_revision
 
 Current action: `AOSO_ACTION_CUR` (0 or lexicon). Never `GLOBAL AOSO_ACTION`.
 
+`actual_dv_accum` is an internal action field used by embedded maneuver burns to add real executed cost to a parent action without replacing its identity.
+
 ## Action result (`aoso_result_make`)
 
 ```
@@ -33,6 +35,7 @@ action_id, decision_id, action_type, status, reason,
 started_at, completed_at, duration,
 start_body, end_body,
 predicted_dv, actual_dv, dv_error,
+predicted_duration, duration_error,
 predicted_fuel, actual_fuel, fuel_used,
 confidence, anomalies
 ```
