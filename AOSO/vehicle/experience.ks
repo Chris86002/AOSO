@@ -212,7 +212,9 @@ FUNCTION aoso_xp_record_metric {
     LOCAL max_c IS aoso_config_get("XP_MAX_CORRECTION", 0.35).
     IF ratio < 1 - max_c { SET ratio TO 1 - max_c. }
     IF ratio > 1 + max_c { SET ratio TO 1 + max_c. }
-    IF failed { IF ratio > 1.15 { SET ratio TO 1.15. } }
+    IF failed {
+        IF ratio > 1.15 { SET ratio TO 1.15. }
+    }
     LOCAL store IS aoso_xp_load().
     LOCAL mk IS aoso_xp_metric_key(op_name, body_name, metric_name).
     IF NOT store["models"]:HASKEY(mk) { SET store["models"][mk] TO aoso_xp_blank(). }
