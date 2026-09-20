@@ -121,14 +121,13 @@ FUNCTION aoso_staging_emit {
     IF pred:HASKEY("mass_next") { SET pred_mass TO pred["mass_next"]. }
     LOCAL did_s IS aoso_decide("STAGING", "stage", reason, cat, "stg=" + prev + " twr_now=" + twr_now + " twr_next=" + twr_next, pred_mass).
     LOCAL act_s IS aoso_action_create(did_s, "STAGING", "" + prev, pred_mass).
-    aoso_action_begin(act_s).
     LOCAL res_s IS aoso_result_from_action(act_s, "SUCCESS", reason).
     SET res_s["predicted_dv"] TO pred_mass.
     SET res_s["actual_dv"] TO SHIP:MASS.
     SET res_s["predicted_fuel"] TO pred["twr_next"].
     SET res_s["actual_fuel"] TO actual_twr.
-    aoso_result_emit(res_s).
-    // THRUST_MISMATCH is judged after spool in aoso_staging_judge_mismatch.
+    aoso_result_emit(res_s, FALSE).
+    // THRUST_MISMATCH and TWR learning are judged after spool in aoso_staging_judge_mismatch.
     // Measuring AVAILABLETHRUST in the same tick as STAGE() is always ~0.
 }
 
@@ -613,19 +612,22 @@ FUNCTION aoso_staging_drop_has_unlit {
 }
 
 FUNCTION aoso_staging_judge_mismatch {
-    IF AOSO_STAGING_PRED_TWR <= 1.2 {
-        SET AOSO_STAGING_PRED_TWR TO 0.
-        RETURN.
-    }
-    IF SHIP:AVAILABLETHRUST > 0.05 {
+    LOCAL pred_twr IS AOSO_STAGING_PRED_TWR.
+    IF pred_twr <= 0 {
         SET AOSO_STAGING_PRED_TWR TO 0.
         RETURN.
     }
     LOCAL actual_twr IS aoso_perf_twr().
-    IF actual_twr < 0.5 {
-        aoso_observe_anomaly("THRUST_MISMATCH", "HIGH", AOSO_STAGING_PRED_TWR, actual_twr).
-        aoso_log_warn("STAGING", "Thrust mismatch after spool: predicted TWR " + ROUND(AOSO_STAGING_PRED_TWR, 2) +
-            " actual " + ROUND(actual_twr, 2) + " stg=" + STAGE:NUMBER + " unlit=" + AOSO_STG_UNIGNITED + ".").
+    LOCAL failed IS actual_twr < 0.5.
+    IF DEFINED AOSO_XP {
+        aoso_xp_record_metric("STAGING", SHIP:BODY:NAME, "TWR", pred_twr, actual_twr, failed).
+    }
+    IF pred_twr > 1.2 {
+        IF actual_twr < 0.5 {
+            aoso_observe_anomaly("THRUST_MISMATCH", "HIGH", pred_twr, actual_twr).
+            aoso_log_warn("STAGING", "Thrust mismatch after spool: predicted TWR " + ROUND(pred_twr, 2) +
+                " actual " + ROUND(actual_twr, 2) + " stg=" + STAGE:NUMBER + " unlit=" + AOSO_STG_UNIGNITED + ".").
+        }
     }
     SET AOSO_STAGING_PRED_TWR TO 0.
 }
