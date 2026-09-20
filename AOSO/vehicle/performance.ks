@@ -35,7 +35,11 @@ FUNCTION aoso_perf_burn_time_for_dv {
     LOCAL ve IS isp * AOSO_CONST["G0"].
     IF ve <= 0 { RETURN 0. }
 
-    RETURN (SHIP:MASS * ve / thrust_sum) * (1 - CONSTANT:E ^ (-dv / ve)).
+    LOCAL analytical IS (SHIP:MASS * ve / thrust_sum) * (1 - CONSTANT:E ^ (-dv / ve)).
+    IF DEFINED AOSO_XP {
+        RETURN aoso_xp_metric_apply("MANEUVER", SHIP:BODY:NAME, "BURN_TIME", analytical).
+    }
+    RETURN analytical.
 }
 
 // Live aero. SHIP:Q is always available (Kerbin-atm units). Drag force
