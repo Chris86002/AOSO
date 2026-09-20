@@ -80,7 +80,10 @@ A named controller calls `aoso_auth_use(who)` then
 (backward compatible). Higher prio preempts; equal prio is denied.
 
 Ascent (prio 3), maneuver (3), descent (4) acquire on start and
-`aoso_auth_release_all` on done/abort. `aoso_staging_do` allows
+`aoso_auth_release_all` on done/abort. Equal prio is denied, so
+ascent **yields** STEERING/THROTTLE/WARP/STAGING before the
+circularization `aoso_maneuver_execute_next` or the 60 m/s node
+lights at throttle 0. `aoso_staging_do` allows
 ascent / maneuver / descent / goto / auto_staging (WHO-empty still
 bypasses until callers all set identity).
 

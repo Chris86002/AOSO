@@ -120,3 +120,17 @@ FUNCTION aoso_log_every {
     SET AOSO_LOG_LAST[tag] TO now.
     aoso_log_info(tag, msg).
 }
+
+// Same silence window as aoso_log_every, WARN so a 25 Hz deny path
+// cannot fill the log (ascent-vs-maneuver circularize flooded AUTH).
+FUNCTION aoso_log_warn_every {
+    PARAMETER interval_s.
+    PARAMETER tag.
+    PARAMETER msg.
+    LOCAL now IS TIME:SECONDS.
+    IF AOSO_LOG_LAST:HASKEY(tag) {
+        IF now - AOSO_LOG_LAST[tag] < interval_s { RETURN. }
+    }
+    SET AOSO_LOG_LAST[tag] TO now.
+    aoso_log_warn(tag, msg).
+}

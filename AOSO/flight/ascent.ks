@@ -183,17 +183,19 @@ FUNCTION aoso_ascent_steer {
         LOCAL cmd IS aoso_ascent_program_pitch(data).
         LOCAL fpa IS aoso_ascent_flight_path_pitch().
         LOCAL max_aoa IS aoso_ascent_max_aoa().
-        // Asymmetric AoA: 7 deg nose-up is a structural/aero limit.
-        // Nose-down is how a tall stack catches a lofted flight path.
-        // Symmetric ±7 left Acacius at FPA 83 deg at 25 km.
-        LOCAL down_aoa IS max_aoa + 8.
-        IF down_aoa > 18 { SET down_aoa TO 18. }
+        // Tight nose-up is the aero/structural limit. Extra nose-down is
+        // only for a lofted path (FPA well above the program). Always-on
+        // down_aoa = max+8 yanked Acacius to AoA -4.5 at pitchover, then
+        // 207 s of dense air at +6 deg AoA with peri still in atmosphere.
+        LOCAL down_aoa IS max_aoa.
         LOCAL lofting IS FALSE.
         IF fpa - cmd > max_aoa { SET lofting TO TRUE. }
         IF data:HASKEY("loft_flagged") {
             IF data["loft_flagged"] { SET lofting TO TRUE. }
         }
         IF lofting {
+            SET down_aoa TO max_aoa + 8.
+            IF down_aoa > 18 { SET down_aoa TO 18. }
             IF down_aoa < 15 { SET down_aoa TO 15. }
         }
         LOCAL lo IS fpa - down_aoa.
@@ -461,8 +463,22 @@ FUNCTION aoso_ascent_persist_run {
         " peri=" + ROUND(PERIAPSIS, 0) + " - " + best_line).
 }
 
+FUNCTION aoso_ascent_yield_burn {
+    aoso_auth_release("ascent", "STEERING").
+    aoso_auth_release("ascent", "THROTTLE").
+    aoso_auth_release("ascent", "WARP").
+    aoso_auth_release("ascent", "STAGING").
+}
+
+FUNCTION aoso_ascent_reclaim {
+    aoso_auth_release_all("maneuver").
+    aoso_auth_use("ascent").
+    aoso_auth_acquire("ascent", "THROTTLE", 3).
+}
+
 FUNCTION aoso_ascent_on_abort {
     PARAMETER data.
+    aoso_ascent_reclaim().
     aoso_throttle_set(0).
     aoso_ascent_restore_steering(data).
     aoso_auth_release_all("ascent").
@@ -696,25 +712,49 @@ FUNCTION aoso_ascent_circularize_entry {
         IF data["circ_now"] {
             aoso_maneuver_add_circularize_here().
             SET data["circ_dv"] TO ABS(aoso_maneuver_circularize_dv_at_apoapsis()).
+            aoso_ascent_yield_burn().
             RETURN.
         }
     }
     aoso_maneuver_add_circularize_at_apoapsis().
     SET data["circ_dv"] TO ABS(aoso_maneuver_circularize_dv_at_apoapsis()).
+    // Maneuver is prio 3, same as ascent. Equal prio cannot preempt, so
+    // STEERING/THROTTLE stay with ascent and execute_next lights at 0
+    // throttle (Acacius 80x12 km, 60 m/s node, AUTH deny every tick).
+    aoso_ascent_yield_burn().
 }
 
 FUNCTION aoso_ascent_circularize_execute {
     PARAMETER data.
+    aoso_ascent_yield_burn().
 
-    // Lofted sounding-rocket fallback: stop retrying nodes while falling
-    // through the atmosphere. Commit the trial so the optimizer drops it.
+    // Lofted sounding-rocket fallback. Do not abort while a node or live
+    // burn can still raise peri — the 80x12 circ failed because we gave
+    // up after AUTH starved the burn, not because the math was wrong.
+    LOCAL falling IS FALSE.
     IF aoso_ascent_in_atmosphere() {
         IF VERTICALSPEED < -20 {
             IF PERIAPSIS < SHIP:BODY:ATM:HEIGHT {
-                aoso_log_error("ASCENT", "Circularization failed - falling back into atmosphere (apo=" + ROUND(APOAPSIS, 0) + " peri=" + ROUND(PERIAPSIS, 0) + ").").
-                aoso_state_abort(AOSO_ASCENT).
-                RETURN.
+                SET falling TO TRUE.
             }
+        }
+    }
+    IF falling {
+        LOCAL can_try IS FALSE.
+        IF HASNODE { SET can_try TO TRUE. }
+        IF DEFINED AOSO_MANEUVER_BURNING {
+            IF AOSO_MANEUVER_BURNING { SET can_try TO TRUE. }
+        }
+        IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
+        IF NOT can_try {
+            aoso_log_error("ASCENT", "Circularization failed - falling back into atmosphere (apo=" + ROUND(APOAPSIS, 0) + " peri=" + ROUND(PERIAPSIS, 0) + ").").
+            aoso_state_abort(AOSO_ASCENT).
+            RETURN.
+        }
+        IF SHIP:AVAILABLETHRUST <= 0 {
+            aoso_log_error("ASCENT", "Circularization failed - falling back into atmosphere (apo=" + ROUND(APOAPSIS, 0) + " peri=" + ROUND(PERIAPSIS, 0) + ").").
+            aoso_state_abort(AOSO_ASCENT).
+            RETURN.
         }
     }
 
@@ -752,6 +792,7 @@ FUNCTION aoso_ascent_circularize_execute {
 FUNCTION aoso_ascent_done_entry {
     PARAMETER data.
     SET WARP TO 0.
+    aoso_ascent_reclaim().
     aoso_throttle_set(0).
     aoso_ascent_restore_steering(data).
     aoso_steer_release().
@@ -785,6 +826,7 @@ FUNCTION aoso_ascent_done_entry {
 FUNCTION aoso_ascent_aborted_entry {
     PARAMETER data.
     SET WARP TO 0.
+    aoso_ascent_reclaim().
     aoso_throttle_set(0).
     aoso_ascent_restore_steering(data).
     aoso_log_error("ASCENT", "Ascent aborted.").

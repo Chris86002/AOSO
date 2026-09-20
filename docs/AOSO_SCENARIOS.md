@@ -19,6 +19,7 @@ Expect:
 - Gravity turn, no lofted mismatch abort in the STAGE() tick.
 - Boosters drop only when that group's MASSFLOW is ~0 (no hot-sep).
 - Bound parking, `ASCENT` result with `predicted_dv > 0` ingested.
+- Circularize node actually burns (log has `Burn started` / `Node executed`, not a wall of `AUTH maneuver denied STEERING`).
 - `verify_ascent` SUCCESS (bound, PE above atmo).
 
 ## Scenario 2 — Kerbin → Mun orbit

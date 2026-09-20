@@ -52,7 +52,7 @@ FUNCTION aoso_auth_acquire {
         SET AOSO_AUTH_PRIO[res_name] TO prio.
         RETURN TRUE.
     }
-    aoso_log_warn("AUTH", who + " denied " + res_name + " (held by " + owner + " prio " + hold + ").").
+    aoso_log_warn_every(8, "AUTH", who + " denied " + res_name + " (held by " + owner + " prio " + hold + ").").
     RETURN FALSE.
 }
 

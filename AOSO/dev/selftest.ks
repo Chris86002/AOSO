@@ -189,6 +189,17 @@ FUNCTION aoso_selftest {
     aoso_auth_release("selftestB", "STEERING").
     SET fail TO aoso_selftest_check("auth released empty", aoso_auth_owner("STEERING") = "", fail).
 
+    aoso_auth_acquire("ascent", "STEERING", 3).
+    aoso_auth_acquire("ascent", "THROTTLE", 3).
+    LOCAL same_prio IS aoso_auth_acquire("maneuver", "STEERING", 3).
+    SET fail TO aoso_selftest_check("auth equal prio denied", same_prio = FALSE, fail).
+    aoso_auth_release("ascent", "STEERING").
+    aoso_auth_release("ascent", "THROTTLE").
+    LOCAL handoff IS aoso_auth_acquire("maneuver", "STEERING", 3).
+    SET fail TO aoso_selftest_check("circ handoff after yield", handoff, fail).
+    SET fail TO aoso_selftest_check("circ handoff owner", aoso_auth_owner("STEERING") = "maneuver", fail).
+    aoso_auth_release("maneuver", "STEERING").
+
     LOCAL stab IS aoso_surface_stable().
     SET fail TO aoso_selftest_check("surface_stable boolean", stab = TRUE OR stab = FALSE, fail).
 

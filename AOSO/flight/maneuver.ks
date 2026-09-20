@@ -412,6 +412,8 @@ FUNCTION aoso_maneuver_execute_next {
         aoso_auth_acquire("maneuver", "THROTTLE", 3).
         aoso_auth_acquire("maneuver", "WARP", 2).
         aoso_auth_use("maneuver").
+        // Equal prio cannot preempt. Ascent circularize must
+        // aoso_ascent_yield_burn() before calling us or throttle stays 0.
 
         // Do not LOCK STEERING until the align window. Rails WARPTO is a
         // no-op while steering is locked, which is why the 8 m/s Minmus
