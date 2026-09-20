@@ -156,6 +156,30 @@ FUNCTION aoso_goto_remember_patch {
     SET data["last_patch_ut"] TO TIME:SECONDS.
 }
 
+FUNCTION aoso_goto_ensure_transfer_action {
+    PARAMETER data.
+    PARAMETER target_name.
+
+    IF target_name = "" { RETURN. }
+    IF AOSO_ACTION_CUR:ISTYPE("Lexicon") {
+        // Retries/corrections for the same hop stay under the same action.
+        // Never overwrite ASCENT/LANDING/etc. just to create a transfer.
+        IF AOSO_ACTION_CUR["type"] = "TRANSFER" { RETURN. }
+        RETURN.
+    }
+
+    LOCAL pred_g IS aoso_feas_transfer_cost(SHIP:BODY:NAME, target_name).
+    LOCAL cap_g IS aoso_feas_body_stat(target_name, "capture", 0).
+    LOCAL xfer_g IS aoso_project_xfer_only(pred_g, cap_g).
+    SET data["pred_xfer"] TO xfer_g.
+    SET data["pred_cap"] TO cap_g.
+    LOCAL did_g IS aoso_decide("GOTO", "hop", target_name, "transfer",
+        "pred=" + ROUND(xfer_g, 0), xfer_g).
+    LOCAL act_g IS aoso_action_create(did_g, "TRANSFER", target_name, xfer_g).
+    aoso_action_begin(act_g).
+    SET data["action_id"] TO did_g.
+}
+
 FUNCTION aoso_goto_on_abort {
     PARAMETER data.
     SET WARP TO 0.
@@ -214,6 +238,7 @@ FUNCTION aoso_goto_plan_entry {
     IF np <> "" {
         IF aoso_goto_patch_is_ours(data, np) {
             IF np <> hop:NAME { SET data["hop"] TO np. }
+            aoso_goto_ensure_transfer_action(data, np).
             aoso_goto_remember_patch(data, np, SHIP:ORBIT:NEXTPATCHETA).
             LOCAL hop_b IS BODY(np).
             IF aoso_rendezvous_orbit_needs_correct(SHIP:ORBIT, hop_b) {
@@ -262,6 +287,12 @@ FUNCTION aoso_goto_plan_entry {
             }
         }
     }
+
+    LOCAL action_hop IS hop:NAME.
+    IF data:HASKEY("via") {
+        IF data["via"] <> "" { SET action_hop TO data["via"]. }
+    }
+    aoso_goto_ensure_transfer_action(data, action_hop).
 
     LOCAL rel_incl IS aoso_orbit_relative_inclination_deg(SHIP, hop).
     LOCAL match_plane IS TRUE.
@@ -839,15 +870,12 @@ FUNCTION aoso_goto_start {
     aoso_goto_define_states().
     SET AOSO_GOTO["data"] TO LEXICON("goal", body_name, "hop", "", "burn_kind", "", "depart_body", SHIP:BODY:NAME, "window_ut", 0, "coast_since", 0, "retry_ut", 0, "corrected", FALSE, "correct_count", 0, "last_patch_ut", 0, "expect_body", "", "expect_ut", 0, "patch_lost_ut", 0, "capture_fails", 0, "skip_capture", FALSE).
     aoso_log_info("GOTO", "Navigating to " + body_name + ".").
-    LOCAL pred_g IS aoso_feas_transfer_cost(SHIP:BODY:NAME, body_name).
-    LOCAL cap_g IS aoso_feas_body_stat(body_name, "capture", 0).
-    LOCAL xfer_g IS aoso_project_xfer_only(pred_g, cap_g).
-    SET AOSO_GOTO["data"]["pred_xfer"] TO xfer_g.
-    SET AOSO_GOTO["data"]["pred_cap"] TO cap_g.
-    LOCAL did_g IS aoso_decide("GOTO", "start", body_name, "transfer", "pred=" + ROUND(xfer_g, 0), xfer_g).
-    LOCAL act_g IS aoso_action_create(did_g, "TRANSFER", body_name, xfer_g).
-    aoso_action_begin(act_g).
-    SET AOSO_GOTO["data"]["action_id"] TO did_g.
+    // TRANSFER begins in PLAN once the vessel is actually in flight and
+    // the next hop is known. This avoids ASCENT overwriting it on launch
+    // and gives every multi-hop SOI leg its own measured action.
+    SET AOSO_GOTO["data"]["pred_xfer"] TO 0.
+    SET AOSO_GOTO["data"]["pred_cap"] TO 0.
+    SET AOSO_GOTO["data"]["action_id"] TO 0.
     // Do not run PLAN on the tour/mission stack - that blew kOS's 3000-slot
     // argument stack at aoso_goto_update (Acacius). Queue it; the sibling
     // "goto" scheduler task runs PLAN from a shallow stack next tick.
