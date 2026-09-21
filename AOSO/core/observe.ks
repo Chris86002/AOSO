@@ -435,18 +435,33 @@ FUNCTION aoso_observe_idle {
 
 FUNCTION aoso_observe_cpu_end {
     LOCAL spilled IS FALSE.
-    IF TIME:SECONDS <> AOSO_CPU_UT0 { SET spilled TO TRUE. }
+    LOCAL rails_jump IS FALSE.
+    IF TIME:SECONDS <> AOSO_CPU_UT0 {
+        IF WARP > 0 {
+            IF WARPMODE = "RAILS" { SET rails_jump TO TRUE. }
+        }
+        IF rails_jump {
+            SET spilled TO FALSE.
+        } ELSE {
+            SET spilled TO TRUE.
+        }
+    }
     LOCAL op_used IS 0.
     LOCAL left_now IS OPCODESLEFT.
     SET AOSO_CPU_LEFT TO left_now.
-    IF spilled {
-        SET op_used TO CONFIG:IPU.
-        SET AOSO_CPU_SPILLS TO AOSO_CPU_SPILLS + 1.
-        SET AOSO_CPU_STREAK TO AOSO_CPU_STREAK + 1.
-    } ELSE {
-        SET op_used TO AOSO_CPU_OP0 - left_now.
-        IF op_used < 0 { SET op_used TO 0. }
+    IF rails_jump {
+        SET op_used TO 0.
         SET AOSO_CPU_STREAK TO 0.
+    } ELSE {
+        IF spilled {
+            SET op_used TO CONFIG:IPU.
+            SET AOSO_CPU_SPILLS TO AOSO_CPU_SPILLS + 1.
+            SET AOSO_CPU_STREAK TO AOSO_CPU_STREAK + 1.
+        } ELSE {
+            SET op_used TO AOSO_CPU_OP0 - left_now.
+            IF op_used < 0 { SET op_used TO 0. }
+            SET AOSO_CPU_STREAK TO 0.
+        }
     }
     LOCAL ipu IS CONFIG:IPU.
     IF ipu < 1 { SET ipu TO 1. }

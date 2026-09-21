@@ -153,7 +153,9 @@ FUNCTION aoso_warp_diag_txt {
 // Rails when the event is still far. Physics 2x while SAS points.
 // 1x only for the last WARP_CRUCIAL_S (burns, SOI, suicide). Physics 4x
 // (WARP=3) slewed Acacius 40 deg off a circ node; 2x is the cruise floor.
-// LOCK STEERING makes WARPTO a no-op — release before rails.
+// LOCK STEERING makes WARPTO a no-op — and WAIT 0 cancels WARPTO anyway,
+// so this is SET WARP only, stepped down early. Warp 7 until lead+180
+// overshot a 11 h Minmus mid-course by 360 s and then sat 1x never-aligned.
 // Returns "rails" / "physics" / "now" / "hold".
 FUNCTION aoso_warp_approach {
     PARAMETER eta_s.
@@ -181,36 +183,22 @@ FUNCTION aoso_warp_approach {
         aoso_log_every(45, "WARP", "Physics cruise (atm/landed) eta=" + ROUND(eta_s, 0) + "s " + aoso_warp_diag_txt() + ".").
         RETURN "physics".
     }
-    IF eta_s > rails_lead_s + 5 {
-        IF AOSO_STEER_MODE <> "OFF" { aoso_steer_release(). }
-        IF WARPMODE <> "RAILS" {
-            aoso_warp_hard_stop().
-            SET WARPMODE TO "RAILS".
-            WAIT 0.
-        }
-        IF eta_s > rails_lead_s + 180 {
-            LOCAL want IS 4.
-            IF eta_s > 600 { SET want TO 5. }
-            IF eta_s > 3600 { SET want TO 6. }
-            IF eta_s > 21600 { SET want TO 7. }
-            IF WARP <> want { SET WARP TO want. }
-            aoso_log_every(60, "WARP", "Rails coast eta=" + ROUND(eta_s, 0) + "s " + aoso_warp_diag_txt() + ".").
-            RETURN "rails".
-        }
-        LOCAL jump IS eta_s - rails_lead_s.
-        IF jump > 86400 { SET jump TO 86400. }
-        IF jump < 8 { SET jump TO 8. }
-        IF WARP = 0 {
-            WARPTO(TIME:SECONDS + jump).
-            aoso_log_every(45, "WARP", "WARPTO rails eta=" + ROUND(eta_s, 0) + "s jump=" + ROUND(jump, 0) + "s lead=" + ROUND(rails_lead_s, 0) + "s " + aoso_warp_diag_txt() + ".").
-        } ELSE {
-            aoso_log_every(60, "WARP", "Rails coast eta=" + ROUND(eta_s, 0) + "s " + aoso_warp_diag_txt() + ".").
-        }
-        RETURN "rails".
+
+    LOCAL want IS aoso_warp_rails_want(eta_s, rails_lead_s).
+    IF want <= 0 {
+        aoso_warp_set_physics_cruise().
+        aoso_log_every(45, "WARP", "Align window physics eta=" + ROUND(eta_s, 0) + "s lead=" + ROUND(rails_lead_s, 0) + "s " + aoso_warp_diag_txt() + ".").
+        RETURN "physics".
     }
-    aoso_warp_set_physics_cruise().
-    aoso_log_every(45, "WARP", "Align window physics eta=" + ROUND(eta_s, 0) + "s lead=" + ROUND(rails_lead_s, 0) + "s " + aoso_warp_diag_txt() + ".").
-    RETURN "physics".
+    IF AOSO_STEER_MODE <> "OFF" { aoso_steer_release(). }
+    IF WARPMODE <> "RAILS" {
+        aoso_warp_hard_stop().
+        SET WARPMODE TO "RAILS".
+        WAIT 0.
+    }
+    IF WARP <> want { SET WARP TO want. }
+    aoso_log_every(60, "WARP", "Rails coast eta=" + ROUND(eta_s, 0) + "s " + aoso_warp_diag_txt() + ".").
+    RETURN "rails".
 }
 
 // Delta-v (m/s, signed) needed at the current apoapsis to circularize:
@@ -413,6 +401,13 @@ FUNCTION aoso_maneuver_execute_next {
             }
         }
         LOCAL peri_unsafe IS aoso_maneuver_peri_unsafe(0).
+        // Stale node: a transfer has no "next pass". Small overshoot still
+        // burns; a node minutes in the past is a miss so goto can replan now.
+        IF nd:ETA < -25 {
+            aoso_log_warn("MANEUVER", "Missed node (ETA=" + ROUND(nd:ETA, 1) + "s) - retry next pass.").
+            aoso_maneuver_finish_node(nd, "missed").
+            RETURN TRUE.
+        }
         IF nd:ETA < -8 {
             IF NOT peri_unsafe {
                 aoso_log_warn("MANEUVER", "Missed node (ETA=" + ROUND(nd:ETA, 1) + "s) - retry next pass.").
@@ -467,6 +462,7 @@ FUNCTION aoso_maneuver_execute_next {
         IF peri_unsafe {
             IF nd:ETA < 2 { SET must_burn TO TRUE. }
         }
+        IF nd:ETA <= 0 { SET must_burn TO TRUE. }
 
         IF nd:ETA > ignite_lead + 1 {
             IF NOT must_burn {
@@ -477,7 +473,10 @@ FUNCTION aoso_maneuver_execute_next {
 
         LOCAL err_deg IS aoso_steer_error_deg(remaining_vec).
         LOCAL off_axis IS FALSE.
-        IF NOT aoso_steer_is_aligned(remaining_vec, 8) {
+        LOCAL align_ok IS 12.
+        IF nd:ETA < ignite_lead { SET align_ok TO 18. }
+        IF must_burn { SET align_ok TO 25. }
+        IF NOT aoso_steer_is_aligned(remaining_vec, align_ok) {
             IF NOT must_burn {
                 IF nd:ETA < -8 {
                     aoso_log_warn("MANEUVER", "Never aligned in time - retry next pass.").
@@ -487,13 +486,13 @@ FUNCTION aoso_maneuver_execute_next {
                 aoso_throttle_set(0).
                 RETURN FALSE.
             }
-            IF err_deg > 40 {
+            IF err_deg > 35 {
                 aoso_log_warn("MANEUVER", "Never aligned in time - retry next pass.").
                 aoso_maneuver_finish_node(nd, "missed").
                 RETURN TRUE.
             }
             SET off_axis TO TRUE.
-            aoso_log_warn("MANEUVER", "Lighting off-axis (" + ROUND(err_deg, 0) + " deg) to keep periapsis out of atmosphere.").
+            aoso_log_warn("MANEUVER", "Lighting off-axis (" + ROUND(err_deg, 0) + " deg).").
         }
 
         IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
@@ -636,8 +635,13 @@ FUNCTION aoso_maneuver_execute_next {
     IF aoso_maneuver_peri_unsafe(0) { SET follow TO TRUE. }
 
     IF follow {
-        SET AOSO_MANEUVER_LOCK TO remaining_vec.
-        aoso_steer_to_vector(remaining_vec).
+        LOCAL blended IS remaining_vec.
+        IF AOSO_MANEUVER_LOCK:MAG > 0.2 {
+            LOCAL mixed IS (AOSO_MANEUVER_LOCK:NORMALIZED * 0.7) + (remaining_vec:NORMALIZED * 0.3).
+            IF mixed:MAG > 0.05 { SET blended TO mixed:NORMALIZED. }
+        }
+        SET AOSO_MANEUVER_LOCK TO blended.
+        aoso_steer_to_vector(blended).
     } ELSE {
         IF AOSO_MANEUVER_LOCK:MAG < 0.1 {
             SET AOSO_MANEUVER_LOCK TO SHIP:FACING:FOREVECTOR.

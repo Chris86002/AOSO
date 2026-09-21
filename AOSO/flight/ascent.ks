@@ -81,15 +81,15 @@ FUNCTION aoso_ascent_cache_stack_layout {
             SET stop_s TO MAX(stop_s, 5).
             SET pitch_ts TO MAX(pitch_ts, 6).
             SET yaw_ts TO MAX(yaw_ts, 6).
-            SET roll_ts TO MAX(roll_ts, 10).
-            SET roll_range TO 180.
+            SET roll_ts TO MAX(roll_ts, 14).
+            SET roll_range TO 1.
         }
         IF data["stack_length"] > 30 {
             SET stop_s TO MAX(stop_s, 6.5).
             SET pitch_ts TO MAX(pitch_ts, 8).
             SET yaw_ts TO MAX(yaw_ts, 8).
-            SET roll_ts TO MAX(roll_ts, 12).
-            SET roll_range TO 180.
+            SET roll_ts TO MAX(roll_ts, 16).
+            SET roll_range TO 1.
         }
         IF data["com_frac"] < 0.45 {
             SET stop_s TO MAX(stop_s, 6).
@@ -160,6 +160,11 @@ FUNCTION aoso_ascent_turn_end_alt {
 
 FUNCTION aoso_ascent_turn_shape {
     LOCAL s IS aoso_config_get("ASCENT_TURN_SHAPE", 0.45).
+    LOCAL twr IS aoso_perf_twr().
+    // Low TWR stacks flatten if the exponent is small (early pitch-down).
+    IF twr < 1.5 {
+        IF s < 0.55 { SET s TO 0.55. }
+    }
     IF s < 0.25 { SET s TO 0.25. }
     IF s > 0.8 { SET s TO 0.8. }
     RETURN s.
@@ -214,12 +219,12 @@ FUNCTION aoso_ascent_steer {
         LOCAL fpa IS aoso_ascent_flight_path_pitch().
         LOCAL max_aoa IS aoso_ascent_max_aoa().
         // Tight nose-up is the aero/structural limit. Extra nose-down is
-        // only for a lofted path (FPA well above the program). Always-on
-        // down_aoa = max+8 yanked Acacius to AoA -4.5 at pitchover, then
-        // 207 s of dense air at +6 deg AoA with peri still in atmosphere.
+        // only for a lofted path (FPA well above the program at altitude).
+        // Treating the pitchover gap (FPA 90, program 76) as loft commanded
+        // AoA -15 in dense air and flattened Acacius by 16 km (pitch 33,
+        // AoA +7 the rest of the way, AP-hold throttle in the soup).
         LOCAL down_aoa IS max_aoa.
         LOCAL lofting IS FALSE.
-        IF fpa - cmd > max_aoa { SET lofting TO TRUE. }
         IF data:HASKEY("loft_flagged") {
             IF data["loft_flagged"] { SET lofting TO TRUE. }
         }
@@ -349,6 +354,10 @@ FUNCTION aoso_ascent_turn_throttle {
                 IF sth < 0.35 { SET sth TO 0.35. }
                 IF sth < twr_th { SET twr_th TO sth. }
             }
+        }
+        LOCAL dense_alt IS aoso_config_get("ASCENT_DENSE_ALT", 40000).
+        IF ALTITUDE < dense_alt {
+            RETURN MIN(q_mult, twr_th).
         }
         IF fpa > 42 {
             RETURN MIN(q_mult, twr_th).

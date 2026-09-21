@@ -1204,11 +1204,11 @@ FUNCTION aoso_rendezvous_add_correction_node {
             aoso_brain_wait_think("mid-course correction").
         }
     }
-    // ~30% of the remaining coast: early enough to turn a SOI-graze into
-    // a real encounter before a long rails warp, late enough that a few
-    // m/s still moves PE. (A 0.3 placement on Minmus was 18 h out; that
-    // only looked idle because LOCK STEERING blocked rails WARPTO.)
-    LOCAL t_corr IS eta_p * 0.3.
+    // Place the burn soon: hours-out nodes overshoot on rails (Acacius
+    // 11 h / 0.3 placement, ETA -360, never aligned). A few minutes is
+    // still early enough for a few m/s to move PE.
+    LOCAL t_corr IS eta_p * 0.15.
+    IF t_corr > 720 { SET t_corr TO 720. }
     IF t_corr > eta_p - 180 { SET t_corr TO eta_p - 180. }
     IF t_corr < 45 { SET t_corr TO 45. }
 

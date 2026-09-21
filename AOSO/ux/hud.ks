@@ -249,6 +249,7 @@ FUNCTION aoso_hud_bus_write {
 
 FUNCTION aoso_hud_fast_tick {
     IF NOT AOSO_HUD_READY { RETURN. }
+    IF OPCODESLEFT < 100 { RETURN. }
     IF DEFINED AOSO_CPU_LEVEL {
         IF AOSO_CPU_LEVEL >= 3 {
             SET AOSO_HUD_FAST_SKIP TO AOSO_HUD_FAST_SKIP + 1.
@@ -270,7 +271,7 @@ FUNCTION aoso_hud_peer_note {
     LIST PROCESSORS IN procs.
     FOR p IN procs { SET n TO n + 1. }
     IF n <= 1 {
-        aoso_log_info("HUD", "One kOS CPU. Live FLT numbers paint first each physics frame, then burns/staging use the rest of IPU. A second processor tagged HUD running AOSO/ux/hud_cpu.ks is the only way to get a full extra IPU for the glass cockpit.").
+        aoso_log_info("HUD", "One kOS CPU. Flight tasks run first each physics frame; the HUD paints with leftover IPU. A second processor tagged HUD running AOSO/ux/hud_cpu.ks is the only way to get a full extra IPU for the glass cockpit.").
         RETURN.
     }
     SET AOSO_HUD_PEER TO TRUE.

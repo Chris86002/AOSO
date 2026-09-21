@@ -9,7 +9,9 @@
 // HUD sat on CRITICAL with 2000+ spills. Stop the slice when the physics
 // clock moves or leftover is too low; due work runs on the next WAIT 0.
 // Flight tasks (goto/descent/staging/mission) go first. HUD/power need
-// leftover headroom. Telemetry and profile yield first.
+// leftover headroom. The main loop also paints HUD after the scheduler
+// so a slow glass cockpit cannot skip a burn. Telemetry and profile yield
+// first.
 //
 // Snapshot rebuilt only when the task list mutates (GOTO PLAN, descent).
 
@@ -40,7 +42,7 @@ FUNCTION aoso_sched_floor_of {
     IF name = "auto_staging" { RETURN 40. }
     IF name = "watchdog" { RETURN 40. }
     IF name = "mission" { RETURN 80. }
-    IF name = "hud" { RETURN 160. }
+    IF name = "hud" { RETURN 80. }
     IF name = "brain" { RETURN 200. }
     IF name = "auto_power" {
         IF DEFINED AOSO_POWER_SPACE_DONE {
@@ -156,7 +158,7 @@ FUNCTION aoso_sched_keep {
         }
         RETURN aoso_cpu_allow(1).
     }
-    IF name = "hud" { RETURN aoso_cpu_allow(2). }
+    IF name = "hud" { RETURN aoso_cpu_allow(1). }
     IF name = "brain" { RETURN aoso_cpu_allow(2). }
     IF name = "telemetry" {
         IF DEFINED AOSO_POST_LEFT {

@@ -1,7 +1,11 @@
 // AOSO/core/warp.ks
-// Deadline registry + request wrapper. Actual SET WARP / WARPTO stay in
+// Deadline registry + request wrapper. Actual SET WARP stays in
 // flight/maneuver.ks (aoso_warp_approach). Controllers register the next
 // critical UT so a long rails coast cannot skip a burn or SOI.
+//
+// WARPTO is unused: the main loop WAIT 0 under rails jumps UT and cancels
+// it. SET WARP must step down early — warp 7 (100000x) can skip a node by
+// minutes in one tick (Acacius mid-course ETA 41708 → -360).
 
 GLOBAL AOSO_WARP_DEADLINES IS LEXICON().
 
@@ -37,6 +41,28 @@ FUNCTION aoso_warp_safe_eta {
     LOCAL d_eta IS next_ut - TIME:SECONDS.
     IF d_eta < eta_s { RETURN d_eta. }
     RETURN eta_s.
+}
+
+// Rails index from remaining time to the align window. Caps at
+// MAX_WARP_FACTOR (default 6). Warp 7 only for multi-day coasts and only
+// if the operator raised the cap. Remain is eta - lead.
+FUNCTION aoso_warp_rails_want {
+    PARAMETER eta_s.
+    PARAMETER lead_s.
+    LOCAL remain IS eta_s - lead_s.
+    LOCAL cap IS aoso_config_get("MAX_WARP_FACTOR", 6).
+    IF cap > 7 { SET cap TO 7. }
+    IF cap < 1 { SET cap TO 1. }
+    LOCAL want IS 0.
+    IF remain >= 25 { SET want TO 1. }
+    IF remain >= 80 { SET want TO 2. }
+    IF remain >= 250 { SET want TO 3. }
+    IF remain >= 800 { SET want TO 4. }
+    IF remain >= 4500 { SET want TO 5. }
+    IF remain >= 18000 { SET want TO 6. }
+    IF remain >= 120000 { SET want TO 7. }
+    IF want > cap { SET want TO cap. }
+    RETURN want.
 }
 
 FUNCTION aoso_warp_request {

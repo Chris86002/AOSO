@@ -70,15 +70,24 @@ they watch the kOS terminal and the HUD.
 - Full topology scans are event-driven. Replan may wait for a quiet
   window. HUD/telemetry must never starve flight control. Do not
   `aoso_project_route` / matrix rebuild / JSON persist in a critical
-  flight tick.
-- Ascent AoA is tight nose-up. Extra nose-down applies only when the
-  flight path is lofted (FPA above the pitch program). Do not leave a
-  wider down-AoA on all the time — that flattens a low-TWR stack into
-  dense air. Circularize must `aoso_ascent_yield_burn` so maneuver can
-  take STEERING/THROTTLE (equal prio cannot preempt). Gravity-turn
-  steering is a pitch/heading **vector** (no HEADING() roll-upright) and
-  damps PITCHTS=YAWTS on long stacks; stock steering is restored before
-  the circ node. Do not judge THRUST_MISMATCH in the same tick as `STAGE()`.
+  flight tick. The main loop runs the scheduler **before** HUD paint.
+  Rails warp UT jumps are not IPU spills — do not mark CPU HIGH/CRITICAL
+  from `TIME:SECONDS` stepping under RAILS.
+- Ascent AoA is tight nose-up. Extra nose-down applies only when
+  `loft_flagged` (FPA still steep at altitude). Do not treat the
+  pitchover program gap as loft — that flattens a low-TWR stack into
+  dense air. Keep TWR-capped throttle in dense air (below
+  `ASCENT_DENSE_ALT`); the 45 s AP-hold is for the thin upper air.
+  Circularize must `aoso_ascent_yield_burn` so maneuver can take
+  STEERING/THROTTLE (equal prio cannot preempt). Gravity-turn steering
+  is LOOKDIRUP(look, current top) with ROLLCONTROLANGLERANGE=1 (no
+  roll-upright hunt). Stock steering is restored before the circ node.
+  Do not judge THRUST_MISMATCH in the same tick as `STAGE()`.
+- Rails coasts use SET WARP only (WARPTO dies on WAIT 0). Step down
+  via `aoso_warp_rails_want` and `MAX_WARP_FACTOR`. Mid-course nodes
+  sit minutes out, not hours. A missed correction decrements
+  `correct_count` and replans immediately — there is no next pass on
+  a transfer.
 - Tank Ore near zero is not biome-empty. ISRU progress is fuel/ore
   movement; stall is `REFUEL_STALL_S`. STOW is SUCCESS / PARTIAL /
   FAILED / ABORTED.

@@ -249,7 +249,12 @@ FUNCTION aoso_goto_plan_entry {
                 LOCAL do_corr IS FALSE.
                 IF pe_now < 0 { SET do_corr TO TRUE. }
                 ELSE {
-                    IF eta_p < aoso_config_get("GOTO_CORRECT_WITHIN_S", 28800) { SET do_corr TO TRUE. }
+                    LOCAL soi_a IS hop_b:SOIRADIUS - hop_b:RADIUS.
+                    IF pe_now > soi_a * 0.12 {
+                        SET do_corr TO TRUE.
+                    } ELSE {
+                        IF eta_p < aoso_config_get("GOTO_CORRECT_WITHIN_S", 28800) { SET do_corr TO TRUE. }
+                    }
                 }
                 IF do_corr {
                     IF ncorr < aoso_config_get("GOTO_CORRECT_MAX", 5) {
@@ -463,6 +468,12 @@ FUNCTION aoso_goto_burn_execute {
         LOCAL burn_res IS aoso_maneuver_last_result().
         IF burn_res = "missed" OR burn_res = "incomplete" {
             IF data["burn_kind"] = "correct" {
+                IF data:HASKEY("correct_count") {
+                    IF data["correct_count"] > 0 {
+                        SET data["correct_count"] TO data["correct_count"] - 1.
+                    }
+                }
+                SET data["correct_cool_ut"] TO TIME:SECONDS + 8.
                 aoso_log_warn("GOTO", "Mid-course " + burn_res + " - re-planning the intercept, not circularizing (that kills the transfer).").
                 aoso_state_transition(AOSO_GOTO, "PLAN").
                 RETURN.

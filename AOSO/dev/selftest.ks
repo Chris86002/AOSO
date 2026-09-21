@@ -15,6 +15,7 @@ RUN ONCE "AOSO/core/verify".
 RUN ONCE "AOSO/core/warp".
 RUN ONCE "AOSO/core/brain".
 RUN ONCE "AOSO/core/state".
+RUN ONCE "AOSO/flight/steering".
 RUN ONCE "AOSO/vehicle/experience".
 RUN ONCE "AOSO/mission/feasibility".
 RUN ONCE "AOSO/mission/project".
@@ -190,6 +191,18 @@ FUNCTION aoso_selftest {
     LOCAL safe_eta IS aoso_warp_safe_eta(3600).
     SET fail TO aoso_selftest_check("warp safe eta clamps", safe_eta <= 90.5, fail).
     aoso_warp_deadline_clear("selftest").
+
+    SET fail TO aoso_selftest_check("warp rails far uses 5+", aoso_warp_rails_want(50000, 70) >= 5, fail).
+    SET fail TO aoso_selftest_check("warp rails align window is 0", aoso_warp_rails_want(20, 50) = 0, fail).
+    SET fail TO aoso_selftest_check("warp rails respects max factor", aoso_warp_rails_want(400000, 50) <= aoso_config_get("MAX_WARP_FACTOR", 6), fail).
+    SET fail TO aoso_selftest_check("warp rails mid not 7 at 11h", aoso_warp_rails_want(40000, 70) <= 6, fail).
+
+    LOCAL up_look IS aoso_steer_heading_pitch_vector(90, 90).
+    SET fail TO aoso_selftest_check("steer pitch 90 near up", VANG(up_look, SHIP:UP:VECTOR) < 8, fail).
+    LOCAL east_look IS aoso_steer_heading_pitch_vector(90, 0).
+    SET fail TO aoso_selftest_check("steer pitch 0 not up", VANG(east_look, SHIP:UP:VECTOR) > 50, fail).
+    LOCAL face_dir IS aoso_steer_facing_for_vector(SHIP:UP:VECTOR).
+    SET fail TO aoso_selftest_check("steer facing has vector", face_dir:VECTOR:MAG > 0.5, fail).
 
     aoso_auth_acquire("selftestA", "STEERING", 1).
     SET fail TO aoso_selftest_check("auth acquire steering", aoso_auth_owner("STEERING") = "selftestA", fail).

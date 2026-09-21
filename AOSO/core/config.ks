@@ -7,7 +7,7 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "PARKING_ORBIT_ALT", 100000,        // m, default parking orbit altitude
     "FUEL_RESERVE_PCT", 10,             // % of stage fuel kept as untouchable reserve
     "ABORT_FUEL_PCT", 3,                // % remaining that forces an abort
-    "MAX_WARP_FACTOR", 6,               // cap on TIMEWARP:WARP used by any module
+    "MAX_WARP_FACTOR", 6,               // cap on SET WARP. Warp 7 (100000x) overshoots nodes; 6 is the safe default.
     "OPTIMIZATION_MODE", "BALANCED",    // FUEL | TIME | SAFETY | BALANCED | MINIMUM_DV
     "LOG_LEVEL", "INFO",                // TRACE..FATAL  (INFO default; TRACE is for hard bugs)
     "TELEM_RATE", "AUTO",               // AUTO | FAST | NORMAL | SLOW | OFF

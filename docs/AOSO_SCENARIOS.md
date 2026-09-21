@@ -18,6 +18,8 @@ Expect:
 
 - Gravity turn, no lofted mismatch abort in the STAGE() tick.
 - Navball heading stays near 90 east, not spinning 345→270→178.
+- Pitch stays above ~45° at 16 km on a TWR~1.4 hopper (not riding
+  +7° AoA with AP-hold throttle in dense air).
 - Boosters drop only when that group's MASSFLOW is ~0 (no hot-sep).
 - Bound parking, `ASCENT` result with `predicted_dv > 0` ingested.
 - Circularize node actually burns (log has `Burn started` / `Node executed`, not a wall of `AUTH maneuver denied STEERING`).
@@ -31,6 +33,8 @@ Expect:
 
 - TRANSFER action at goto start uses `xfer_only` (capture not mixed in).
 - Patch to Mun, SOI emit TRANSFER with `patch_body` / periapsis / ETA.
+- Mid-course (if PE is a graze) lights; log has `Burn started`, not
+  `Never aligned in time` after `Holding 1x eta=-360`.
 - Capture burn, then CAPTURE result via `aoso_verify_capture("Mun")`.
 - `result = FEASIBLE` or `ORBIT_ONLY` matches leftover after capture,
   not `mission_dv >= capture` against the original budget.
@@ -142,3 +146,6 @@ needs):
 | XP 1000 vs 1100 ×3 | corr > 1 and ≤ 1.35 |
 | Tylo seq land | can_land false |
 | topo dyn refresh | struct `rev` unchanged, `dyn_rev` up |
+| warp rails 20s vs 50s lead | want 0 |
+| warp rails 11 h respects max factor | ≤ 6 |
+| steer pitch 90 near up | VANG < 8 |

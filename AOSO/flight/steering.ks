@@ -9,6 +9,11 @@
 // throttle/steering therefore live in cheap globals. Callers SET the
 // global each tick; the LOCK is issued once and just reads the global.
 // Tracking modes (PROGRADE etc.) lock the native suffix once and return.
+//
+// Roll: HEADING() and LOCK STEERING TO a Vector both try to roll upright.
+// A 44 m lander-can stack hunting that roll spun navball heading 345→270
+// and oscillated through burns. Command LOOKDIRUP(look, current top) and
+// keep ROLLCONTROLANGLERANGE tiny so the roll PID does not fight.
 
 GLOBAL AOSO_CMD_THROTTLE IS 0.
 GLOBAL AOSO_CMD_STEERING IS SHIP:UP.
@@ -38,19 +43,11 @@ FUNCTION aoso_throttle_release {
 FUNCTION aoso_steer_heading_pitch {
     PARAMETER hdg.
     PARAMETER pitch.
-    IF DEFINED AOSO_AUTH {
-        IF NOT aoso_auth_can_cmd("STEERING") { RETURN. }
-    }
-    SET AOSO_CMD_STEERING TO HEADING(hdg, pitch).
-    IF AOSO_STEER_MODE <> "CMD" {
-        LOCK STEERING TO AOSO_CMD_STEERING.
-        SET AOSO_STEER_MODE TO "CMD".
-    }
+    aoso_steer_heading_pitch_noroll(hdg, pitch).
 }
 
-// Compass pitch without HEADING()'s roll-to-upright. A 44 m lander-can
-// stack hunting that roll showed navball heading 345→270→178 while
-// velocity was east. SIN/COS are degrees in kOS.
+// Compass pitch without HEADING()'s roll-to-upright. SIN/COS are degrees
+// in kOS.
 FUNCTION aoso_steer_heading_pitch_vector {
     PARAMETER hdg.
     PARAMETER pitch.
@@ -58,6 +55,23 @@ FUNCTION aoso_steer_heading_pitch_vector {
     LOCAL east IS VXCL(upv, HEADING(hdg, 0):VECTOR).
     IF east:MAG < 0.01 { RETURN upv. }
     RETURN upv * SIN(pitch) + east:NORMALIZED * COS(pitch).
+}
+
+// Direction that points the nose at look and keeps the current roll.
+// Parallel look/top is gimbal lock — swap in starboard as the up hint.
+FUNCTION aoso_steer_facing_for_vector {
+    PARAMETER dir_vector.
+    IF dir_vector:MAG < 0.001 { RETURN SHIP:FACING. }
+    LOCAL look IS dir_vector:NORMALIZED.
+    LOCAL topv IS SHIP:FACING:TOPVECTOR.
+    IF ABS(VDOT(look, topv)) > 0.97 {
+        SET topv TO SHIP:FACING:STARVECTOR.
+    }
+    RETURN LOOKDIRUP(look, topv).
+}
+
+FUNCTION aoso_steer_quiet_roll {
+    SET STEERINGMANAGER:ROLLCONTROLANGLERANGE TO 1.
 }
 
 FUNCTION aoso_steer_heading_pitch_noroll {
@@ -71,7 +85,8 @@ FUNCTION aoso_steer_to_vector {
     IF DEFINED AOSO_AUTH {
         IF NOT aoso_auth_can_cmd("STEERING") { RETURN. }
     }
-    SET AOSO_CMD_STEERING TO dir_vector.
+    SET AOSO_CMD_STEERING TO aoso_steer_facing_for_vector(dir_vector).
+    aoso_steer_quiet_roll().
     IF AOSO_STEER_MODE <> "CMD" {
         LOCK STEERING TO AOSO_CMD_STEERING.
         SET AOSO_STEER_MODE TO "CMD".
@@ -115,10 +130,14 @@ FUNCTION aoso_steer_release {
     SET AOSO_STEER_MODE TO "OFF".
 }
 
-// Long stacks oscillate at the stock MAXSTOPPINGTIME of ~2 s. 5-8 s of
-// damping never settled Acacius (44 m) inside the circ align cone.
+// Long stacks oscillate at the stock MAXSTOPPINGTIME of ~2 s. Quiet roll
+// or the lander-can wheels hunt heading through the burn.
 FUNCTION aoso_steer_prepare_for_burn {
-    SET STEERINGMANAGER:MAXSTOPPINGTIME TO MAX(STEERINGMANAGER:MAXSTOPPINGTIME, 3.5).
+    SET STEERINGMANAGER:MAXSTOPPINGTIME TO MAX(STEERINGMANAGER:MAXSTOPPINGTIME, 5).
+    SET STEERINGMANAGER:PITCHTS TO MAX(STEERINGMANAGER:PITCHTS, 6).
+    SET STEERINGMANAGER:YAWTS TO MAX(STEERINGMANAGER:YAWTS, 6).
+    SET STEERINGMANAGER:ROLLTS TO MAX(STEERINGMANAGER:ROLLTS, 14).
+    aoso_steer_quiet_roll().
 }
 
 // Angle in degrees between the ship's current facing and a target direction
