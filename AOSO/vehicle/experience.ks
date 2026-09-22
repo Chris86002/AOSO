@@ -221,6 +221,10 @@ FUNCTION aoso_xp_record_metric {
     PARAMETER failed IS FALSE.
     IF predicted <= 0.01 { RETURN aoso_xp_metric_model(op_name, body_name, metric_name). }
     IF actual < 0 { RETURN aoso_xp_metric_model(op_name, body_name, metric_name). }
+    LOCAL store IS aoso_xp_load().
+    LOCAL mk IS aoso_xp_metric_key(op_name, body_name, metric_name).
+    IF NOT store["models"]:HASKEY(mk) { SET store["models"][mk] TO aoso_xp_blank(). }
+    LOCAL m IS store["models"][mk].
     IF NOT m:HASKEY("fail_n") { SET m["fail_n"] TO 0. }
     IF failed {
         SET m["fail_n"] TO m["fail_n"] + 1.
@@ -240,10 +244,6 @@ FUNCTION aoso_xp_record_metric {
     IF failed {
         IF ratio > 1.15 { SET ratio TO 1.15. }
     }
-    LOCAL store IS aoso_xp_load().
-    LOCAL mk IS aoso_xp_metric_key(op_name, body_name, metric_name).
-    IF NOT store["models"]:HASKEY(mk) { SET store["models"][mk] TO aoso_xp_blank(). }
-    LOCAL m IS store["models"][mk].
     SET m["n"] TO m["n"] + 1.
     SET m["sum_ratio"] TO m["sum_ratio"] + ratio.
     SET m["mean_ratio"] TO m["sum_ratio"] / m["n"].

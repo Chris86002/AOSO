@@ -26,7 +26,7 @@ FUNCTION aoso_sched_prio_of {
     IF name = "auto_staging" { RETURN 0. }
     IF name = "mission" { RETURN 0. }
     IF name = "watchdog" { RETURN 0. }
-    IF name = "hud" { RETURN 1. }
+    IF name = "hud" { RETURN 2. }
     IF name = "auto_power" { RETURN 1. }
     IF name = "brain" { RETURN 2. }
     IF name = "telemetry" { RETURN 2. }

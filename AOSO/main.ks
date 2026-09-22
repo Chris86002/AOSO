@@ -167,12 +167,19 @@ FUNCTION aoso_main {
     aoso_log_info("MAIN", "Entering main loop.").
 
     UNTIL FALSE {
+        // One control slice per KSP physics tick. Measure actual dt first.
+        aoso_observe_tick_begin().
         SET AOSO_CPU_UT0 TO TIME:SECONDS.
         SET AOSO_CPU_OP0 TO OPCODESLEFT.
         SET AOSO_CPU_RT0 TO KUNIVERSE:REALTIME.
         aoso_sched_run().
-        IF OPCODESLEFT >= 120 {
-            aoso_hud_fast_tick().
+        LOCAL hud_every IS aoso_config_get("HUD_FAST_EVERY", 2).
+        IF hud_every < 1 { SET hud_every TO 1. }
+        LOCAL hud_rem IS AOSO_TICK_N - FLOOR(AOSO_TICK_N / hud_every) * hud_every.
+        IF hud_rem = 0 {
+            IF OPCODESLEFT >= aoso_cpu_headroom() + 150 {
+                IF aoso_cpu_allow(2) { aoso_hud_fast_tick(). }
+            }
         }
         aoso_observe_cpu_end().
         aoso_observe_idle().

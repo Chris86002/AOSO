@@ -125,6 +125,7 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "REPLAN_DV_ERROR", 250,             // m/s prediction error that requests a strategic replan
     "TICK_DEBUG", TRUE,                  // keep a cheap in-memory physics-tick trace for pre/post event dumps
     "TICK_DEBUG_EVERY", 2,              // sample every N physics ticks in critical flight phases
+    "HUD_FAST_EVERY", 2,                // paint fast HUD at most every N physics ticks; flight control goes first
     "TICK_DT_WARN", 0.06,               // s, flag coarse physics steps (normal 1x is ~0.02 s)
     "MANEUVER_TICK_GUARD", 0.80,        // fraction of remaining dV allowed in the next measured physics tick
     "CPU_PROFILE", FALSE                // extra per-task opcode stats (also honors PROF_ENABLED)
