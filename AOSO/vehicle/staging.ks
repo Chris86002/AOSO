@@ -59,6 +59,7 @@ GLOBAL AOSO_STAGING_PRED_TWR IS 0.
 GLOBAL AOSO_STAGING_PRED_STG IS -1.
 GLOBAL AOSO_STAGING_PRECUT_STAGE IS -1.
 GLOBAL AOSO_STAGING_PRECUT_UT IS -1.
+GLOBAL AOSO_STAGING_PRECUT_REASON IS "".
 GLOBAL AOSO_STAGING_BURN_RECOVERY IS FALSE.
 GLOBAL AOSO_STAGING_LAST_STAGE_UT IS -1.
 GLOBAL AOSO_STAGING_LAST_STAGE_RT IS -1.
@@ -85,16 +86,43 @@ FUNCTION aoso_staging_after_stage {
     SET AOSO_STAGING_SPOOL_UNTIL TO now + spool.
     SET AOSO_STAGING_PRECUT_STAGE TO -1.
     SET AOSO_STAGING_PRECUT_UT TO -1.
+    SET AOSO_STAGING_PRECUT_REASON TO "".
 }
 
 FUNCTION aoso_staging_reset_burn_guard {
     SET AOSO_STAGING_PRECUT_STAGE TO -1.
     SET AOSO_STAGING_PRECUT_UT TO -1.
+    SET AOSO_STAGING_PRECUT_REASON TO "".
     SET AOSO_STAGING_BURN_RECOVERY TO FALSE.
 }
 
+FUNCTION aoso_staging_cancel_precut {
+    PARAMETER why IS "condition cleared".
+    IF AOSO_STAGING_PRECUT_STAGE < 0 { RETURN. }
+    LOCAL old_stage IS AOSO_STAGING_PRECUT_STAGE.
+    LOCAL old_reason IS AOSO_STAGING_PRECUT_REASON.
+    SET AOSO_STAGING_PRECUT_STAGE TO -1.
+    SET AOSO_STAGING_PRECUT_UT TO -1.
+    SET AOSO_STAGING_PRECUT_REASON TO "".
+    aoso_observe_event("STAGE_GUARD", "INFO", "cancel",
+        "stg=" + old_stage + " reason=" + old_reason + " why=" + why).
+    aoso_log_info("STAGING", "Burn pre-cut cancelled for stage " + old_stage +
+        " (" + old_reason + "; " + why + ").").
+}
+
 FUNCTION aoso_staging_burn_guard_active {
-    IF AOSO_STAGING_PRECUT_STAGE >= 0 { RETURN TRUE. }
+    IF AOSO_STAGING_PRECUT_STAGE >= 0 {
+        // A pre-cut is only allowed to hold briefly. auto_check() normally
+        // consumes it on the very next physics tick by either staging or
+        // cancelling it. This timeout is a fail-safe against a dead latch.
+        IF STAGE:NUMBER <> AOSO_STAGING_PRECUT_STAGE {
+            aoso_staging_cancel_precut("stage number changed").
+        } ELSE {
+            LOCAL age IS TIME:SECONDS - AOSO_STAGING_PRECUT_UT.
+            IF age <= 0.25 { RETURN TRUE. }
+            aoso_staging_cancel_precut("pre-cut timeout").
+        }
+    }
     IF NOT AOSO_STAGING_BURN_RECOVERY { RETURN FALSE. }
 
     IF TIME:SECONDS < AOSO_STAGING_SPOOL_UNTIL { RETURN TRUE. }
@@ -141,9 +169,12 @@ FUNCTION aoso_staging_do {
             IF AOSO_STAGING_PRECUT_STAGE <> stg_now {
                 SET AOSO_STAGING_PRECUT_STAGE TO stg_now.
                 SET AOSO_STAGING_PRECUT_UT TO TIME:SECONDS.
+                SET AOSO_STAGING_PRECUT_REASON TO AOSO_STAGING_LAST_REASON.
                 aoso_throttle_set(0).
                 aoso_observe_event("STAGE_GUARD", "INFO", "precut",
                     "stg=" + stg_now + " reason=" + AOSO_STAGING_LAST_REASON).
+                aoso_log_info("STAGING", "Burn pre-cut before stage " + stg_now +
+                    " (" + AOSO_STAGING_LAST_REASON + ").").
                 RETURN FALSE.
             }
             // Do not let a second staging path in the same kOS physics tick
@@ -855,7 +886,8 @@ FUNCTION aoso_staging_auto_check {
         RETURN.
     }
 
-    IF aoso_staging_should_stage() {
+    LOCAL should_now IS aoso_staging_should_stage().
+    IF should_now {
         LOCAL prev IS STAGE:NUMBER.
         LOCAL reason IS AOSO_STAGING_LAST_REASON.
         IF reason = "" { SET reason TO "stage". }
@@ -891,6 +923,13 @@ FUNCTION aoso_staging_auto_check {
 
             aoso_staging_emit(prev, reason, pred).
             SET AOSO_PROFILE_PENDING TO "staging".
+        }
+    } ELSE {
+        // A transient mid-burn staging signal can vanish after the throttle
+        // pre-cut (for example MASSFLOW was briefly zero at ignition). Do
+        // not leave the maneuver permanently inhibited when that happens.
+        IF AOSO_STAGING_PRECUT_STAGE >= 0 {
+            aoso_staging_cancel_precut("stage condition no longer true").
         }
     }
 }
