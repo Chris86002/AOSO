@@ -865,19 +865,24 @@ FUNCTION aoso_goto_capture_execute {
             aoso_log_warn("GOTO", "Capture " + cap_res + " (" + data["capture_misses"] + "/4) - re-planning.").
             IF data["capture_misses"] >= 4 {
                 aoso_warp_hard_stop().
-                aoso_log_error("GOTO", "Capture missed 4x at " + SHIP:BODY:NAME + " - stopping the warp loop. PE=" + ROUND(PERIAPSIS, 0) + "m.").
-                SET data["skip_capture"] TO TRUE.
-                IF SHIP:BODY:NAME = data["goal"] {
-                    aoso_state_transition(AOSO_GOTO, "DONE").
-                } ELSE {
-                    aoso_state_transition(AOSO_GOTO, "PLAN").
+                aoso_throttle_set(0).
+                aoso_log_error("GOTO", "Capture missed 4x at " + SHIP:BODY:NAME +
+                    " - SAFETY HOLD, not marking arrival. PE=" + ROUND(PERIAPSIS, 0) + "m.").
+                aoso_observe_anomaly("CAPTURE_RETRY_LIMIT", "CRITICAL", 0, PERIAPSIS).
+                IF DEFINED AOSO_EVENTS {
+                    aoso_event_publish("HOLD", "goto", "capture retry limit at " + SHIP:BODY:NAME).
                 }
+                aoso_state_abort(AOSO_GOTO).
                 RETURN.
             }
             aoso_state_transition(AOSO_GOTO, "PLAN").
             RETURN.
         }
-        aoso_goto_close_capture_action("SUCCESS", "capture burn complete").
+        IF aoso_goto_orbit_is_parked() {
+            aoso_goto_close_capture_action("SUCCESS", "parked after capture burn").
+        } ELSE {
+            aoso_goto_close_capture_action("PARTIAL", "capture adjustment complete; orbit not parked yet").
+        }
         aoso_state_transition(AOSO_GOTO, "PLAN").
     } ELSE {
         IF HASNODE {
