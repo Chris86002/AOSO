@@ -512,7 +512,7 @@ FUNCTION aoso_goto_burn_execute {
             aoso_state_transition(AOSO_GOTO, "PLAN").
         } ELSE {
             IF HASNODE {
-                aoso_log_info("GOTO", "Astrogator left a follow-up node - burning it before coast.").
+                aoso_log_info("GOTO", "Follow-up plane/mid-course node - burning it before coast.").
                 SET data["burn_kind"] TO "plane".
                 aoso_state_transition(AOSO_GOTO, "BURN").
                 RETURN.

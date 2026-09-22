@@ -69,7 +69,7 @@ Ascent steering is MechJeb Classic's pitch-vs-altitude program (shape exponent, 
 
 ## Optional addons (all with pure-kOS fallbacks)
 - kOS.MechJeb2.Addon (MechJeb) — also live drag / Cd / AoA for ascent
-- kOS-Astrogator (primary intercept planner; AOSO Hohmann is the fallback. Mid-course PE retune stays in AOSO.)
+- kOS-Astrogator (detected for status only; ignored for intercepts. AOSO porkchop + Hohmann + patched-PE hill-climb owns intercept planning; mid-course stays `aoso_rendezvous_add_correction_node`.)
 - kOS-KerbalEngineer (performance/sensors; no drag force)
 - kOS-simpleJson (persistence)
 

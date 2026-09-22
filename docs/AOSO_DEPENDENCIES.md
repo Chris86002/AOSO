@@ -1,7 +1,7 @@
 # Module dependencies
 
 Stock KSP + kOS only. Optional addons (Astrogator, KER, Trajectories)
-are seeds, never hard requirements.
+are never hard requirements. Astrogator is detected for status only and is not used for navigation.
 
 ## Load order (`main.ks`)
 
@@ -80,5 +80,4 @@ rebuild, XP aggregation, and JSON persistence are think-window work.
 
 ## Optional addons
 
-Astrogator: intercept **seed** after porkchop misses. Never the only
-path. KER: performance TWR fallback. Trajectories: unused by core.
+Astrogator: detected for status only; not used for navigation or intercept nodes. KER: performance TWR fallback. Trajectories: unused by core.

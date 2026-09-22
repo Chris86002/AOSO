@@ -134,8 +134,7 @@ Tiny errors are normal. Do not replan a 7 m/s leftover.
 
 ## Navigation fallback
 
-Porkchop is preferred. Zero hits → log `NAV_FALLBACK` → Astrogator
-seed → Hohmann windows. Each step is explainable in the log.
+Porkchop → Hohmann windows. Zero capture PE → drop node, retry next orbit. Each step is explainable in the log.
 
 ## Learning
 

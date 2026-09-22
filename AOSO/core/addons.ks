@@ -168,50 +168,7 @@ FUNCTION aoso_addon_astrogator_obj {
 FUNCTION aoso_addon_astrogator_add_transfer {
     PARAMETER dest.
     PARAMETER want_plane IS TRUE.
-    LOCAL ag IS aoso_addon_astrogator_obj().
-    IF ag:ISTYPE("Scalar") { RETURN 0. }
-
-    aoso_maneuver_clear_all().
-
-    IF ag:HASSUFFIX("CALCULATEBURNS") {
-        LOCAL burns IS ag:CALCULATEBURNS(dest).
-        IF burns:LENGTH > 0 {
-            LOCAL b0 IS burns[0].
-            IF b0:HASSUFFIX("DURATION") {
-                IF b0:DURATION < 0 {
-                    aoso_log_warn("ADDONS", "Astrogator burn duration " + ROUND(b0:DURATION, 0) + " - refusing the node.").
-                    RETURN 0.
-                }
-            }
-            LOCAL nd0 IS 0.
-            IF b0:HASSUFFIX("TONODE") {
-                SET nd0 TO b0:TONODE().
-            }
-            IF want_plane {
-                IF burns:LENGTH > 1 {
-                    LOCAL b1 IS burns[1].
-                    LOCAL dur1 IS 1.
-                    IF b1:HASSUFFIX("DURATION") { SET dur1 TO b1:DURATION. }
-                    IF dur1 > 0 {
-                        IF b1:HASSUFFIX("TONODE") { b1:TONODE(). }
-                    }
-                }
-            }
-            IF nd0:ISTYPE("Node") { RETURN nd0. }
-            IF HASNODE { RETURN NEXTNODE. }
-        }
-    }
-
-    IF ag:HASSUFFIX("CREATE") {
-        LOCAL ndc IS 0.
-        IF want_plane {
-            SET ndc TO ag:CREATE(dest).
-        } ELSE {
-            SET ndc TO ag:CREATE(dest, FALSE).
-        }
-        IF ndc:ISTYPE("Node") { RETURN ndc. }
-        IF HASNODE { RETURN NEXTNODE. }
-    }
+    aoso_log_warn("ADDONS", "Astrogator intercepts disabled. AOSO plans intercepts (dest=" + dest:NAME + ").").
     RETURN 0.
 }
 

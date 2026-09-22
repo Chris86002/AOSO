@@ -819,36 +819,13 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
     }
 
     // NASA porkchop (Lambert × TOF grid + patched-conic PE) is the
-    // intercept. Slow on purpose. Astrogator/Hohmann are fallbacks.
+    // intercept. Slow on purpose. Hohmann is the fallback.
     LOCAL nd_pc IS aoso_rendezvous_porkchop_search(target_orbitable).
     IF nd_pc <> 0 {
         aoso_ui_clear().
         RETURN nd_pc.
     }
-    aoso_log_warn("RENDEZVOUS", "NAV_FALLBACK porkchop miss -> Astrogator for " + target_orbitable:NAME + ".").
-    aoso_observe_event("NAV_FALLBACK", "WARN", "astrogator", target_orbitable:NAME).
-    IF DEFINED AOSO_EVENTS { aoso_event_publish("NAV_FALLBACK", "rendezvous", "astrogator " + target_orbitable:NAME). }
-
-    // Astrogator is a seed, not a burn. Its first Minmus node was a 503 km
-    // graze; mid-course never made that a capture. NASA/B-plane: aim PE
-    // on the ground, then burn. Reject and Hohmann-search if still a graze.
-    LOCAL nd_ag IS aoso_addon_astrogator_add_transfer(target_orbitable, TRUE).
-    IF nd_ag <> 0 {
-        aoso_rendezvous_settle().
-        LOCAL pe_ag IS aoso_rendezvous_orbit_pe(nd_ag:ORBIT, target_orbitable).
-        LOCAL pe_txt IS "".
-        IF pe_ag >= 0 { SET pe_txt TO " patchPE=" + ROUND(pe_ag, 0) + "m". }
-        aoso_log_info("RENDEZVOUS", "Astrogator seed intercept with " + target_orbitable:NAME + " in " + ROUND(nd_ag:ETA, 0) + "s dv=" + ROUND(nd_ag:DELTAV:MAG, 1) + " m/s" + pe_txt + ".").
-        IF aoso_rendezvous_finalize_node(nd_ag, target_orbitable) {
-            LOCAL pe_ok IS aoso_rendezvous_orbit_pe(nd_ag:ORBIT, target_orbitable).
-            aoso_log_info("RENDEZVOUS", "Astrogator intercept accepted: PE " + ROUND(pe_ok, 0) + "m in " + ROUND(nd_ag:ETA, 0) + "s dv=" + ROUND(nd_ag:DELTAV:MAG, 1) + " m/s.").
-            aoso_ui_clear().
-            RETURN nd_ag.
-        }
-        aoso_log_warn("RENDEZVOUS", "Astrogator PE was still a graze after aiming - dropping it and searching Hohmann windows.").
-        aoso_maneuver_clear_all().
-    }
-    aoso_log_warn("RENDEZVOUS", "NAV_FALLBACK Astrogator miss -> Hohmann for " + target_orbitable:NAME + ".").
+    aoso_log_warn("RENDEZVOUS", "NAV_FALLBACK porkchop miss -> Hohmann for " + target_orbitable:NAME + ".").
     aoso_observe_event("NAV_FALLBACK", "WARN", "hohmann", target_orbitable:NAME).
     IF DEFINED AOSO_EVENTS { aoso_event_publish("NAV_FALLBACK", "rendezvous", "hohmann " + target_orbitable:NAME). }
     aoso_log_info("RENDEZVOUS", "Searching Hohmann intercept windows for " + target_orbitable:NAME + ".").
