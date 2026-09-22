@@ -145,6 +145,7 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "ROUTE_SCORE_WEIGHT", 8,            // opportunity-score influence on cluster hop cost (higher = score matters more)
     "ROUTE_FUTURE_ISRU", 180,           // hop-cost discount when the destination can refill the tank
     "ROUTE_BEAM_WIDTH", 10,             // bounded cluster search; stock system stays small enough for quiet-window search
+    "ROUTE_BODY_DWELL_S", 3600,         // strategic per-body service allowance between planetary windows
     "WATCHDOG_PROGRESS_S", 90,          // s of no controller heartbeat progress before a stall is considered
     "IPU_TARGET", 2000,                 // CONFIG:IPU headroom applied once at boot (not a utilization target)
     "CPU_RESERVE_ABS", 400,             // leftover opcodes background work must not consume
