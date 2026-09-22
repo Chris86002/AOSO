@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using kOS.AddOns.AOSO.Native;
+using UnityEngine;
 
 namespace kOS.AddOns.AOSO.Game
 {
@@ -109,14 +110,14 @@ namespace kOS.AddOns.AOSO.Game
             if (parent == null || target.orbit.referenceBody != parent)
                 throw new ArgumentException("different_parent");
 
-            options = jobOptions ?? throw new ArgumentNullException("jobOptions");
-            NormalizeOptions();
-
             parkingOrbit = new Orbit();
             parkingOrbit.UpdateFromOrbitAtUT(
                 sourceVessel.orbit,
                 Planetarium.GetUniversalTime(),
                 departure);
+
+            options = jobOptions ?? throw new ArgumentNullException("jobOptions");
+            NormalizeOptions();
 
             depStep = options.DepartureSamples > 1
                 ? (options.EndUt - options.StartUt) / (options.DepartureSamples - 1)
