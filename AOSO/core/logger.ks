@@ -8,6 +8,7 @@ GLOBAL AOSO_LOG_BUFFER IS LIST().
 GLOBAL AOSO_LOG_MIN_LEVEL IS 2.          // INFO by default
 GLOBAL AOSO_LOG_LAST_FLUSH IS 0.
 GLOBAL AOSO_LOG_LAST IS LEXICON().
+GLOBAL AOSO_LOG_QUIET_PRINT IS FALSE.
 
 FUNCTION aoso_log_set_level {
     PARAMETER level_name.
@@ -58,7 +59,9 @@ FUNCTION aoso_log {
             IF lvl < AOSO_LOG_LEVELS["WARN"] { SET do_print TO FALSE. }
         }
     }
-    IF do_print { PRINT line. }
+    IF do_print {
+        IF NOT AOSO_LOG_QUIET_PRINT { PRINT line. }
+    }
     AOSO_LOG_BUFFER:ADD(line).
 
     IF lvl >= AOSO_LOG_LEVELS["ERROR"] {
@@ -101,6 +104,19 @@ FUNCTION aoso_log_flush {
 
 FUNCTION aoso_log_debug { PARAMETER tag. PARAMETER msg. aoso_log("DEBUG", tag, msg). }
 FUNCTION aoso_log_info  { PARAMETER tag. PARAMETER msg. aoso_log("INFO", tag, msg). }
+
+// INFO that is preserved in the file log but intentionally not printed to
+// the terminal. Useful for long-coast breadcrumbs: the operator should see
+// actual state/rate changes, not the same coast line every few seconds.
+FUNCTION aoso_log_info_quiet {
+    PARAMETER tag.
+    PARAMETER msg.
+    LOCAL old_quiet IS AOSO_LOG_QUIET_PRINT.
+    SET AOSO_LOG_QUIET_PRINT TO TRUE.
+    aoso_log("INFO", tag, msg).
+    SET AOSO_LOG_QUIET_PRINT TO old_quiet.
+}
+
 FUNCTION aoso_log_warn  { PARAMETER tag. PARAMETER msg. aoso_log("WARN", tag, msg). }
 FUNCTION aoso_log_error { PARAMETER tag. PARAMETER msg. aoso_log("ERROR", tag, msg). }
 FUNCTION aoso_log_fatal { PARAMETER tag. PARAMETER msg. aoso_log("FATAL", tag, msg). }
