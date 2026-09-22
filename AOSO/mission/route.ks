@@ -182,6 +182,13 @@ FUNCTION aoso_route_hop_time_at {
     RETURN 0.
 }
 
+FUNCTION aoso_route_cluster_dwell_s {
+    PARAMETER planet_name.
+    LOCAL members IS aoso_route_members(planet_name).
+    LOCAL per_body IS aoso_config_get("ROUTE_BODY_DWELL_S", 3600).
+    RETURN members:LENGTH * per_body.
+}
+
 FUNCTION aoso_route_unique_planets {
     PARAMETER allowed.
     LOCAL planets IS LIST().
@@ -244,7 +251,7 @@ FUNCTION aoso_route_cluster_order {
                     LOCAL hop_cost IS aoso_route_hop_cost_at(st["current"], p_name, st["ut"]).
                     LOCAL hop_time IS aoso_route_hop_time_at(st["current"], p_name, st["ut"]).
                     LOCAL nc IS st["cost"] + hop_cost.
-                    LOCAL nut IS st["ut"] + hop_time.
+                    LOCAL nut IS st["ut"] + hop_time + aoso_route_cluster_dwell_s(p_name).
                     next_states:ADD(LEXICON("current", p_name, "remaining", nrem,
                         "order", norder, "cost", nc, "ut", nut)).
                 }
