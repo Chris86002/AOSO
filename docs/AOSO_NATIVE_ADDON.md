@@ -28,12 +28,16 @@ PRINT ADDONS:HASADDON("AOSO").
 AOSO production scripts must not use that expression directly. All addon access
 is centralized in `AOSO/core/addons.ks`.
 
-## Phase 1 API
+## Native API
 
 | Suffix | Returns | Purpose |
 |---|---|---|
 | `ADDONS:AOSO:VERSION` | String | Native addon version |
 | `ADDONS:AOSO:LAMBERT(pos1, pos2, tof_s, mu [, long_way])` | Lexicon | Zero-revolution Lambert solution |
+| `ADDONS:AOSO:PORKCHOP(hopBody, optionsLex)` | Lexicon | Bounded one-shot candidate search; returns `async_required` if the full search would exceed 40 ms |
+| `ADDONS:AOSO:PORKCHOPSTART(hopBody, optionsLex)` | Lexicon | Start a chunked native patched-conic search |
+| `ADDONS:AOSO:PORKCHOPPOLL()` | Lexicon | Run one bounded search slice |
+| `ADDONS:AOSO:PORKCHOPRESULT()` | Lexicon | Return completed candidate burns |
 
 Lambert result keys are:
 
@@ -75,10 +79,16 @@ capability requirement.
 
 ## Capture safety
 
-Phase 1 changes only Lambert math. Porkchop candidate generation, node
-creation, patched-conic evaluation, and `aoso_rendezvous_finalize_node`
-remain KerboScript. The native addon does not declare a graze acceptable and
-cannot bypass the capture-periapsis gate.
+Phase 1 moves Lambert math native. Phase 2 may generate and patch-check
+porkchop **candidates** natively, but it still cannot approve a burn.
+
+`nav/rendezvous.ks` re-applies returned radial/normal/prograde values to an
+ordinary kOS node and runs `aoso_rendezvous_finalize_node`. If no native
+candidate passes that existing capture-PE gate, the node is removed and the
+original KerboScript porkchop grid runs as the behavioral oracle/fallback.
+
+The addon never creates or removes maneuver nodes and never commands steering,
+throttle, staging, or warp.
 
 ## Build
 
@@ -96,3 +106,48 @@ dependency of 1.3.
 **Brain never flies.** Native code may accelerate pure numerical work; control,
 verification, authority, maneuver-node ownership, and final intercept
 acceptance remain with AOSO's existing KerboScript modules.
+
+
+## Phase 2 porkchop search
+
+The Phase 2 search mirrors the current KerboScript search geometry rather than
+an older approximation:
+
+- 8 coarse departure samples plus SOI-sized fine samples around the Hohmann
+  window.
+- Lambert seed TOFs from `PORKCHOP_TOF_MIN` through
+  `PORKCHOP_TOF_MAX`, capped at six samples plus the Hohmann TOF.
+- Lambert seeds aim beside the target body at the desired parking altitude.
+- The base prograde × normal patched-conic grid is preserved.
+- Densification uses the current SOI-sized time step and 8 m/s dV/normal
+  increments.
+- Native scoring receives the current KerboScript PE minimum and maximum,
+  including `INTERCEPT_PE_MAX_MULT`.
+
+The default production path is asynchronous:
+
+1. `PORKCHOPSTART` snapshots `shared.Vessel` and creates one search job for
+   that kOS processor.
+2. `PORKCHOPPOLL` evaluates at most 64 cells and stops after about 8 ms of
+   main-thread native work.
+3. KerboScript executes `WAIT 0` between polls.
+4. `PORKCHOPRESULT` returns up to 20 candidates.
+
+This keeps KSP API calls on the main thread and avoids a single long native
+call. The convenience `PORKCHOP` suffix has a hard 40 ms one-shot budget and
+returns `async_required` if it cannot finish.
+
+Returned candidates use the existing keys `ut`, `pg`, `rad`, `nml`,
+`sc`, `dv`, and `pe`. Native PE is diagnostic/ranking data only; final
+acceptance is always KerboScript.
+
+## Runtime proof
+
+When the loaded DLL is actually used, AOSO logs:
+
+- `Native AOSO Lambert active v...` on the first accepted native Lambert
+  result.
+- `Native AOSO porkchop active v...` when a native Phase 2 result completes.
+
+`AOSO/dev/selftest.ks` also fails `native phase2 suffixes current` if an
+older Phase 1-only DLL is loaded.

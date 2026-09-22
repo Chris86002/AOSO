@@ -123,6 +123,13 @@ FUNCTION aoso_selftest {
     }
     SET fail TO aoso_selftest_check("lambert 180 special", lam_180_ok, fail).
 
+    IF aoso_addon_native_available() {
+        SET fail TO aoso_selftest_check("native lambert dispatcher used",
+            aoso_addon_native_last_source() = "native_lambert", fail).
+        SET fail TO aoso_selftest_check("native phase2 suffixes current",
+            aoso_addon_native_porkchop_available(), fail).
+    }
+
     // 8.2b Near-180 must use universal variable (not the Hohmann shortcut)
     // so a 0.85x TOF seed is not given a half-period vis-viva speed.
     LOCAL pos_179 IS V(0 - radius_c * COS(1), radius_c * SIN(1), 0).

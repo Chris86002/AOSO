@@ -2,7 +2,7 @@
 
 Optional native numerical backend for the AOSO KerboScript autopilot.
 
-Phase 1 exposes only the Lambert solver. The DLL does **not** create maneuver
+Phase 1 exposes Lambert; Phase 2 adds a chunked patched-conic porkchop candidate search. The DLL does **not** create maneuver
 nodes, steer, throttle, stage, warp, or otherwise fly the vessel. AOSO's
 KerboScript remains the executive and remains fully functional without this DLL.
 
@@ -56,6 +56,12 @@ directly.
 - `ADDONS:AOSO:VERSION` — addon version string.
 - `ADDONS:AOSO:LAMBERT(pos1, pos2, tof_s, mu [, long_way])` — native
   zero-revolution Vallado universal-variable Lambert solve.
+- `ADDONS:AOSO:PORKCHOPSTART(hopBody, optionsLex)` — start the chunked
+  patched-conic candidate search.
+- `ADDONS:AOSO:PORKCHOPPOLL()` — run one bounded native search slice.
+- `ADDONS:AOSO:PORKCHOPRESULT()` — retrieve completed candidate burns.
+- `ADDONS:AOSO:PORKCHOP(hopBody, optionsLex)` — bounded one-shot convenience
+  call; returns `async_required` if the search would exceed 40 ms.
 
 The Lambert suffix returns a lexicon containing `ok`, `vel1`, `vel2`,
 `err`, `src`, `z`, and `tof_err`. On invalid arguments or a numerical
@@ -69,3 +75,17 @@ Do not make the DLL a mission dependency. `aoso_lambert_solve` dispatches to
 the native solver only when the addon is available, returns `ok=true`, and
 includes a `tof_err` within `LAMBERT_TOF_TOL`. Otherwise it immediately uses
 `aoso_lambert_solve_ks`, the original KerboScript implementation.
+
+
+## Build and install helper
+
+On Windows, build against the exact KSP/kOS assemblies and install the DLL with:
+
+```powershell
+.\Build-And-Install.ps1 -KspRoot "C:\Program Files (x86)\Steam\steamapps\common\Kerbal Space Program"
+```
+
+Restart KSP after replacing the DLL. The current assembly version is
+`0.2.0.0`. AOSO selftest should report `native phase2 suffixes current`.
+The first accepted Lambert and completed native porkchop search also emit
+explicit native-active log messages.
