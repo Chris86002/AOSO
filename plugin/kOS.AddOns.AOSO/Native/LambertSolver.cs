@@ -271,30 +271,19 @@ namespace kOS.AddOns.AOSO.Native
                     return false;
             }
 
-            // Safeguarded secant inside a valid sign-changing bracket.
+            // Bisection inside the valid zero-revolution sign-changing
+            // bracket. It is deliberately boring: unlike regula falsi it
+            // cannot stagnate when the high-z TOF becomes extremely steep.
             double bestZ = Math.Abs(lowErr) <= Math.Abs(highErr) ? lowZ : highZ;
             double bestErr = Math.Min(Math.Abs(lowErr), Math.Abs(highErr));
 
             for (int iteration = 0; iteration < 80; ++iteration)
             {
-                double candidate;
-                double denom = highErr - lowErr;
-                if (Math.Abs(denom) > 1.0e-14)
-                    candidate = highZ - highErr * (highZ - lowZ) / denom;
-                else
-                    candidate = (lowZ + highZ) / 2.0;
-
-                if (!IsFinite(candidate) || candidate <= lowZ || candidate >= highZ)
-                    candidate = (lowZ + highZ) / 2.0;
-
+                double candidate = (lowZ + highZ) / 2.0;
                 double candidateTof;
                 double candidateY;
                 if (!TryTimeOfFlight(radius1, radius2, aval, candidate, mu, out candidateTof, out candidateY))
-                {
-                    candidate = (lowZ + highZ) / 2.0;
-                    if (!TryTimeOfFlight(radius1, radius2, aval, candidate, mu, out candidateTof, out candidateY))
-                        return false;
-                }
+                    return false;
 
                 double candidateErr = candidateTof - targetTof;
                 double absErr = Math.Abs(candidateErr);
