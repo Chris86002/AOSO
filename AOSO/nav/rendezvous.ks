@@ -418,15 +418,10 @@ FUNCTION aoso_rendezvous_try_native_porkchop {
 
     IF NOT aoso_addon_native_porkchop_available() { RETURN 0. }
 
-    LOCAL think_ok IS TRUE.
-    IF DEFINED AOSO_BRAIN {
-        SET think_ok TO aoso_brain_think_ok().
-    }
-    IF NOT think_ok {
-        aoso_log_info("RENDEZVOUS", "Native porkchop deferred: not in a brain quiet window.").
-        RETURN 0.
-    }
-
+    // Native Phase 2 is already chunked into bounded main-thread slices and
+    // yields between polls. Do not throw it away merely because the CPU band
+    // is HIGH; that was forcing the 2,880-cell KerboScript fallback exactly
+    // when the addon was supposed to save VM work.
     LOCAL max_mult IS aoso_config_get("INTERCEPT_PE_MAX_MULT", 2.2).
     IF max_mult < 1.3 { SET max_mult TO 1.3. }
     LOCAL pe_max IS desired * max_mult.
@@ -464,8 +459,8 @@ FUNCTION aoso_rendezvous_try_native_porkchop {
         RETURN 0.
     }
 
-    aoso_log_info("RENDEZVOUS", "Native porkchop search started for " + hop:NAME +
-        " (" + n_dep + " dep, " + n_dv + " dv, " + n_nml + " normal).").
+    aoso_log_info("RENDEZVOUS", "NATIVE PORKCHOP ACTIVE: " + hop:NAME +
+        " search started (" + n_dep + " dep, " + n_dv + " dv, " + n_nml + " normal).").
 
     LOCAL done IS FALSE.
     LOCAL failed IS FALSE.
@@ -512,7 +507,7 @@ FUNCTION aoso_rendezvous_try_native_porkchop {
 
     LOCAL n_cands IS 0.
     IF native_res:HASKEY("cands") { SET n_cands TO native_res["cands"]:LENGTH. }
-    aoso_log_info("RENDEZVOUS", "Native porkchop finished: cells=" + native_res["n_done"] +
+    aoso_log_info("RENDEZVOUS", "NATIVE PORKCHOP DONE: cells=" + native_res["n_done"] +
         " hits=" + native_res["n_hit"] + " capture=" + native_res["n_ok"] +
         " candidates=" + n_cands + ".").
 
@@ -531,8 +526,11 @@ FUNCTION aoso_rendezvous_porkchop_search {
     aoso_warp_hard_stop().
     aoso_steer_release().
     aoso_maneuver_clear_all().
+    LOCAL native_ready IS aoso_addon_native_porkchop_available().
     IF DEFINED AOSO_BRAIN {
-        aoso_brain_wait_think("porkchop intercept").
+        IF NOT native_ready {
+            aoso_brain_wait_think("KerboScript porkchop fallback").
+        }
     }
 
     LOCAL tof_h IS aoso_rendezvous_porkchop_tof_hoh(hop).
