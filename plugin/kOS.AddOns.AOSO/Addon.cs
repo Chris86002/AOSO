@@ -15,6 +15,7 @@ namespace kOS.AddOns.AOSO
     public class Addon : kOS.Suffixed.Addon
     {
         private PorkchopJob porkchopJob;
+        private InterplanetaryJob interplanetaryJob;
 
         public Addon(SharedObjects shared) : base(shared)
         {
@@ -23,12 +24,15 @@ namespace kOS.AddOns.AOSO
 
         private void InitializeAosoSuffixes()
         {
-            AddSuffix("VERSION", new Suffix<StringValue>(() => new StringValue("0.3.0")));
+            AddSuffix("VERSION", new Suffix<StringValue>(() => new StringValue("0.4.0")));
             AddSuffix("LAMBERT", new OneArgsSuffix<Lexicon, Lexicon>(Lambert));
             AddSuffix("PORKCHOP", new OneArgsSuffix<Lexicon, Lexicon>(Porkchop));
             AddSuffix("PORKCHOPSTART", new OneArgsSuffix<Lexicon, Lexicon>(PorkchopStart));
             AddSuffix("PORKCHOPPOLL", new NoArgsSuffix<Lexicon>(PorkchopPoll));
             AddSuffix("PORKCHOPRESULT", new NoArgsSuffix<Lexicon>(PorkchopResult));
+            AddSuffix("INTERPLANETARYSTART", new OneArgsSuffix<Lexicon, Lexicon>(InterplanetaryStart));
+            AddSuffix("INTERPLANETARYPOLL", new NoArgsSuffix<Lexicon>(InterplanetaryPoll));
+            AddSuffix("INTERPLANETARYRESULT", new NoArgsSuffix<Lexicon>(InterplanetaryResult));
         }
 
         private static Structure RequestValue(Lexicon request, string key)
@@ -170,6 +174,89 @@ namespace kOS.AddOns.AOSO
             {
                 porkchopJob = null;
                 return KosTypes.PorkchopFailure(ex.GetType().Name);
+            }
+        }
+
+        private Lexicon InterplanetaryStart(Lexicon request)
+        {
+            try
+            {
+                BodyTarget target = RequestValue(request, "target") as BodyTarget;
+                Lexicon options = RequestValue(request, "options") as Lexicon;
+                if (target == null || options == null)
+                    return KosTypes.InterplanetaryFailure("bad_args");
+                if (shared.Vessel == null || shared.Vessel.orbit == null)
+                    return KosTypes.InterplanetaryFailure("no_vessel");
+                if (!shared.Vessel.loaded)
+                    return KosTypes.InterplanetaryFailure("vessel_not_loaded");
+                if (target.Body == null || target.Body.orbit == null)
+                    return KosTypes.InterplanetaryFailure("bad_target");
+
+                CelestialBody departure = shared.Vessel.orbit.referenceBody;
+                if (departure == null || departure.orbit == null)
+                    return KosTypes.InterplanetaryFailure("bad_departure");
+                if (departure.orbit.referenceBody == null ||
+                    target.Body.orbit.referenceBody != departure.orbit.referenceBody)
+                    return KosTypes.InterplanetaryFailure("different_parent");
+
+                interplanetaryJob = new InterplanetaryJob(
+                    shared.Vessel,
+                    target.Body,
+                    KosTypes.InterplanetaryOptionsFromLexicon(options));
+
+                return KosTypes.InterplanetaryStatus(
+                    true,
+                    interplanetaryJob.Done,
+                    interplanetaryJob.Progress,
+                    interplanetaryJob.DoneCount,
+                    interplanetaryJob.ValidCount,
+                    string.Empty);
+            }
+            catch (Exception ex)
+            {
+                interplanetaryJob = null;
+                return KosTypes.InterplanetaryFailure(ex.GetType().Name);
+            }
+        }
+
+        private Lexicon InterplanetaryPoll()
+        {
+            try
+            {
+                if (interplanetaryJob == null)
+                    return KosTypes.InterplanetaryFailure("no_job");
+
+                interplanetaryJob.Poll(8.0, 128);
+                bool pollOk = string.IsNullOrEmpty(interplanetaryJob.Error);
+                return KosTypes.InterplanetaryStatus(
+                    pollOk,
+                    interplanetaryJob.Done,
+                    interplanetaryJob.Progress,
+                    interplanetaryJob.DoneCount,
+                    interplanetaryJob.ValidCount,
+                    interplanetaryJob.Error);
+            }
+            catch (Exception ex)
+            {
+                interplanetaryJob = null;
+                return KosTypes.InterplanetaryFailure(ex.GetType().Name);
+            }
+        }
+
+        private Lexicon InterplanetaryResult()
+        {
+            try
+            {
+                InterplanetaryJob completedJob = interplanetaryJob;
+                Lexicon result = KosTypes.InterplanetaryResult(completedJob);
+                if (completedJob != null && completedJob.Done)
+                    interplanetaryJob = null;
+                return result;
+            }
+            catch (Exception ex)
+            {
+                interplanetaryJob = null;
+                return KosTypes.InterplanetaryFailure(ex.GetType().Name);
             }
         }
 
