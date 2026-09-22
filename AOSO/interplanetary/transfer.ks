@@ -142,3 +142,137 @@ FUNCTION aoso_interplanetary_wait_time_to_window_s_at {
     }
     RETURN wait_s.
 }
+
+// ---------------------------------------------------------------------
+// Native planetary Lambert porkchop
+// ---------------------------------------------------------------------
+// Real interplanetary planning in stock KSP does not need n-body/SPICE.
+// Search KSP's own future body ephemerides for departure UT x flight time,
+// then let ejection.ks validate the winning candidates with stock patched
+// conics before any burn is accepted.
+
+FUNCTION aoso_interplanetary_desired_pe {
+    PARAMETER target_body.
+    IF target_body:ATM:EXISTS {
+        RETURN MAX(aoso_config_get("PARKING_ORBIT_ALT", 100000), target_body:ATM:HEIGHT + 15000).
+    }
+    RETURN MAX(15000, target_body:RADIUS * 0.08).
+}
+
+FUNCTION aoso_interplanetary_time_cost_day {
+    LOCAL mode IS aoso_config_get("OPTIMIZATION_MODE", "BALANCED").
+    IF mode = "TIME" { RETURN aoso_config_get("INTERPLANETARY_TIME_COST_DAY_TIME", 80). }
+    IF mode = "MINIMUM_DV" OR mode = "FUEL" {
+        RETURN aoso_config_get("INTERPLANETARY_TIME_COST_DAY_DV", 5).
+    }
+    IF mode = "SAFETY" { RETURN aoso_config_get("INTERPLANETARY_TIME_COST_DAY_SAFETY", 20). }
+    RETURN aoso_config_get("INTERPLANETARY_TIME_COST_DAY", 20).
+}
+
+FUNCTION aoso_interplanetary_native_search {
+    PARAMETER target_body.
+    IF NOT aoso_addon_native_interplanetary_available() { RETURN 0. }
+    IF NOT aoso_interplanetary_share_parent(SHIP:BODY, target_body) { RETURN 0. }
+
+    LOCAL now_ut IS TIME:SECONDS.
+    LOCAL syn_s IS aoso_interplanetary_synodic_s(SHIP:BODY, target_body).
+    IF syn_s <= 0 { SET syn_s TO aoso_config_get("INTERPLANETARY_SEARCH_FALLBACK_S", 5000000). }
+    LOCAL horizon_cap IS aoso_config_get("INTERPLANETARY_SEARCH_HORIZON_S", 0).
+    IF horizon_cap > 0 {
+        IF syn_s > horizon_cap { SET syn_s TO horizon_cap. }
+    }
+
+    LOCAL tof_h IS aoso_interplanetary_transfer_time_s(SHIP:BODY, target_body).
+    LOCAL tof_min IS tof_h * aoso_config_get("INTERPLANETARY_TOF_MIN", 0.55).
+    LOCAL tof_max IS tof_h * aoso_config_get("INTERPLANETARY_TOF_MAX", 1.8).
+    IF tof_min < 600 { SET tof_min TO 600. }
+    IF tof_max < tof_min + 600 { SET tof_max TO tof_min + 600. }
+
+    LOCAL opts IS LEXICON(
+        "dep_samples", aoso_config_get("INTERPLANETARY_DEP_SAMPLES", 48),
+        "tof_samples", aoso_config_get("INTERPLANETARY_TOF_SAMPLES", 28),
+        "refine_seeds", aoso_config_get("INTERPLANETARY_REFINE_SEEDS", 6),
+        "start_ut", now_ut + 120,
+        "end_ut", now_ut + syn_s,
+        "tof_min_s", tof_min,
+        "tof_max_s", tof_max,
+        "desired_pe", aoso_interplanetary_desired_pe(target_body),
+        "parking_radius", SHIP:ORBIT:SEMIMAJORAXIS,
+        "time_cost_day", aoso_interplanetary_time_cost_day()
+    ).
+
+    aoso_log_info("TRANSFER", "Native planetary porkchop " + SHIP:BODY:NAME + " -> " +
+        target_body:NAME + " searching one practical window: " +
+        ROUND((opts["end_ut"] - opts["start_ut"]) / 21600, 1) + "d departure span, TOF " +
+        ROUND(tof_min / 21600, 1) + ".." + ROUND(tof_max / 21600, 1) + "d.").
+
+    LOCAL st IS aoso_addon_native_interplanetary_start(target_body, opts).
+    IF NOT st:ISTYPE("Lexicon") { RETURN 0. }
+    IF NOT st["ok"] {
+        aoso_log_warn("TRANSFER", "Native planetary porkchop start failed: " + st["err"] + ".").
+        RETURN 0.
+    }
+
+    LOCAL polls IS 0.
+    LOCAL max_polls IS aoso_config_get("INTERPLANETARY_MAX_POLLS", 600).
+    UNTIL st["done"] OR polls >= max_polls {
+        WAIT 0.
+        SET st TO aoso_addon_native_interplanetary_poll().
+        IF NOT st:ISTYPE("Lexicon") { RETURN 0. }
+        IF NOT st["ok"] {
+            aoso_log_warn("TRANSFER", "Native planetary porkchop poll failed: " + st["err"] + ".").
+            RETURN 0.
+        }
+        SET polls TO polls + 1.
+    }
+
+    IF NOT st["done"] {
+        aoso_log_warn("TRANSFER", "Native planetary porkchop timed out after " + polls + " polls.").
+        RETURN 0.
+    }
+
+    LOCAL res IS aoso_addon_native_interplanetary_result().
+    IF NOT res:ISTYPE("Lexicon") { RETURN 0. }
+    IF NOT res["ok"] {
+        aoso_log_warn("TRANSFER", "Native planetary porkchop result failed: " + res["err"] + ".").
+        RETURN 0.
+    }
+
+    aoso_log_info("TRANSFER", "Native planetary porkchop finished: " + res["n_done"] +
+        " cells, " + res["n_valid"] + " Lambert solutions, " + res["cands"]:LENGTH + " finalists.").
+    RETURN res.
+}
+
+FUNCTION aoso_interplanetary_candidate_vinf {
+    PARAMETER dep_body.
+    PARAMETER arr_body.
+    PARAMETER cand.
+
+    LOCAL dep_ut IS cand["dep_ut"].
+    LOCAL arr_ut IS cand["arr_ut"].
+    LOCAL tof_s IS arr_ut - dep_ut.
+    IF tof_s <= 30 { RETURN LEXICON("ok", FALSE). }
+
+    LOCAL parent IS dep_body:BODY.
+    LOCAL pos1 IS aoso_orbit_position_at(dep_body, dep_ut).
+    LOCAL pos2 IS aoso_orbit_position_at(arr_body, arr_ut).
+    LOCAL sol IS aoso_lambert_solve(pos1, pos2, tof_s, parent:MU, cand["long_way"]).
+    IF NOT sol["ok"] { RETURN LEXICON("ok", FALSE). }
+
+    LOCAL dep_vel IS aoso_orbit_velocity_at(dep_body, dep_ut).
+    LOCAL arr_vel IS aoso_orbit_velocity_at(arr_body, arr_ut).
+    LOCAL vinf_out IS sol["vel1"] - dep_vel.
+    LOCAL vinf_in IS sol["vel2"] - arr_vel.
+    RETURN LEXICON(
+        "ok", TRUE,
+        "dep_ut", dep_ut,
+        "arr_ut", arr_ut,
+        "tof", tof_s,
+        "vinf_out", vinf_out,
+        "vinf_in", vinf_in,
+        "vinf_out_mag", vinf_out:MAG,
+        "vinf_in_mag", vinf_in:MAG,
+        "long_way", cand["long_way"]
+    ).
+}
+
