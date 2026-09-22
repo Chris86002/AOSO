@@ -104,7 +104,14 @@ FUNCTION aoso_addon_native_lambert {
     LOCAL native_obj IS aoso_addon_native().
     IF native_obj:ISTYPE("Scalar") { RETURN 0. }
     IF NOT native_obj:HASSUFFIX("LAMBERT") { RETURN 0. }
-    LOCAL native_sol IS native_obj:LAMBERT(pos1, pos2, tof_s, mu, long_way).
+    LOCAL request IS LEXICON(
+        "pos1", pos1,
+        "pos2", pos2,
+        "tof", tof_s,
+        "mu", mu,
+        "long_way", long_way
+    ).
+    LOCAL native_sol IS native_obj:LAMBERT(request).
     IF native_sol:ISTYPE("Lexicon") { RETURN native_sol. }
     RETURN 0.
 }
@@ -131,7 +138,11 @@ FUNCTION aoso_addon_native_porkchop_start {
     PARAMETER options_lex.
     IF NOT aoso_addon_native_porkchop_available() { RETURN 0. }
     LOCAL native_obj IS aoso_addon_native().
-    RETURN native_obj:PORKCHOPSTART(hop_body, options_lex).
+    LOCAL request IS LEXICON(
+        "hop", hop_body,
+        "options", options_lex
+    ).
+    RETURN native_obj:PORKCHOPSTART(request).
 }
 
 FUNCTION aoso_addon_native_porkchop_poll {
