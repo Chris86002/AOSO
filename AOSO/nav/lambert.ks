@@ -326,25 +326,24 @@ FUNCTION aoso_lambert_solve {
     PARAMETER mu.
     PARAMETER long_way IS FALSE.
 
-    LOCAL native_obj IS aoso_addon_native().
-    IF NOT native_obj:ISTYPE("Scalar") {
-        IF native_obj:HASSUFFIX("LAMBERT") {
-            LOCAL native_sol IS native_obj:LAMBERT(pos1, pos2, tof_s, mu, long_way).
-            IF native_sol:ISTYPE("Lexicon") {
-                IF native_sol:HASKEY("ok") {
-                    IF native_sol["ok"] {
-                        LOCAL native_use IS FALSE.
-                        IF native_sol:HASKEY("tof_err") {
-                            IF native_sol["tof_err"] <= aoso_lambert_tof_tol(tof_s) {
-                                SET native_use TO TRUE.
-                            }
-                        }
-                        IF native_use { RETURN native_sol. }
+    LOCAL native_sol IS aoso_addon_native_lambert(pos1, pos2, tof_s, mu, long_way).
+    IF NOT native_sol:ISTYPE("Scalar") {
+        IF native_sol:HASKEY("ok") {
+            IF native_sol["ok"] {
+                LOCAL native_use IS FALSE.
+                IF native_sol:HASKEY("tof_err") {
+                    IF native_sol["tof_err"] <= aoso_lambert_tof_tol(tof_s) {
+                        SET native_use TO TRUE.
                     }
+                }
+                IF native_use {
+                    aoso_addon_native_mark_lambert_used().
+                    RETURN native_sol.
                 }
             }
         }
     }
+    SET AOSO_NATIVE_LAST_SOURCE TO "ks_lambert".
     RETURN aoso_lambert_solve_ks(pos1, pos2, tof_s, mu, long_way).
 }
 

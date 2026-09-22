@@ -24,6 +24,10 @@ GLOBAL AOSO_ADDON_STATUS IS LEXICON(
     "CHECKED", FALSE
 ).
 
+GLOBAL AOSO_NATIVE_LAST_SOURCE IS "none".
+GLOBAL AOSO_NATIVE_LAMBERT_ANNOUNCED IS FALSE.
+GLOBAL AOSO_NATIVE_PORKCHOP_ANNOUNCED IS FALSE.
+
 // Returns TRUE if any of the given kOS addon identifiers is registered and
 // reports itself available.
 FUNCTION aoso_addons_any_available {
@@ -84,6 +88,74 @@ FUNCTION aoso_addon_native_version {
     IF native_obj:ISTYPE("Scalar") { RETURN "". }
     IF native_obj:HASSUFFIX("VERSION") { RETURN native_obj:VERSION. }
     RETURN "".
+}
+
+FUNCTION aoso_addon_native_last_source {
+    RETURN AOSO_NATIVE_LAST_SOURCE.
+}
+
+FUNCTION aoso_addon_native_lambert {
+    PARAMETER pos1.
+    PARAMETER pos2.
+    PARAMETER tof_s.
+    PARAMETER mu.
+    PARAMETER long_way IS FALSE.
+
+    LOCAL native_obj IS aoso_addon_native().
+    IF native_obj:ISTYPE("Scalar") { RETURN 0. }
+    IF NOT native_obj:HASSUFFIX("LAMBERT") { RETURN 0. }
+    LOCAL native_sol IS native_obj:LAMBERT(pos1, pos2, tof_s, mu, long_way).
+    IF native_sol:ISTYPE("Lexicon") { RETURN native_sol. }
+    RETURN 0.
+}
+
+FUNCTION aoso_addon_native_mark_lambert_used {
+    SET AOSO_NATIVE_LAST_SOURCE TO "native_lambert".
+    IF NOT AOSO_NATIVE_LAMBERT_ANNOUNCED {
+        SET AOSO_NATIVE_LAMBERT_ANNOUNCED TO TRUE.
+        aoso_log_info("ADDONS", "Native AOSO Lambert active v" + aoso_addon_native_version() + ".").
+    }
+}
+
+FUNCTION aoso_addon_native_porkchop_available {
+    LOCAL native_obj IS aoso_addon_native().
+    IF native_obj:ISTYPE("Scalar") { RETURN FALSE. }
+    IF NOT native_obj:HASSUFFIX("PORKCHOPSTART") { RETURN FALSE. }
+    IF NOT native_obj:HASSUFFIX("PORKCHOPPOLL") { RETURN FALSE. }
+    IF NOT native_obj:HASSUFFIX("PORKCHOPRESULT") { RETURN FALSE. }
+    RETURN TRUE.
+}
+
+FUNCTION aoso_addon_native_porkchop_start {
+    PARAMETER hop_body.
+    PARAMETER options_lex.
+    IF NOT aoso_addon_native_porkchop_available() { RETURN 0. }
+    LOCAL native_obj IS aoso_addon_native().
+    RETURN native_obj:PORKCHOPSTART(hop_body, options_lex).
+}
+
+FUNCTION aoso_addon_native_porkchop_poll {
+    IF NOT aoso_addon_native_porkchop_available() { RETURN 0. }
+    LOCAL native_obj IS aoso_addon_native().
+    RETURN native_obj:PORKCHOPPOLL().
+}
+
+FUNCTION aoso_addon_native_porkchop_result {
+    IF NOT aoso_addon_native_porkchop_available() { RETURN 0. }
+    LOCAL native_obj IS aoso_addon_native().
+    LOCAL native_res IS native_obj:PORKCHOPRESULT().
+    IF native_res:ISTYPE("Lexicon") {
+        IF native_res:HASKEY("ok") {
+            IF native_res["ok"] {
+                SET AOSO_NATIVE_LAST_SOURCE TO "native_porkchop".
+                IF NOT AOSO_NATIVE_PORKCHOP_ANNOUNCED {
+                    SET AOSO_NATIVE_PORKCHOP_ANNOUNCED TO TRUE.
+                    aoso_log_info("ADDONS", "Native AOSO porkchop active v" + aoso_addon_native_version() + ".").
+                }
+            }
+        }
+    }
+    RETURN native_res.
 }
 
 // ---------------------------------------------------------------------
