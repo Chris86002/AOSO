@@ -75,7 +75,7 @@ if ($msbuild) {
     & $dotnet.Source build $project -c $Configuration "-p:KSP_ROOT=$KspRoot" 2>&1 | Tee-Object -FilePath $buildLog
     $buildExit = $LASTEXITCODE
 } else {
-    throw "Neither Visual Studio MSBuild nor dotnet was found. Install Visual Studio Build Tools with MSBuild and the .NET Framework 4.6.1 targeting pack."
+    throw "Neither Visual Studio MSBuild nor dotnet was found. Install Visual Studio Build Tools with MSBuild and the .NET Framework 4.8 targeting pack."
 }
 
 if ($buildExit -ne 0) {
@@ -90,7 +90,7 @@ if ($buildExit -ne 0) {
     throw "Native addon build failed with exit code $buildExit. See $buildLog"
 }
 
-$built = Join-Path $PSScriptRoot "bin\$Configuration\net461\kOS.AddOns.AOSO.dll"
+$built = Join-Path $PSScriptRoot "bin\$Configuration\net48\kOS.AddOns.AOSO.dll"
 if (-not (Test-Path $built)) { throw "Built DLL not found: $built" }
 
 $destDir = Join-Path $KspRoot "GameData\AOSO\Plugins"
