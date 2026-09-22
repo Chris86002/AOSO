@@ -48,18 +48,24 @@ GLOBAL AOSO_TICK_N IS 0.
 GLOBAL AOSO_TICK_WARN_UT IS 0.
 
 FUNCTION aoso_observe_reset_files {
-    // Preserve previous-run evidence. Session markers separate reboots; no
-    // extra file I/O is added to the flight-control hot path.
+    // Keep exactly one previous session instead of appending forever. Long
+    // AOSO test cycles had grown events/flightrec/telemetry into multi-MB
+    // files; synchronous OPEN/WRITELN work on those files adds needless KSP
+    // main-thread pressure. Rotation happens once at boot, never in a hot loop.
     LOCAL evpath IS AOSO_CONST["EVENTS_FILE"].
-    IF EXISTS(evpath) {
-        LOCAL ef IS OPEN(evpath).
-        ef:WRITELN(TIME:SECONDS + "," + MISSIONTIME + ",BOOT,SESSION,INFO,BOOT,new session").
-    }
+    LOCAL evprev IS AOSO_CONST["EVENTS_PREV_FILE"].
+    IF EXISTS(evprev) { DELETEPATH(evprev). }
+    IF EXISTS(evpath) { MOVEPATH(evpath, evprev). }
+
     LOCAL recpath IS AOSO_CONST["FLIGHTREC_FILE"].
-    IF EXISTS(recpath) {
-        LOCAL rf IS OPEN(recpath).
-        rf:WRITELN("#SESSION ut=" + ROUND(TIME:SECONDS, 2) + " vessel=" + SHIP:NAME).
-    }
+    LOCAL recprev IS AOSO_CONST["FLIGHTREC_PREV_FILE"].
+    IF EXISTS(recprev) { DELETEPATH(recprev). }
+    IF EXISTS(recpath) { MOVEPATH(recpath, recprev). }
+
+    LOCAL telempath IS AOSO_CONST["TELEMETRY_FILE"].
+    LOCAL telemprev IS AOSO_CONST["TELEMETRY_PREV_FILE"].
+    IF EXISTS(telemprev) { DELETEPATH(telemprev). }
+    IF EXISTS(telempath) { MOVEPATH(telempath, telemprev). }
 }
 
 FUNCTION aoso_observe_init {
@@ -371,8 +377,21 @@ FUNCTION aoso_observe_tick_begin {
     }
     IF NOT critical { RETURN. }
 
-    LOCAL warn_dt IS aoso_config_get("TICK_DT_WARN", 0.06).
+    LOCAL warn_dt IS aoso_config_get("TICK_DT_WARN", 0.12).
     LOCAL warn_wall IS aoso_config_get("TICK_WALL_WARN", 0.12).
+
+    // Physics warp intentionally lengthens game-time physics steps. Treat the
+    // documented PHYSICSDELTAT as the expected cadence instead of reporting
+    // every 2x/3x/4x physics-warp tick as a hitch. Real wall-time stalls still
+    // trip warn_wall regardless of warp.
+    IF WARPMODE = "PHYSICS" {
+        LOCAL expected_dt IS KUNIVERSE:TIMEWARP:PHYSICSDELTAT.
+        IF expected_dt > 0 {
+            LOCAL phys_warn IS expected_dt * 3.
+            IF phys_warn > warn_dt { SET warn_dt TO phys_warn. }
+        }
+    }
+
     LOCAL coarse IS FALSE.
     IF dt > warn_dt { SET coarse TO TRUE. }
     IF wall_dt > warn_wall { SET coarse TO TRUE. }
