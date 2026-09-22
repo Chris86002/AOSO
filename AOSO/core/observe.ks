@@ -194,6 +194,8 @@ FUNCTION aoso_observe_event {
         IF severity = "ERROR" { SET keep TO TRUE. }
         IF severity = "FATAL" { SET keep TO TRUE. }
         IF etype = "STAGE" { SET keep TO TRUE. }
+        IF etype = "STAGE_GUARD" { SET keep TO TRUE. }
+        IF etype = "BURN_GAP" { SET keep TO TRUE. }
         IF etype = "RELIGHT" { SET keep TO TRUE. }
         IF etype = "ABORT" { SET keep TO TRUE. }
         IF etype = "ANOMALY" { SET keep TO TRUE. }
@@ -214,6 +216,8 @@ FUNCTION aoso_observe_event {
 
     LOCAL dump IS FALSE.
     IF etype = "STAGE" { SET dump TO TRUE. }
+    IF etype = "STAGE_GUARD" { SET dump TO TRUE. }
+    IF etype = "BURN_GAP" { SET dump TO TRUE. }
     IF etype = "BURN" { SET dump TO TRUE. }
     IF etype = "ABORT" { SET dump TO TRUE. }
     IF etype = "ANOMALY" { SET dump TO TRUE. }
