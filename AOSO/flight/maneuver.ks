@@ -273,6 +273,27 @@ FUNCTION aoso_maneuver_throttle_for_dv {
     RETURN MAX(0.05, t_remain / feather_s).
 }
 
+FUNCTION aoso_maneuver_tick_guard {
+    PARAMETER remaining_dv.
+    PARAMETER wanted_throttle.
+    IF wanted_throttle <= 0 { RETURN 0. }
+    IF NOT DEFINED AOSO_PHYS_DT { RETURN wanted_throttle. }
+    LOCAL dt IS AOSO_PHYS_DT.
+    IF dt <= 0 OR dt > 0.25 { RETURN wanted_throttle. }
+    LOCAL accel IS aoso_maneuver_current_accel().
+    IF accel <= 0.05 { RETURN wanted_throttle. }
+    LOCAL next_tick_dv IS accel * dt * wanted_throttle.
+    LOCAL guard_n IS aoso_config_get("MANEUVER_TICK_GUARD", 0.8).
+    IF guard_n < 0.2 { SET guard_n TO 0.2. }
+    IF guard_n > 1 { SET guard_n TO 1. }
+    LOCAL allowed IS remaining_dv * guard_n.
+    IF next_tick_dv <= allowed { RETURN wanted_throttle. }
+    LOCAL cap IS allowed / (accel * dt).
+    IF cap < 0.01 { SET cap TO 0.01. }
+    IF cap > wanted_throttle { SET cap TO wanted_throttle. }
+    RETURN cap.
+}
+
 FUNCTION aoso_maneuver_finish_node {
     PARAMETER nd.
     PARAMETER reason.
@@ -659,7 +680,8 @@ FUNCTION aoso_maneuver_execute_next {
                 aoso_maneuver_finish_node(nd, "incomplete").
                 RETURN TRUE.
             }
-            aoso_throttle_set(aoso_maneuver_throttle_for_dv(remaining)).
+            LOCAL unsafe_t IS aoso_maneuver_throttle_for_dv(remaining).
+            aoso_throttle_set(aoso_maneuver_tick_guard(remaining, unsafe_t)).
             SET AOSO_MANEUVER_LAST_REMAINING TO remaining.
             RETURN FALSE.
         }
@@ -680,7 +702,8 @@ FUNCTION aoso_maneuver_execute_next {
     }
 
     SET AOSO_MANEUVER_LAST_REMAINING TO remaining.
-    aoso_throttle_set(aoso_maneuver_throttle_for_dv(remaining_along)).
+    LOCAL wanted_t IS aoso_maneuver_throttle_for_dv(remaining_along).
+    aoso_throttle_set(aoso_maneuver_tick_guard(remaining_along, wanted_t)).
     RETURN FALSE.
 }
 

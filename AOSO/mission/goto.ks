@@ -176,6 +176,13 @@ FUNCTION aoso_goto_ensure_transfer_action {
     LOCAL did_g IS aoso_decide("GOTO", "hop", target_name, "transfer",
         "pred=" + ROUND(xfer_g, 0), xfer_g).
     LOCAL act_g IS aoso_action_create(did_g, "TRANSFER", target_name, xfer_g).
+    LOCAL win_g IS aoso_window_evaluate(SHIP:BODY:NAME, target_name).
+    LOCAL pred_time_g IS 0.
+    IF win_g:HASKEY("total_s") { SET pred_time_g TO win_g["total_s"]. }
+    IF DEFINED AOSO_XP {
+        SET pred_time_g TO aoso_xp_metric_apply("TRANSFER", target_name, "TIME", pred_time_g).
+    }
+    SET act_g["predicted_duration"] TO pred_time_g.
     aoso_action_begin(act_g).
     SET data["action_id"] TO did_g.
 }
@@ -759,6 +766,11 @@ FUNCTION aoso_goto_capture_entry {
         LOCAL did_c IS aoso_decide("GOTO", "capture", SHIP:BODY:NAME, "burn",
             "pred=" + ROUND(cap_pred, 0), cap_pred).
         LOCAL act_c IS aoso_action_create(did_c, "CAPTURE", SHIP:BODY:NAME, cap_pred).
+        LOCAL cap_time IS aoso_perf_burn_time_for_dv(cap_pred).
+        IF DEFINED AOSO_XP {
+            SET cap_time TO aoso_xp_metric_apply("CAPTURE", SHIP:BODY:NAME, "TIME", cap_time).
+        }
+        SET act_c["predicted_duration"] TO cap_time.
         aoso_action_begin(act_c).
     }
 }

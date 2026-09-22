@@ -16,7 +16,7 @@ GLOBAL AOSO_PROF_NAME IS "".
 GLOBAL AOSO_RING IS LIST().
 GLOBAL AOSO_RING_I IS 0.
 GLOBAL AOSO_RING_N IS 0.
-GLOBAL AOSO_RING_CAP IS 40.
+GLOBAL AOSO_RING_CAP IS 120.
 GLOBAL AOSO_EVT_BUF IS LIST().
 GLOBAL AOSO_EVT_LAST_FLUSH IS 0.
 GLOBAL AOSO_POST_LEFT IS 0.
@@ -38,18 +38,23 @@ GLOBAL AOSO_CPU_HOLD_UT IS 0.
 GLOBAL AOSO_CPU_RECOVER IS 0.
 GLOBAL AOSO_DUMP_PENDING IS "".
 GLOBAL AOSO_TELEM_FLUSH_NOW IS FALSE.
+GLOBAL AOSO_PHYS_DT IS 0.
+GLOBAL AOSO_PHYS_LAST_UT IS 0.
+GLOBAL AOSO_TICK_N IS 0.
+GLOBAL AOSO_TICK_WARN_UT IS 0.
 
 FUNCTION aoso_observe_reset_files {
-    LOCAL files IS LIST(
-        AOSO_CONST["EVENTS_FILE"],
-        AOSO_CONST["TELEMETRY_FILE"],
-        AOSO_CONST["FLIGHTREC_FILE"]
-    ).
-    FOR pth IN files {
-        IF EXISTS(pth) { DELETEPATH(pth). }
+    // Preserve previous-run evidence. Session markers separate reboots; no
+    // extra file I/O is added to the flight-control hot path.
+    LOCAL evpath IS AOSO_CONST["EVENTS_FILE"].
+    IF EXISTS(evpath) {
+        LOCAL ef IS OPEN(evpath).
+        ef:WRITELN(TIME:SECONDS + "," + MISSIONTIME + ",BOOT,SESSION,INFO,BOOT,new session").
     }
-    IF DEFINED AOSO_TELEMETRY_HEADER_WRITTEN {
-        SET AOSO_TELEMETRY_HEADER_WRITTEN TO FALSE.
+    LOCAL recpath IS AOSO_CONST["FLIGHTREC_FILE"].
+    IF EXISTS(recpath) {
+        LOCAL rf IS OPEN(recpath).
+        rf:WRITELN("#SESSION ut=" + ROUND(TIME:SECONDS, 2) + " vessel=" + SHIP:NAME).
     }
 }
 
@@ -82,6 +87,10 @@ FUNCTION aoso_observe_init {
     SET AOSO_PROF_NAME TO "".
     SET AOSO_OBS_TELEM_LAST TO 0.
     SET AOSO_TELEM_FLUSH_NOW TO FALSE.
+    SET AOSO_PHYS_DT TO 0.
+    SET AOSO_PHYS_LAST_UT TO TIME:SECONDS.
+    SET AOSO_TICK_N TO 0.
+    SET AOSO_TICK_WARN_UT TO 0.
 
     SET AOSO_OBS_PHASE TO "BOOT".
     IF SHIP:STATUS = "PRELAUNCH" { SET AOSO_OBS_PHASE TO "PRELAUNCH". }
@@ -325,6 +334,62 @@ FUNCTION aoso_observe_post_sample {
     IF AOSO_POST_LEFT <= 0 { RETURN. }
     aoso_observe_flightrec_append("#POST " + packed_row).
     SET AOSO_POST_LEFT TO AOSO_POST_LEFT - 1.
+}
+
+FUNCTION aoso_observe_tick_begin {
+    LOCAL now_ut IS TIME:SECONDS.
+    LOCAL dt IS now_ut - AOSO_PHYS_LAST_UT.
+    IF AOSO_PHYS_LAST_UT <= 0 { SET dt TO 0. }
+    SET AOSO_PHYS_LAST_UT TO now_ut.
+    SET AOSO_TICK_N TO AOSO_TICK_N + 1.
+    IF WARP > 0 {
+        IF WARPMODE = "RAILS" { SET dt TO 0. }
+    }
+    SET AOSO_PHYS_DT TO dt.
+
+    LOCAL critical IS FALSE.
+    IF AOSO_OBS_PHASE = "ASCENT" OR AOSO_OBS_PHASE = "BURN" OR
+       AOSO_OBS_PHASE = "DESCENT" OR AOSO_OBS_PHASE = "LANDING" {
+        SET critical TO TRUE.
+    }
+    IF NOT critical { RETURN. }
+
+    LOCAL warn_dt IS aoso_config_get("TICK_DT_WARN", 0.06).
+    IF dt > warn_dt {
+        IF now_ut - AOSO_TICK_WARN_UT > 1 {
+            SET AOSO_TICK_WARN_UT TO now_ut.
+            aoso_observe_event("TICK", "WARN", AOSO_OBS_PHASE,
+                "coarse dt=" + ROUND(dt, 4) + " warp=" + WARP + " mode=" + WARPMODE).
+        }
+    }
+
+    IF NOT aoso_config_get("TICK_DEBUG", TRUE) { RETURN. }
+    LOCAL every IS aoso_config_get("TICK_DEBUG_EVERY", 2).
+    IF every < 1 { SET every TO 1. }
+    LOCAL rem IS AOSO_TICK_N - FLOOR(AOSO_TICK_N / every) * every.
+    IF rem <> 0 { RETURN. }
+
+    LOCAL node_dv IS -1.
+    LOCAL node_eta IS -999.
+    IF HASNODE {
+        SET node_dv TO NEXTNODE:BURNVECTOR:MAG.
+        SET node_eta TO NEXTNODE:ETA.
+    }
+    LOCAL cmd_t IS 0.
+    IF DEFINED AOSO_CMD_THROTTLE { SET cmd_t TO AOSO_CMD_THROTTLE. }
+    LOCAL row IS "TICK ut=" + ROUND(now_ut, 3) +
+        " dt=" + ROUND(dt, 4) +
+        " phase=" + AOSO_OBS_PHASE +
+        " warp=" + WARP +
+        " mode=" + WARPMODE +
+        " op=" + OPCODESLEFT +
+        " thr=" + ROUND(cmd_t, 3) +
+        " spd=" + ROUND(SHIP:VELOCITY:ORBIT:MAG, 2) +
+        " vs=" + ROUND(VERTICALSPEED, 2) +
+        " node=" + ROUND(node_dv, 3) +
+        " eta=" + ROUND(node_eta, 2).
+    aoso_observe_ring_push(row).
+    aoso_observe_post_sample(row).
 }
 
 FUNCTION aoso_prof_start {
