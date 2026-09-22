@@ -25,6 +25,7 @@ RUN ONCE "AOSO/hardening/watchdog".
 RUN ONCE "AOSO/interplanetary/bodydb".
 RUN ONCE "AOSO/interplanetary/assist".
 RUN ONCE "AOSO/nav/lambert".
+RUN ONCE "AOSO/nav/cw".
 
 FUNCTION aoso_selftest_check {
     PARAMETER name.
@@ -85,6 +86,26 @@ FUNCTION aoso_selftest {
     LOCAL half_period IS CONSTANT:PI * SQRT((radius_c)^3 / lam_mu).
     LOCAL sol_180 IS aoso_lambert_solve(pos_a, pos_180, half_period, lam_mu, FALSE).
     SET fail TO aoso_selftest_check("lambert 180 special", sol_180["ok"], fail).
+
+    // 8.3 CW intercept algebra.
+    LOCAL cw_st IS LEXICON("x", 0, "y", 2000, "z", 0,
+        "ux", 0, "uy", 0, "uz", 0, "omega", 0.001, "ok", TRUE).
+    LOCAL cw_imp IS aoso_cw_impulse_to_intercept(cw_st, 200).
+    LOCAL cw_imp_ok IS cw_imp["ok"].
+    IF cw_imp_ok {
+        SET cw_imp_ok TO cw_imp["dv_mag"] > 0 AND ABS(cw_imp["dvz"]) < 1e-6.
+    }
+    SET fail TO aoso_selftest_check("cw intercept impulse", cw_imp_ok, fail).
+    LOCAL cw_st2 IS LEXICON(
+        "x", cw_st["x"], "y", cw_st["y"], "z", cw_st["z"],
+        "ux", cw_st["ux"] + cw_imp["dvx"],
+        "uy", cw_st["uy"] + cw_imp["dvy"],
+        "uz", cw_st["uz"] + cw_imp["dvz"],
+        "omega", cw_st["omega"], "ok", TRUE
+    ).
+    LOCAL cw_end IS aoso_cw_propagate(cw_st2, 200).
+    LOCAL cw_pos_mag IS SQRT(cw_end["x"] ^ 2 + cw_end["y"] ^ 2 + cw_end["z"] ^ 2).
+    SET fail TO aoso_selftest_check("cw intercept closes position", cw_end["ok"] AND cw_pos_mag < 50, fail).
 
     LOCAL blank IS aoso_xp_blank().
     SET fail TO aoso_selftest_check("xp blank corr 1", blank["corr"] = 1, fail).

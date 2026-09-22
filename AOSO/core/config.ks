@@ -52,6 +52,14 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "MANEUVER_FOLLOW_ABOVE_S", 8,       // s of remaining burn-time above which we follow the live node instead of locking
     "GOTO_CORRECT_WITHIN_S", 28800,     // s (~8 h): only mid-course a graze this close to SOI; lithobrake still corrects immediately
     "GOTO_CORRECT_MAX", 5,              // mid-course PE retunes per hop (was 3; grazes need more)
+    "ASTROGATOR_INTERCEPTS", FALSE,     // compatibility/status only; AOSO never asks Astrogator for intercept nodes
+    "LAMBERT_SEED_PORKCHOP", TRUE,      // seed patched porkchop candidates with AOSO Lambert solutions
+    "TPI_ELEV_DEG", 27,                 // optional close-rendezvous terminal-phase elevation target
+    "CW_MIN_RANGE_M", 500,              // m, below this hand off to close docking logic
+    "CW_MAX_RANGE_M", 50000,            // m, above this use long-range rendezvous phasing
+    "CW_DEFAULT_TF_S", 180,             // s, default CW intercept horizon
+    "CW_MAX_DV", 80,                    // m/s, reject unreasonable close-range CW impulses
+    "MIDCOURSE_MAX_DV", 40,             // m/s, reject large PE correction nodes
     "PORKCHOP_ENABLED", TRUE,           // patched-conic porkchop is the intercept (slow, accurate)
     "PORKCHOP_DEP_SAMPLES", 24,         // departure samples (soon band + Hohmann window)
     "PORKCHOP_DV_SAMPLES", 18,          // prograde Δv samples from ~0.35 Hohmann to near-escape
