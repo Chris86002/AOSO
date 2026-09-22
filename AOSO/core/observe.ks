@@ -40,6 +40,10 @@ GLOBAL AOSO_DUMP_PENDING IS "".
 GLOBAL AOSO_TELEM_FLUSH_NOW IS FALSE.
 GLOBAL AOSO_PHYS_DT IS 0.
 GLOBAL AOSO_PHYS_LAST_UT IS 0.
+GLOBAL AOSO_WALL_DT IS 0.
+GLOBAL AOSO_TICK_LAST_RT IS 0.
+GLOBAL AOSO_TICK_GAP_N IS 0.
+GLOBAL AOSO_TICK_GAP_MAX IS 0.
 GLOBAL AOSO_TICK_N IS 0.
 GLOBAL AOSO_TICK_WARN_UT IS 0.
 
@@ -89,6 +93,10 @@ FUNCTION aoso_observe_init {
     SET AOSO_TELEM_FLUSH_NOW TO FALSE.
     SET AOSO_PHYS_DT TO 0.
     SET AOSO_PHYS_LAST_UT TO TIME:SECONDS.
+    SET AOSO_WALL_DT TO 0.
+    SET AOSO_TICK_LAST_RT TO KUNIVERSE:REALTIME.
+    SET AOSO_TICK_GAP_N TO 0.
+    SET AOSO_TICK_GAP_MAX TO 0.
     SET AOSO_TICK_N TO 0.
     SET AOSO_TICK_WARN_UT TO 0.
 
@@ -338,14 +346,19 @@ FUNCTION aoso_observe_post_sample {
 
 FUNCTION aoso_observe_tick_begin {
     LOCAL now_ut IS TIME:SECONDS.
+    LOCAL now_rt IS KUNIVERSE:REALTIME.
     LOCAL dt IS now_ut - AOSO_PHYS_LAST_UT.
+    LOCAL wall_dt IS now_rt - AOSO_TICK_LAST_RT.
     IF AOSO_PHYS_LAST_UT <= 0 { SET dt TO 0. }
+    IF AOSO_TICK_LAST_RT <= 0 { SET wall_dt TO 0. }
     SET AOSO_PHYS_LAST_UT TO now_ut.
+    SET AOSO_TICK_LAST_RT TO now_rt.
     SET AOSO_TICK_N TO AOSO_TICK_N + 1.
     IF WARP > 0 {
         IF WARPMODE = "RAILS" { SET dt TO 0. }
     }
     SET AOSO_PHYS_DT TO dt.
+    SET AOSO_WALL_DT TO wall_dt.
 
     LOCAL critical IS FALSE.
     IF AOSO_OBS_PHASE = "ASCENT" OR AOSO_OBS_PHASE = "BURN" OR
@@ -355,11 +368,27 @@ FUNCTION aoso_observe_tick_begin {
     IF NOT critical { RETURN. }
 
     LOCAL warn_dt IS aoso_config_get("TICK_DT_WARN", 0.06).
-    IF dt > warn_dt {
+    LOCAL warn_wall IS aoso_config_get("TICK_WALL_WARN", 0.12).
+    LOCAL coarse IS FALSE.
+    IF dt > warn_dt { SET coarse TO TRUE. }
+    IF wall_dt > warn_wall { SET coarse TO TRUE. }
+    IF coarse {
+        SET AOSO_TICK_GAP_N TO AOSO_TICK_GAP_N + 1.
+        IF dt > AOSO_TICK_GAP_MAX { SET AOSO_TICK_GAP_MAX TO dt. }
         IF now_ut - AOSO_TICK_WARN_UT > 1 {
             SET AOSO_TICK_WARN_UT TO now_ut.
+            LOCAL stage_age IS -1.
+            IF DEFINED AOSO_STAGING_LAST_STAGE_UT {
+                IF AOSO_STAGING_LAST_STAGE_UT >= 0 {
+                    SET stage_age TO now_ut - AOSO_STAGING_LAST_STAGE_UT.
+                }
+            }
             aoso_observe_event("TICK", "WARN", AOSO_OBS_PHASE,
-                "coarse dt=" + ROUND(dt, 4) + " warp=" + WARP + " mode=" + WARPMODE).
+                "game_dt=" + ROUND(dt, 4) +
+                " wall_dt=" + ROUND(wall_dt, 4) +
+                " stage_age=" + ROUND(stage_age, 3) +
+                " warp=" + WARP + " mode=" + WARPMODE +
+                " op=" + OPCODESLEFT).
         }
     }
 
@@ -377,8 +406,16 @@ FUNCTION aoso_observe_tick_begin {
     }
     LOCAL cmd_t IS 0.
     IF DEFINED AOSO_CMD_THROTTLE { SET cmd_t TO AOSO_CMD_THROTTLE. }
+    LOCAL stage_age_row IS -1.
+    IF DEFINED AOSO_STAGING_LAST_STAGE_UT {
+        IF AOSO_STAGING_LAST_STAGE_UT >= 0 {
+            SET stage_age_row TO now_ut - AOSO_STAGING_LAST_STAGE_UT.
+        }
+    }
     LOCAL row IS "TICK ut=" + ROUND(now_ut, 3) +
         " dt=" + ROUND(dt, 4) +
+        " wall=" + ROUND(wall_dt, 4) +
+        " stage_age=" + ROUND(stage_age_row, 3) +
         " phase=" + AOSO_OBS_PHASE +
         " warp=" + WARP +
         " mode=" + WARPMODE +
