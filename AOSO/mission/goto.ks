@@ -638,7 +638,11 @@ FUNCTION aoso_goto_coast_execute {
                     LOCAL cool IS 0.
                     IF data:HASKEY("correct_cool_ut") { SET cool TO data["correct_cool_ut"]. }
                     IF TIME:SECONDS >= cool {
-                        SET WARP TO 0.
+                        // Correction search mutates a live maneuver node and
+                        // yields while patched conics settle. Stop rails
+                        // completely first or those WAIT 0s can age the new
+                        // node by thousands of game seconds.
+                        aoso_warp_hard_stop().
                         LOCAL ndc IS aoso_rendezvous_add_correction_node(hop_check).
                         IF ndc <> 0 {
                             SET data["correct_count"] TO ncorr + 1.
@@ -740,6 +744,23 @@ FUNCTION aoso_goto_capture_entry {
     }
     LOCAL nd IS aoso_interplanetary_add_capture_node(park).
     IF nd = 0 {
+        LOCAL safe_floor IS aoso_capture_safe_pe_floor(park).
+        IF PERIAPSIS < safe_floor {
+            // Never continue warping or mark the destination arrived while
+            // the osculating conic intersects the body/terrain margin.
+            aoso_warp_hard_stop().
+            aoso_throttle_set(0).
+            aoso_log_error("GOTO", "CAPTURE SAFETY HOLD at " + SHIP:BODY:NAME +
+                ": PE=" + ROUND(PERIAPSIS, 0) + "m below safe floor " +
+                ROUND(safe_floor, 0) + "m and no safe repair node was found.").
+            aoso_observe_anomaly("CAPTURE_IMPACT", "CRITICAL", safe_floor, PERIAPSIS).
+            IF DEFINED AOSO_EVENTS {
+                aoso_event_publish("HOLD", "goto", "unsafe capture PE " + ROUND(PERIAPSIS, 0)).
+            }
+            aoso_state_abort(AOSO_GOTO).
+            RETURN.
+        }
+
         LOCAL fails IS 0.
         IF data:HASKEY("capture_fails") { SET fails TO data["capture_fails"]. }
         SET data["capture_fails"] TO fails + 1.
@@ -771,6 +792,22 @@ FUNCTION aoso_goto_capture_entry {
         }
     }
     IF nd <> 0 {
+        LOCAL safe_floor_node IS aoso_capture_safe_pe_floor(park).
+        LOCAL node_pe IS nd:ORBIT:PERIAPSIS.
+        IF node_pe < safe_floor_node {
+            aoso_log_error("GOTO", "Rejected unsafe capture node at " + SHIP:BODY:NAME +
+                ": node PE=" + ROUND(node_pe, 0) + "m floor=" +
+                ROUND(safe_floor_node, 0) + "m.").
+            REMOVE nd.
+            aoso_warp_hard_stop().
+            aoso_observe_anomaly("CAPTURE_NODE_UNSAFE", "CRITICAL", safe_floor_node, node_pe).
+            IF DEFINED AOSO_EVENTS {
+                aoso_event_publish("HOLD", "goto", "unsafe capture node PE " + ROUND(node_pe, 0)).
+            }
+            aoso_state_abort(AOSO_GOTO).
+            RETURN.
+        }
+
         LOCAL cap_pred IS aoso_feas_body_stat(SHIP:BODY:NAME, "capture", 0).
         LOCAL did_c IS aoso_decide("GOTO", "capture", SHIP:BODY:NAME, "burn",
             "pred=" + ROUND(cap_pred, 0), cap_pred).
