@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net461</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <OutputType>Library</OutputType>
+    <AssemblyName>kOS.AddOns.AOSO</AssemblyName>
+    <RootNamespace>kOS.AddOns.AOSO</RootNamespace>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <KSP_ROOT Condition="'$(KSP_ROOT)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Kerbal Space Program</KSP_ROOT>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="kOS">
+      <HintPath>$(KSP_ROOT)\GameData\kOS\Plugins\kOS.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="kOS.Safe">
+      <HintPath>$(KSP_ROOT)\GameData\kOS\Plugins\kOS.Safe.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(KSP_ROOT)\KSP_x64_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp-firstpass">
+      <HintPath>$(KSP_ROOT)\KSP_x64_Data\Managed\Assembly-CSharp-firstpass.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="KSPUtil">
+      <HintPath>$(KSP_ROOT)\KSP_x64_Data\Managed\KSPUtil.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(KSP_ROOT)\KSP_x64_Data\Managed\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(KSP_ROOT)\KSP_x64_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

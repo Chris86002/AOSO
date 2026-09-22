@@ -1,0 +1,4 @@
+bin/
+obj/
+GameData/AOSO/Plugins/*.dll
+GameData/AOSO/Plugins/*.pdb
