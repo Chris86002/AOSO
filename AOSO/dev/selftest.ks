@@ -17,6 +17,7 @@ RUN ONCE "AOSO/core/warp".
 RUN ONCE "AOSO/core/brain".
 RUN ONCE "AOSO/core/state".
 RUN ONCE "AOSO/flight/steering".
+RUN ONCE "AOSO/vehicle/resources".
 RUN ONCE "AOSO/vehicle/experience".
 RUN ONCE "AOSO/mission/feasibility".
 RUN ONCE "AOSO/mission/project".
@@ -45,6 +46,10 @@ FUNCTION aoso_selftest {
     LOCAL fail IS 0.
 
     aoso_event_init().
+
+    LOCAL selftest_res_pct IS aoso_resource_pct("ElectricCharge").
+    SET fail TO aoso_selftest_check("resource helper loaded",
+        selftest_res_pct >= 0 AND selftest_res_pct <= 100, fail).
 
     SET fail TO aoso_selftest_check("native addon detect boolean",
         aoso_addon_native_available() = TRUE OR aoso_addon_native_available() = FALSE, fail).
