@@ -382,12 +382,11 @@ namespace kOS.AddOns.AOSO.Game
         // Unity/KSP main thread for an unbounded search.
         private void PrepareWindowSweep()
         {
-            if (CaptureCount > 0)
-            {
-                PrepareDensify();
-                return;
-            }
-
+            // Always sweep the practical window, even if the sparse coarse
+            // grid already found a capture. Native search is cheap enough to
+            // compare later windows too, which lets us choose the best
+            // capture candidate rather than stopping at the first acceptable
+            // one.
             double now = Planetarium.GetUniversalTime();
             sweepStep = Math.Max(3.0, options.SearchStepSeconds * 2.0);
             double sweepEndUt = options.HohmannUt + options.PeriodSeconds;
