@@ -54,13 +54,12 @@ directly.
 ## Exposed suffixes
 
 - `ADDONS:AOSO:VERSION` — addon version string.
-- `ADDONS:AOSO:LAMBERT(pos1, pos2, tof_s, mu [, long_way])` — native
-  zero-revolution Vallado universal-variable Lambert solve.
-- `ADDONS:AOSO:PORKCHOPSTART(hopBody, optionsLex)` — start the chunked
-  patched-conic candidate search.
+- `ADDONS:AOSO:LAMBERT(requestLex)` — native
+ — native zero-revolution Vallado universal-variable Lambert solve. AOSO's wrapper packages `pos1`, `pos2`, `tof`, `mu`, and `long_way` into the request lexicon.
+- `ADDONS:AOSO:PORKCHOPSTART(requestLex)` — start the chunked patched-conic candidate search. The request lexicon contains `hop` and `options`.
 - `ADDONS:AOSO:PORKCHOPPOLL()` — run one bounded native search slice.
 - `ADDONS:AOSO:PORKCHOPRESULT()` — retrieve completed candidate burns.
-- `ADDONS:AOSO:PORKCHOP(hopBody, optionsLex)` — bounded one-shot convenience
+- `ADDONS:AOSO:PORKCHOP(requestLex)` — bounded one-shot convenience
   call; returns `async_required` if the search would exceed 40 ms.
 
 The Lambert suffix returns a lexicon containing `ok`, `vel1`, `vel2`,
@@ -86,6 +85,6 @@ On Windows, build against the exact KSP/kOS assemblies and install the DLL with:
 ```
 
 Restart KSP after replacing the DLL. The current assembly version is
-`0.2.0.0`. AOSO selftest should report `native phase2 suffixes current`.
+`0.2.1.0`. AOSO selftest should report `native phase2 suffixes current`.
 The first accepted Lambert and completed native porkchop search also emit
 explicit native-active log messages.
