@@ -16,7 +16,16 @@
 // aoso_interplanetary_share_parent).
 FUNCTION aoso_interplanetary_heliocentric_position {
     PARAMETER body_ref.
-    RETURN aoso_orbit_position_now(body_ref).
+    RETURN aoso_interplanetary_heliocentric_position_at(body_ref, TIME:SECONDS).
+}
+
+// Same geometry at an arbitrary universal time. This is the planner-facing
+// equivalent of an ephemeris query: stock KSP's own Kepler propagation is
+// authoritative, so AOSO does not carry a separate SPICE/n-body model.
+FUNCTION aoso_interplanetary_heliocentric_position_at {
+    PARAMETER body_ref.
+    PARAMETER at_ut.
+    RETURN aoso_orbit_position_at(body_ref, at_ut).
 }
 
 FUNCTION aoso_interplanetary_share_parent {
@@ -67,10 +76,17 @@ FUNCTION aoso_interplanetary_v_infinity_signed {
 FUNCTION aoso_interplanetary_phase_angle_deg {
     PARAMETER dep_body.
     PARAMETER arr_body.
-    LOCAL pos_dep IS aoso_interplanetary_heliocentric_position(dep_body).
-    LOCAL pos_arr IS aoso_interplanetary_heliocentric_position(arr_body).
+    RETURN aoso_interplanetary_phase_angle_deg_at(dep_body, arr_body, TIME:SECONDS).
+}
+
+FUNCTION aoso_interplanetary_phase_angle_deg_at {
+    PARAMETER dep_body.
+    PARAMETER arr_body.
+    PARAMETER at_ut.
+    LOCAL pos_dep IS aoso_interplanetary_heliocentric_position_at(dep_body, at_ut).
+    LOCAL pos_arr IS aoso_interplanetary_heliocentric_position_at(arr_body, at_ut).
     LOCAL ang IS VANG(pos_dep, pos_arr).
-    LOCAL na IS aoso_orbit_normal_now(dep_body).
+    LOCAL na IS aoso_orbit_normal_at(dep_body, at_ut).
     IF VDOT(VCRS(pos_dep, pos_arr), na) < 0 { SET ang TO -ang. }
     RETURN ang.
 }
@@ -91,7 +107,24 @@ FUNCTION aoso_interplanetary_required_phase_angle_deg {
 FUNCTION aoso_interplanetary_wait_time_to_window_s {
     PARAMETER dep_body.
     PARAMETER arr_body.
-    LOCAL current_phase IS aoso_interplanetary_phase_angle_deg(dep_body, arr_body).
+    RETURN aoso_interplanetary_wait_time_to_window_s_at(dep_body, arr_body, TIME:SECONDS).
+}
+
+FUNCTION aoso_interplanetary_synodic_s {
+    PARAMETER dep_body.
+    PARAMETER arr_body.
+    LOCAL dep_rate IS 1 / dep_body:ORBIT:PERIOD.
+    LOCAL arr_rate IS 1 / arr_body:ORBIT:PERIOD.
+    LOCAL rel IS ABS(dep_rate - arr_rate).
+    IF rel <= 0 { RETURN 0. }
+    RETURN 1 / rel.
+}
+
+FUNCTION aoso_interplanetary_wait_time_to_window_s_at {
+    PARAMETER dep_body.
+    PARAMETER arr_body.
+    PARAMETER at_ut.
+    LOCAL current_phase IS aoso_interplanetary_phase_angle_deg_at(dep_body, arr_body, at_ut).
     LOCAL required_phase IS aoso_interplanetary_required_phase_angle_deg(dep_body, arr_body).
 
     LOCAL dep_rate IS 360 / dep_body:ORBIT:PERIOD.
@@ -100,8 +133,12 @@ FUNCTION aoso_interplanetary_wait_time_to_window_s {
     IF relative_rate = 0 { RETURN -1. }
 
     LOCAL wait_s IS -(current_phase - required_phase) / relative_rate.
+    LOCAL syn_s IS 360 / ABS(relative_rate).
     UNTIL wait_s >= 0 {
-        SET wait_s TO wait_s + (360 / ABS(relative_rate)).
+        SET wait_s TO wait_s + syn_s.
+    }
+    UNTIL wait_s < syn_s {
+        SET wait_s TO wait_s - syn_s.
     }
     RETURN wait_s.
 }
