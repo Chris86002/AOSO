@@ -63,6 +63,16 @@ FUNCTION aoso_warp_rails_factor {
 }
 
 FUNCTION aoso_warp_update_wall_est {
+    // Do not learn frame timing while KSP is still ramping between warp
+    // rates. During that transition RATE is intentionally in-between, and
+    // feeding those transient frames back into the guard made the requested
+    // index bounce up/down before the previous command had even settled.
+    IF WARPMODE = "RAILS" {
+        IF WARP > 0 {
+            IF NOT KUNIVERSE:TIMEWARP:ISSETTLED { RETURN AOSO_WARP_WALL_EST. }
+        }
+    }
+
     LOCAL sample IS 0.06.
     IF DEFINED AOSO_WALL_DT {
         IF AOSO_WALL_DT > 0.005 {
@@ -119,6 +129,15 @@ FUNCTION aoso_warp_rails_want {
         LOCAL floor_s IS aoso_warp_min_remain(idx).
         LOCAL jump_s IS aoso_warp_rails_factor(idx) * wall_est.
         LOCAL guard_s IS jump_s * aoso_warp_guard_frames(idx).
+
+        // Promotion hysteresis: once KSP has stepped down, require noticeably
+        // more headroom before asking it to climb again. This prevents an ETA
+        // sitting near a threshold from oscillating 50x -> 10000x -> 50x.
+        IF WARPMODE = "RAILS" {
+            IF idx > WARP {
+                SET guard_s TO guard_s * aoso_config_get("WARP_PROMOTE_MARGIN", 1.35).
+            }
+        }
 
         // Choose the highest rate that still leaves several observed KSP
         // update frames before the unchanged precision/alignment lead.
