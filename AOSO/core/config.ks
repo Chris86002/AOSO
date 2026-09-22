@@ -102,13 +102,15 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "DOCKING_ALIGN_TOLERANCE_DEG", 5,    // deg, facing error allowed before advanced/docking.ks starts translating
     "DOCKING_CLOSING_GAIN", 0.3,         // unitless, distance(m) * gain = desired closing speed (m/s), capped above
     "DOCKING_RCS_GAIN", 0.5,             // unitless, velocity error(m/s) * gain = RCS translation command (-1..1, clamped)
-    "XP_MIN_SAMPLES", 3,                // samples before a learned correction has moderate influence
+    "XP_MIN_SAMPLES", 3,                // successful samples before a learned correction has moderate influence
     "XP_MAX_CORRECTION", 0.35,          // max |corr-1|; 0.35 => 0.65x..1.35x
+    "XP_MODEL_REV", 2,                  // isolates learned data when controller semantics change
     "BRAIN_THINK_LEAD_S", 600,          // s of node ETA required before expensive nav/plan work
     "BRAIN_THINK_WAIT_S", 90,           // s to sit in orbit waiting for a quiet window
     "BRAIN_REPLAN_DEBOUNCE_S", 45,      // s minimum between full route rebuilds
     "ROUTE_SCORE_WEIGHT", 8,            // opportunity-score influence on cluster hop cost (higher = score matters more)
     "ROUTE_FUTURE_ISRU", 180,           // hop-cost discount when the destination can refill the tank
+    "ROUTE_BEAM_WIDTH", 10,             // bounded cluster search; stock system stays small enough for quiet-window search
     "WATCHDOG_PROGRESS_S", 90,          // s of no controller heartbeat progress before a stall is considered
     "IPU_TARGET", 2000,                 // CONFIG:IPU headroom applied once at boot (not a utilization target)
     "CPU_RESERVE_ABS", 400,             // leftover opcodes background work must not consume
@@ -121,6 +123,10 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "CPU_RESERVE_COAST", 250,
     "CORRECT_LOCAL_DV", 25,             // m/s residual treated as a local correction, not a replan
     "REPLAN_DV_ERROR", 250,             // m/s prediction error that requests a strategic replan
+    "TICK_DEBUG", TRUE,                  // keep a cheap in-memory physics-tick trace for pre/post event dumps
+    "TICK_DEBUG_EVERY", 2,              // sample every N physics ticks in critical flight phases
+    "TICK_DT_WARN", 0.06,               // s, flag coarse physics steps (normal 1x is ~0.02 s)
+    "MANEUVER_TICK_GUARD", 0.80,        // fraction of remaining dV allowed in the next measured physics tick
     "CPU_PROFILE", FALSE                // extra per-task opcode stats (also honors PROF_ENABLED)
 ).
 

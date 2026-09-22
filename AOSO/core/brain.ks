@@ -119,8 +119,8 @@ FUNCTION aoso_brain_do_replan {
         IF NOT aoso_brain_think_ok() { RETURN. }
         aoso_log_info("BRAIN", "Replanning (" + reason + ").").
         aoso_ui_set("Replanning", reason).
-        aoso_profile_refresh("brain_" + reason).
-        aoso_budget_refresh().
+        // Planner owns dependency synchronization; do not refresh the same
+        // profile/budget twice in one replan.
         aoso_plan_build().
         SET AOSO_BRAIN["last_replan"] TO TIME:SECONDS.
         SET AOSO_BRAIN["replan_reason"] TO reason.

@@ -12,7 +12,7 @@ FUNCTION aoso_xp_ops {
 FUNCTION aoso_xp_key {
     PARAMETER op_name.
     PARAMETER body_name.
-    RETURN aoso_cfg_id() + "|" + body_name + "|" + op_name.
+    RETURN aoso_cfg_id() + "|R" + aoso_config_get("XP_MODEL_REV", 2) + "|" + body_name + "|" + op_name.
 }
 
 FUNCTION aoso_xp_load {
@@ -81,7 +81,8 @@ FUNCTION aoso_xp_blank {
         "best", ratio,
         "worst", ratio,
         "corr", 1,
-        "conf", 0
+        "conf", 0,
+        "fail_n", 0
     ).
 }
 
@@ -103,6 +104,24 @@ FUNCTION aoso_xp_record {
 
     IF predicted <= 0.01 { RETURN aoso_xp_model(op_name, body_name). }
     IF actual < 0 { RETURN aoso_xp_model(op_name, body_name). }
+    LOCAL store IS aoso_xp_load().
+    LOCAL mk IS aoso_xp_key(op_name, body_name).
+    IF NOT store["models"]:HASKEY(mk) { SET store["models"][mk] TO aoso_xp_blank(). }
+    LOCAL m IS store["models"][mk].
+    IF NOT m:HASKEY("fail_n") { SET m["fail_n"] TO 0. }
+    // A failed action is evidence about reliability, not evidence that the
+    // successful maneuver is cheaper. Keep failures out of the cost mean.
+    IF failed {
+        SET m["fail_n"] TO m["fail_n"] + 1.
+        SET store["models"][mk] TO m.
+        store["samples"]:ADD(LEXICON("op", op_name, "body", body_name, "pred", predicted,
+            "act", actual, "ratio", 0, "fail", TRUE, "ut", TIME:SECONDS)).
+        UNTIL store["samples"]:LENGTH <= 40 { store["samples"]:REMOVE(0). }
+        IF TIME:SECONDS - AOSO_XP["save_at"] > 8 { aoso_xp_save(). }
+        aoso_ctx_bump("rev_xp").
+        IF DEFINED AOSO_EVENTS { aoso_event_publish("MODEL_UPDATED", "xp", op_name + " reliability"). }
+        RETURN m.
+    }
     LOCAL ratio IS actual / predicted.
     LOCAL max_c IS aoso_config_get("XP_MAX_CORRECTION", 0.35).
     IF ratio < 1 - max_c { SET ratio TO 1 - max_c. }
@@ -111,12 +130,6 @@ FUNCTION aoso_xp_record {
         IF ratio > 1.15 { SET ratio TO 1.15. }
     }
 
-    LOCAL store IS aoso_xp_load().
-    LOCAL mk IS aoso_xp_key(op_name, body_name).
-    IF NOT store["models"]:HASKEY(mk) {
-        SET store["models"][mk] TO aoso_xp_blank().
-    }
-    LOCAL m IS store["models"][mk].
     SET m["n"] TO m["n"] + 1.
     SET m["sum_ratio"] TO m["sum_ratio"] + ratio.
     SET m["mean_ratio"] TO m["sum_ratio"] / m["n"].
@@ -208,6 +221,18 @@ FUNCTION aoso_xp_record_metric {
     PARAMETER failed IS FALSE.
     IF predicted <= 0.01 { RETURN aoso_xp_metric_model(op_name, body_name, metric_name). }
     IF actual < 0 { RETURN aoso_xp_metric_model(op_name, body_name, metric_name). }
+    IF NOT m:HASKEY("fail_n") { SET m["fail_n"] TO 0. }
+    IF failed {
+        SET m["fail_n"] TO m["fail_n"] + 1.
+        SET store["models"][mk] TO m.
+        store["samples"]:ADD(LEXICON("op", op_name, "body", body_name, "metric", metric_name,
+            "pred", predicted, "act", actual, "ratio", 0, "fail", TRUE, "ut", TIME:SECONDS)).
+        UNTIL store["samples"]:LENGTH <= 40 { store["samples"]:REMOVE(0). }
+        IF TIME:SECONDS - AOSO_XP["save_at"] > 8 { aoso_xp_save(). }
+        aoso_ctx_bump("rev_xp").
+        IF DEFINED AOSO_EVENTS { aoso_event_publish("MODEL_UPDATED", "xp", op_name + " " + metric_name + " reliability"). }
+        RETURN m.
+    }
     LOCAL ratio IS actual / predicted.
     LOCAL max_c IS aoso_config_get("XP_MAX_CORRECTION", 0.35).
     IF ratio < 1 - max_c { SET ratio TO 1 - max_c. }
@@ -275,6 +300,18 @@ FUNCTION aoso_xp_metric_predict {
     RETURN aoso_prediction_make(analytical * corr, m["n"], corr).
 }
 
+FUNCTION aoso_xp_reliability {
+    PARAMETER op_name.
+    PARAMETER body_name.
+    LOCAL m IS aoso_xp_model(op_name, body_name).
+    LOCAL fail_n IS 0.
+    IF m:HASKEY("fail_n") { SET fail_n TO m["fail_n"]. }
+    LOCAL total IS m["n"] + fail_n.
+    IF total <= 0 { RETURN 1. }
+    // Bayesian smoothing: two virtual successes avoid overreacting to one miss.
+    RETURN (m["n"] + 2) / (total + 2).
+}
+
 FUNCTION aoso_xp_ingest_result {
     PARAMETER res.
     IF NOT res:ISTYPE("Lexicon") { RETURN. }
@@ -286,6 +323,17 @@ FUNCTION aoso_xp_ingest_result {
     IF res["status"] = "ABORTED" { SET failed TO TRUE. }
     LOCAL body_n IS SHIP:BODY:NAME.
     IF res:HASKEY("end_body") { SET body_n TO res["end_body"]. }
+    // Destination actions learn against the intended target even when they
+    // fail before SOI change; otherwise a failed Duna transfer teaches Kerbin.
+    IF res:HASKEY("target") {
+        LOCAL target_n IS res["target"].
+        IF target_n <> "" {
+            IF op_name = "TRANSFER" OR op_name = "CAPTURE" OR op_name = "LANDING" OR
+               op_name = "TAKEOFF" OR op_name = "REFUEL" OR op_name = "RETURN" {
+                SET body_n TO target_n.
+            }
+        }
+    }
     LOCAL pred IS 0.
     LOCAL act IS 0.
     IF res:HASKEY("predicted_dv") { SET pred TO res["predicted_dv"]. }

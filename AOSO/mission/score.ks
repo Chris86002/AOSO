@@ -67,8 +67,18 @@ FUNCTION aoso_opp_score {
     LOCAL land_diff IS aoso_world_body_stat(dest_name, "landing_difficulty", 0.5).
     LOCAL safety_part IS 100 * (1 - land_diff).
     LOCAL window_part IS win["efficiency"] * 100.
-    LOCAL time_part IS 100 - MIN(80, win["wait_days"] * 4).
+    LOCAL trip_days IS win["wait_days"].
+    IF win:HASKEY("total_s") { SET trip_days TO win["total_s"] / 21600. }
+    LOCAL time_part IS 100 - MIN(95, trip_days * 1.5).
     IF time_part < 5 { SET time_part TO 5. }
+    // Reliability is learned separately from successful cost. A failed
+    // transfer/landing can reduce safety without corrupting the dV model.
+    IF DEFINED AOSO_XP {
+        LOCAL rel_t IS aoso_xp_reliability("TRANSFER", dest_name).
+        LOCAL rel_l IS aoso_xp_reliability("LANDING", dest_name).
+        IF row["result"] = "ORBIT_ONLY" { SET rel_l TO 1. }
+        SET safety_part TO safety_part * MIN(rel_t, rel_l).
+    }
 
     LOCAL total IS dv_part * w["dv"] + margin_part * w["margin"] + safety_part * w["safety"] +
         window_part * w["window"] + time_part * w["time"].
@@ -114,6 +124,7 @@ FUNCTION aoso_opp_score {
         "should", should_go,
         "result", row["result"],
         "wait_days", win["wait_days"],
+        "trip_days", ROUND(trip_days, 1),
         "efficiency", win["efficiency"],
         "transfer_dv", dv_need
     ).

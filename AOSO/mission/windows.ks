@@ -26,22 +26,23 @@ FUNCTION aoso_window_evaluate {
     LOCAL to_planet IS aoso_feas_planet_of(to_name).
     IF from_planet = to_planet {
         RETURN LEXICON("from", from_name, "to", to_name, "wait_s", 0, "wait_days", 0,
-            "efficiency", 1, "best_dv", 80, "now_dv", 80, "phase_err", 0).
+            "transfer_s", 0, "total_s", 0, "efficiency", 1, "best_dv", 80, "now_dv", 80, "phase_err", 0).
     }
     IF from_planet = "Sun" OR to_planet = "Sun" {
         RETURN LEXICON("from", from_name, "to", to_name, "wait_s", 0, "wait_days", 0,
-            "efficiency", 0.5, "best_dv", 4000, "now_dv", 4000, "phase_err", 0).
+            "transfer_s", 0, "total_s", 0, "efficiency", 0.5, "best_dv", 4000, "now_dv", 4000, "phase_err", 0).
     }
 
     LOCAL dep_ref IS BODY(from_planet).
     LOCAL arr_ref IS BODY(to_planet).
     IF NOT aoso_interplanetary_share_parent(dep_ref, arr_ref) {
         RETURN LEXICON("from", from_name, "to", to_name, "wait_s", 0, "wait_days", 0,
-            "efficiency", 0.5, "best_dv", 2500, "now_dv", 2500, "phase_err", 0).
+            "transfer_s", 0, "total_s", 0, "efficiency", 0.5, "best_dv", 2500, "now_dv", 2500, "phase_err", 0).
     }
 
     LOCAL wait_s IS aoso_interplanetary_wait_time_to_window_s(dep_ref, arr_ref).
     IF wait_s < 0 { SET wait_s TO 0. }
+    LOCAL transfer_s IS aoso_interplanetary_transfer_time_s(dep_ref, arr_ref).
     LOCAL current_phase IS aoso_interplanetary_phase_angle_deg(dep_ref, arr_ref).
     LOCAL required_phase IS aoso_interplanetary_required_phase_angle_deg(dep_ref, arr_ref).
     LOCAL phase_err IS ABS(aoso_window_wrap180(current_phase - required_phase)).
@@ -58,6 +59,8 @@ FUNCTION aoso_window_evaluate {
         "to", to_name,
         "wait_s", wait_s,
         "wait_days", ROUND(wait_s / 21600, 1),
+        "transfer_s", transfer_s,
+        "total_s", wait_s + transfer_s,
         "efficiency", ROUND(efficiency, 2),
         "best_dv", ROUND(best_dv, 0),
         "now_dv", ROUND(now_dv, 0),

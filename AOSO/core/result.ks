@@ -18,6 +18,7 @@ FUNCTION aoso_result_make {
     LOCAL result_conf IS 0.5.
     LOCAL started IS 0.
     LOCAL start_b IS SHIP:BODY:NAME.
+    LOCAL target_n IS "".
     LOCAL start_fuel_amt IS 0.
     IF AOSO_ACTION_CUR:ISTYPE("Lexicon") {
         IF AOSO_ACTION_CUR:HASKEY("action_id") { SET aid TO AOSO_ACTION_CUR["action_id"]. }
@@ -27,6 +28,7 @@ FUNCTION aoso_result_make {
         IF AOSO_ACTION_CUR:HASKEY("confidence") { SET result_conf TO AOSO_ACTION_CUR["confidence"]. }
         IF AOSO_ACTION_CUR:HASKEY("started_at") { SET started TO AOSO_ACTION_CUR["started_at"]. }
         IF AOSO_ACTION_CUR:HASKEY("start_body") { SET start_b TO AOSO_ACTION_CUR["start_body"]. }
+        IF AOSO_ACTION_CUR:HASKEY("target") { SET target_n TO AOSO_ACTION_CUR["target"]. }
         IF AOSO_ACTION_CUR:HASKEY("start_fuel") { SET start_fuel_amt TO AOSO_ACTION_CUR["start_fuel"]. }
         IF AOSO_ACTION_CUR:HASKEY("type") {
             IF action_type = "" { SET action_type TO AOSO_ACTION_CUR["type"]. }
@@ -45,6 +47,7 @@ FUNCTION aoso_result_make {
         "duration", dur,
         "start_body", start_b,
         "end_body", SHIP:BODY:NAME,
+        "target", target_n,
         "predicted_dv", pred_dv,
         "actual_dv", actual_dv_accum,
         "dv_error", 0,
@@ -268,6 +271,7 @@ FUNCTION aoso_result_from_action {
     IF act:HASKEY("confidence") { SET res["confidence"] TO act["confidence"]. }
     SET res["started_at"] TO act["started_at"].
     SET res["start_body"] TO act["start_body"].
+    IF act:HASKEY("target") { SET res["target"] TO act["target"]. }
     IF act["started_at"] > 0 {
         SET res["duration"] TO TIME:SECONDS - act["started_at"].
     }
