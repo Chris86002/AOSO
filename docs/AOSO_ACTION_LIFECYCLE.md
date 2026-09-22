@@ -152,3 +152,13 @@ supplies a duration prediction. REFUEL continues to use fuel percentage.
 STAGING still stores predicted versus actual mass in the primary dV slots for
 the generic ratio, but mass residuals are excluded from dV correction/replan
 thresholds.
+
+
+Failed actions no longer update the successful cost-ratio mean. They increment
+separate reliability evidence instead. Destination actions learn against the
+intended `target`, so a transfer that fails before an SOI change remains
+evidence about the attempted destination.
+
+TRANSFER now predicts duration from transfer-window wait plus analytical
+Hohmann flight time and then applies learned `TRANSFER|TIME`. CAPTURE starts
+from predicted burn time and can learn `CAPTURE|TIME`.

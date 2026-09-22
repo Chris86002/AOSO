@@ -76,3 +76,24 @@ not from steering. HUD rates already drop under HIGH/CRITICAL.
 
 Document for each new task: priority class, frequency, event-driven?,
 expected cost, safe to defer, which dirty flags trigger it.
+
+
+## Physics-tick control discipline
+
+kOS runs the CPU against KSP physics FixedUpdate ticks. AOSO measures actual
+simulated delta-time as `AOSO_PHYS_DT` at the start of every main-loop
+slice; it does not assume 0.02 s.
+
+During ASCENT/BURN/DESCENT/LANDING, `TICK_DEBUG` samples a compact in-memory
+trace: UT, measured dt, warp/mode, opcodes left, commanded throttle, orbital
+speed, vertical speed, node remaining dV, and node ETA. It intentionally does
+not write a file every tick. The existing flight-recorder ring is dumped
+around burn/anomaly/stage events, preserving the useful pre-event history.
+
+Maneuver throttle also has a last-line per-tick guard. Estimated dV delivered
+during the next measured physics tick is capped by `MANEUVER_TICK_GUARD`.
+This is specifically for short burns and coarse/physics-warp ticks.
+
+Fast HUD painting is decimated with `HUD_FAST_EVERY` and only runs when
+there is headroom above the protected reserve. Flight control remains ahead
+of display work.

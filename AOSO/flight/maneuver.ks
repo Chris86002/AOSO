@@ -277,7 +277,11 @@ FUNCTION aoso_maneuver_tick_guard {
     PARAMETER remaining_dv.
     PARAMETER wanted_throttle.
     IF wanted_throttle <= 0 { RETURN 0. }
-    IF NOT DEFINED AOSO_PHYS_DT { RETURN wanted_throttle. }
+    IF DEFINED AOSO_PHYS_DT {
+        // measured at the start of this physics-tick control slice
+    } ELSE {
+        RETURN wanted_throttle.
+    }
     LOCAL dt IS AOSO_PHYS_DT.
     IF dt <= 0 OR dt > 0.25 { RETURN wanted_throttle. }
     LOCAL accel IS aoso_maneuver_current_accel().

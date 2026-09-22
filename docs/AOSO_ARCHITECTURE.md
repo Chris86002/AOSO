@@ -47,7 +47,7 @@ REPLAN IF NEEDED
 | FEASIBILITY | FEASIBLE / ORBIT_ONLY / SKIP from seq | `feasibility.ks` |
 | CERTIFY / ASSURE | Attempt / continue / depart | `certify.ks`, `assurance.ks` |
 | PREDICT | Analytical cost × bounded experience | `aoso_xp_apply` / `aoso_xp_predict` |
-| DECIDE | Scores, route, nodes | `score.ks`, `route.ks`, porkchop |
+| DECIDE | Scores, bounded beam-search route, nodes | `score.ks`, `route.ks`, porkchop |
 | ACTION | Identity on `AOSO_ACTION_CUR` | `result.ks` `aoso_action_*` |
 | EXECUTE | Existing FSMs | `ascent`, `goto`, `maneuver`, `descent` |
 | AUTHORITY | Who may command steering/throttle/warp/stage | `authority.ks`, `aoso_staging_do` |
@@ -108,7 +108,7 @@ persistence inside critical flight loops.
 
 ## Configuration identity
 
-Experience is keyed `cfg_id|body|OP`, not `SHIP:NAME`. The id is locked
+Experience is keyed `cfg_id|model_rev|body|OP`, not `SHIP:NAME`. Failed actions update reliability separately from successful cost. The id is locked
 on the pad (`NAME|Mbucket|E|S|LF|ISRU|D`) and restored from
 `0:/aoso_cfg_id.json` after a revert. Staging in flight does not mint a
 new id.
@@ -137,3 +137,11 @@ a replan; it cannot steal steering or throttle. Authority is who may
 command; verify is whether the action worked.
 `Update-AOSO.ps1` is not part of this architecture and must not be
 edited on this branch unless the user asks.
+
+
+## Planner refinement
+
+Planning synchronizes dirty vehicle/topology/budget models once, then runs two
+bounded passes: score/beam-route/project, followed by one refinement pass.
+The second pass can consume sequential projected leftover state. There is no
+unbounded optimizer loop.
