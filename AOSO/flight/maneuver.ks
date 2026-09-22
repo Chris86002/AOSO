@@ -26,6 +26,8 @@ GLOBAL AOSO_MANEUVER_RESULT IS "ok".
 GLOBAL AOSO_MANEUVER_NO_THRUST_TICKS IS 0.
 GLOBAL AOSO_MANEUVER_APO_CAP IS -1.
 GLOBAL AOSO_MANEUVER_CUT_BODY IS "".
+GLOBAL AOSO_WARP_LAST_KEY IS "".
+GLOBAL AOSO_WARP_LAST_RT IS -1.
 
 FUNCTION aoso_maneuver_reset_exec {
     SET AOSO_MANEUVER_BURNING TO FALSE.
@@ -139,18 +141,49 @@ FUNCTION aoso_warp_hard_stop {
     IF WARP > 0 { SET WARP TO 0. }
 }
 
-FUNCTION aoso_warp_diag_txt {
-    LOCAL w IS "1x".
-    IF WARP > 0 {
-        IF WARPMODE = "PHYSICS" {
-            SET w TO "PHYS x" + WARP.
-        } ELSE {
-            SET w TO "RAILS x" + WARP.
-        }
+FUNCTION aoso_warp_rate_txt {
+    IF WARP <= 0 { RETURN "1x". }
+    IF WARPMODE = "PHYSICS" {
+        IF WARP = 1 { RETURN "PHYS 2x". }
+        IF WARP = 2 { RETURN "PHYS 3x". }
+        IF WARP = 3 { RETURN "PHYS 4x". }
+        RETURN "PHYS idx" + WARP.
     }
+    IF WARP = 1 { RETURN "RAILS 5x". }
+    IF WARP = 2 { RETURN "RAILS 10x". }
+    IF WARP = 3 { RETURN "RAILS 50x". }
+    IF WARP = 4 { RETURN "RAILS 100x". }
+    IF WARP = 5 { RETURN "RAILS 1000x". }
+    IF WARP = 6 { RETURN "RAILS 10000x". }
+    IF WARP = 7 { RETURN "RAILS 100000x". }
+    RETURN "RAILS idx" + WARP.
+}
+
+FUNCTION aoso_warp_diag_txt {
     LOCAL steer IS "OFF".
     IF DEFINED AOSO_STEER_MODE { SET steer TO AOSO_STEER_MODE. }
-    RETURN w + " steer=" + steer.
+    RETURN aoso_warp_rate_txt() + " steer=" + steer.
+}
+
+FUNCTION aoso_warp_report {
+    PARAMETER phase.
+    PARAMETER eta_s.
+    PARAMETER detail IS "".
+
+    LOCAL key IS phase + "|" + WARPMODE + "|" + WARP.
+    LOCAL now_rt IS KUNIVERSE:REALTIME.
+    LOCAL every_s IS aoso_config_get("WARP_STATUS_REAL_S", 12).
+    LOCAL due IS FALSE.
+    IF key <> AOSO_WARP_LAST_KEY { SET due TO TRUE. }
+    IF AOSO_WARP_LAST_RT < 0 { SET due TO TRUE. }
+    IF now_rt - AOSO_WARP_LAST_RT >= every_s { SET due TO TRUE. }
+    IF NOT due { RETURN. }
+
+    SET AOSO_WARP_LAST_KEY TO key.
+    SET AOSO_WARP_LAST_RT TO now_rt.
+    LOCAL msg IS phase + " T-" + ROUND(MAX(0, eta_s), 0) + "s  " + aoso_warp_diag_txt().
+    IF detail <> "" { SET msg TO msg + "  " + detail. }
+    aoso_log_info("WARP", msg + ".").
 }
 
 // Rails when the event is still far. Physics 2x while SAS points.
@@ -173,24 +206,24 @@ FUNCTION aoso_warp_approach {
 
     IF eta_s <= physics_until_s {
         SET WARP TO 0.
-        aoso_log_every(45, "WARP", "Holding 1x eta=" + ROUND(eta_s, 0) + "s until=" + ROUND(physics_until_s, 0) + "s " + aoso_warp_diag_txt() + ".").
+        aoso_warp_report("PRECISION", eta_s, "1x inside T-" + ROUND(physics_until_s, 0) + "s").
         RETURN "now".
     }
     IF NOT aoso_maneuver_can_warp() {
         IF SHIP:STATUS = "PRELAUNCH" {
             SET WARP TO 0.
-            aoso_log_every(45, "WARP", "Warp hold (pad) eta=" + ROUND(eta_s, 0) + "s " + aoso_warp_diag_txt() + ".").
+            aoso_warp_report("HOLD", eta_s, "pad").
             RETURN "hold".
         }
         aoso_warp_set_physics_cruise().
-        aoso_log_every(45, "WARP", "Physics cruise (atm/landed) eta=" + ROUND(eta_s, 0) + "s " + aoso_warp_diag_txt() + ".").
+        aoso_warp_report("CRUISE", eta_s, "physics-only region").
         RETURN "physics".
     }
 
     LOCAL want IS aoso_warp_rails_want(eta_s, rails_lead_s).
     IF want <= 0 {
         aoso_warp_set_physics_cruise().
-        aoso_log_every(45, "WARP", "Align window physics eta=" + ROUND(eta_s, 0) + "s lead=" + ROUND(rails_lead_s, 0) + "s " + aoso_warp_diag_txt() + ".").
+        aoso_warp_report("ALIGN", eta_s, "precision lead T-" + ROUND(rails_lead_s, 0) + "s").
         RETURN "physics".
     }
     IF AOSO_STEER_MODE <> "OFF" { aoso_steer_release(). }
@@ -200,7 +233,7 @@ FUNCTION aoso_warp_approach {
         WAIT 0.
     }
     IF WARP <> want { SET WARP TO want. }
-    aoso_log_every(60, "WARP", "Rails coast eta=" + ROUND(eta_s, 0) + "s " + aoso_warp_diag_txt() + ".").
+    aoso_warp_report("COAST", eta_s, "precision lead T-" + ROUND(rails_lead_s, 0) + "s").
     RETURN "rails".
 }
 
@@ -658,16 +691,18 @@ FUNCTION aoso_maneuver_execute_next {
             IF hop_cut:ISTYPE("Body") {
                 SET pe_ok TO aoso_rendezvous_pe_ok_value(pe_cut, hop_cut).
             }
-            LOCAL cut_now IS FALSE.
+            // Only early-cut a transfer when the live patched-conic PE
+            // is already inside the accepted capture band. A target-body
+            // patch by itself is not enough: the old remaining<3 fallback
+            // cut Minmus with a ~2,140 km PE and turned a 14 km planned
+            // encounter into a grazing flyby.
             IF pe_ok {
-                IF remaining < 40 { SET cut_now TO TRUE. }
-            } ELSE {
-                IF remaining < 3 { SET cut_now TO TRUE. }
-            }
-            IF cut_now {
-                aoso_log_info("MANEUVER", "Intercept with " + AOSO_MANEUVER_CUT_BODY + " locked in PE=" + ROUND(pe_cut, 0) + "m - cutting so we keep it.").
-                aoso_maneuver_finish_node(nd, "intercept").
-                RETURN TRUE.
+                IF remaining < 40 {
+                    aoso_log_info("MANEUVER", "Capture intercept with " + AOSO_MANEUVER_CUT_BODY +
+                        " locked PE=" + ROUND(pe_cut, 0) + "m - preserving the valid patch.").
+                    aoso_maneuver_finish_node(nd, "intercept").
+                    RETURN TRUE.
+                }
             }
         }
         IF SHIP:ORBIT:ECCENTRICITY >= 0.995 {
