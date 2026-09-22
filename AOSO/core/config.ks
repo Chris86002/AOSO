@@ -50,6 +50,9 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "WARP_PHYSICS_CRUISE", 2,           // physics-warp multiplier while pointing / atm / ISRU. 2=2x, 3=3x. Never 1x for idle.
     "WARP_CRUCIAL_S", 10,               // last N seconds always 1x (ignition, SOI, suicide)
     "MANEUVER_FOLLOW_ABOVE_S", 8,       // s of remaining burn-time above which we follow the live node instead of locking
+    "MANEUVER_GAP_CUT_S", 0.12,          // s, cut throttle for a recovery tick if guidance did not run for this much game time
+    "MANEUVER_STAGE_PRECUT", TRUE,       // during a burn, command zero throttle for one physics tick before STAGE()
+    "TICK_WALL_WARN", 0.12,              // s real-time gap logged beside game-time dt to separate KSP hitches from script cadence
     "GOTO_CORRECT_WITHIN_S", 28800,     // s (~8 h): only mid-course a graze this close to SOI; lithobrake still corrects immediately
     "GOTO_CORRECT_MAX", 5,              // mid-course PE retunes per hop (was 3; grazes need more)
     "ASTROGATOR_INTERCEPTS", FALSE,     // compatibility/status only; AOSO never asks Astrogator for intercept nodes
