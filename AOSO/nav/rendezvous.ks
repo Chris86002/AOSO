@@ -360,6 +360,48 @@ FUNCTION aoso_rendezvous_porkchop_search {
     LOCAL n_ok IS 0.
     LOCAL n_done IS 0.
 
+    // Lambert is only a candidate seed. Patched conics still decide whether
+    // the candidate actually enters the target SOI, and finalize_node still
+    // owns capture-PE acceptance before any node can be returned.
+    LOCAL seed_allowed IS aoso_config_get("LAMBERT_SEED_PORKCHOP", TRUE).
+    IF seed_allowed {
+        IF OPCODESLEFT < aoso_cpu_headroom() + 160 { SET seed_allowed TO FALSE. }
+    }
+    IF seed_allowed {
+        LOCAL seed_stride IS 1.
+        IF deps:LENGTH > 32 {
+            SET seed_stride TO 3.
+        } ELSE {
+            IF deps:LENGTH > 16 { SET seed_stride TO 2. }
+        }
+        LOCAL seed_tofs IS LIST(
+            tof_h,
+            MAX(600, tof_h * 0.7),
+            MAX(600, tof_h * 1.3)
+        ).
+        LOCAL seed_hits IS 0.
+        LOCAL seed_di IS 0.
+        UNTIL seed_di >= deps:LENGTH {
+            LOCAL seed_ti IS 0.
+            UNTIL seed_ti >= seed_tofs:LENGTH {
+                LOCAL tof_try IS seed_tofs[seed_ti].
+                IF aoso_rendezvous_apply_lambert(nd, hop, deps[seed_di], tof_try) {
+                    aoso_rendezvous_settle_long().
+                    IF aoso_rendezvous_node_hits_body(nd, hop) {
+                        SET seed_hits TO seed_hits + 1.
+                        aoso_rendezvous_porkchop_keep(cands, nd, hop, desired, 20).
+                    }
+                }
+                SET seed_ti TO seed_ti + 1.
+            }
+            SET seed_di TO seed_di + seed_stride.
+        }
+        aoso_log_info("RENDEZVOUS", "Lambert seeded porkchop with " + seed_hits +
+            " patched hit(s); full patched grid still runs.").
+    } ELSE {
+        aoso_log_info("RENDEZVOUS", "Lambert porkchop seeds skipped for opcode headroom; full patched grid still runs.").
+    }
+
     LOCAL di2 IS 0.
     UNTIL di2 >= deps:LENGTH {
         LOCAL dvi IS 0.
