@@ -98,7 +98,7 @@ See `plugin/kOS.AddOns.AOSO/README.md`. Typical Windows build:
 dotnet build plugin\kOS.AddOns.AOSO\kOS.AddOns.AOSO.csproj -c Release -p:KSP_ROOT="<KSP>"
 ```
 
-The project targets .NET Framework 4.6.1 and declares a minimum kOS assembly
+The project targets .NET Framework 4.8 and declares a minimum kOS assembly
 dependency of 1.3.
 
 ## Architecture rule
