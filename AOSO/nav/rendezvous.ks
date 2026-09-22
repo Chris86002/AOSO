@@ -459,21 +459,21 @@ FUNCTION aoso_rendezvous_try_native_porkchop {
     LOCAL failed IS FALSE.
     LOCAL polls IS 0.
     UNTIL done OR failed OR polls >= 500 {
-        LOCAL status IS aoso_addon_native_porkchop_poll().
-        IF status:ISTYPE("Scalar") {
+        LOCAL poll_status IS aoso_addon_native_porkchop_poll().
+        IF poll_status:ISTYPE("Scalar") {
             SET failed TO TRUE.
         } ELSE {
-            IF NOT status:HASKEY("ok") {
+            IF NOT poll_status:HASKEY("ok") {
                 SET failed TO TRUE.
             } ELSE {
-                IF NOT status["ok"] {
+                IF NOT poll_status["ok"] {
                     SET failed TO TRUE.
                 } ELSE {
-                    IF status:HASKEY("done") { SET done TO status["done"]. }
-                    IF status:HASKEY("progress") {
+                    IF poll_status:HASKEY("done") { SET done TO poll_status["done"]. }
+                    IF poll_status:HASKEY("progress") {
                         aoso_ui_pulse("Native porkchop " + hop:NAME,
-                            ROUND(status["progress"] * 100, 0) + "%  hits " +
-                            status["n_hit"] + " capture " + status["n_ok"]).
+                            ROUND(poll_status["progress"] * 100, 0) + "%  hits " +
+                            poll_status["n_hit"] + " capture " + poll_status["n_ok"]).
                     }
                 }
             }
