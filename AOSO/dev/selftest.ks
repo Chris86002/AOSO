@@ -25,8 +25,11 @@ RUN ONCE "AOSO/refuel/isru".
 RUN ONCE "AOSO/surface/operations".
 RUN ONCE "AOSO/hardening/watchdog".
 RUN ONCE "AOSO/interplanetary/bodydb".
-RUN ONCE "AOSO/interplanetary/assist".
+RUN ONCE "AOSO/nav/orbit".
 RUN ONCE "AOSO/nav/lambert".
+RUN ONCE "AOSO/interplanetary/transfer".
+RUN ONCE "AOSO/mission/windows".
+RUN ONCE "AOSO/interplanetary/assist".
 RUN ONCE "AOSO/nav/cw".
 
 FUNCTION aoso_selftest_check {
@@ -133,6 +136,8 @@ FUNCTION aoso_selftest {
             aoso_addon_native_last_source() = "native_lambert", fail).
         SET fail TO aoso_selftest_check("native phase2 suffixes current",
             aoso_addon_native_porkchop_available(), fail).
+        SET fail TO aoso_selftest_check("native planetary suffixes current",
+            aoso_addon_native_interplanetary_available(), fail).
     }
 
     // 8.2b Near-180 must use universal variable (not the Hohmann shortcut)
@@ -182,6 +187,12 @@ FUNCTION aoso_selftest {
     SET fail TO aoso_selftest_check("cont DEAD_END leftover", aoso_feas_continuation_of(TRUE, TRUE, 20, 800) = "DEAD_END", fail).
     SET fail TO aoso_selftest_check("cont LOW", aoso_feas_continuation_of(TRUE, TRUE, 400, 1200) = "LOW", fail).
     SET fail TO aoso_selftest_check("cont SAFE no land", aoso_feas_continuation_of(FALSE, FALSE, 0, 800) = "SAFE", fail).
+
+    LOCAL pst IS aoso_project_state_current().
+    SET fail TO aoso_selftest_check("project state carries UT", pst:HASKEY("ut") AND pst["ut"] > 0, fail).
+    SET fail TO aoso_selftest_check("project state carries elapsed", pst:HASKEY("elapsed_s"), fail).
+    LOCAL pst2 IS aoso_project_advance_time(pst, "TEST", 123).
+    SET fail TO aoso_selftest_check("project time advances", ABS(pst2["ut"] - pst["ut"] - 123) < 0.01, fail).
 
     LOCAL seq_a IS aoso_project_seq(5000, 3000, 1500, 1000, 800, FALSE, 5000).
     SET fail TO aoso_selftest_check("proj reach 5000-3000", seq_a["can_reach"] = TRUE, fail).
