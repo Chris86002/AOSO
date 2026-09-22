@@ -1218,6 +1218,11 @@ FUNCTION aoso_rendezvous_add_correction_node {
         REMOVE nd.
         RETURN 0.
     }
+    IF nd:DELTAV:MAG > aoso_config_get("MIDCOURSE_MAX_DV", 40) {
+        aoso_log_warn("RENDEZVOUS", "Mid-course dv=" + ROUND(nd:DELTAV:MAG, 1) + " exceeds cap - leaving coast, replan later.").
+        REMOVE nd.
+        RETURN 0.
+    }
     aoso_log_info("RENDEZVOUS", "Mid-course correction dv=" + ROUND(nd:DELTAV:MAG, 1) + " m/s, PE " + ROUND(pe_now, 0) + " -> " + ROUND(aoso_rendezvous_orbit_pe(nd:ORBIT, hop), 0) + "m.").
     RETURN nd.
 }

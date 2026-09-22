@@ -12,7 +12,8 @@ constants → json → logger → addons → config
 → vessel → parts → topology → capabilities → performance
 → resources → staging → profile → budget → learn → experience → classify
 → steering → maneuver → ascent_opt → ascent
-→ nav → interplanetary → world
+→ nav/orbit → nav/hohmann → nav/planechange → nav/lambert → nav/cw → nav/rendezvous
+→ interplanetary → world
 → landing → power → isru → surface/operations
 → return → precision
 → checkpoints → feasibility → project → matrix → windows → score → route → planner

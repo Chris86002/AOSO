@@ -5,6 +5,7 @@
 RUN ONCE "AOSO/core/constants".
 RUN ONCE "AOSO/core/json".
 RUN ONCE "AOSO/core/logger".
+RUN ONCE "AOSO/core/addons".
 RUN ONCE "AOSO/core/config".
 RUN ONCE "AOSO/core/observe".
 RUN ONCE "AOSO/core/context".
@@ -106,6 +107,10 @@ FUNCTION aoso_selftest {
     LOCAL cw_end IS aoso_cw_propagate(cw_st2, 200).
     LOCAL cw_pos_mag IS SQRT(cw_end["x"] ^ 2 + cw_end["y"] ^ 2 + cw_end["z"] ^ 2).
     SET fail TO aoso_selftest_check("cw intercept closes position", cw_end["ok"] AND cw_pos_mag < 50, fail).
+
+    // 8.4 Astrogator compatibility stub: must never create a node.
+    LOCAL ag_stub IS aoso_addon_astrogator_add_transfer(SHIP:BODY).
+    SET fail TO aoso_selftest_check("astrogator intercept stub", ag_stub = 0, fail).
 
     LOCAL blank IS aoso_xp_blank().
     SET fail TO aoso_selftest_check("xp blank corr 1", blank["corr"] = 1, fail).
