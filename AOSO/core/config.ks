@@ -74,6 +74,25 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "PORKCHOP_TOF_SAMPLES", 8,          // Lambert seed TOFs across PORKCHOP_TOF_MIN..MAX (capped at 6 in the search)
     "PORKCHOP_TOF_MIN", 0.06,
     "PORKCHOP_TOF_MAX", 1.7,
+    "INTERPLANETARY_DEP_SAMPLES", 48,    // native planetary porkchop departure epochs across one useful window
+    "INTERPLANETARY_TOF_SAMPLES", 28,    // native planetary porkchop arrival-time samples
+    "INTERPLANETARY_REFINE_SEEDS", 6,    // best coarse Lambert cells locally refined before stock validation
+    "INTERPLANETARY_TOF_MIN", 0.55,      // fraction of Hohmann TOF included in native search
+    "INTERPLANETARY_TOF_MAX", 1.8,       // fraction of Hohmann TOF included in native search
+    "INTERPLANETARY_MAX_POLLS", 600,     // 8 ms native slices; hard ceiling prevents a stuck addon job
+    "INTERPLANETARY_VALIDATE_CANDIDATES", 8, // finalists re-applied as real KSP nodes before any burn
+    "INTERPLANETARY_TIME_COST_DAY", 20,  // BALANCED: m/s-equivalent cost per Kerbin day wait+flight
+    "INTERPLANETARY_TIME_COST_DAY_TIME", 80, // TIME optimization strongly favors faster Lambert cells
+    "INTERPLANETARY_TIME_COST_DAY_DV", 5,    // MINIMUM_DV/FUEL mostly ignore trip duration
+    "INTERPLANETARY_TIME_COST_DAY_SAFETY", 20,
+    "INTERPLANETARY_EJECTION_GEOM_TOL_DEG", 2.5, // parking-position/asymptote geometry acceptance
+    "INTERPLANETARY_MAX_BURN_PERIOD_FRAC", 0.18, // reject impulsive nodes whose finite burn is too long
+    "INTERPLANETARY_SEARCH_HORIZON_S", 0, // 0=full synodic window; positive value caps native departure horizon
+    "INTERPLANETARY_SEARCH_FALLBACK_S", 5000000,
+    "PROJECT_CAPTURE_S", 300,            // strategic projector durations, not flight-control timers
+    "PROJECT_LAND_S", 900,
+    "PROJECT_TAKEOFF_S", 600,
+    "PROJECT_REFUEL_S", 1800,
     "GOTO_PATCH_FLICKER_S", 15,         // s of physics-2x after a patch vanishes, so conics can rebuild before we resume rails
     "GOTO_PATCH_TRUST_S", 600,          // s past expected SOI before we give up on a vanished intercept
     "TOUR_REFUEL_BELOW_PCT", 60,        // % LiquidFuel at/below which the grand tour will land and ISRU-refuel
