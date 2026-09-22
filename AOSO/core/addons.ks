@@ -27,6 +27,7 @@ GLOBAL AOSO_ADDON_STATUS IS LEXICON(
 GLOBAL AOSO_NATIVE_LAST_SOURCE IS "none".
 GLOBAL AOSO_NATIVE_LAMBERT_ANNOUNCED IS FALSE.
 GLOBAL AOSO_NATIVE_PORKCHOP_ANNOUNCED IS FALSE.
+GLOBAL AOSO_NATIVE_INTERPLANETARY_ANNOUNCED IS FALSE.
 
 // Returns TRUE if any of the given kOS addon identifiers is registered and
 // reports itself available.
@@ -162,6 +163,51 @@ FUNCTION aoso_addon_native_porkchop_result {
                 IF NOT AOSO_NATIVE_PORKCHOP_ANNOUNCED {
                     SET AOSO_NATIVE_PORKCHOP_ANNOUNCED TO TRUE.
                     aoso_log_info("ADDONS", "Native AOSO porkchop active v" + aoso_addon_native_version() + ".").
+                }
+            }
+        }
+    }
+    RETURN native_res.
+}
+
+FUNCTION aoso_addon_native_interplanetary_available {
+    LOCAL native_obj IS aoso_addon_native().
+    IF native_obj:ISTYPE("Scalar") { RETURN FALSE. }
+    IF NOT native_obj:HASSUFFIX("INTERPLANETARYSTART") { RETURN FALSE. }
+    IF NOT native_obj:HASSUFFIX("INTERPLANETARYPOLL") { RETURN FALSE. }
+    IF NOT native_obj:HASSUFFIX("INTERPLANETARYRESULT") { RETURN FALSE. }
+    RETURN TRUE.
+}
+
+FUNCTION aoso_addon_native_interplanetary_start {
+    PARAMETER target_body.
+    PARAMETER options_lex.
+    IF NOT aoso_addon_native_interplanetary_available() { RETURN 0. }
+    LOCAL native_obj IS aoso_addon_native().
+    LOCAL request IS LEXICON(
+        "target", target_body,
+        "options", options_lex
+    ).
+    RETURN native_obj:INTERPLANETARYSTART(request).
+}
+
+FUNCTION aoso_addon_native_interplanetary_poll {
+    IF NOT aoso_addon_native_interplanetary_available() { RETURN 0. }
+    LOCAL native_obj IS aoso_addon_native().
+    RETURN native_obj:INTERPLANETARYPOLL().
+}
+
+FUNCTION aoso_addon_native_interplanetary_result {
+    IF NOT aoso_addon_native_interplanetary_available() { RETURN 0. }
+    LOCAL native_obj IS aoso_addon_native().
+    LOCAL native_res IS native_obj:INTERPLANETARYRESULT().
+    IF native_res:ISTYPE("Lexicon") {
+        IF native_res:HASKEY("ok") {
+            IF native_res["ok"] {
+                SET AOSO_NATIVE_LAST_SOURCE TO "native_interplanetary".
+                IF NOT AOSO_NATIVE_INTERPLANETARY_ANNOUNCED {
+                    SET AOSO_NATIVE_INTERPLANETARY_ANNOUNCED TO TRUE.
+                    aoso_log_info("ADDONS", "Native AOSO interplanetary porkchop active v" + aoso_addon_native_version() + ".").
                 }
             }
         }
