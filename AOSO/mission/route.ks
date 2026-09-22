@@ -154,8 +154,15 @@ FUNCTION aoso_route_cluster_score {
 FUNCTION aoso_route_hop_cost {
     PARAMETER from_planet.
     PARAMETER to_planet.
+    RETURN aoso_route_hop_cost_at(from_planet, to_planet, TIME:SECONDS).
+}
+
+FUNCTION aoso_route_hop_cost_at {
+    PARAMETER from_planet.
+    PARAMETER to_planet.
+    PARAMETER at_ut.
     LOCAL dv_cost IS aoso_feas_transfer_cost(from_planet, to_planet).
-    LOCAL win IS aoso_window_evaluate(from_planet, to_planet).
+    LOCAL win IS aoso_window_evaluate_at(from_planet, to_planet, at_ut).
     LOCAL w IS aoso_opp_weights().
     LOCAL trip_days IS win["wait_days"].
     IF win:HASKEY("total_s") { SET trip_days TO win["total_s"] / 21600. }
@@ -164,6 +171,15 @@ FUNCTION aoso_route_hop_cost {
     LOCAL bonus IS aoso_route_cluster_score(to_planet).
     LOCAL score_w IS aoso_config_get("ROUTE_SCORE_WEIGHT", 8).
     RETURN dv_cost + wait_pen + eff_pen - bonus["score"] * score_w - bonus["isru"].
+}
+
+FUNCTION aoso_route_hop_time_at {
+    PARAMETER from_planet.
+    PARAMETER to_planet.
+    PARAMETER at_ut.
+    LOCAL win IS aoso_window_evaluate_at(from_planet, to_planet, at_ut).
+    IF win:HASKEY("total_s") { RETURN MAX(0, win["total_s"]). }
+    RETURN 0.
 }
 
 FUNCTION aoso_route_unique_planets {
@@ -211,7 +227,7 @@ FUNCTION aoso_route_cluster_order {
     IF planets:LENGTH = 0 { RETURN LIST(). }
     LOCAL beam IS LIST().
     beam:ADD(LEXICON("current", start_planet, "remaining", aoso_route_copy_list(planets),
-        "order", LIST(), "cost", 0)).
+        "order", LIST(), "cost", 0, "ut", TIME:SECONDS)).
     LOCAL width IS aoso_config_get("ROUTE_BEAM_WIDTH", 10).
     IF width < 1 { SET width TO 1. }
 
@@ -225,9 +241,12 @@ FUNCTION aoso_route_cluster_order {
                     LOCAL norder IS aoso_route_copy_list(st["order"]).
                     norder:ADD(p_name).
                     LOCAL nrem IS aoso_route_without(st["remaining"], p_name).
-                    LOCAL nc IS st["cost"] + aoso_route_hop_cost(st["current"], p_name).
+                    LOCAL hop_cost IS aoso_route_hop_cost_at(st["current"], p_name, st["ut"]).
+                    LOCAL hop_time IS aoso_route_hop_time_at(st["current"], p_name, st["ut"]).
+                    LOCAL nc IS st["cost"] + hop_cost.
+                    LOCAL nut IS st["ut"] + hop_time.
                     next_states:ADD(LEXICON("current", p_name, "remaining", nrem,
-                        "order", norder, "cost", nc)).
+                        "order", norder, "cost", nc, "ut", nut)).
                 }
             }
         }
@@ -270,6 +289,7 @@ FUNCTION aoso_route_build {
         "class", aoso_classify_name(),
         "search", "beam",
         "beam_width", aoso_config_get("ROUTE_BEAM_WIDTH", 10),
+        "time_model", "projected_ut",
         "at", TIME:SECONDS
     ).
     aoso_json_write(AOSO_CONST["ROUTE_FILE"], AOSO_ROUTE_LAST).
