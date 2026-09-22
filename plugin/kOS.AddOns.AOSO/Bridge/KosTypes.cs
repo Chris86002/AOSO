@@ -41,6 +41,23 @@ namespace kOS.AddOns.AOSO.Bridge
             };
         }
 
+        public static InterplanetaryOptions InterplanetaryOptionsFromLexicon(Lexicon lex)
+        {
+            return new InterplanetaryOptions
+            {
+                DepartureSamples = GetInt(lex, "dep_samples", 48),
+                TofSamples = GetInt(lex, "tof_samples", 28),
+                RefineSeeds = GetInt(lex, "refine_seeds", 6),
+                StartUt = GetDouble(lex, "start_ut", 0.0),
+                EndUt = GetDouble(lex, "end_ut", 0.0),
+                TofMin = GetDouble(lex, "tof_min_s", 0.0),
+                TofMax = GetDouble(lex, "tof_max_s", 0.0),
+                DesiredPe = GetDouble(lex, "desired_pe", 0.0),
+                ParkingRadius = GetDouble(lex, "parking_radius", 0.0),
+                TimeCostPerDay = GetDouble(lex, "time_cost_day", 20.0)
+            };
+        }
+
         public static Lexicon PorkchopStatus(
             bool ok,
             bool done,
@@ -121,6 +138,69 @@ namespace kOS.AddOns.AOSO.Bridge
         private static int GetInt(Lexicon lex, string key, int fallback)
         {
             return (int)Math.Round(GetDouble(lex, key, fallback));
+        }
+
+        public static Lexicon InterplanetaryStatus(
+            bool ok,
+            bool done,
+            double progress,
+            int nDone,
+            int nValid,
+            string error)
+        {
+            var lex = new Lexicon();
+            lex.Add(new StringValue("ok"), new BooleanValue(ok));
+            lex.Add(new StringValue("done"), new BooleanValue(done));
+            lex.Add(new StringValue("progress"), ScalarValue.Create(progress));
+            lex.Add(new StringValue("n_done"), ScalarValue.Create(nDone));
+            lex.Add(new StringValue("n_valid"), ScalarValue.Create(nValid));
+            lex.Add(new StringValue("err"), new StringValue(error ?? string.Empty));
+            lex.Add(new StringValue("src"), new StringValue("native_interplanetary"));
+            return lex;
+        }
+
+        public static Lexicon InterplanetaryResult(InterplanetaryJob job)
+        {
+            if (job == null)
+                return InterplanetaryFailure("no_job");
+
+            var list = new ListValue();
+            foreach (InterplanetaryCandidate candidate in job.GetCandidates())
+            {
+                var item = new Lexicon();
+                item.Add(new StringValue("dep_ut"), ScalarValue.Create(candidate.DepartureUt));
+                item.Add(new StringValue("arr_ut"), ScalarValue.Create(candidate.ArrivalUt));
+                item.Add(new StringValue("tof"), ScalarValue.Create(candidate.Tof));
+                item.Add(new StringValue("score"), ScalarValue.Create(candidate.Score));
+                item.Add(new StringValue("eject_dv"), ScalarValue.Create(candidate.EjectionDv));
+                item.Add(new StringValue("capture_dv"), ScalarValue.Create(candidate.CaptureDv));
+                item.Add(new StringValue("total_dv"), ScalarValue.Create(candidate.TotalDv));
+                item.Add(new StringValue("vinf_out"), ScalarValue.Create(candidate.VInfinityOut));
+                item.Add(new StringValue("vinf_in"), ScalarValue.Create(candidate.VInfinityIn));
+                item.Add(new StringValue("long_way"), new BooleanValue(candidate.LongWay));
+                list.Add(item);
+            }
+
+            var lex = new Lexicon();
+            lex.Add(new StringValue("ok"), new BooleanValue(job.Done && string.IsNullOrEmpty(job.Error)));
+            lex.Add(new StringValue("src"), new StringValue("native_interplanetary"));
+            lex.Add(new StringValue("cands"), list);
+            lex.Add(new StringValue("n_valid"), ScalarValue.Create(job.ValidCount));
+            lex.Add(new StringValue("n_done"), ScalarValue.Create(job.DoneCount));
+            lex.Add(new StringValue("err"), new StringValue(job.Error ?? string.Empty));
+            return lex;
+        }
+
+        public static Lexicon InterplanetaryFailure(string error)
+        {
+            var lex = new Lexicon();
+            lex.Add(new StringValue("ok"), BooleanValue.False);
+            lex.Add(new StringValue("src"), new StringValue("native_interplanetary"));
+            lex.Add(new StringValue("cands"), new ListValue());
+            lex.Add(new StringValue("n_valid"), ScalarValue.Create(0));
+            lex.Add(new StringValue("n_done"), ScalarValue.Create(0));
+            lex.Add(new StringValue("err"), new StringValue(error ?? "error"));
+            return lex;
         }
 
         public static Lexicon LambertResult(LambertSolver.Result result)
