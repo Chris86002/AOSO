@@ -10,10 +10,10 @@ KerboScript remains the executive and remains fully functional without this DLL.
 
 - Kerbal Space Program 1.12.x
 - kOS 1.3 or newer
-- .NET Framework 4.6.1 targeting pack / a compatible Visual Studio or MSBuild
+- .NET Framework 4.8 targeting pack / a compatible Visual Studio or MSBuild
 - The KSP install path supplied as `KSP_ROOT` when it is not the default Steam path
 
-The project targets `net461` and references the KSP/kOS assemblies directly
+The project targets `net48` and references the KSP/kOS assemblies directly
 from `KSP_ROOT`.
 
 ## Build
@@ -33,7 +33,7 @@ msbuild kOS.AddOns.AOSO.csproj /p:Configuration=Release /p:KSP_ROOT="D:\Games\Ke
 The DLL is produced at:
 
 ```text
-bin\Release\net461\kOS.AddOns.AOSO.dll
+bin\Release\net48\kOS.AddOns.AOSO.dll
 ```
 
 ## Install
@@ -41,7 +41,7 @@ bin\Release\net461\kOS.AddOns.AOSO.dll
 Create `<KSP>\GameData\AOSO\Plugins` if needed, then copy:
 
 ```bat
-copy bin\Release\net461\kOS.AddOns.AOSO.dll "<KSP>\GameData\AOSO\Plugins\kOS.AddOns.AOSO.dll"
+copy bin\Release\net48\kOS.AddOns.AOSO.dll "<KSP>\GameData\AOSO\Plugins\kOS.AddOns.AOSO.dll"
 ```
 
 Restart KSP after installing or replacing the DLL. kOS discovers third-party
