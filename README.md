@@ -1,9 +1,9 @@
 # AOSO — Autonomous Operating System / Orbiter
 
-A modular, autonomous spacecraft operating system for Kerbal Space Program, written entirely in **KerboScript (kOS)**.
+A modular, autonomous spacecraft operating system for Kerbal Space Program. Flight control and mission logic are written in **KerboScript (kOS)**; an optional native C# addon accelerates Lambert and patched-conic porkchop math while preserving pure-kOS fallbacks.
 
 > This repository is being built out by the Copilot coding agent across 12 ordered phases.
-> All scripts live under the `AOSO/` folder, intended to be copied into `GameData` and mounted as a kOS volume.
+> Runtime scripts live under `AOSO/`. The optional native backend lives under `plugin/kOS.AddOns.AOSO/` and installs to `GameData/AOSO/Plugins`.
 
 ## Install
 
@@ -17,13 +17,13 @@ Double-click `Watch-AOSO.bat` and leave that window open. It checks GitHub every
 
 `.../Kerbal Space Program/Ships/Script/AOSO/`
 
-Updates run even if KSP is open. Every file from GitHub is written, including `mission_plan.ks` when that file is in the repo. Close the window (or Ctrl+C) to stop.
+Script updates can run while KSP is open. The updater also builds/installs the optional native addon when local .NET/MSBuild tools are available; replacing that DLL may require KSP to be closed, and KSP must be restarted before a new DLL is loaded. Close the window (or Ctrl+C) to stop.
 
 For a single update instead, double-click `Update-AOSO.bat`. If Windows blocks writing under Program Files, right-click the `.bat` and choose **Run as administrator**.
 
 If KSP is not in the default Steam folder, create `kos-root.txt` next to the updater and put the full path to `Ships\Script` on the first line.
 
-The updater also replaces itself from GitHub.
+The updater also replaces itself from GitHub. If native build tools are missing, script updates still succeed and AOSO uses the KerboScript fallback; the updater reports that state explicitly.
 
 ### Manual copy
 1. Copy the `AOSO/` folder into `.../Kerbal Space Program/Ships/Script/` (kOS archive) or `.../Kerbal Space Program/GameData/`.
@@ -68,6 +68,7 @@ Three separate streams, not one dump:
 Ascent steering is MechJeb Classic's pitch-vs-altitude program (shape exponent, AoA-limited), not a prograde lead angle. While in atmosphere the HUD shows `Q` (SHIP:Q, Kerbin atmospheres), AoA, and drag kN. Drag comes from MechJeb (`ADDONS:MJ:VESSEL:DRAG`) when the kOS.MechJeb2 addon is present, otherwise from an accelerometer residual, otherwise Q-only (no kN). A rising-Q throttle cap (`ASCENT_MAX_Q`, default 0.30 atm) pulls throttle before max-Q instead of after it. Leftover-LF still ranks pad-revert trials; a start that slams Q and AoA without beating the best LF is not followed by a *faster* start.
 
 ## Optional addons (all with pure-kOS fallbacks)
+- **kOS.AddOns.AOSO** — AOSO's own optional native numerical backend (Lambert + chunked patched-conic porkchop). Built from `plugin/kOS.AddOns.AOSO/`; never flies the vessel and never bypasses `aoso_rendezvous_finalize_node`.
 - kOS.MechJeb2.Addon (MechJeb) — also live drag / Cd / AoA for ascent
 - kOS-Astrogator (detected for status only; ignored for intercepts. AOSO porkchop + Hohmann + patched-PE hill-climb owns intercept planning; mid-course stays `aoso_rendezvous_add_correction_node`.)
 - kOS-KerbalEngineer (performance/sensors; no drag force)

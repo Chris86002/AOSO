@@ -137,8 +137,9 @@ namespace kOS.AddOns.AOSO
                     return KosTypes.PorkchopFailure("no_job");
 
                 porkchopJob.Poll(8.0, 64);
+                bool pollOk = string.IsNullOrEmpty(porkchopJob.Error);
                 return KosTypes.PorkchopStatus(
-                    true,
+                    pollOk,
                     porkchopJob.Done,
                     porkchopJob.Progress,
                     porkchopJob.DoneCount,
