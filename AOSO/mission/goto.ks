@@ -402,16 +402,33 @@ FUNCTION aoso_goto_plan_entry {
         }
     }
 
-    // Sibling planets sharing a parent (the Sun, usually).
+    // Sibling planets sharing a parent (the Sun, usually). With native
+    // v0.4+, departure time is no longer forced to the single Hohmann phase:
+    // search departure-UT x flight-time and let stock patched conics validate
+    // finalists. The analytic Hohmann path remains a safe no-addon/failure
+    // fallback, never a second expensive duplicate search.
     IF hop:NAME <> SUN:NAME {
         IF hop:BODY:NAME = SHIP:BODY:BODY:NAME {
+            IF aoso_addon_native_interplanetary_available() {
+                LOCAL nd_np IS aoso_interplanetary_add_native_ejection_node(hop).
+                IF nd_np:ISTYPE("Node") {
+                    SET data["burn_kind"] TO "eject".
+                    aoso_log_info("GOTO", "Using native planetary porkchop for " + hop:NAME +
+                        "; stock patched-conic node accepted in " + ROUND(nd_np:ETA, 0) + "s.").
+                    aoso_state_transition(AOSO_GOTO, "BURN").
+                    RETURN.
+                }
+                aoso_log_warn("GOTO", "Native planetary search produced no validated " +
+                    hop:NAME + " node; using analytic Hohmann fallback.").
+            }
+
             LOCAL decision IS aoso_window_decide(SHIP:BODY, hop).
             LOCAL wait_s IS decision["wait_s"].
             IF wait_s < 0 { SET wait_s TO 0. }
             IF decision["action"] = "WAIT" {
                 SET data["window_ut"] TO TIME:SECONDS + wait_s.
                 SET data["burn_kind"] TO "eject".
-                aoso_log_info("GOTO", "Window to " + hop:NAME + ": wait " + ROUND(wait_s, 0) +
+                aoso_log_info("GOTO", "Hohmann fallback window to " + hop:NAME + ": wait " + ROUND(wait_s, 0) +
                     "s  eff=" + decision["efficiency"] + "  best dV=" + decision["best_dv"] +
                     "  now dV=" + decision["now_dv"] + "  (" + decision["why"] + ").").
                 aoso_state_transition(AOSO_GOTO, "WAIT").
