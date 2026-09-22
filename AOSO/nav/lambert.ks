@@ -129,43 +129,102 @@ FUNCTION aoso_lambert_solve {
     IF ABS(one_c) < 0.0008 { RETURN out. }
     LOCAL A IS s_nu * SQRT(radius1 * radius2 / one_c).
 
+    // Coarse universal-variable bracket, then secant on t(z)-tof.
+    // Eight samples cover the useful zero-rev region without the old
+    // 14x7 shrink search.
+    LOCAL samples IS LIST().
     LOCAL best_z IS 1.
     LOCAL best_err IS 1e99.
+    LOCAL best_i IS -1.
+    LOCAL bracketed IS FALSE.
+    LOCAL z_a IS 0.
+    LOCAL z_b IS 0.
+    LOCAL err_a IS 0.
+    LOCAL err_b IS 0.
     LOCAL i IS 0.
-    UNTIL i >= 28 {
-        LOCAL z_try IS -24 + i * (62 / 27).
-        IF ABS(z_try) < 0.05 { SET z_try TO 0.05. }
+    UNTIL i >= 8 {
+        LOCAL z_try IS -20 + i * 8.
+        IF ABS(z_try) < 0.02 { SET z_try TO 0.02. }
         LOCAL t_try IS aoso_lambert_tof(radius1, radius2, A, z_try, mu).
         IF t_try > 1 {
-            LOCAL err IS ABS(t_try - tof_s).
-            IF err < best_err {
-                SET best_err TO err.
+            LOCAL err_try IS t_try - tof_s.
+            samples:ADD(LEXICON("z", z_try, "t", t_try, "err", err_try)).
+            LOCAL sample_i IS samples:LENGTH - 1.
+            IF ABS(err_try) < best_err {
+                SET best_err TO ABS(err_try).
                 SET best_z TO z_try.
+                SET best_i TO sample_i.
+            }
+            IF samples:LENGTH >= 2 {
+                LOCAL prev IS samples[samples:LENGTH - 2].
+                IF NOT bracketed {
+                    IF prev["err"] * err_try <= 0 {
+                        SET bracketed TO TRUE.
+                        SET z_a TO prev["z"].
+                        SET err_a TO prev["err"].
+                        SET z_b TO z_try.
+                        SET err_b TO err_try.
+                    }
+                }
             }
         }
         SET i TO i + 1.
     }
-    IF best_err > tof_s * 0.5 { RETURN out. }
+    IF samples:LENGTH < 2 { RETURN out. }
 
-    LOCAL span IS 3.
+    IF NOT bracketed {
+        IF best_i < 0 { RETURN out. }
+        LOCAL neighbor_i IS best_i - 1.
+        IF neighbor_i < 0 { SET neighbor_i TO best_i + 1. }
+        IF neighbor_i >= samples:LENGTH { SET neighbor_i TO best_i - 1. }
+        IF neighbor_i < 0 { RETURN out. }
+        SET z_a TO samples[neighbor_i]["z"].
+        SET err_a TO samples[neighbor_i]["err"].
+        SET z_b TO samples[best_i]["z"].
+        SET err_b TO samples[best_i]["err"].
+    }
+
     LOCAL k IS 0.
-    UNTIL k >= 14 {
-        LOCAL j IS 0.
-        UNTIL j >= 7 {
-            LOCAL z_try IS best_z + (j - 3) * span / 3.
-            IF ABS(z_try) < 0.02 { SET z_try TO 0.02. }
-            LOCAL t_try IS aoso_lambert_tof(radius1, radius2, A, z_try, mu).
-            IF t_try > 0 {
-                LOCAL err IS ABS(t_try - tof_s).
-                IF err < best_err {
-                    SET best_err TO err.
-                    SET best_z TO z_try.
+    UNTIL k >= 12 {
+        IF ABS(err_b - err_a) < 1e-9 { SET k TO 12. }
+        ELSE {
+            LOCAL z_new IS z_b - err_b * (z_b - z_a) / (err_b - err_a).
+            IF z_new < -24 { SET z_new TO -24. }
+            IF z_new > 40 { SET z_new TO 40. }
+            IF ABS(z_new) < 0.02 { SET z_new TO 0.02. }
+            LOCAL t_new IS aoso_lambert_tof(radius1, radius2, A, z_new, mu).
+            IF t_new > 1 {
+                LOCAL err_new IS t_new - tof_s.
+                IF ABS(err_new) < best_err {
+                    SET best_err TO ABS(err_new).
+                    SET best_z TO z_new.
                 }
+                IF bracketed {
+                    IF err_a * err_new <= 0 {
+                        SET z_b TO z_new.
+                        SET err_b TO err_new.
+                    } ELSE {
+                        SET z_a TO z_new.
+                        SET err_a TO err_new.
+                    }
+                } ELSE {
+                    SET z_a TO z_b.
+                    SET err_a TO err_b.
+                    SET z_b TO z_new.
+                    SET err_b TO err_new.
+                }
+            } ELSE {
+                // Invalid universal-variable point: pull the next secant
+                // endpoint toward the best valid coarse sample.
+                SET z_a TO z_b.
+                SET err_a TO err_b.
+                SET z_b TO (z_b + best_z) / 2.
+                IF ABS(z_b) < 0.02 { SET z_b TO 0.02. }
+                LOCAL t_retry IS aoso_lambert_tof(radius1, radius2, A, z_b, mu).
+                IF t_retry > 1 { SET err_b TO t_retry - tof_s. }
             }
-            SET j TO j + 1.
+            SET k TO k + 1.
         }
-        SET span TO span * 0.42.
-        SET k TO k + 1.
     }
 
     IF best_err > tof_s * 0.08 { RETURN out. }
@@ -181,6 +240,8 @@ FUNCTION aoso_lambert_solve {
     SET out["ok"] TO TRUE.
     SET out["vel1"] TO vel1.
     SET out["vel2"] TO vel2.
+    SET out["z"] TO best_z.
+    SET out["tof_err"] TO best_err.
     RETURN out.
 }
 

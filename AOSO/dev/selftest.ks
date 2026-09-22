@@ -24,6 +24,7 @@ RUN ONCE "AOSO/surface/operations".
 RUN ONCE "AOSO/hardening/watchdog".
 RUN ONCE "AOSO/interplanetary/bodydb".
 RUN ONCE "AOSO/interplanetary/assist".
+RUN ONCE "AOSO/nav/lambert".
 
 FUNCTION aoso_selftest_check {
     PARAMETER name.
@@ -64,6 +65,26 @@ FUNCTION aoso_selftest {
     aoso_hb_set("selftest", "A", 0.2).
     LOCAL t3 IS AOSO_HB["selftest"]["progress_at"].
     SET fail TO aoso_selftest_check("hb moves on delta", t3 >= t1, fail).
+
+    // 8.1 Lambert circular 90 deg.
+    LOCAL lam_mu IS SHIP:BODY:MU.
+    LOCAL radius_c IS SHIP:BODY:RADIUS + 80000.
+    LOCAL pos_a IS V(radius_c, 0, 0).
+    LOCAL pos_b IS V(0, radius_c, 0).
+    LOCAL lam_tof IS CONSTANT:PI * SQRT((radius_c)^3 / lam_mu) / 2.
+    LOCAL sol_90 IS aoso_lambert_solve(pos_a, pos_b, lam_tof, lam_mu, FALSE).
+    LOCAL circular_speed IS SQRT(lam_mu / radius_c).
+    LOCAL lam_90_ok IS sol_90["ok"].
+    IF lam_90_ok {
+        SET lam_90_ok TO ABS(sol_90["vel1"]:MAG - circular_speed) / circular_speed < 0.15.
+    }
+    SET fail TO aoso_selftest_check("lambert circular 90", lam_90_ok, fail).
+
+    // 8.2 Lambert 180 deg vis-viva special case.
+    LOCAL pos_180 IS V(0 - radius_c, 0, 0).
+    LOCAL half_period IS CONSTANT:PI * SQRT((radius_c)^3 / lam_mu).
+    LOCAL sol_180 IS aoso_lambert_solve(pos_a, pos_180, half_period, lam_mu, FALSE).
+    SET fail TO aoso_selftest_check("lambert 180 special", sol_180["ok"], fail).
 
     LOCAL blank IS aoso_xp_blank().
     SET fail TO aoso_selftest_check("xp blank corr 1", blank["corr"] = 1, fail).
