@@ -8,6 +8,7 @@
 // minutes in one tick (Acacius mid-course ETA 41708 → -360).
 
 GLOBAL AOSO_WARP_DEADLINES IS LEXICON().
+GLOBAL AOSO_WARP_WALL_EST IS 0.06.
 
 FUNCTION aoso_warp_deadline_set {
     PARAMETER name.
@@ -61,37 +62,70 @@ FUNCTION aoso_warp_rails_factor {
     RETURN 1.
 }
 
+FUNCTION aoso_warp_update_wall_est {
+    LOCAL sample IS 0.06.
+    IF DEFINED AOSO_WALL_DT {
+        IF AOSO_WALL_DT > 0.005 {
+            IF AOSO_WALL_DT < 0.25 { SET sample TO AOSO_WALL_DT. }
+            ELSE { SET sample TO 0.25. }
+        }
+    }
+
+    // Rise quickly when KSP hitches, decay slowly when it recovers. Using a
+    // raw single-frame sample made warp rates bounce in and out as frame
+    // time jittered.
+    IF sample > AOSO_WARP_WALL_EST {
+        SET AOSO_WARP_WALL_EST TO sample.
+    } ELSE {
+        SET AOSO_WARP_WALL_EST TO (AOSO_WARP_WALL_EST * 0.96) + (sample * 0.04).
+    }
+    IF AOSO_WARP_WALL_EST < 0.035 { SET AOSO_WARP_WALL_EST TO 0.035. }
+    IF AOSO_WARP_WALL_EST > 0.18 { SET AOSO_WARP_WALL_EST TO 0.18. }
+    RETURN AOSO_WARP_WALL_EST.
+}
+
+FUNCTION aoso_warp_min_remain {
+    PARAMETER idx.
+    IF idx = 7 { RETURN 43200. } // only use 100000x with >=12 h before lead
+    IF idx = 6 { RETURN 2400. }
+    IF idx = 5 { RETURN 480. }
+    IF idx = 4 { RETURN 150. }
+    IF idx = 3 { RETURN 70. }
+    IF idx = 2 { RETURN 35. }
+    IF idx = 1 { RETURN 15. }
+    RETURN 0.
+}
+
+FUNCTION aoso_warp_guard_frames {
+    PARAMETER idx.
+    IF idx >= 7 { RETURN 8. } // extra margin for 100000x
+    IF idx >= 6 { RETURN 6. }
+    RETURN 5.
+}
+
 FUNCTION aoso_warp_rails_want {
     PARAMETER eta_s.
     PARAMETER lead_s.
     LOCAL remain IS eta_s - lead_s.
-    LOCAL cap IS aoso_config_get("MAX_WARP_FACTOR", 6).
+    IF remain <= 0 { RETURN 0. }
+
+    LOCAL cap IS aoso_config_get("MAX_WARP_FACTOR", 7).
     IF cap > 7 { SET cap TO 7. }
     IF cap < 1 { SET cap TO 1. }
-    LOCAL want IS 0.
-    IF remain >= 15 { SET want TO 1. }
-    IF remain >= 35 { SET want TO 2. }
-    IF remain >= 75 { SET want TO 3. }
-    IF remain >= 180 { SET want TO 4. }
-    IF remain >= 600 { SET want TO 5. }
-    IF remain >= 2400 { SET want TO 6. }
-    IF remain >= 180000 { SET want TO 7. }
-    IF want > cap { SET want TO cap. }
 
-    // Adaptive frame-jump guard. Estimate how much game time one recent
-    // real-time update would advance at the requested rails factor, then
-    // require five such frames of margin before the precision lead. A
-    // temporary KSP hitch automatically lowers the chosen warp rate without
-    // permanently slowing normal coasts.
-    LOCAL wall_sample IS 0.06.
-    IF DEFINED AOSO_WALL_DT {
-        IF AOSO_WALL_DT > wall_sample { SET wall_sample TO AOSO_WALL_DT. }
-    }
-    IF wall_sample > 0.25 { SET wall_sample TO 0.25. }
-    UNTIL want <= 0 {
-        LOCAL jump_guard IS aoso_warp_rails_factor(want) * wall_sample * 5.
-        IF remain > jump_guard { RETURN want. }
-        SET want TO want - 1.
+    LOCAL wall_est IS aoso_warp_update_wall_est().
+    LOCAL idx IS cap.
+    UNTIL idx <= 0 {
+        LOCAL floor_s IS aoso_warp_min_remain(idx).
+        LOCAL jump_s IS aoso_warp_rails_factor(idx) * wall_est.
+        LOCAL guard_s IS jump_s * aoso_warp_guard_frames(idx).
+
+        // Choose the highest rate that still leaves several observed KSP
+        // update frames before the unchanged precision/alignment lead.
+        IF remain >= floor_s {
+            IF remain > guard_s { RETURN idx. }
+        }
+        SET idx TO idx - 1.
     }
     RETURN 0.
 }
