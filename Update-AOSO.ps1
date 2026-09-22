@@ -248,16 +248,6 @@ Steam installs KSP under Program Files, which Windows protects.
     }
 
     if ($installedCommit -and ($installedCommit -eq $latestCommit) -and -not $nativeState.Ready) {
-        $dotnetAvailable = Get-Command dotnet -ErrorAction SilentlyContinue
-        $msbuildAvailable = Get-Command msbuild -ErrorAction SilentlyContinue
-        if (-not $dotnetAvailable -and -not $msbuildAvailable) {
-            return @{
-                Status  = "Current"
-                Message = "AOSO scripts are current ($short); native fallback only ($($nativeState.Message)). Install dotnet/MSBuild + .NET Framework 4.6.1 targeting pack to enable the native addon."
-                Commit  = $latestCommit
-            }
-        }
-
         if (-not $Auto) {
             Write-Host "Scripts are current, but native addon is $($nativeState.Message); retrying native install." -ForegroundColor Yellow
             Write-Host ""
@@ -407,12 +397,6 @@ Steam installs KSP under Program Files, which Windows protects.
                 try {
                     if (-not $KSP_ROOT -or -not (Test-Path -LiteralPath $KSP_ROOT)) {
                         throw "Could not derive KSP root from $KOS_ROOT"
-                    }
-
-                    $dotnet = Get-Command dotnet -ErrorAction SilentlyContinue
-                    $msbuild = Get-Command msbuild -ErrorAction SilentlyContinue
-                    if (-not $dotnet -and -not $msbuild) {
-                        throw "dotnet/msbuild not found"
                     }
 
                     Write-Host "Building/installing native AOSO addon..." -ForegroundColor Cyan
