@@ -244,7 +244,21 @@ FUNCTION aoso_warp_approach {
         SET WARPMODE TO "RAILS".
         WAIT 0.
     }
-    IF WARP <> want { SET WARP TO want. }
+
+    IF WARP <> want {
+        IF want < WARP {
+            // Safety downshifts are immediate even while the previous warp
+            // command is still ramping.
+            SET WARP TO want.
+        } ELSE {
+            // KSP takes several ticks to reach a commanded warp rate. Do not
+            // issue another promotion while that transition is still moving,
+            // or the controller visibly "feathers" timewarp in and out.
+            IF KUNIVERSE:TIMEWARP:ISSETTLED {
+                SET WARP TO want.
+            }
+        }
+    }
     aoso_warp_report("COAST", eta_s, "precision lead T-" + ROUND(rails_lead_s, 0) + "s").
     RETURN "rails".
 }
