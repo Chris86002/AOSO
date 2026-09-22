@@ -27,6 +27,9 @@ FUNCTION aoso_project_state_blank {
         "fail_step", "",
         "last_step", "",
         "last_cost", 0,
+        "last_duration", 0,
+        "ut", 0,
+        "elapsed_s", 0,
         "confidence", 0.5
     ).
 }
@@ -50,6 +53,9 @@ FUNCTION aoso_project_clone {
         "fail_step", state["fail_step"],
         "last_step", state["last_step"],
         "last_cost", state["last_cost"],
+        "last_duration", state["last_duration"],
+        "ut", state["ut"],
+        "elapsed_s", state["elapsed_s"],
         "confidence", state["confidence"]
     ).
 }
@@ -62,6 +68,8 @@ FUNCTION aoso_project_state_current {
     SET st["fuel_pct"] TO aoso_resource_pct("LiquidFuel").
     SET st["dv_remaining"] TO aoso_budget_get("mission_dv", 0).
     SET st["reserve_remaining"] TO aoso_budget_get("reserve_dv", 0).
+    SET st["ut"] TO TIME:SECONDS.
+    SET st["elapsed_s"] TO 0.
     IF DEFINED AOSO_CTX {
         SET st["topology_revision"] TO aoso_ctx_get("rev_topo", 0).
         SET st["configuration_id"] TO aoso_ctx_get("cfg_id", "").
@@ -213,11 +221,71 @@ FUNCTION aoso_project_costs {
     ).
 }
 
+// Advance projected mission time without touching live KSP time. The planner
+// carries UT through the whole route so downstream transfer windows are
+// evaluated when the vessel is expected to reach them, not at "now".
+FUNCTION aoso_project_advance_time {
+    PARAMETER state.
+    PARAMETER step_name.
+    PARAMETER duration_s.
+    LOCAL nxt IS aoso_project_clone(state).
+    IF duration_s < 0 { SET duration_s TO 0. }
+    SET nxt["ut"] TO nxt["ut"] + duration_s.
+    SET nxt["elapsed_s"] TO nxt["elapsed_s"] + duration_s.
+    SET nxt["last_step"] TO step_name.
+    SET nxt["last_duration"] TO duration_s.
+    RETURN nxt.
+}
+
+FUNCTION aoso_project_local_transfer_time_s {
+    PARAMETER from_name.
+    PARAMETER dest_name.
+    IF from_name = dest_name { RETURN 0. }
+
+    LOCAL planet_name IS aoso_feas_planet_of(from_name).
+    LOCAL dest_planet IS aoso_feas_planet_of(dest_name).
+    IF planet_name <> dest_planet { RETURN 0. }
+    IF planet_name = "Sun" { RETURN 0. }
+
+    LOCAL parent IS BODY(planet_name).
+    LOCAL park IS aoso_config_get("PARKING_ORBIT_ALT", 100000).
+    LOCAL r1 IS parent:RADIUS + park.
+    LOCAL r2 IS parent:RADIUS + park.
+
+    IF from_name <> planet_name {
+        SET r1 TO BODY(from_name):ORBIT:SEMIMAJORAXIS.
+    }
+    IF dest_name <> planet_name {
+        SET r2 TO BODY(dest_name):ORBIT:SEMIMAJORAXIS.
+    }
+
+    LOCAL sma_t IS (r1 + r2) / 2.
+    IF sma_t <= 0 { RETURN 0. }
+    RETURN CONSTANT:PI * SQRT((sma_t ^ 3) / parent:MU).
+}
+
+FUNCTION aoso_project_transfer_time_s {
+    PARAMETER state.
+    PARAMETER dest_name.
+    LOCAL from_name IS state["body"].
+    IF from_name = dest_name { RETURN 0. }
+
+    LOCAL from_planet IS aoso_feas_planet_of(from_name).
+    LOCAL to_planet IS aoso_feas_planet_of(dest_name).
+    IF from_planet <> to_planet {
+        LOCAL win IS aoso_window_evaluate_at(from_name, dest_name, state["ut"]).
+        IF win:HASKEY("total_s") { RETURN MAX(0, win["total_s"]). }
+    }
+    RETURN aoso_project_local_transfer_time_s(from_name, dest_name).
+}
+
 FUNCTION aoso_project_transfer {
     PARAMETER state.
     PARAMETER dest_name.
+    LOCAL duration_s IS aoso_project_transfer_time_s(state, dest_name).
     LOCAL costs IS aoso_project_costs(state["body"], dest_name).
     LOCAL nxt IS aoso_project_apply_cost(state, "TRANSFER", costs["xfer_only"]).
+    SET nxt TO aoso_project_advance_time(nxt, "TRANSFER", duration_s).
     RETURN nxt.
 }
 
@@ -230,6 +298,7 @@ FUNCTION aoso_project_capture {
     SET nxt["orbiting"] TO TRUE.
     SET nxt["landed"] TO FALSE.
     SET nxt["situation"] TO "ORBITING".
+    SET nxt TO aoso_project_advance_time(nxt, "CAPTURE", aoso_config_get("PROJECT_CAPTURE_S", 300)).
     RETURN nxt.
 }
 
@@ -242,6 +311,7 @@ FUNCTION aoso_project_land {
     SET nxt["landed"] TO TRUE.
     SET nxt["orbiting"] TO FALSE.
     SET nxt["situation"] TO "LANDED".
+    SET nxt TO aoso_project_advance_time(nxt, "LAND", aoso_config_get("PROJECT_LAND_S", 900)).
     RETURN nxt.
 }
 
@@ -262,6 +332,7 @@ FUNCTION aoso_project_refuel {
     SET nxt["fail_step"] TO "".
     SET nxt["body"] TO dest_name.
     SET nxt["landed"] TO TRUE.
+    SET nxt TO aoso_project_advance_time(nxt, "REFUEL", aoso_config_get("PROJECT_REFUEL_S", 1800)).
     RETURN nxt.
 }
 
@@ -274,14 +345,17 @@ FUNCTION aoso_project_takeoff {
     SET nxt["orbiting"] TO TRUE.
     SET nxt["situation"] TO "ORBITING".
     SET nxt["body"] TO dest_name.
+    SET nxt TO aoso_project_advance_time(nxt, "TAKEOFF", aoso_config_get("PROJECT_TAKEOFF_S", 600)).
     RETURN nxt.
 }
 
 FUNCTION aoso_project_return {
     PARAMETER state.
     LOCAL home_name IS aoso_config_get("HOME_BODY", "Kerbin").
+    LOCAL duration_s IS aoso_project_transfer_time_s(state, home_name).
     LOCAL costs IS aoso_project_costs(state["body"], home_name).
     LOCAL nxt IS aoso_project_apply_cost(state, "RETURN", costs["transfer"]).
+    SET nxt TO aoso_project_advance_time(nxt, "RETURN", duration_s).
     IF nxt["ok"] {
         SET nxt["body"] TO home_name.
         SET nxt["orbiting"] TO TRUE.
@@ -296,21 +370,14 @@ FUNCTION aoso_project_leg {
     PARAMETER state.
     PARAMETER dest_name.
     LOCAL costs IS aoso_project_costs(state["body"], dest_name).
-    LOCAL nxt IS aoso_project_apply_cost(state, "TRANSFER", costs["xfer_only"]).
+    LOCAL nxt IS aoso_project_transfer(state, dest_name).
     IF nxt["ok"] {
-        SET nxt TO aoso_project_apply_cost(nxt, "CAPTURE", costs["capture"]).
+        SET nxt TO aoso_project_capture(nxt, dest_name).
     }
     IF nxt["ok"] {
-        SET nxt["body"] TO dest_name.
-        SET nxt["orbiting"] TO TRUE.
-        SET nxt["landed"] TO FALSE.
-        SET nxt["situation"] TO "ORBITING".
-        SET nxt TO aoso_project_apply_cost(nxt, "LAND", costs["land"]).
+        SET nxt TO aoso_project_land(nxt, dest_name).
     }
     IF nxt["ok"] {
-        SET nxt["landed"] TO TRUE.
-        SET nxt["orbiting"] TO FALSE.
-        SET nxt["situation"] TO "LANDED".
         IF costs["can_refuel"] {
             SET nxt TO aoso_project_refuel(nxt, dest_name).
         }
@@ -348,6 +415,7 @@ FUNCTION aoso_project_route {
     LOCAL ok_all IS TRUE.
     FOR dest_name IN order {
         LOCAL before IS st["dv_remaining"].
+        LOCAL start_ut IS st["ut"].
         SET st TO aoso_project_leg(st, dest_name).
         LOCAL margin IS st["dv_remaining"].
         IF NOT st["ok"] {
@@ -360,7 +428,10 @@ FUNCTION aoso_project_route {
             "margin", margin,
             "ok", st["ok"],
             "fail_step", st["fail_step"],
-            "refueled", st["refueled"]
+            "refueled", st["refueled"],
+            "start_ut", start_ut,
+            "end_ut", st["ut"],
+            "duration_s", st["ut"] - start_ut
         ).
         IF margin < worst {
             SET worst TO margin.
@@ -385,6 +456,8 @@ FUNCTION aoso_project_route {
         "ok", ok_all,
         "end_dv", st["dv_remaining"],
         "end_body", st["body"],
+        "end_ut", st["ut"],
+        "elapsed_s", st["elapsed_s"],
         "at", TIME:SECONDS
     ).
     RETURN AOSO_PROJECT_LAST.
