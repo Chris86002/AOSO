@@ -298,6 +298,215 @@ FUNCTION aoso_rendezvous_settle_long {
     }
 }
 
+FUNCTION aoso_rendezvous_native_candidates_to_node {
+    PARAMETER native_res.
+    PARAMETER hop.
+    PARAMETER t_soon.
+
+    IF native_res:ISTYPE("Lexicon") {
+    } ELSE {
+        RETURN 0.
+    }
+    IF NOT native_res:HASKEY("ok") { RETURN 0. }
+    IF NOT native_res["ok"] { RETURN 0. }
+    IF NOT native_res:HASKEY("cands") { RETURN 0. }
+
+    LOCAL cands IS native_res["cands"].
+    IF NOT cands:ISTYPE("List") { RETURN 0. }
+    IF cands:LENGTH = 0 { RETURN 0. }
+
+    LOCAL nd_native IS NODE(t_soon, 0, 0, 10).
+    ADD nd_native.
+
+    LOCAL win_dv IS 1e99.
+    LOCAL win_ut IS 0.
+    LOCAL win_pg IS 0.
+    LOCAL win_rad IS 0.
+    LOCAL win_nml IS 0.
+    LOCAL win_pe IS -1.
+    LOCAL n_tried IS 0.
+    LOCAL n_cap IS 0.
+    LOCAL ci IS 0.
+
+    UNTIL ci >= cands:LENGTH {
+        IF n_tried >= 8 { SET ci TO cands:LENGTH. }
+        IF ci < cands:LENGTH {
+            LOCAL cand IS cands[ci].
+            SET nd_native:ETA TO cand["ut"] - TIME:SECONDS.
+            IF nd_native:ETA < 25 { SET nd_native:ETA TO 25. }
+            SET nd_native:PROGRADE TO cand["pg"].
+            SET nd_native:RADIALOUT TO cand["rad"].
+            SET nd_native:NORMAL TO cand["nml"].
+            aoso_rendezvous_clamp_prograde(nd_native).
+
+            aoso_ui_pulse("Native intercept check",
+                (n_tried + 1) + "/" + MIN(8, cands:LENGTH) +
+                "  dv=" + ROUND(cand["dv"], 0) +
+                " PE=" + ROUND(cand["pe"], 0) + "m").
+
+            IF aoso_rendezvous_finalize_node(nd_native, hop) {
+                SET n_cap TO n_cap + 1.
+                LOCAL pe_f IS aoso_rendezvous_orbit_pe(nd_native:ORBIT, hop).
+                LOCAL dv_f IS nd_native:DELTAV:MAG.
+                IF dv_f < win_dv {
+                    SET win_dv TO dv_f.
+                    SET win_ut TO TIME:SECONDS + nd_native:ETA.
+                    SET win_pg TO nd_native:PROGRADE.
+                    SET win_rad TO nd_native:RADIALOUT.
+                    SET win_nml TO nd_native:NORMAL.
+                    SET win_pe TO pe_f.
+                }
+            }
+            SET n_tried TO n_tried + 1.
+        }
+        SET ci TO ci + 1.
+    }
+
+    IF win_pe < 0 {
+        aoso_log_warn("RENDEZVOUS", "Native porkchop returned " + cands:LENGTH +
+            " candidates but none passed finalize_node; running KerboScript grid.").
+        REMOVE nd_native.
+        RETURN 0.
+    }
+
+    SET nd_native:ETA TO win_ut - TIME:SECONDS.
+    IF nd_native:ETA < 25 { SET nd_native:ETA TO 25. }
+    SET nd_native:PROGRADE TO win_pg.
+    SET nd_native:RADIALOUT TO win_rad.
+    SET nd_native:NORMAL TO win_nml.
+    aoso_rendezvous_settle_long().
+
+    LOCAL final_pe IS aoso_rendezvous_orbit_pe(nd_native:ORBIT, hop).
+    IF NOT aoso_rendezvous_pe_ok_value(final_pe, hop) {
+        aoso_log_warn("RENDEZVOUS", "Native winner lost capture PE after re-apply; using KerboScript grid.").
+        REMOVE nd_native.
+        RETURN 0.
+    }
+
+    aoso_log_info("RENDEZVOUS", "Native porkchop accepted: PE " + ROUND(final_pe, 0) +
+        "m dv=" + ROUND(nd_native:DELTAV:MAG, 1) + " m/s in " +
+        ROUND(nd_native:ETA, 0) + "s (checked " + n_tried +
+        ", capture " + n_cap + ").").
+    aoso_ui_set("Aiming " + hop:NAME + " intercept",
+        "native PE " + ROUND(final_pe, 0) + "m  dv " + ROUND(nd_native:DELTAV:MAG, 0)).
+    RETURN nd_native.
+}
+
+FUNCTION aoso_rendezvous_try_native_porkchop {
+    PARAMETER hop.
+    PARAMETER n_dep.
+    PARAMETER n_dv.
+    PARAMETER n_nml.
+    PARAMETER dv_hoh.
+    PARAMETER dv_max.
+    PARAMETER t_soon.
+    PARAMETER t_hoh.
+    PARAMETER p_ship.
+    PARAMETER desired.
+
+    IF NOT aoso_addon_native_porkchop_available() { RETURN 0. }
+
+    LOCAL think_ok IS TRUE.
+    IF DEFINED AOSO_BRAIN {
+        SET think_ok TO aoso_brain_think_ok().
+    }
+    IF NOT think_ok {
+        aoso_log_info("RENDEZVOUS", "Native porkchop deferred: not in a brain quiet window.").
+        RETURN 0.
+    }
+
+    LOCAL max_mult IS aoso_config_get("INTERCEPT_PE_MAX_MULT", 2.2).
+    IF max_mult < 1.3 { SET max_mult TO 1.3. }
+    LOCAL pe_max IS desired * max_mult.
+    IF pe_max < desired + 8000 { SET pe_max TO desired + 8000. }
+    LOCAL soi_alt IS aoso_rendezvous_soi_alt(hop).
+    LOCAL soi_cap IS soi_alt * 0.06.
+    IF pe_max > soi_cap { SET pe_max TO soi_cap. }
+
+    LOCAL opts IS LEXICON(
+        "dep_samples", n_dep,
+        "dv_samples", n_dv,
+        "nml_samples", n_nml,
+        "tof_samples", aoso_config_get("PORKCHOP_TOF_SAMPLES", 8),
+        "dv_hoh", dv_hoh,
+        "dv_max", dv_max,
+        "t_soon", t_soon,
+        "t_hoh", t_hoh,
+        "period_s", p_ship,
+        "step_win", aoso_rendezvous_search_step_s(hop),
+        "desired_pe", desired,
+        "pe_min", aoso_rendezvous_pe_min(hop, desired),
+        "pe_max", pe_max,
+        "soi_alt", soi_alt,
+        "tof_min", aoso_config_get("PORKCHOP_TOF_MIN", 0.06),
+        "tof_max", aoso_config_get("PORKCHOP_TOF_MAX", 1.7)
+    ).
+
+    LOCAL started IS aoso_addon_native_porkchop_start(hop, opts).
+    IF started:ISTYPE("Scalar") { RETURN 0. }
+    IF NOT started:HASKEY("ok") { RETURN 0. }
+    IF NOT started["ok"] {
+        LOCAL start_err IS "".
+        IF started:HASKEY("err") { SET start_err TO started["err"]. }
+        aoso_log_warn("RENDEZVOUS", "Native porkchop start failed (" + start_err + "); using KerboScript grid.").
+        RETURN 0.
+    }
+
+    aoso_log_info("RENDEZVOUS", "Native porkchop search started for " + hop:NAME +
+        " (" + n_dep + " dep, " + n_dv + " dv, " + n_nml + " normal).").
+
+    LOCAL done IS FALSE.
+    LOCAL failed IS FALSE.
+    LOCAL polls IS 0.
+    UNTIL done OR failed OR polls >= 500 {
+        LOCAL status IS aoso_addon_native_porkchop_poll().
+        IF status:ISTYPE("Scalar") {
+            SET failed TO TRUE.
+        } ELSE {
+            IF NOT status:HASKEY("ok") {
+                SET failed TO TRUE.
+            } ELSE {
+                IF NOT status["ok"] {
+                    SET failed TO TRUE.
+                } ELSE {
+                    IF status:HASKEY("done") { SET done TO status["done"]. }
+                    IF status:HASKEY("progress") {
+                        aoso_ui_pulse("Native porkchop " + hop:NAME,
+                            ROUND(status["progress"] * 100, 0) + "%  hits " +
+                            status["n_hit"] + " capture " + status["n_ok"]).
+                    }
+                }
+            }
+        }
+        SET polls TO polls + 1.
+        IF NOT done AND NOT failed { WAIT 0. }
+    }
+
+    IF NOT done {
+        aoso_log_warn("RENDEZVOUS", "Native porkchop did not finish cleanly after " +
+            polls + " polls; using KerboScript grid.").
+        RETURN 0.
+    }
+
+    LOCAL native_res IS aoso_addon_native_porkchop_result().
+    IF native_res:ISTYPE("Scalar") { RETURN 0. }
+    IF NOT native_res:HASKEY("ok") { RETURN 0. }
+    IF NOT native_res["ok"] {
+        LOCAL res_err IS "".
+        IF native_res:HASKEY("err") { SET res_err TO native_res["err"]. }
+        aoso_log_warn("RENDEZVOUS", "Native porkchop result failed (" + res_err + "); using KerboScript grid.").
+        RETURN 0.
+    }
+
+    LOCAL n_cands IS 0.
+    IF native_res:HASKEY("cands") { SET n_cands TO native_res["cands"]:LENGTH. }
+    aoso_log_info("RENDEZVOUS", "Native porkchop finished: cells=" + native_res["n_done"] +
+        " hits=" + native_res["n_hit"] + " capture=" + native_res["n_ok"] +
+        " candidates=" + n_cands + ".").
+
+    RETURN aoso_rendezvous_native_candidates_to_node(native_res, hop, t_soon).
+}
+
 // NASA-style porkchop for stock KSP: scan departure × prograde Δv ×
 // small normal (plane) on patched conics. Lambert seeds aim beside the
 // body (parking offset); this grid still owns SOI hits. Slow on purpose.
@@ -371,10 +580,20 @@ FUNCTION aoso_rendezvous_porkchop_search {
         "s window in " + ROUND(wait_hoh, 0) + "s. Slow on purpose - waiting for a capture PE.").
     aoso_ui_set("Porkchop " + hop:NAME, n_tot + " patched cells  Hohmann " + ROUND(dv_hoh, 0) + " m/s").
 
+    LOCAL desired IS aoso_rendezvous_desired_pe(hop).
+
+    LOCAL native_nd IS aoso_rendezvous_try_native_porkchop(
+        hop, n_dep, n_dv, n_nml, dv_hoh, dv_max,
+        t_soon, t_hoh, p_ship, desired).
+    IF native_nd:ISTYPE("Node") {
+        RETURN native_nd.
+    }
+
+    // Native unavailable / failed / rejected: run the unchanged KerboScript
+    // patched-conic grid as the behavioral oracle and fallback.
     LOCAL nd IS NODE(t_soon, 0, 0, 10).
     ADD nd.
 
-    LOCAL desired IS aoso_rendezvous_desired_pe(hop).
     LOCAL cands IS LIST().
     LOCAL n_hit IS 0.
     LOCAL n_ok IS 0.
