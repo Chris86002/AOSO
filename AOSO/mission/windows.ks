@@ -1,8 +1,8 @@
 // AOSO/mission/windows.ks
-// Transfer-window efficiency for the planner. GOTO still burns a Hohmann
-// intercept, so it must wait for the actual window -- going off-window
-// would miss. "WAIT vs GO NOW" therefore means "pick a destination whose
-// window is open" (planner), not "eject toward Duna 90 degrees off".
+// Cheap transfer-window efficiency for strategic planning and the no-native
+// fallback. Native v0.4+ GOTO searches departure-UT x flight-time with
+// Lambert and validates finalists through stock patched conics; these Hohmann
+// formulas remain a fast heuristic for route scoring and a safe fallback.
 
 GLOBAL AOSO_WINDOW_LAST IS LEXICON().
 
