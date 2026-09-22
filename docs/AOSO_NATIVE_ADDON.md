@@ -64,10 +64,11 @@ aoso_lambert_solve(pos1, pos2, tof_s, mu, long_way)
 
 The original solver is retained as `aoso_lambert_solve_ks`. The public
 function asks `core/addons.ks` for the native backend and uses the native
-solution only when it returns a lexicon with `ok=true` and, if present,
-`tof_err` within `LAMBERT_TOF_TOL`. Missing DLL, missing suffix, invalid
-input, a native numerical non-solution, or a TOF miss falls back to
-KerboScript.
+solution only when it returns a lexicon with `ok=true` **and** a `tof_err`
+within `LAMBERT_TOF_TOL`. Older DLLs that omit `tof_err` fall back to
+KerboScript so a 2.5° vis-viva band cannot poison intercepts. Missing DLL,
+missing suffix, invalid input, a native numerical non-solution, or a TOF
+miss also falls back.
 
 That means installing this DLL is a performance optimization, not a
 capability requirement.

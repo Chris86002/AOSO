@@ -333,10 +333,10 @@ FUNCTION aoso_lambert_solve {
             IF native_sol:ISTYPE("Lexicon") {
                 IF native_sol:HASKEY("ok") {
                     IF native_sol["ok"] {
-                        LOCAL native_use IS TRUE.
+                        LOCAL native_use IS FALSE.
                         IF native_sol:HASKEY("tof_err") {
-                            IF native_sol["tof_err"] > aoso_lambert_tof_tol(tof_s) {
-                                SET native_use TO FALSE.
+                            IF native_sol["tof_err"] <= aoso_lambert_tof_tol(tof_s) {
+                                SET native_use TO TRUE.
                             }
                         }
                         IF native_use { RETURN native_sol. }

@@ -66,6 +66,6 @@ when `tof_err` exceeds `LAMBERT_TOF_TOL`.
 ## Fallback
 
 Do not make the DLL a mission dependency. `aoso_lambert_solve` dispatches to
-the native solver only when the addon is available and returns `ok=true`.
-Otherwise it immediately uses `aoso_lambert_solve_ks`, the original
-KerboScript implementation.
+the native solver only when the addon is available, returns `ok=true`, and
+includes a `tof_err` within `LAMBERT_TOF_TOL`. Otherwise it immediately uses
+`aoso_lambert_solve_ks`, the original KerboScript implementation.
