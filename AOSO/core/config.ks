@@ -7,7 +7,8 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "PARKING_ORBIT_ALT", 100000,        // m, default parking orbit altitude
     "FUEL_RESERVE_PCT", 10,             // % of stage fuel kept as untouchable reserve
     "ABORT_FUEL_PCT", 3,                // % remaining that forces an abort
-    "MAX_WARP_FACTOR", 6,               // cap on SET WARP. Warp 7 (100000x) overshoots nodes; 6 is the safe default.
+    "MAX_WARP_FACTOR", 6,               // cap on SET WARP. 6=10000x rails; 7 remains disabled by default for precision.
+    "WARP_STATUS_REAL_S", 12,            // real seconds between coast status lines; rate/mode changes log immediately.
     "OPTIMIZATION_MODE", "BALANCED",    // FUEL | TIME | SAFETY | BALANCED | MINIMUM_DV
     "LOG_LEVEL", "INFO",                // TRACE..FATAL  (INFO default; TRACE is for hard bugs)
     "TELEM_RATE", "AUTO",               // AUTO | FAST | NORMAL | SLOW | OFF
@@ -119,7 +120,7 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "XP_MAX_CORRECTION", 0.35,          // max |corr-1|; 0.35 => 0.65x..1.35x
     "XP_MODEL_REV", 2,                  // isolates learned data when controller semantics change
     "BRAIN_THINK_LEAD_S", 600,          // s of node ETA required before expensive nav/plan work
-    "BRAIN_THINK_WAIT_S", 90,           // s to sit in orbit waiting for a quiet window
+    "BRAIN_THINK_WAIT_S", 5,            // real seconds max to pause at 1x for a quiet planning window; never burn minutes waiting
     "BRAIN_REPLAN_DEBOUNCE_S", 45,      // s minimum between full route rebuilds
     "ROUTE_SCORE_WEIGHT", 8,            // opportunity-score influence on cluster hop cost (higher = score matters more)
     "ROUTE_FUTURE_ISRU", 180,           // hop-cost discount when the destination can refill the tank
