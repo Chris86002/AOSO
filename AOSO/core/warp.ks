@@ -49,6 +49,18 @@ FUNCTION aoso_warp_safe_eta {
 // before the steering/alignment lead, so long coasts go much faster without
 // reducing the final precision window. MAX_WARP_FACTOR=6 remains the safe
 // default; index 7 (100000x) still requires an explicit operator override.
+FUNCTION aoso_warp_rails_factor {
+    PARAMETER idx.
+    IF idx = 1 { RETURN 5. }
+    IF idx = 2 { RETURN 10. }
+    IF idx = 3 { RETURN 50. }
+    IF idx = 4 { RETURN 100. }
+    IF idx = 5 { RETURN 1000. }
+    IF idx = 6 { RETURN 10000. }
+    IF idx = 7 { RETURN 100000. }
+    RETURN 1.
+}
+
 FUNCTION aoso_warp_rails_want {
     PARAMETER eta_s.
     PARAMETER lead_s.
@@ -65,7 +77,23 @@ FUNCTION aoso_warp_rails_want {
     IF remain >= 2400 { SET want TO 6. }
     IF remain >= 180000 { SET want TO 7. }
     IF want > cap { SET want TO cap. }
-    RETURN want.
+
+    // Adaptive frame-jump guard. Estimate how much game time one recent
+    // real-time update would advance at the requested rails factor, then
+    // require five such frames of margin before the precision lead. A
+    // temporary KSP hitch automatically lowers the chosen warp rate without
+    // permanently slowing normal coasts.
+    LOCAL wall_sample IS 0.06.
+    IF DEFINED AOSO_WALL_DT {
+        IF AOSO_WALL_DT > wall_sample { SET wall_sample TO AOSO_WALL_DT. }
+    }
+    IF wall_sample > 0.25 { SET wall_sample TO 0.25. }
+    UNTIL want <= 0 {
+        LOCAL jump_guard IS aoso_warp_rails_factor(want) * wall_sample * 5.
+        IF remain > jump_guard { RETURN want. }
+        SET want TO want - 1.
+    }
+    RETURN 0.
 }
 
 FUNCTION aoso_warp_request {
