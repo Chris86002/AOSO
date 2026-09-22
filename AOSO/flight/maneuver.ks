@@ -507,11 +507,12 @@ FUNCTION aoso_maneuver_execute_next {
     }
 
     IF NOT AOSO_MANEUVER_BURNING {
-        IF WARP > 0 {
-            IF nd:ETA < 90 {
-                aoso_warp_hard_stop().
-            }
-        }
+        // Do not hard-stop warp on a separate fixed ETA threshold here.
+        // aoso_warp_request() is the single owner of the coast -> align ->
+        // precision transition. The old T-90 hard stop fought the adaptive
+        // rails controller, which still legitimately wanted 5x near T-87,
+        // causing WARP 0 <-> RAILS 5x every scheduler tick and making KSP
+        // repeatedly pack/unpack the vessel.
         LOCAL peri_unsafe IS aoso_maneuver_peri_unsafe(0).
         // Stale node: a transfer has no "next pass". Small overshoot still
         // burns; a node minutes in the past is a miss so goto can replan now.
@@ -543,25 +544,26 @@ FUNCTION aoso_maneuver_execute_next {
         // Equal prio cannot preempt. Ascent circularize must
         // aoso_ascent_yield_burn() before calling us or throttle stays 0.
 
-        // Do not LOCK STEERING until the align window. Rails WARPTO is a
-        // no-op while steering is locked, which is why the 8 m/s Minmus
-        // mid-course sat 18 hours at 1x/physics instead of rails.
-        IF nd:ETA > warp_lead + 5 {
-            IF NOT peri_unsafe {
-                aoso_steer_release().
-                RCS OFF.
-                aoso_warp_request(nd:ETA, warp_lead, physics_until).
-                aoso_throttle_set(0).
-                RETURN FALSE.
-            }
+        // Let the warp controller decide the phase BEFORE commanding
+        // steering. If rails is still appropriate, aoso_warp_approach()
+        // releases steering once and we leave it released. Only after the
+        // controller has crossed into physics/precision do we lock steering.
+        //
+        // The old warp_lead+5 split locked steering while the rails selector
+        // could still return 5x. Each scheduler tick then did LOCK -> UNLOCK
+        // STEERING and could also force a rails/physics transition.
+        LOCAL wstate IS aoso_warp_request(nd:ETA, warp_lead, physics_until).
+        IF wstate = "rails" {
+            RCS OFF.
+            aoso_throttle_set(0).
+            RETURN FALSE.
         }
 
         aoso_steer_prepare_for_burn().
         RCS ON.
         aoso_steer_to_vector(remaining_vec).
 
-        LOCAL wstate IS aoso_warp_request(nd:ETA, warp_lead, physics_until).
-        IF wstate = "rails" OR wstate = "physics" {
+        IF wstate = "physics" {
             aoso_throttle_set(0).
             RETURN FALSE.
         }
