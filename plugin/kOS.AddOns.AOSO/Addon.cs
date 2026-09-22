@@ -23,36 +23,39 @@ namespace kOS.AddOns.AOSO
 
         private void InitializeAosoSuffixes()
         {
-            AddSuffix("VERSION", new Suffix<StringValue>(() => new StringValue("0.2.0")));
-            AddSuffix("LAMBERT", new VarArgsSuffix<Lexicon, Structure>(Lambert));
-            AddSuffix("PORKCHOP", new VarArgsSuffix<Lexicon, Structure>(Porkchop));
-            AddSuffix("PORKCHOPSTART", new VarArgsSuffix<Lexicon, Structure>(PorkchopStart));
+            AddSuffix("VERSION", new Suffix<StringValue>(() => new StringValue("0.2.1")));
+            AddSuffix("LAMBERT", new OneArgsSuffix<Lexicon, Lexicon>(Lambert));
+            AddSuffix("PORKCHOP", new OneArgsSuffix<Lexicon, Lexicon>(Porkchop));
+            AddSuffix("PORKCHOPSTART", new OneArgsSuffix<Lexicon, Lexicon>(PorkchopStart));
             AddSuffix("PORKCHOPPOLL", new NoArgsSuffix<Lexicon>(PorkchopPoll));
             AddSuffix("PORKCHOPRESULT", new NoArgsSuffix<Lexicon>(PorkchopResult));
         }
 
-        private Lexicon Lambert(Structure[] args)
+        private static Structure RequestValue(Lexicon request, string key)
+        {
+            if (request == null)
+                return null;
+
+            Structure value;
+            if (!request.TryGetValue(new StringValue(key), out value))
+                return null;
+            return value;
+        }
+
+        private Lexicon Lambert(Lexicon request)
         {
             try
             {
-                if (args == null || args.Length < 4 || args.Length > 5)
-                    return KosTypes.LambertBadArgs();
+                Vector pos1 = RequestValue(request, "pos1") as Vector;
+                Vector pos2 = RequestValue(request, "pos2") as Vector;
+                ScalarValue tofValue = RequestValue(request, "tof") as ScalarValue;
+                ScalarValue muValue = RequestValue(request, "mu") as ScalarValue;
+                BooleanValue longValue = RequestValue(request, "long_way") as BooleanValue;
 
-                Vector pos1 = args[0] as Vector;
-                Vector pos2 = args[1] as Vector;
-                ScalarValue tofValue = args[2] as ScalarValue;
-                ScalarValue muValue = args[3] as ScalarValue;
                 if (pos1 == null || pos2 == null || tofValue == null || muValue == null)
                     return KosTypes.LambertBadArgs();
 
-                bool longWay = false;
-                if (args.Length == 5)
-                {
-                    BooleanValue longValue = args[4] as BooleanValue;
-                    if (longValue == null)
-                        return KosTypes.LambertBadArgs();
-                    longWay = longValue.Value;
-                }
+                bool longWay = longValue != null && longValue.Value;
 
                 LambertSolver.Result result = LambertSolver.Solve(
                     KosTypes.ToNative(pos1),
@@ -70,9 +73,9 @@ namespace kOS.AddOns.AOSO
             }
         }
 
-        private Lexicon Porkchop(Structure[] args)
+        private Lexicon Porkchop(Lexicon request)
         {
-            Lexicon start = PorkchopStart(args);
+            Lexicon start = PorkchopStart(request);
             BooleanValue startOk = start[new StringValue("ok")] as BooleanValue;
             if (startOk == null || !startOk.Value)
                 return start;
@@ -88,15 +91,12 @@ namespace kOS.AddOns.AOSO
             return KosTypes.PorkchopFailure("async_required");
         }
 
-        private Lexicon PorkchopStart(Structure[] args)
+        private Lexicon PorkchopStart(Lexicon request)
         {
             try
             {
-                if (args == null || args.Length != 2)
-                    return KosTypes.PorkchopFailure("bad_args");
-
-                BodyTarget hop = args[0] as BodyTarget;
-                Lexicon options = args[1] as Lexicon;
+                BodyTarget hop = RequestValue(request, "hop") as BodyTarget;
+                Lexicon options = RequestValue(request, "options") as Lexicon;
                 if (hop == null || options == null)
                     return KosTypes.PorkchopFailure("bad_args");
                 if (shared.Vessel == null || shared.Vessel.orbit == null)
