@@ -158,6 +158,177 @@ FUNCTION aoso_interplanetary_add_ejection_node {
     RETURN nd.
 }
 
+// Find the parking-orbit burn point whose radius direction has the
+// hyperbolic periapsis-to-asymptote angle required by a full 3-D v-infinity
+// vector. This generalizes the old prograde/retrograde-only ejection geometry
+// without adding any n-body model.
+FUNCTION aoso_ejection_burn_ut_for_vinf {
+    PARAMETER vinf_vec.
+    PARAMETER desired_ut.
+    PARAMETER r_peri.
+    PARAMETER mu.
+
+    LOCAL vinf_mag IS vinf_vec:MAG.
+    IF vinf_mag < 0.01 { RETURN -1. }
+    LOCAL e IS aoso_ejection_eccentricity(vinf_mag, r_peri, mu).
+    LOCAL nu_inf IS aoso_ejection_asymptote_true_anomaly_deg(e).
+    LOCAL vdir IS vinf_vec:NORMALIZED.
+
+    LOCAL period IS aoso_orbit_period_s().
+    IF period <= 0 { RETURN -1. }
+    LOCAL start_ut IS desired_ut - period * 0.5.
+    IF start_ut < TIME:SECONDS + 30 { SET start_ut TO TIME:SECONDS + 30. }
+
+    LOCAL best_ut IS start_ut.
+    LOCAL best_err IS 999.
+    LOCAL samples IS 180.
+    LOCAL step IS period / samples.
+    LOCAL i IS 0.
+    UNTIL i > samples {
+        LOCAL test_ut IS start_ut + i * step.
+        LOCAL p IS aoso_orbit_position_at(SHIP, test_ut).
+        IF p:MAG > 1 {
+            LOCAL err IS ABS(VANG(p, vdir) - nu_inf).
+            IF err < best_err {
+                SET best_err TO err.
+                SET best_ut TO test_ut.
+            }
+        }
+        SET i TO i + 1.
+    }
+
+    // Local refinement around the best coarse sample.
+    LOCAL refine IS step.
+    LOCAL ri IS 0.
+    UNTIL ri >= 8 {
+        SET refine TO refine * 0.5.
+        LOCAL t_minus IS best_ut - refine.
+        LOCAL t_plus IS best_ut + refine.
+        IF t_minus > TIME:SECONDS + 25 {
+            LOCAL p_minus IS aoso_orbit_position_at(SHIP, t_minus).
+            LOCAL e_minus IS ABS(VANG(p_minus, vdir) - nu_inf).
+            IF e_minus < best_err {
+                SET best_err TO e_minus.
+                SET best_ut TO t_minus.
+            }
+        }
+        LOCAL p_plus IS aoso_orbit_position_at(SHIP, t_plus).
+        LOCAL e_plus IS ABS(VANG(p_plus, vdir) - nu_inf).
+        IF e_plus < best_err {
+            SET best_err TO e_plus.
+            SET best_ut TO t_plus.
+        }
+        SET ri TO ri + 1.
+    }
+
+    IF best_err > aoso_config_get("INTERPLANETARY_EJECTION_GEOM_TOL_DEG", 2.5) {
+        RETURN -1.
+    }
+    RETURN best_ut.
+}
+
+// Build one stock maneuver node from a native Lambert candidate. The node is
+// accepted only if KSP's own patched conics show the requested target SOI;
+// otherwise it is deleted. Native search proposes -- stock KSP still decides.
+FUNCTION aoso_interplanetary_add_candidate_ejection_node {
+    PARAMETER arr_body.
+    PARAMETER cand.
+
+    LOCAL dep_body IS SHIP:BODY.
+    LOCAL vd IS aoso_interplanetary_candidate_vinf(dep_body, arr_body, cand).
+    IF NOT vd["ok"] { RETURN 0. }
+
+    LOCAL vinf_vec IS vd["vinf_out"].
+    LOCAL vinf_mag IS vd["vinf_out_mag"].
+    LOCAL mu IS dep_body:MU.
+    LOCAL r_peri IS dep_body:RADIUS + MAX(1000, PERIAPSIS).
+    LOCAL burn_ut IS aoso_ejection_burn_ut_for_vinf(vinf_vec, vd["dep_ut"], r_peri, mu).
+    IF burn_ut < 0 { RETURN 0. }
+
+    LOCAL p IS aoso_orbit_position_at(SHIP, burn_ut).
+    LOCAL pdir IS p:NORMALIZED.
+    LOCAL vdir IS vinf_vec:NORMALIZED.
+    LOCAL h IS VCRS(pdir, vdir).
+    IF h:MAG < 0.001 { RETURN 0. }
+    SET h TO h:NORMALIZED.
+
+    LOCAL req_dir IS VCRS(h, pdir):NORMALIZED.
+    IF VDOT(req_dir, vdir) < 0 { SET req_dir TO 0 - req_dir. }
+
+    LOCAL v_peri IS aoso_ejection_dv_for_v_infinity(vinf_mag, r_peri, mu).
+    LOCAL req_vel IS req_dir * v_peri.
+    LOCAL cur_vel IS aoso_orbit_velocity_at(SHIP, burn_ut).
+    LOCAL dv_vec IS req_vel - cur_vel.
+    LOCAL xyz IS aoso_lambert_dv_to_node_xyz(dv_vec, p, cur_vel).
+
+    LOCAL nd IS NODE(burn_ut - TIME:SECONDS, xyz["radial"], xyz["normal"], xyz["prograde"]).
+    ADD nd.
+    aoso_rendezvous_settle_long().
+
+    LOCAL pe IS aoso_rendezvous_orbit_pe(nd:ORBIT, arr_body).
+    IF pe < 0 {
+        REMOVE nd.
+        RETURN 0.
+    }
+
+    aoso_rendezvous_tune_pe(nd, arr_body).
+    aoso_rendezvous_settle_long().
+    SET pe TO aoso_rendezvous_orbit_pe(nd:ORBIT, arr_body).
+    IF NOT aoso_rendezvous_pe_ok_value(pe, arr_body) {
+        REMOVE nd.
+        RETURN 0.
+    }
+
+    LOCAL burn_t IS aoso_perf_burn_time_for_dv(nd:DELTAV:MAG).
+    LOCAL period IS aoso_orbit_period_s().
+    IF period > 0 {
+        LOCAL max_frac IS aoso_config_get("INTERPLANETARY_MAX_BURN_PERIOD_FRAC", 0.18).
+        IF burn_t > period * max_frac {
+            aoso_log_warn("EJECTION", "Native interplanetary node is too non-impulsive for this vessel: burn " +
+                ROUND(burn_t, 0) + "s = " + ROUND(100 * burn_t / period, 1) +
+                "% of parking period. Rejecting for precision.").
+            REMOVE nd.
+            RETURN 0.
+        }
+    }
+
+    aoso_log_info("EJECTION", "Native planetary candidate validated by KSP: " +
+        dep_body:NAME + " -> " + arr_body:NAME + "  dv=" + ROUND(nd:DELTAV:MAG, 1) +
+        " m/s  PE=" + ROUND(pe, 0) + "m  depart T+" +
+        ROUND(burn_ut - TIME:SECONDS, 0) + "s  TOF=" + ROUND(vd["tof"] / 21600, 1) + "d.").
+    RETURN nd.
+}
+
+FUNCTION aoso_interplanetary_add_native_ejection_node {
+    PARAMETER arr_body.
+    LOCAL res IS aoso_interplanetary_native_search(arr_body).
+    IF NOT res:ISTYPE("Lexicon") { RETURN 0. }
+    IF NOT res["ok"] { RETURN 0. }
+
+    LOCAL cands IS res["cands"].
+    IF NOT cands:ISTYPE("List") { RETURN 0. }
+    LOCAL n_try IS MIN(cands:LENGTH, aoso_config_get("INTERPLANETARY_VALIDATE_CANDIDATES", 8)).
+    LOCAL i IS 0.
+    UNTIL i >= n_try {
+        LOCAL cand IS cands[i].
+        aoso_ui_pulse("Validating planetary transfer",
+            arr_body:NAME + " " + (i + 1) + "/" + n_try +
+            "  est " + ROUND(cand["total_dv"], 0) + " m/s").
+        LOCAL nd IS aoso_interplanetary_add_candidate_ejection_node(arr_body, cand).
+        IF nd:ISTYPE("Node") {
+            aoso_ui_clear().
+            RETURN nd.
+        }
+        SET i TO i + 1.
+        WAIT 0.
+    }
+
+    aoso_ui_clear().
+    aoso_log_warn("EJECTION", "Native planetary porkchop had " + cands:LENGTH +
+        " finalists but none survived stock patched-conic validation. Falling back to Hohmann window logic.").
+    RETURN 0.
+}
+
 // After a Hohmann-geometry ejection, walk extra parking orbits so patched
 // conics actually show the destination (same idea as the moon seek).
 FUNCTION aoso_ejection_seek_arrival {
