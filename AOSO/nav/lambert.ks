@@ -88,7 +88,7 @@ FUNCTION aoso_lambert_y {
 }
 
 // Returns a lexicon: ok, vel1, vel2. vel1 is inertial velocity at pos1.
-FUNCTION aoso_lambert_solve {
+FUNCTION aoso_lambert_solve_ks {
     PARAMETER pos1.
     PARAMETER pos2.
     PARAMETER tof_s.
@@ -243,6 +243,30 @@ FUNCTION aoso_lambert_solve {
     SET out["z"] TO best_z.
     SET out["tof_err"] TO best_err.
     RETURN out.
+}
+
+// Stable public API. Native math is optional; the pure KerboScript solver
+// remains the acceptance oracle and fallback when the DLL is absent or
+// returns a non-solution.
+FUNCTION aoso_lambert_solve {
+    PARAMETER pos1.
+    PARAMETER pos2.
+    PARAMETER tof_s.
+    PARAMETER mu.
+    PARAMETER long_way IS FALSE.
+
+    LOCAL native_obj IS aoso_addon_native().
+    IF NOT native_obj:ISTYPE("Scalar") {
+        IF native_obj:HASSUFFIX("LAMBERT") {
+            LOCAL native_sol IS native_obj:LAMBERT(pos1, pos2, tof_s, mu, long_way).
+            IF native_sol:ISTYPE("Lexicon") {
+                IF native_sol:HASKEY("ok") {
+                    IF native_sol["ok"] { RETURN native_sol. }
+                }
+            }
+        }
+    }
+    RETURN aoso_lambert_solve_ks(pos1, pos2, tof_s, mu, long_way).
 }
 
 FUNCTION aoso_lambert_rel_pos {
