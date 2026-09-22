@@ -33,9 +33,9 @@ is centralized in `AOSO/core/addons.ks`.
 | Suffix | Returns | Purpose |
 |---|---|---|
 | `ADDONS:AOSO:VERSION` | String | Native addon version |
-| `ADDONS:AOSO:LAMBERT(pos1, pos2, tof_s, mu [, long_way])` | Lexicon | Zero-revolution Lambert solution |
-| `ADDONS:AOSO:PORKCHOP(hopBody, optionsLex)` | Lexicon | Bounded one-shot candidate search; returns `async_required` if the full search would exceed 40 ms |
-| `ADDONS:AOSO:PORKCHOPSTART(hopBody, optionsLex)` | Lexicon | Start a chunked native patched-conic search |
+| `ADDONS:AOSO:LAMBERT(requestLex)` | Lexicon | Zero-revolution Lambert solution; request keys: `pos1`, `pos2`, `tof`, `mu`, `long_way` |
+| `ADDONS:AOSO:PORKCHOP(requestLex)` | Lexicon | Bounded one-shot candidate search; request keys: `hop`, `options`; returns `async_required` if the full search would exceed 40 ms |
+| `ADDONS:AOSO:PORKCHOPSTART(requestLex)` | Lexicon | Start a chunked native patched-conic search; request keys: `hop`, `options` |
 | `ADDONS:AOSO:PORKCHOPPOLL()` | Lexicon | Run one bounded search slice |
 | `ADDONS:AOSO:PORKCHOPRESULT()` | Lexicon | Return completed candidate burns |
 
