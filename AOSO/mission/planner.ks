@@ -14,14 +14,33 @@
 
 GLOBAL AOSO_PLAN_LAST IS LEXICON().
 
+FUNCTION aoso_plan_sync_models {
+    LOCAL need_profile IS FALSE.
+    IF aoso_ctx_is_dirty("dirty_topo") { SET need_profile TO TRUE. }
+    IF aoso_ctx_is_dirty("dirty_vehicle") { SET need_profile TO TRUE. }
+    IF need_profile {
+        aoso_profile_refresh("plan_sync").
+        aoso_ctx_clear_dirty("dirty_topo").
+        aoso_ctx_clear_dirty("dirty_vehicle").
+        aoso_ctx_clear_dirty("dirty_cap").
+    }
+    aoso_budget_refresh().
+    aoso_ctx_clear_dirty("dirty_budget").
+}
+
 FUNCTION aoso_plan_build {
     aoso_log_info("PLAN", "Building mission plan for " + SHIP:NAME + " from " + SHIP:BODY:NAME +
         " (mode=" + aoso_config_get("OPTIMIZATION_MODE", "BALANCED") + ").").
     aoso_ui_pulse("Planning tour", "Classifying " + SHIP:NAME).
 
+    aoso_plan_sync_models().
     aoso_classify_refresh().
-    aoso_budget_refresh().
     aoso_matrix_build().
+    // Bounded two-pass refinement: first route creates a sequential
+    // projection, second scoring pass can consume that lookahead.
+    aoso_opp_build().
+    aoso_route_build().
+    aoso_project_route().
     aoso_opp_build().
     aoso_route_build().
     aoso_project_route().

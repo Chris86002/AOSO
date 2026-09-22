@@ -150,6 +150,9 @@ FUNCTION aoso_selftest {
 
     LOCAL max_c IS aoso_config_get("XP_MAX_CORRECTION", 0.35).
     SET fail TO aoso_selftest_check("xp max correction", max_c > 0.1, fail).
+    SET fail TO aoso_selftest_check("xp model rev", aoso_config_get("XP_MODEL_REV", 0) >= 2, fail).
+    SET fail TO aoso_selftest_check("route beam width", aoso_config_get("ROUTE_BEAM_WIDTH", 0) >= 1, fail).
+    SET fail TO aoso_selftest_check("tick guard configured", aoso_config_get("MANEUVER_TICK_GUARD", 0) > 0, fail).
     SET fail TO aoso_selftest_check("think lead", aoso_config_get("BRAIN_THINK_LEAD_S", 0) >= 60, fail).
     SET fail TO aoso_selftest_check("ipu target 2000", aoso_config_get("IPU_TARGET", 0) = 2000, fail).
     SET fail TO aoso_selftest_check("cpu reserve abs", aoso_config_get("CPU_RESERVE_ABS", 0) >= 200, fail).

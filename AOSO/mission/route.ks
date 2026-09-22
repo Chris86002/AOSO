@@ -157,7 +157,9 @@ FUNCTION aoso_route_hop_cost {
     LOCAL dv_cost IS aoso_feas_transfer_cost(from_planet, to_planet).
     LOCAL win IS aoso_window_evaluate(from_planet, to_planet).
     LOCAL w IS aoso_opp_weights().
-    LOCAL wait_pen IS win["wait_days"] * 25 * w["time"].
+    LOCAL trip_days IS win["wait_days"].
+    IF win:HASKEY("total_s") { SET trip_days TO win["total_s"] / 21600. }
+    LOCAL wait_pen IS trip_days * 12 * w["time"].
     LOCAL eff_pen IS (1 - win["efficiency"]) * 200 * w["window"].
     LOCAL bonus IS aoso_route_cluster_score(to_planet).
     LOCAL score_w IS aoso_config_get("ROUTE_SCORE_WEIGHT", 8).
@@ -172,6 +174,67 @@ FUNCTION aoso_route_unique_planets {
         IF NOT aoso_route_in_list(planets, p_name) { planets:ADD(p_name). }
     }
     RETURN planets.
+}
+
+FUNCTION aoso_route_copy_list {
+    PARAMETER src.
+    LOCAL out IS LIST().
+    FOR x IN src { out:ADD(x). }
+    RETURN out.
+}
+
+FUNCTION aoso_route_beam_trim {
+    PARAMETER states.
+    PARAMETER width.
+    LOCAL pool IS aoso_route_copy_list(states).
+    LOCAL out IS LIST().
+    UNTIL pool:LENGTH = 0 OR out:LENGTH >= width {
+        LOCAL best_i IS 0.
+        LOCAL best_cost IS pool[0]["cost"].
+        LOCAL i IS 1.
+        UNTIL i >= pool:LENGTH {
+            IF pool[i]["cost"] < best_cost {
+                SET best_cost TO pool[i]["cost"].
+                SET best_i TO i.
+            }
+            SET i TO i + 1.
+        }
+        out:ADD(pool[best_i]).
+        pool:REMOVE(best_i).
+    }
+    RETURN out.
+}
+
+FUNCTION aoso_route_cluster_order {
+    PARAMETER start_planet.
+    PARAMETER planets.
+    IF planets:LENGTH = 0 { RETURN LIST(). }
+    LOCAL beam IS LIST().
+    beam:ADD(LEXICON("current", start_planet, "remaining", aoso_route_copy_list(planets),
+        "order", LIST(), "cost", 0)).
+    LOCAL width IS aoso_config_get("ROUTE_BEAM_WIDTH", 10).
+    IF width < 1 { SET width TO 1. }
+
+    UNTIL beam[0]["remaining"]:LENGTH = 0 {
+        LOCAL next_states IS LIST().
+        FOR st IN beam {
+            IF st["remaining"]:LENGTH = 0 {
+                next_states:ADD(st).
+            } ELSE {
+                FOR p_name IN st["remaining"] {
+                    LOCAL norder IS aoso_route_copy_list(st["order"]).
+                    norder:ADD(p_name).
+                    LOCAL nrem IS aoso_route_without(st["remaining"], p_name).
+                    LOCAL nc IS st["cost"] + aoso_route_hop_cost(st["current"], p_name).
+                    next_states:ADD(LEXICON("current", p_name, "remaining", nrem,
+                        "order", norder, "cost", nc)).
+                }
+            }
+        }
+        SET beam TO aoso_route_beam_trim(next_states, width).
+        IF beam:LENGTH = 0 { RETURN LIST(). }
+    }
+    RETURN beam[0]["order"].
 }
 
 FUNCTION aoso_route_build {
@@ -191,27 +254,13 @@ FUNCTION aoso_route_build {
         SET remaining TO aoso_route_without(remaining, n).
     }
 
-    LOCAL current_planet IS here_planet.
-    UNTIL remaining:LENGTH = 0 {
-        LOCAL planets IS aoso_route_unique_planets(remaining).
-        LOCAL best_planet IS planets[0].
-        LOCAL best_cost IS 999999.
-        FOR p_name IN planets {
-            LOCAL c IS aoso_route_hop_cost(current_planet, p_name).
-            IF c < best_cost {
-                SET best_cost TO c.
-                SET best_planet TO p_name.
-            }
-        }
-        LOCAL expanded IS aoso_route_expand(best_planet, remaining).
-        IF expanded:LENGTH = 0 {
-            SET remaining TO aoso_route_without(remaining, remaining[0]).
-        } ELSE {
-            FOR n IN expanded {
-                order:ADD(n).
-                SET remaining TO aoso_route_without(remaining, n).
-            }
-            SET current_planet TO best_planet.
+    LOCAL planets IS aoso_route_unique_planets(remaining).
+    LOCAL cluster_order IS aoso_route_cluster_order(here_planet, planets).
+    FOR p_name IN cluster_order {
+        LOCAL expanded IS aoso_route_expand(p_name, remaining).
+        FOR n IN expanded {
+            order:ADD(n).
+            SET remaining TO aoso_route_without(remaining, n).
         }
     }
 
@@ -219,6 +268,8 @@ FUNCTION aoso_route_build {
         "order", order,
         "from", here_name,
         "class", aoso_classify_name(),
+        "search", "beam",
+        "beam_width", aoso_config_get("ROUTE_BEAM_WIDTH", 10),
         "at", TIME:SECONDS
     ).
     aoso_json_write(AOSO_CONST["ROUTE_FILE"], AOSO_ROUTE_LAST).
