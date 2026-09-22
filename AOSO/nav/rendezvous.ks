@@ -327,6 +327,18 @@ FUNCTION aoso_rendezvous_native_candidates_to_node {
     IF NOT cands:ISTYPE("List") { RETURN 0. }
     IF cands:LENGTH = 0 { RETURN 0. }
 
+    // Native v0.3 searches the full practical departure window and performs
+    // its own fine time/dV/normal/radial refinement. If it found no actual
+    // capture PE, do not spend tens of seconds asking KerboScript to
+    // hill-climb eight known grazes one by one.
+    LOCAL native_caps IS 0.
+    IF native_res:HASKEY("n_ok") { SET native_caps TO native_res["n_ok"]. }
+    IF native_caps <= 0 {
+        aoso_log_warn("RENDEZVOUS", "Native porkchop found " + cands:LENGTH +
+            " encounter candidates but no capture PE; skipping slow graze finalization.").
+        RETURN 0.
+    }
+
     LOCAL nd_native IS NODE(t_soon, 0, 0, 10).
     ADD nd_native.
 
@@ -599,8 +611,15 @@ FUNCTION aoso_rendezvous_porkchop_search {
         RETURN native_nd.
     }
 
-    // Native unavailable / failed / rejected: run the unchanged KerboScript
-    // patched-conic grid as the behavioral oracle and fallback.
+    // With the addon installed, its bounded full-window search supersedes the
+    // duplicate 2,880-cell KerboScript grid. If native still finds no
+    // capture, return immediately so the existing Hohmann window search can
+    // take over. The slow KerboScript porkchop remains the no-addon fallback.
+    IF native_ready {
+        aoso_log_warn("RENDEZVOUS", "Native porkchop exhausted without a valid final node; skipping duplicate KerboScript grid.").
+        RETURN 0.
+    }
+
     LOCAL nd IS NODE(t_soon, 0, 0, 10).
     ADD nd.
 
