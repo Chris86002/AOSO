@@ -1,6 +1,6 @@
 // AOSO/core/addons.ks
-// Addon abstraction layer. Every optional integration (MechJeb, Astrogator,
-// Kerbal Engineer, simpleJson) is accessed ONLY through the functions in
+// Addon abstraction layer. Every optional integration (AOSO native, MechJeb,
+// Astrogator, Kerbal Engineer, simpleJson) is accessed ONLY through the functions in
 // this file. Each function first checks addon availability and falls back
 // to a pure-kOS implementation (or a safe default) when the addon is not
 // installed. No other module may reference ADDONS:* directly.

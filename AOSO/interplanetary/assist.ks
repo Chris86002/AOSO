@@ -1,7 +1,7 @@
 // AOSO/interplanetary/assist.ks
 // Patched-conic gravity-assist pick. MechJeb / RSVP / the stock dV map all
 // treat a Mun flyby as a cheap AP pump toward Minmus, and Eve as the inner
-// pump toward Moho. We do not drive ADDONS:MJ or Astrogator suffixes.
+// pump toward Moho. We do not drive MechJeb or Astrogator addon suffixes here.
 //
 // Always log the comparison. Use the flyby when it saves ~12% or when
 // mission dV is too tight for a direct Hohmann.
