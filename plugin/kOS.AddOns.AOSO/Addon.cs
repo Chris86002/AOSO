@@ -136,7 +136,9 @@ namespace kOS.AddOns.AOSO
                 if (porkchopJob == null)
                     return KosTypes.PorkchopFailure("no_job");
 
-                porkchopJob.Poll(8.0, 64);
+                // Keep the hard 8 ms main-thread slice, but let cheap cells
+                // fill that slice instead of stopping after only 64.
+                porkchopJob.Poll(8.0, 128);
                 bool pollOk = string.IsNullOrEmpty(porkchopJob.Error);
                 return KosTypes.PorkchopStatus(
                     pollOk,
