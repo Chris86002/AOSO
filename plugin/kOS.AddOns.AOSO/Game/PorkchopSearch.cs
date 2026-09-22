@@ -47,6 +47,7 @@ namespace kOS.AddOns.AOSO.Game
         {
             LambertSeeds,
             CoarseGrid,
+            WindowSweep,
             Densify,
             Done
         }
@@ -75,11 +76,19 @@ namespace kOS.AddOns.AOSO.Game
         private int dvIndex;
         private int normalIndex;
 
+        private double sweepStartUt;
+        private double sweepStep;
+        private int sweepTimeCount;
+        private int sweepTimeIndex;
+        private int sweepDvIndex;
+        private int sweepNormalIndex;
+
         private List<PorkchopCandidate> densifySeeds;
         private int densifySeedIndex;
         private int densifyTimeIndex;
         private int densifyDvIndex;
         private int densifyNormalIndex;
+        private int densifyRadialIndex;
 
         public int DoneCount { get; private set; }
         public int HitCount { get; private set; }
@@ -101,8 +110,9 @@ namespace kOS.AddOns.AOSO.Game
                 int seedCount = ((departures.Count + Math.Max(1, seedStride) - 1) / Math.Max(1, seedStride)) *
                     Math.Max(1, seedTofs == null ? 1 : seedTofs.Length);
                 int coarseCount = departures.Count * options.DvSamples * options.NormalSamples;
-                int densifyCount = 3 * 7 * 7 * 3;
-                int total = Math.Max(1, seedCount + coarseCount + densifyCount);
+                int sweepCount = Math.Max(0, sweepTimeCount) * 5 * 3;
+                int densifyCount = 5 * 7 * 7 * 3 * 5;
+                int total = Math.Max(1, seedCount + coarseCount + sweepCount + densifyCount);
                 return Math.Min(1.0, (double)DoneCount / total);
             }
         }
@@ -158,6 +168,9 @@ namespace kOS.AddOns.AOSO.Game
                         case SearchStage.CoarseGrid:
                             StepCoarse();
                             break;
+                        case SearchStage.WindowSweep:
+                            StepWindowSweep();
+                            break;
                         case SearchStage.Densify:
                             StepDensify();
                             break;
@@ -175,8 +188,9 @@ namespace kOS.AddOns.AOSO.Game
         public List<PorkchopCandidate> GetCandidates()
         {
             return candidates
-                .OrderBy(candidate => candidate.DeltaV)
+                .OrderBy(candidate => IsCapturePe(candidate.Periapsis) ? 0 : 1)
                 .ThenBy(candidate => candidate.Score)
+                .ThenBy(candidate => candidate.DeltaV)
                 .Take(20)
                 .ToList();
         }
@@ -317,7 +331,7 @@ namespace kOS.AddOns.AOSO.Game
         {
             if (depIndex >= departures.Count)
             {
-                PrepareDensify();
+                PrepareWindowSweep();
                 return;
             }
 
@@ -357,17 +371,105 @@ namespace kOS.AddOns.AOSO.Game
             }
 
             if (depIndex >= departures.Count)
+                PrepareWindowSweep();
+        }
+
+        // If the fast coarse porkchop did not already find a capture PE,
+        // sweep the entire practical departure window at SOI-sized time
+        // spacing near Hohmann dV. The KerboScript fallback had to do this
+        // after native v0.2.1 missed a valid Minmus window ~15 minutes away.
+        // This is still bounded and chunked by Poll(), so it never blocks the
+        // Unity/KSP main thread for an unbounded search.
+        private void PrepareWindowSweep()
+        {
+            if (CaptureCount > 0)
+            {
+                PrepareDensify();
+                return;
+            }
+
+            double now = Planetarium.GetUniversalTime();
+            sweepStep = Math.Max(3.0, options.SearchStepSeconds * 2.0);
+            double sweepEndUt = options.HohmannUt + options.PeriodSeconds;
+            sweepStartUt = Math.Max(now + 50.0, options.HohmannUt - options.PeriodSeconds);
+            if (sweepEndUt < sweepStartUt)
+                sweepEndUt = sweepStartUt;
+
+            sweepTimeCount = Math.Max(1,
+                (int)Math.Ceiling((sweepEndUt - sweepStartUt) / sweepStep) + 1);
+            sweepTimeIndex = 0;
+            sweepDvIndex = 0;
+            sweepNormalIndex = 0;
+            stage = SearchStage.WindowSweep;
+        }
+
+        private void StepWindowSweep()
+        {
+            if (sweepTimeIndex >= sweepTimeCount)
+            {
+                PrepareDensify();
+                return;
+            }
+
+            double scale;
+            switch (sweepDvIndex)
+            {
+                case 0: scale = 0.98; break;
+                case 1: scale = 0.99; break;
+                case 2: scale = 1.00; break;
+                case 3: scale = 1.01; break;
+                default: scale = 1.02; break;
+            }
+
+            double departureUt = sweepStartUt + sweepTimeIndex * sweepStep;
+            double prograde = options.DvHoh * scale;
+            double normal = (sweepNormalIndex - 1) * 12.0;
+
+            if (prograde > options.DvMax)
+                prograde = options.DvMax;
+            if (prograde > 0.0 && departureUt > Planetarium.GetUniversalTime() + 25.0)
+            {
+                EvaluateCandidate(new PorkchopCandidate
+                {
+                    Ut = departureUt,
+                    Prograde = prograde,
+                    Radial = 0.0,
+                    Normal = normal
+                });
+            }
+            ++DoneCount;
+
+            ++sweepNormalIndex;
+            if (sweepNormalIndex >= 3)
+            {
+                sweepNormalIndex = 0;
+                ++sweepDvIndex;
+                if (sweepDvIndex >= 5)
+                {
+                    sweepDvIndex = 0;
+                    ++sweepTimeIndex;
+                }
+            }
+
+            if (sweepTimeIndex >= sweepTimeCount)
                 PrepareDensify();
         }
 
         private void PrepareDensify()
         {
             densifySeeds = candidates
-                .OrderBy(candidate => candidate.Score)
+                .OrderBy(candidate => IsCapturePe(candidate.Periapsis) ? 0 : 1)
+                .ThenBy(candidate => candidate.Score)
                 .ThenBy(candidate => candidate.DeltaV)
-                .Take(3)
+                .Take(5)
                 .Select(CopyCandidate)
                 .ToList();
+
+            densifySeedIndex = 0;
+            densifyTimeIndex = 0;
+            densifyDvIndex = 0;
+            densifyNormalIndex = 0;
+            densifyRadialIndex = 0;
             stage = densifySeeds.Count == 0 ? SearchStage.Done : SearchStage.Densify;
         }
 
@@ -380,9 +482,12 @@ namespace kOS.AddOns.AOSO.Game
             }
 
             PorkchopCandidate seed = densifySeeds[densifySeedIndex];
-            double departureUt = seed.Ut + (densifyTimeIndex - 3) * options.SearchStepSeconds;
-            double prograde = seed.Prograde + (densifyDvIndex - 3) * 8.0;
-            double normal = seed.Normal + (densifyNormalIndex - 1) * 8.0;
+            double fineTimeStep = Math.Max(1.0, options.SearchStepSeconds * 0.5);
+            double radialStep = Math.Max(4.0, Math.Min(10.0, options.DvHoh * 0.008));
+            double departureUt = seed.Ut + (densifyTimeIndex - 3) * fineTimeStep;
+            double prograde = seed.Prograde + (densifyDvIndex - 3) * 3.0;
+            double normal = seed.Normal + (densifyNormalIndex - 1) * 4.0;
+            double radial = seed.Radial + (densifyRadialIndex - 2) * radialStep;
 
             if (departureUt > Planetarium.GetUniversalTime() + 25.0)
             {
@@ -393,25 +498,30 @@ namespace kOS.AddOns.AOSO.Game
                 {
                     Ut = departureUt,
                     Prograde = prograde,
-                    Radial = seed.Radial,
+                    Radial = radial,
                     Normal = normal
                 });
             }
             ++DoneCount;
 
-            ++densifyNormalIndex;
-            if (densifyNormalIndex >= 3)
+            ++densifyRadialIndex;
+            if (densifyRadialIndex >= 5)
             {
-                densifyNormalIndex = 0;
-                ++densifyDvIndex;
-                if (densifyDvIndex >= 7)
+                densifyRadialIndex = 0;
+                ++densifyNormalIndex;
+                if (densifyNormalIndex >= 3)
                 {
-                    densifyDvIndex = 0;
-                    ++densifyTimeIndex;
-                    if (densifyTimeIndex >= 7)
+                    densifyNormalIndex = 0;
+                    ++densifyDvIndex;
+                    if (densifyDvIndex >= 7)
                     {
-                        densifyTimeIndex = 0;
-                        ++densifySeedIndex;
+                        densifyDvIndex = 0;
+                        ++densifyTimeIndex;
+                        if (densifyTimeIndex >= 7)
+                        {
+                            densifyTimeIndex = 0;
+                            ++densifySeedIndex;
+                        }
                     }
                 }
             }
