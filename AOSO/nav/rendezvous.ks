@@ -195,6 +195,18 @@ FUNCTION aoso_rendezvous_apply_lambert {
     LOCAL vel_now IS VELOCITYAT(SHIP, t_dep):ORBIT.
     LOCAL mu IS parent_body:MU.
 
+    // r/Kos (Farsyte): near-180 Lambert with even a little relative
+    // inclination invents a polar transfer. Project the aim point into
+    // the ship's plane; plane-change is a later mid-course, not this seed.
+    LOCAL nrm_ship IS VCRS(pos1, vel_now).
+    IF nrm_ship:MAG > 0.001 {
+        IF VANG(pos1, pos2) > 150 {
+            LOCAL n_hat IS nrm_ship:NORMALIZED.
+            LOCAL pos2_p IS pos2 - n_hat * VDOT(pos2, n_hat).
+            IF pos2_p:MAG > 1 { SET pos2 TO pos2_p. }
+        }
+    }
+
     // Aim beside the body, not through its center. Lambert-to-center is a
     // lithobrake; the patched PE we want is parking altitude.
     LOCAL aim_off IS hop:RADIUS + aoso_rendezvous_desired_pe(hop).
