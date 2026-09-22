@@ -7,8 +7,8 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "PARKING_ORBIT_ALT", 100000,        // m, default parking orbit altitude
     "FUEL_RESERVE_PCT", 10,             // % of stage fuel kept as untouchable reserve
     "ABORT_FUEL_PCT", 3,                // % remaining that forces an abort
-    "MAX_WARP_FACTOR", 6,               // cap on SET WARP. 6=10000x rails; 7 remains disabled by default for precision.
-    "WARP_STATUS_REAL_S", 12,            // real seconds between coast status lines; rate/mode changes log immediately.
+    "MAX_WARP_FACTOR", 7,               // cap on SET WARP. 7=100000x rails, but adaptive frame guards only permit it on long safe coasts.
+    "WARP_STATUS_REAL_S", 30,            // real seconds between file-only coast breadcrumbs; rate/mode changes still print immediately.
     "OPTIMIZATION_MODE", "BALANCED",    // FUEL | TIME | SAFETY | BALANCED | MINIMUM_DV
     "LOG_LEVEL", "INFO",                // TRACE..FATAL  (INFO default; TRACE is for hard bugs)
     "TELEM_RATE", "AUTO",               // AUTO | FAST | NORMAL | SLOW | OFF
@@ -238,6 +238,20 @@ FUNCTION aoso_config_load {
     IF AOSO_CONFIG:HASKEY("GOTO_PATCH_FLICKER_S") {
         IF AOSO_CONFIG["GOTO_PATCH_FLICKER_S"] > 20 {
             SET AOSO_CONFIG["GOTO_PATCH_FLICKER_S"] TO 15.
+        }
+    }
+    // 2026-09 warp profile: long rails coasts may use 100000x, but only
+    // when the adaptive frame-jump guard has many frames of margin. These
+    // values were the previous defaults, so migrate them for existing AOSO
+    // installs instead of leaving persisted JSON artificially slow/noisy.
+    IF AOSO_CONFIG:HASKEY("MAX_WARP_FACTOR") {
+        IF AOSO_CONFIG["MAX_WARP_FACTOR"] = 6 {
+            SET AOSO_CONFIG["MAX_WARP_FACTOR"] TO 7.
+        }
+    }
+    IF AOSO_CONFIG:HASKEY("WARP_STATUS_REAL_S") {
+        IF AOSO_CONFIG["WARP_STATUS_REAL_S"] = 12 {
+            SET AOSO_CONFIG["WARP_STATUS_REAL_S"] TO 30.
         }
     }
     aoso_log_set_level(aoso_config_get("LOG_LEVEL", "INFO")).
