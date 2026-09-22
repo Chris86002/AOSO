@@ -255,13 +255,15 @@ FUNCTION aoso_interplanetary_add_candidate_ejection_node {
     LOCAL req_dir IS VCRS(h, pdir):NORMALIZED.
     IF VDOT(req_dir, vdir) < 0 { SET req_dir TO 0 - req_dir. }
 
-    LOCAL v_peri IS aoso_ejection_dv_for_v_infinity(vinf_mag, r_peri, mu).
+    LOCAL r_burn IS p:MAG.
+    IF r_burn < dep_body:RADIUS + 1000 { SET r_burn TO r_peri. }
+    LOCAL v_peri IS aoso_ejection_dv_for_v_infinity(vinf_mag, r_burn, mu).
     LOCAL req_vel IS req_dir * v_peri.
     LOCAL cur_vel IS aoso_orbit_velocity_at(SHIP, burn_ut).
     LOCAL dv_vec IS req_vel - cur_vel.
     LOCAL xyz IS aoso_lambert_dv_to_node_xyz(dv_vec, p, cur_vel).
 
-    LOCAL nd IS NODE(burn_ut - TIME:SECONDS, xyz["radial"], xyz["normal"], xyz["prograde"]).
+    LOCAL nd IS NODE(burn_ut, xyz["radial"], xyz["normal"], xyz["prograde"]).
     ADD nd.
     aoso_rendezvous_settle_long().
 
