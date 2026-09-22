@@ -16,6 +16,7 @@
 // compatible bridge mod is installed.
 
 GLOBAL AOSO_ADDON_STATUS IS LEXICON(
+    "AOSO", FALSE,
     "MECHJEB", FALSE,
     "ASTROGATOR", FALSE,
     "KER", FALSE,
@@ -36,13 +37,15 @@ FUNCTION aoso_addons_any_available {
 FUNCTION aoso_addons_detect {
     IF AOSO_ADDON_STATUS["CHECKED"] { RETURN AOSO_ADDON_STATUS. }
 
+    SET AOSO_ADDON_STATUS["AOSO"] TO aoso_addons_any_available(LIST("AOSO")).
     SET AOSO_ADDON_STATUS["MECHJEB"] TO aoso_addons_any_available(LIST("MJ", "MechJeb")).
     SET AOSO_ADDON_STATUS["ASTROGATOR"] TO aoso_addons_any_available(LIST("ASTROGATOR")).
     SET AOSO_ADDON_STATUS["KER"] TO aoso_addons_any_available(LIST("KE", "KerbalEngineer")).
     SET AOSO_ADDON_STATUS["SIMPLEJSON"] TO aoso_addons_any_available(LIST("JSON", "simpleJson")).
     SET AOSO_ADDON_STATUS["CHECKED"] TO TRUE.
 
-    aoso_log("INFO", "ADDONS", "MechJeb=" + AOSO_ADDON_STATUS["MECHJEB"] +
+    aoso_log("INFO", "ADDONS", "AOSO=" + AOSO_ADDON_STATUS["AOSO"] +
+        " MechJeb=" + AOSO_ADDON_STATUS["MECHJEB"] +
         " Astrogator=" + AOSO_ADDON_STATUS["ASTROGATOR"] +
         " KER=" + AOSO_ADDON_STATUS["KER"] +
         " simpleJson=" + AOSO_ADDON_STATUS["SIMPLEJSON"]).
@@ -54,6 +57,33 @@ FUNCTION aoso_addon_available {
     aoso_addons_detect().
     IF AOSO_ADDON_STATUS:HASKEY(name) { RETURN AOSO_ADDON_STATUS[name]. }
     RETURN FALSE.
+}
+
+// ---------------------------------------------------------------------
+// AOSO native numerical backend (optional).
+// This is the ONLY script module allowed to touch ADDONS:AOSO.
+// Missing DLL or suffixes always degrade to pure KerboScript.
+// ---------------------------------------------------------------------
+
+FUNCTION aoso_addon_native {
+    IF NOT aoso_addon_available("AOSO") { RETURN 0. }
+    IF ADDONS:HASADDON("AOSO") AND ADDONS:AVAILABLE("AOSO") {
+        RETURN ADDONS:AOSO.
+    }
+    RETURN 0.
+}
+
+FUNCTION aoso_addon_native_available {
+    LOCAL native_obj IS aoso_addon_native().
+    IF native_obj:ISTYPE("Scalar") { RETURN FALSE. }
+    RETURN TRUE.
+}
+
+FUNCTION aoso_addon_native_version {
+    LOCAL native_obj IS aoso_addon_native().
+    IF native_obj:ISTYPE("Scalar") { RETURN "". }
+    IF native_obj:HASSUFFIX("VERSION") { RETURN native_obj:VERSION. }
+    RETURN "".
 }
 
 // ---------------------------------------------------------------------
@@ -150,9 +180,9 @@ FUNCTION aoso_addon_mj_aoa {
 }
 
 // ---------------------------------------------------------------------
-// Astrogator (optional). Fallback intercept seed if the Lambert porkchop
-// in nav/lambert.ks + nav/rendezvous.ks finds no capture. AOSO still
-// hill-climbs patched PE before burning (a graze is rejected).
+// Astrogator (optional status integration only). Intercept creation is
+// intentionally disabled; AOSO owns porkchop/Hohmann planning and capture-PE
+// acceptance.
 // ---------------------------------------------------------------------
 
 FUNCTION aoso_addon_astrogator_obj {
