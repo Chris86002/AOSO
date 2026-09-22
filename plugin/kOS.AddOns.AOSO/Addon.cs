@@ -101,6 +101,8 @@ namespace kOS.AddOns.AOSO
                     return KosTypes.PorkchopFailure("bad_args");
                 if (shared.Vessel == null || shared.Vessel.orbit == null)
                     return KosTypes.PorkchopFailure("no_vessel");
+                if (!shared.Vessel.loaded)
+                    return KosTypes.PorkchopFailure("vessel_not_loaded");
                 if (hop.Body == null || hop.Body.orbit == null)
                     return KosTypes.PorkchopFailure("bad_target");
                 if (hop.Body.orbit.referenceBody != shared.Vessel.orbit.referenceBody)
