@@ -36,6 +36,9 @@ FUNCTION aoso_maneuver_reset_exec {
     SET AOSO_MANEUVER_PREDICTED_TIME TO 0.
     SET AOSO_MANEUVER_NO_THRUST_TICKS TO 0.
     aoso_staging_reset_relight().
+    IF DEFINED AOSO_STAGING_BURN_RECOVERY {
+        aoso_staging_reset_burn_guard().
+    }
 }
 
 FUNCTION aoso_maneuver_set_apo_cap {
@@ -283,7 +286,9 @@ FUNCTION aoso_maneuver_tick_guard {
         RETURN wanted_throttle.
     }
     LOCAL dt IS AOSO_PHYS_DT.
-    IF dt <= 0 OR dt > 0.25 { RETURN wanted_throttle. }
+    IF dt <= 0 { RETURN wanted_throttle. }
+    LOCAL gap_limit IS aoso_config_get("MANEUVER_GAP_CUT_S", 0.12).
+    IF dt > gap_limit { RETURN 0. }
     LOCAL accel IS aoso_maneuver_current_accel().
     IF accel <= 0.05 { RETURN wanted_throttle. }
     LOCAL next_tick_dv IS accel * dt * wanted_throttle.
@@ -417,6 +422,29 @@ FUNCTION aoso_maneuver_execute_next {
         }
         aoso_maneuver_finish_node(nd, "complete").
         RETURN TRUE.
+    }
+
+    // If KSP/kOS did not hand control back for a coarse physics interval,
+    // never keep carrying the throttle command from the stale tick. The
+    // command can only be corrected after execution resumes, so cut now,
+    // re-sample the live node, and resume on the next stable tick.
+    IF AOSO_MANEUVER_BURNING {
+        LOCAL gap_limit IS aoso_config_get("MANEUVER_GAP_CUT_S", 0.12).
+        IF DEFINED AOSO_PHYS_DT {
+            IF AOSO_PHYS_DT > gap_limit {
+                aoso_throttle_set(0).
+                SET AOSO_MANEUVER_LOCK TO remaining_vec.
+                SET AOSO_MANEUVER_LAST_REMAINING TO remaining.
+                LOCAL wall_gap IS 0.
+                IF DEFINED AOSO_WALL_DT { SET wall_gap TO AOSO_WALL_DT. }
+                aoso_observe_event("BURN_GAP", "WARN", "recover",
+                    "game_dt=" + ROUND(AOSO_PHYS_DT, 4) +
+                    " wall_dt=" + ROUND(wall_gap, 4) +
+                    " left=" + ROUND(remaining, 2) +
+                    " stg=" + STAGE:NUMBER).
+                RETURN FALSE.
+            }
+        }
     }
 
     IF NOT AOSO_MANEUVER_BURNING {
@@ -592,6 +620,17 @@ FUNCTION aoso_maneuver_execute_next {
     }
     SET AOSO_MANEUVER_NO_THRUST_TICKS TO 0.
     aoso_staging_auto_check().
+
+    // Mid-burn STAGE() is deliberately two-phase: staging.ks first
+    // commands zero throttle for one physics tick, then stages. Keep the
+    // command at zero until relight/spool is complete and we have observed
+    // a normal-size control tick again.
+    IF aoso_staging_burn_guard_active() {
+        aoso_throttle_set(0).
+        SET AOSO_MANEUVER_LOCK TO remaining_vec.
+        SET AOSO_MANEUVER_LAST_REMAINING TO remaining.
+        RETURN FALSE.
+    }
 
     IF AOSO_MANEUVER_CUT_BODY <> "" {
         LOCAL cur_orb IS SHIP:ORBIT.
