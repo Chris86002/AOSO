@@ -552,6 +552,9 @@ FUNCTION aoso_maneuver_execute_next {
 
         SET WARP TO 0.
         SET AOSO_MANEUVER_LOCK TO remaining_vec.
+        // A new burn must never inherit a pre-cut/recovery latch from an
+        // earlier maneuver or a transient staging check.
+        aoso_staging_reset_burn_guard().
         SET AOSO_MANEUVER_BURNING TO TRUE.
         SET AOSO_MANEUVER_LAST_REMAINING TO remaining.
         SET AOSO_MANEUVER_START_DV TO remaining.
