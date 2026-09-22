@@ -43,9 +43,12 @@ FUNCTION aoso_warp_safe_eta {
     RETURN eta_s.
 }
 
-// Rails index from remaining time to the align window. Caps at
-// MAX_WARP_FACTOR (default 6). Warp 7 only for multi-day coasts and only
-// if the operator raised the cap. Remain is eta - lead.
+// Rails index from remaining time to the align window. These thresholds
+// are based on observed stock-KSP rails frame jumps, not on a desire to
+// loiter at low warp. Each step keeps several worst-case frames of margin
+// before the steering/alignment lead, so long coasts go much faster without
+// reducing the final precision window. MAX_WARP_FACTOR=6 remains the safe
+// default; index 7 (100000x) still requires an explicit operator override.
 FUNCTION aoso_warp_rails_want {
     PARAMETER eta_s.
     PARAMETER lead_s.
@@ -54,13 +57,13 @@ FUNCTION aoso_warp_rails_want {
     IF cap > 7 { SET cap TO 7. }
     IF cap < 1 { SET cap TO 1. }
     LOCAL want IS 0.
-    IF remain >= 25 { SET want TO 1. }
-    IF remain >= 80 { SET want TO 2. }
-    IF remain >= 250 { SET want TO 3. }
-    IF remain >= 800 { SET want TO 4. }
-    IF remain >= 4500 { SET want TO 5. }
-    IF remain >= 18000 { SET want TO 6. }
-    IF remain >= 120000 { SET want TO 7. }
+    IF remain >= 15 { SET want TO 1. }
+    IF remain >= 35 { SET want TO 2. }
+    IF remain >= 75 { SET want TO 3. }
+    IF remain >= 180 { SET want TO 4. }
+    IF remain >= 600 { SET want TO 5. }
+    IF remain >= 2400 { SET want TO 6. }
+    IF remain >= 180000 { SET want TO 7. }
     IF want > cap { SET want TO cap. }
     RETURN want.
 }
