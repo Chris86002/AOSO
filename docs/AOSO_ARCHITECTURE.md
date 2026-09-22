@@ -106,6 +106,9 @@ than the lead time away.
 Do not full-rebuild topology, matrix, route, XP aggregation, or JSON
 persistence inside critical flight loops.
 
+Optional native backend: `ADDONS:AOSO` (see `docs/AOSO_NATIVE_ADDON.md`).
+Scripts call it only through `core/addons.ks`. Absence must not change behavior.
+
 ## Configuration identity
 
 Experience is keyed `cfg_id|model_rev|body|OP`, not `SHIP:NAME`. Failed actions update reliability separately from successful cost. The id is locked

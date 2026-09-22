@@ -45,6 +45,14 @@ FUNCTION aoso_selftest {
     LOCAL fail IS 0.
 
     aoso_event_init().
+
+    SET fail TO aoso_selftest_check("native addon detect boolean",
+        aoso_addon_native_available() = TRUE OR aoso_addon_native_available() = FALSE, fail).
+    IF aoso_addon_native_available() {
+        LOCAL native_ver IS aoso_addon_native_version().
+        SET fail TO aoso_selftest_check("native addon version", native_ver:ISTYPE("String") AND native_ver:LENGTH > 0, fail).
+    }
+
     LOCAL i IS 0.
     UNTIL i >= 40 {
         aoso_event_publish("TEST", "selftest", "" + i).
