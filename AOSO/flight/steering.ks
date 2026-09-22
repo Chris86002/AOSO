@@ -36,6 +36,7 @@ FUNCTION aoso_throttle_set {
 
 FUNCTION aoso_throttle_release {
     SET AOSO_CMD_THROTTLE TO 0.
+    IF AOSO_THROTTLE_MODE = "OFF" { RETURN. }
     UNLOCK THROTTLE.
     SET AOSO_THROTTLE_MODE TO "OFF".
 }
@@ -126,6 +127,11 @@ FUNCTION aoso_steer_up {
 }
 
 FUNCTION aoso_steer_release {
+    // UNLOCK STEERING calls into kOS FlightControlManager and is not a cheap
+    // no-op: kOS logs every toggle. Coast controllers call this defensively
+    // each tick, so make release idempotent and avoid thousands of redundant
+    // fly-by-wire disable operations during long/high-warp coasts.
+    IF AOSO_STEER_MODE = "OFF" { RETURN. }
     UNLOCK STEERING.
     SET AOSO_STEER_MODE TO "OFF".
 }
