@@ -214,6 +214,7 @@ FUNCTION aoso_interplanetary_native_search {
     }
 
     LOCAL polls IS 0.
+    LOCAL pulse_at IS 12.
     LOCAL max_polls IS aoso_config_get("INTERPLANETARY_MAX_POLLS", 600).
     UNTIL st["done"] OR polls >= max_polls {
         WAIT 0.
@@ -224,10 +225,11 @@ FUNCTION aoso_interplanetary_native_search {
             RETURN 0.
         }
         SET polls TO polls + 1.
-        IF MOD(polls, 12) = 0 {
+        IF polls >= pulse_at {
             aoso_ui_pulse("Searching planetary trajectories",
                 target_body:NAME + "  " + ROUND(st["progress"] * 100, 0) +
                 "%  cells=" + st["n_done"] + " valid=" + st["n_valid"]).
+            SET pulse_at TO pulse_at + 12.
         }
     }
 
