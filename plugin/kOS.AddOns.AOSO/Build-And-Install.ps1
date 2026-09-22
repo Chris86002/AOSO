@@ -94,10 +94,61 @@ $built = Join-Path $PSScriptRoot "bin\$Configuration\net48\kOS.AddOns.AOSO.dll"
 if (-not (Test-Path $built)) { throw "Built DLL not found: $built" }
 
 $destDir = Join-Path $KspRoot "GameData\AOSO\Plugins"
-New-Item -ItemType Directory -Force -Path $destDir | Out-Null
 $dest = Join-Path $destDir "kOS.AddOns.AOSO.dll"
-Copy-Item -Force $built $dest
 
-Write-Host "Installed: $dest"
-Write-Host "Build log: $buildLog"
-Write-Host "Restart KSP. AOSO selftest should report native phase2 suffixes current."
+try {
+    New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+
+    $probe = Join-Path $destDir (".aoso-native-write-test-" + [guid]::NewGuid().ToString("N"))
+    try {
+        [IO.File]::WriteAllText($probe, "ok")
+    } finally {
+        if (Test-Path -LiteralPath $probe) {
+            Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    $copyError = $null
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            Copy-Item -LiteralPath $built -Destination $dest -Force -ErrorAction Stop
+            $copyError = $null
+            break
+        } catch {
+            $copyError = $_.Exception
+            if ($attempt -lt 3) { Start-Sleep -Milliseconds 600 }
+        }
+    }
+    if ($copyError) { throw $copyError }
+
+    if (-not (Test-Path -LiteralPath $dest)) {
+        throw "DLL copy reported success, but destination does not exist: $dest"
+    }
+
+    $installedVersion = [Reflection.AssemblyName]::GetAssemblyName($dest).Version
+    $sourceVersion = [Reflection.AssemblyName]::GetAssemblyName($built).Version
+    if ($installedVersion -ne $sourceVersion) {
+        throw "Installed DLL version $installedVersion does not match built DLL version $sourceVersion"
+    }
+
+    "INSTALL OK: $dest (v$installedVersion)" | Add-Content -LiteralPath $buildLog -Encoding UTF8
+    Write-Host "Installed: $dest"
+    Write-Host "Installed version: $installedVersion"
+    Write-Host "Build/install log: $buildLog"
+    Write-Host "Restart KSP. AOSO selftest should report native phase2 suffixes current."
+} catch {
+    $installMessage = $_.Exception.Message
+    "INSTALL FAILED: $installMessage" | Add-Content -LiteralPath $buildLog -Encoding UTF8
+    Write-Host ""
+    Write-Host "Native compile SUCCEEDED, but DLL installation failed:" -ForegroundColor Red
+    Write-Host "  $installMessage" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Destination:" -ForegroundColor Yellow
+    Write-Host "  $dest" -ForegroundColor Yellow
+    Write-Host "Full build/install log:" -ForegroundColor Yellow
+    Write-Host "  $buildLog" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "If you see Access Denied, run Update-AOSO.bat as Administrator." -ForegroundColor Yellow
+    Write-Host "If the DLL is in use, close KSP completely and run the updater again." -ForegroundColor Yellow
+    throw "Native addon compiled successfully but installation failed: $installMessage"
+}
