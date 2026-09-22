@@ -172,18 +172,30 @@ FUNCTION aoso_warp_report {
 
     LOCAL key IS phase + "|" + WARPMODE + "|" + WARP.
     LOCAL now_rt IS KUNIVERSE:REALTIME.
-    LOCAL every_s IS aoso_config_get("WARP_STATUS_REAL_S", 12).
-    LOCAL due IS FALSE.
-    IF key <> AOSO_WARP_LAST_KEY { SET due TO TRUE. }
-    IF AOSO_WARP_LAST_RT < 0 { SET due TO TRUE. }
-    IF now_rt - AOSO_WARP_LAST_RT >= every_s { SET due TO TRUE. }
-    IF NOT due { RETURN. }
+    LOCAL every_s IS aoso_config_get("WARP_STATUS_REAL_S", 30).
+    LOCAL changed IS FALSE.
+    IF key <> AOSO_WARP_LAST_KEY { SET changed TO TRUE. }
+    IF AOSO_WARP_LAST_RT < 0 { SET changed TO TRUE. }
+
+    LOCAL periodic IS FALSE.
+    IF AOSO_WARP_LAST_RT >= 0 {
+        IF now_rt - AOSO_WARP_LAST_RT >= every_s { SET periodic TO TRUE. }
+    }
+    IF NOT changed AND NOT periodic { RETURN. }
 
     SET AOSO_WARP_LAST_KEY TO key.
     SET AOSO_WARP_LAST_RT TO now_rt.
     LOCAL msg IS phase + " T-" + ROUND(MAX(0, eta_s), 0) + "s  " + aoso_warp_diag_txt().
     IF detail <> "" { SET msg TO msg + "  " + detail. }
-    aoso_log_info("WARP", msg + ".").
+
+    // Console stays operational: print every actual phase/rate/mode change.
+    // Long-coast heartbeat repeats remain in aoso_log.txt but no longer bury
+    // the useful state transitions in the terminal.
+    IF changed {
+        aoso_log_info("WARP", msg + ".").
+    } ELSE {
+        aoso_log_info_quiet("WARP", msg + ".").
+    }
 }
 
 // Rails when the event is still far. Physics 2x while SAS points.
