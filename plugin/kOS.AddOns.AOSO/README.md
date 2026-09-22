@@ -85,6 +85,6 @@ On Windows, build against the exact KSP/kOS assemblies and install the DLL with:
 ```
 
 Restart KSP after replacing the DLL. The current assembly version is
-`0.2.1.0`. AOSO selftest should report `native phase2 suffixes current`.
+`0.3.0.0`. AOSO selftest should report `native phase2 suffixes current`.
 The first accepted Lambert and completed native porkchop search also emit
 explicit native-active log messages.
