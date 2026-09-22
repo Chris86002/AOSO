@@ -21,6 +21,16 @@ FUNCTION aoso_window_wrap180 {
 FUNCTION aoso_window_evaluate {
     PARAMETER from_name.
     PARAMETER to_name.
+    RETURN aoso_window_evaluate_at(from_name, to_name, TIME:SECONDS).
+}
+
+// Planner-facing window evaluation at projected universal time. Route search
+// can now ask "what will the Duna->Eve window look like after we finish
+// Minmus and Duna?" instead of pricing every future hop against geometry now.
+FUNCTION aoso_window_evaluate_at {
+    PARAMETER from_name.
+    PARAMETER to_name.
+    PARAMETER at_ut.
 
     LOCAL from_planet IS aoso_feas_planet_of(from_name).
     LOCAL to_planet IS aoso_feas_planet_of(to_name).
@@ -40,10 +50,10 @@ FUNCTION aoso_window_evaluate {
             "transfer_s", 0, "total_s", 0, "efficiency", 0.5, "best_dv", 2500, "now_dv", 2500, "phase_err", 0).
     }
 
-    LOCAL wait_s IS aoso_interplanetary_wait_time_to_window_s(dep_ref, arr_ref).
+    LOCAL wait_s IS aoso_interplanetary_wait_time_to_window_s_at(dep_ref, arr_ref, at_ut).
     IF wait_s < 0 { SET wait_s TO 0. }
     LOCAL transfer_s IS aoso_interplanetary_transfer_time_s(dep_ref, arr_ref).
-    LOCAL current_phase IS aoso_interplanetary_phase_angle_deg(dep_ref, arr_ref).
+    LOCAL current_phase IS aoso_interplanetary_phase_angle_deg_at(dep_ref, arr_ref, at_ut).
     LOCAL required_phase IS aoso_interplanetary_required_phase_angle_deg(dep_ref, arr_ref).
     LOCAL phase_err IS ABS(aoso_window_wrap180(current_phase - required_phase)).
     LOCAL efficiency IS 1 - (phase_err / 180) * 0.5.
@@ -64,7 +74,8 @@ FUNCTION aoso_window_evaluate {
         "efficiency", ROUND(efficiency, 2),
         "best_dv", ROUND(best_dv, 0),
         "now_dv", ROUND(now_dv, 0),
-        "phase_err", ROUND(phase_err, 1)
+        "phase_err", ROUND(phase_err, 1),
+        "at_ut", at_ut
     ).
 }
 
