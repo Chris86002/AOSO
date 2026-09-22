@@ -57,6 +57,11 @@ GLOBAL AOSO_STG_FIRE_AT IS -99.
 GLOBAL AOSO_STG_FIRE_UIDS IS LIST().
 GLOBAL AOSO_STAGING_PRED_TWR IS 0.
 GLOBAL AOSO_STAGING_PRED_STG IS -1.
+GLOBAL AOSO_STAGING_PRECUT_STAGE IS -1.
+GLOBAL AOSO_STAGING_PRECUT_UT IS -1.
+GLOBAL AOSO_STAGING_BURN_RECOVERY IS FALSE.
+GLOBAL AOSO_STAGING_LAST_STAGE_UT IS -1.
+GLOBAL AOSO_STAGING_LAST_STAGE_RT IS -1.
 
 FUNCTION aoso_staging_airborne {
     LOCAL st IS SHIP:STATUS.
@@ -78,6 +83,33 @@ FUNCTION aoso_staging_after_stage {
     LOCAL now IS TIME:SECONDS.
     SET AOSO_STAGING_COOLDOWN_UNTIL TO now + cool.
     SET AOSO_STAGING_SPOOL_UNTIL TO now + spool.
+    SET AOSO_STAGING_PRECUT_STAGE TO -1.
+    SET AOSO_STAGING_PRECUT_UT TO -1.
+}
+
+FUNCTION aoso_staging_reset_burn_guard {
+    SET AOSO_STAGING_PRECUT_STAGE TO -1.
+    SET AOSO_STAGING_PRECUT_UT TO -1.
+    SET AOSO_STAGING_BURN_RECOVERY TO FALSE.
+}
+
+FUNCTION aoso_staging_burn_guard_active {
+    IF AOSO_STAGING_PRECUT_STAGE >= 0 { RETURN TRUE. }
+    IF NOT AOSO_STAGING_BURN_RECOVERY { RETURN FALSE. }
+
+    IF TIME:SECONDS < AOSO_STAGING_SPOOL_UNTIL { RETURN TRUE. }
+    IF AOSO_STAGING_PENDING_RELIGHT { RETURN TRUE. }
+    IF SHIP:AVAILABLETHRUST <= 0.05 { RETURN TRUE. }
+
+    LOCAL gap_limit IS aoso_config_get("MANEUVER_GAP_CUT_S", 0.12).
+    IF DEFINED AOSO_PHYS_DT {
+        IF AOSO_PHYS_DT > gap_limit { RETURN TRUE. }
+    }
+
+    SET AOSO_STAGING_BURN_RECOVERY TO FALSE.
+    aoso_observe_event("STAGE_GUARD", "INFO", "resume",
+        "stg=" + STAGE:NUMBER + " thrust=" + ROUND(SHIP:AVAILABLETHRUST, 1)).
+    RETURN FALSE.
 }
 
 FUNCTION aoso_staging_do {
@@ -98,6 +130,34 @@ FUNCTION aoso_staging_do {
             }
         }
     }
+    LOCAL midburn IS FALSE.
+    IF DEFINED AOSO_MANEUVER_BURNING {
+        IF AOSO_MANEUVER_BURNING { SET midburn TO TRUE. }
+    }
+
+    IF midburn {
+        IF aoso_config_get("MANEUVER_STAGE_PRECUT", TRUE) {
+            LOCAL stg_now IS STAGE:NUMBER.
+            IF AOSO_STAGING_PRECUT_STAGE <> stg_now {
+                SET AOSO_STAGING_PRECUT_STAGE TO stg_now.
+                SET AOSO_STAGING_PRECUT_UT TO TIME:SECONDS.
+                aoso_throttle_set(0).
+                aoso_observe_event("STAGE_GUARD", "INFO", "precut",
+                    "stg=" + stg_now + " reason=" + AOSO_STAGING_LAST_REASON).
+                RETURN FALSE.
+            }
+            // Do not let a second staging path in the same kOS physics tick
+            // bypass the pre-cut. The next tick may actually fire STAGE().
+            IF TIME:SECONDS <= AOSO_STAGING_PRECUT_UT {
+                aoso_throttle_set(0).
+                RETURN FALSE.
+            }
+        }
+        SET AOSO_STAGING_BURN_RECOVERY TO TRUE.
+    }
+
+    SET AOSO_STAGING_LAST_STAGE_UT TO TIME:SECONDS.
+    SET AOSO_STAGING_LAST_STAGE_RT TO KUNIVERSE:REALTIME.
     STAGE.
     RETURN TRUE.
 }
