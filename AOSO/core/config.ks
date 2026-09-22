@@ -140,7 +140,7 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "TICK_DEBUG", TRUE,                  // keep a cheap in-memory physics-tick trace for pre/post event dumps
     "TICK_DEBUG_EVERY", 2,              // sample every N physics ticks in critical flight phases
     "HUD_FAST_EVERY", 2,                // paint fast HUD at most every N physics ticks; flight control goes first
-    "TICK_DT_WARN", 0.06,               // s, flag coarse physics steps (normal 1x is ~0.02 s)
+    "TICK_DT_WARN", 0.12,               // s, game-time gap warning; physics-warp expected dt is handled separately
     "MANEUVER_TICK_GUARD", 0.80,        // fraction of remaining dV allowed in the next measured physics tick
     "CPU_PROFILE", FALSE                // extra per-task opcode stats (also honors PROF_ENABLED)
 ).
@@ -252,6 +252,14 @@ FUNCTION aoso_config_load {
     IF AOSO_CONFIG:HASKEY("WARP_STATUS_REAL_S") {
         IF AOSO_CONFIG["WARP_STATUS_REAL_S"] = 12 {
             SET AOSO_CONFIG["WARP_STATUS_REAL_S"] TO 30.
+        }
+    }
+    // The old 0.06 s warning threshold classified normal scheduler cadence
+    // and 2x physics warp as thousands of WARN events. Preserve explicit
+    // operator overrides, but migrate the old shipped value.
+    IF AOSO_CONFIG:HASKEY("TICK_DT_WARN") {
+        IF AOSO_CONFIG["TICK_DT_WARN"] <= 0.061 {
+            SET AOSO_CONFIG["TICK_DT_WARN"] TO 0.12.
         }
     }
     aoso_log_set_level(aoso_config_get("LOG_LEVEL", "INFO")).
