@@ -312,6 +312,10 @@ FUNCTION aoso_goto_plan_entry {
         IF match_plane {
             LOCAL nd_pc IS aoso_planechange_add_node_for_target(hop).
             IF nd_pc <> 0 {
+                IF aoso_addon_native_porkchop_available() {
+                    aoso_log_info("GOTO", "Plane match first; native porkchop for " + hop:NAME +
+                        " is deferred until this plane-change burn completes.").
+                }
                 SET data["burn_kind"] TO "plane".
                 aoso_state_transition(AOSO_GOTO, "BURN").
                 RETURN.
@@ -351,6 +355,11 @@ FUNCTION aoso_goto_plan_entry {
                 SET hop TO via.
                 SET data["hop"] TO hop:NAME.
                 SET kind TO "assist".
+            }
+            IF aoso_addon_native_porkchop_available() {
+                aoso_log_info("GOTO", "Building " + hop:NAME + " intercept with native porkchop available.").
+            } ELSE {
+                aoso_log_info("GOTO", "Building " + hop:NAME + " intercept with KerboScript porkchop fallback.").
             }
             LOCAL nd_m IS aoso_rendezvous_add_phasing_transfer_node(hop).
             IF nd_m = 0 {
