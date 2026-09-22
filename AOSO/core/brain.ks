@@ -56,13 +56,21 @@ FUNCTION aoso_brain_think_ok {
 FUNCTION aoso_brain_wait_think {
     PARAMETER why.
     IF aoso_brain_think_ok() { RETURN TRUE. }
-    aoso_log_info("BRAIN", "Waiting for a quiet window to " + why + ".").
-    aoso_ui_set("Thinking", "waiting for a quiet window — " + why).
-    LOCAL t0 IS TIME:SECONDS.
-    LOCAL max_s IS aoso_config_get("BRAIN_THINK_WAIT_S", 90).
+
+    // Never wait for CPU/quiet-state while rails warp is still advancing UT.
+    // A WAIT 0 at high rails warp can jump hundreds of game seconds and
+    // made a freshly-created correction node thousands of seconds stale.
+    IF WARP > 0 { aoso_warp_hard_stop(). }
+
+    aoso_log_info("BRAIN", "Planning pause: " + why + " (1x, bounded wait).").
+    aoso_ui_set("Thinking", why + "  1x bounded wait").
+    LOCAL t0_rt IS KUNIVERSE:REALTIME.
+    LOCAL max_s IS aoso_config_get("BRAIN_THINK_WAIT_S", 5).
+    IF max_s > 8 { SET max_s TO 8. }
+    IF max_s < 0 { SET max_s TO 0. }
     UNTIL aoso_brain_think_ok() {
-        IF TIME:SECONDS - t0 > max_s {
-            aoso_log_warn("BRAIN", "Think wait timed out (" + why + ") - calculating anyway.").
+        IF KUNIVERSE:REALTIME - t0_rt > max_s {
+            aoso_log_warn("BRAIN", "Quiet wait expired (" + why + ") - calculating now at 1x.").
             RETURN FALSE.
         }
         IF DEFINED AOSO_HUD_READY {
