@@ -388,7 +388,7 @@ FUNCTION aoso_rendezvous_native_candidates_to_node {
 
     IF win_pe < 0 {
         aoso_log_warn("RENDEZVOUS", "Native porkchop returned " + cands:LENGTH +
-            " candidates but none passed finalize_node; running KerboScript grid.").
+            " candidates but none passed finalize_node; returning to fallback navigation.").
         REMOVE nd_native.
         RETURN 0.
     }
@@ -402,7 +402,7 @@ FUNCTION aoso_rendezvous_native_candidates_to_node {
 
     LOCAL final_pe IS aoso_rendezvous_orbit_pe(nd_native:ORBIT, hop).
     IF NOT aoso_rendezvous_pe_ok_value(final_pe, hop) {
-        aoso_log_warn("RENDEZVOUS", "Native winner lost capture PE after re-apply; using KerboScript grid.").
+        aoso_log_warn("RENDEZVOUS", "Native winner lost capture PE after re-apply; returning to fallback navigation.").
         REMOVE nd_native.
         RETURN 0.
     }
@@ -467,7 +467,7 @@ FUNCTION aoso_rendezvous_try_native_porkchop {
     IF NOT started["ok"] {
         LOCAL start_err IS "".
         IF started:HASKEY("err") { SET start_err TO started["err"]. }
-        aoso_log_warn("RENDEZVOUS", "Native porkchop start failed (" + start_err + "); using KerboScript grid.").
+        aoso_log_warn("RENDEZVOUS", "Native porkchop start failed (" + start_err + "); returning to fallback navigation.").
         RETURN 0.
     }
 
@@ -503,7 +503,7 @@ FUNCTION aoso_rendezvous_try_native_porkchop {
 
     IF NOT done {
         aoso_log_warn("RENDEZVOUS", "Native porkchop did not finish cleanly after " +
-            polls + " polls; using KerboScript grid.").
+            polls + " polls; returning to fallback navigation.").
         RETURN 0.
     }
 
@@ -513,7 +513,7 @@ FUNCTION aoso_rendezvous_try_native_porkchop {
     IF NOT native_res["ok"] {
         LOCAL res_err IS "".
         IF native_res:HASKEY("err") { SET res_err TO native_res["err"]. }
-        aoso_log_warn("RENDEZVOUS", "Native porkchop result failed (" + res_err + "); using KerboScript grid.").
+        aoso_log_warn("RENDEZVOUS", "Native porkchop result failed (" + res_err + "); returning to fallback navigation.").
         RETURN 0.
     }
 
