@@ -64,7 +64,7 @@ FUNCTION aoso_lambert_tof {
     IF c_z <= 0.00000001 { RETURN -1. }
     LOCAL s_z IS aoso_lambert_s(z).
     LOCAL y_uni IS radius1 + radius2 - A * (1 - z * s_z) / SQRT(c_z).
-    IF y_uni <= 1 { RETURN -1. }
+    IF y_uni <= 0.01 { RETURN -1. }
     IF c_z <= 0 { RETURN -1. }
     LOCAL y_over_c IS y_uni / c_z.
     IF y_over_c <= 0 { RETURN -1. }
@@ -87,7 +87,72 @@ FUNCTION aoso_lambert_y {
     RETURN radius1 + radius2 - A * (1 - z * s_z) / SQRT(c_z).
 }
 
+FUNCTION aoso_lambert_try_z {
+    PARAMETER radius1.
+    PARAMETER radius2.
+    PARAMETER A.
+    PARAMETER z.
+    PARAMETER mu.
+    PARAMETER tof_s.
+    IF ABS(z) < 0.02 { SET z TO 0.02. }
+    LOCAL t_try IS aoso_lambert_tof(radius1, radius2, A, z, mu).
+    IF t_try <= 1 { RETURN LEXICON("ok", FALSE, "z", z, "t", -1, "err", 1e99). }
+    RETURN LEXICON("ok", TRUE, "z", z, "t", t_try, "err", t_try - tof_s).
+}
+
+FUNCTION aoso_lambert_visviva_180 {
+    PARAMETER pos1.
+    PARAMETER pos2.
+    PARAMETER mu.
+    PARAMETER tof_s IS 0.
+    LOCAL out IS LEXICON("ok", FALSE, "vel1", V(0, 0, 0), "vel2", V(0, 0, 0), "src", "ks").
+    LOCAL radius1 IS pos1:MAG.
+    LOCAL radius2 IS pos2:MAG.
+    LOCAL sma_h IS (radius1 + radius2) / 2.
+    IF sma_h < 1 { RETURN out. }
+    LOCAL sma_t IS sma_h.
+    IF tof_s > 30 {
+        LOCAL tof_pi IS tof_s / CONSTANT:PI.
+        LOCAL sma_tof IS (tof_pi * tof_pi * mu) ^ (1 / 3).
+        IF sma_tof > sma_h { SET sma_t TO sma_tof. }
+    }
+    LOCAL vis1 IS mu * (2 / radius1 - 1 / sma_t).
+    LOCAL vis2 IS mu * (2 / radius2 - 1 / sma_t).
+    IF vis1 <= 0 { RETURN out. }
+    IF vis2 <= 0 { RETURN out. }
+    LOCAL nrm_h IS VCRS(pos1, pos2).
+    IF nrm_h:MAG < 0.001 { SET nrm_h TO VCRS(pos1, V(0, 1, 0)). }
+    IF nrm_h:MAG < 0.001 { SET nrm_h TO VCRS(pos1, V(0, 0, 1)). }
+    IF nrm_h:MAG < 0.001 { RETURN out. }
+    SET nrm_h TO nrm_h:NORMALIZED.
+    LOCAL pgd_h IS VCRS(nrm_h, pos1:NORMALIZED):NORMALIZED.
+    LOCAL pgd_2 IS VCRS(nrm_h, pos2:NORMALIZED):NORMALIZED.
+    SET out["ok"] TO TRUE.
+    SET out["vel1"] TO pgd_h * SQRT(vis1).
+    SET out["vel2"] TO pgd_2 * SQRT(vis2).
+    SET out["z"] TO 0.
+    LOCAL tof_act IS CONSTANT:PI * SQRT((sma_t ^ 3) / mu).
+    SET out["tof_err"] TO ABS(tof_act - tof_s).
+    RETURN out.
+}
+
+FUNCTION aoso_lambert_tof_tol {
+    PARAMETER tof_s.
+    LOCAL frac IS 0.001.
+    IF DEFINED AOSO_CONFIG {
+        SET frac TO aoso_config_get("LAMBERT_TOF_TOL", 0.001).
+    }
+    IF frac < 0.0002 { SET frac TO 0.0002. }
+    IF frac > 0.01 { SET frac TO 0.01. }
+    LOCAL tol IS tof_s * frac.
+    IF tol < 0.25 { SET tol TO 0.25. }
+    IF tol > 8 { SET tol TO 8. }
+    RETURN tol.
+}
+
 // Returns a lexicon: ok, vel1, vel2. vel1 is inertial velocity at pos1.
+// Pure KerboScript oracle / fallback. Native math goes through
+// aoso_lambert_solve.
 FUNCTION aoso_lambert_solve_ks {
     PARAMETER pos1.
     PARAMETER pos2.
@@ -95,7 +160,7 @@ FUNCTION aoso_lambert_solve_ks {
     PARAMETER mu.
     PARAMETER long_way IS FALSE.
 
-    LOCAL out IS LEXICON("ok", FALSE, "vel1", V(0, 0, 0), "vel2", V(0, 0, 0)).
+    LOCAL out IS LEXICON("ok", FALSE, "vel1", V(0, 0, 0), "vel2", V(0, 0, 0), "src", "ks").
     IF tof_s < 30 { RETURN out. }
     LOCAL radius1 IS pos1:MAG.
     LOCAL radius2 IS pos2:MAG.
@@ -107,130 +172,136 @@ FUNCTION aoso_lambert_solve_ks {
     IF dnu < 2 { RETURN out. }
     IF dnu > 358 { RETURN out. }
 
-    // 180 deg is the Hohmann singularity (sin=0). Use vis-viva in the
-    // pos1-pos2 plane instead of skipping the cell.
-    IF ABS(dnu - 180) < 2.5 {
-        LOCAL sma_t IS (radius1 + radius2) / 2.
-        IF sma_t < 1 { RETURN out. }
-        LOCAL v_t IS SQRT(mu * (2 / radius1 - 1 / sma_t)).
-        LOCAL nrm_h IS VCRS(pos1, pos2).
-        IF nrm_h:MAG < 0.001 { SET nrm_h TO VCRS(pos1, V(0, 1, 0)). }
-        IF nrm_h:MAG < 0.001 { RETURN out. }
-        LOCAL pgd_h IS VCRS(nrm_h:NORMALIZED, pos1:NORMALIZED):NORMALIZED.
-        SET out["ok"] TO TRUE.
-        SET out["vel1"] TO pgd_h * v_t.
-        SET out["vel2"] TO V(0, 0, 0).
-        RETURN out.
+    // Exactly 180 deg is the Hohmann singularity (A=0). Keep a narrow
+    // vis-viva fallback; a 2.5 deg band used to swallow 0.7/1.3x TOF
+    // seeds and return a Hohmann speed for the wrong flight time.
+    IF ABS(dnu - 180) < 0.45 {
+        RETURN aoso_lambert_visviva_180(pos1, pos2, mu, tof_s).
     }
 
     LOCAL s_nu IS SIN(dnu).
-    IF ABS(s_nu) < 0.0008 { RETURN out. }
+    IF ABS(s_nu) < 0.0008 { RETURN aoso_lambert_visviva_180(pos1, pos2, mu, tof_s). }
     LOCAL one_c IS 1 - COS(dnu).
     IF ABS(one_c) < 0.0008 { RETURN out. }
     LOCAL A IS s_nu * SQRT(radius1 * radius2 / one_c).
 
-    // Coarse universal-variable bracket, then secant on t(z)-tof.
-    // Eight samples cover the useful zero-rev region without the old
-    // 14x7 shrink search.
+    // Dense 0-rev z grid. Old step-8 sampling skipped z~2.5 (90 deg
+    // circular) and z~pi^2 (Hohmann) and then accepted 8% TOF error.
+    LOCAL z_grid IS LIST(-28, -18, -10, -5, -2, 0.4, 1.2, 2.5, 4, 6.5, 9, 13, 18, 24, 30, 36).
     LOCAL samples IS LIST().
     LOCAL best_z IS 1.
     LOCAL best_err IS 1e99.
-    LOCAL best_i IS -1.
     LOCAL bracketed IS FALSE.
     LOCAL z_a IS 0.
     LOCAL z_b IS 0.
     LOCAL err_a IS 0.
     LOCAL err_b IS 0.
-    LOCAL i IS 0.
-    UNTIL i >= 8 {
-        LOCAL z_try IS -20 + i * 8.
-        IF ABS(z_try) < 0.02 { SET z_try TO 0.02. }
-        LOCAL t_try IS aoso_lambert_tof(radius1, radius2, A, z_try, mu).
-        IF t_try > 1 {
-            LOCAL err_try IS t_try - tof_s.
-            samples:ADD(LEXICON("z", z_try, "t", t_try, "err", err_try)).
-            LOCAL sample_i IS samples:LENGTH - 1.
-            IF ABS(err_try) < best_err {
-                SET best_err TO ABS(err_try).
-                SET best_z TO z_try.
-                SET best_i TO sample_i.
+    LOCAL gi IS 0.
+    UNTIL gi >= z_grid:LENGTH {
+        LOCAL samp IS aoso_lambert_try_z(radius1, radius2, A, z_grid[gi], mu, tof_s).
+        IF samp["ok"] {
+            samples:ADD(samp).
+            IF ABS(samp["err"]) < best_err {
+                SET best_err TO ABS(samp["err"]).
+                SET best_z TO samp["z"].
             }
             IF samples:LENGTH >= 2 {
                 LOCAL prev IS samples[samples:LENGTH - 2].
                 IF NOT bracketed {
-                    IF prev["err"] * err_try <= 0 {
+                    IF prev["err"] * samp["err"] <= 0 {
                         SET bracketed TO TRUE.
                         SET z_a TO prev["z"].
                         SET err_a TO prev["err"].
-                        SET z_b TO z_try.
-                        SET err_b TO err_try.
+                        SET z_b TO samp["z"].
+                        SET err_b TO samp["err"].
                     }
                 }
             }
         }
-        SET i TO i + 1.
+        SET gi TO gi + 1.
     }
-    IF samples:LENGTH < 2 { RETURN out. }
 
     IF NOT bracketed {
-        IF best_i < 0 { RETURN out. }
-        LOCAL neighbor_i IS best_i - 1.
-        IF neighbor_i < 0 { SET neighbor_i TO best_i + 1. }
-        IF neighbor_i >= samples:LENGTH { SET neighbor_i TO best_i - 1. }
-        IF neighbor_i < 0 { RETURN out. }
-        SET z_a TO samples[neighbor_i]["z"].
-        SET err_a TO samples[neighbor_i]["err"].
-        SET z_b TO samples[best_i]["z"].
-        SET err_b TO samples[best_i]["err"].
-    }
-
-    LOCAL k IS 0.
-    UNTIL k >= 12 {
-        IF ABS(err_b - err_a) < 1e-9 { SET k TO 12. }
-        ELSE {
-            LOCAL z_new IS z_b - err_b * (z_b - z_a) / (err_b - err_a).
-            IF z_new < -24 { SET z_new TO -24. }
-            IF z_new > 40 { SET z_new TO 40. }
-            IF ABS(z_new) < 0.02 { SET z_new TO 0.02. }
-            LOCAL t_new IS aoso_lambert_tof(radius1, radius2, A, z_new, mu).
-            IF t_new > 1 {
-                LOCAL err_new IS t_new - tof_s.
-                IF ABS(err_new) < best_err {
-                    SET best_err TO ABS(err_new).
-                    SET best_z TO z_new.
+        // Local densify around the best coarse sample, then try to bracket.
+        LOCAL li IS 0.
+        UNTIL li >= 9 {
+            LOCAL z_try IS best_z - 4 + li.
+            LOCAL samp2 IS aoso_lambert_try_z(radius1, radius2, A, z_try, mu, tof_s).
+            IF samp2["ok"] {
+                IF ABS(samp2["err"]) < best_err {
+                    SET best_err TO ABS(samp2["err"]).
+                    SET best_z TO samp2["z"].
                 }
-                IF bracketed {
-                    IF err_a * err_new <= 0 {
-                        SET z_b TO z_new.
-                        SET err_b TO err_new.
-                    } ELSE {
-                        SET z_a TO z_new.
-                        SET err_a TO err_new.
+                samples:ADD(samp2).
+                IF samples:LENGTH >= 2 {
+                    LOCAL prev2 IS samples[samples:LENGTH - 2].
+                    IF NOT bracketed {
+                        IF prev2["err"] * samp2["err"] <= 0 {
+                            SET bracketed TO TRUE.
+                            SET z_a TO prev2["z"].
+                            SET err_a TO prev2["err"].
+                            SET z_b TO samp2["z"].
+                            SET err_b TO samp2["err"].
+                        }
                     }
-                } ELSE {
-                    SET z_a TO z_b.
-                    SET err_a TO err_b.
-                    SET z_b TO z_new.
-                    SET err_b TO err_new.
                 }
-            } ELSE {
-                // Invalid universal-variable point: pull the next secant
-                // endpoint toward the best valid coarse sample.
-                SET z_a TO z_b.
-                SET err_a TO err_b.
-                SET z_b TO (z_b + best_z) / 2.
-                IF ABS(z_b) < 0.02 { SET z_b TO 0.02. }
-                LOCAL t_retry IS aoso_lambert_tof(radius1, radius2, A, z_b, mu).
-                IF t_retry > 1 { SET err_b TO t_retry - tof_s. }
             }
-            SET k TO k + 1.
+            SET li TO li + 1.
         }
     }
 
-    IF best_err > tof_s * 0.08 { RETURN out. }
+    IF NOT bracketed { RETURN out. }
+
+    LOCAL k IS 0.
+    UNTIL k >= 28 {
+        LOCAL z_mid IS (z_a + z_b) / 2.
+        LOCAL samp_m IS aoso_lambert_try_z(radius1, radius2, A, z_mid, mu, tof_s).
+        IF samp_m["ok"] {
+            IF ABS(samp_m["err"]) < best_err {
+                SET best_err TO ABS(samp_m["err"]).
+                SET best_z TO samp_m["z"].
+            }
+            IF err_a * samp_m["err"] <= 0 {
+                SET z_b TO samp_m["z"].
+                SET err_b TO samp_m["err"].
+            } ELSE {
+                SET z_a TO samp_m["z"].
+                SET err_a TO samp_m["err"].
+            }
+        } ELSE {
+            SET z_a TO (z_a + 3 * z_b) / 4.
+        }
+        IF ABS(z_b - z_a) < 1e-7 { SET k TO 28. }
+        ELSE { SET k TO k + 1. }
+    }
+
+    // Secant polish on the tight bracket.
+    LOCAL p IS 0.
+    UNTIL p >= 8 {
+        IF ABS(err_b - err_a) < 1e-12 { SET p TO 8. }
+        ELSE {
+            LOCAL z_new IS z_b - err_b * (z_b - z_a) / (err_b - err_a).
+            IF z_new < -36 { SET z_new TO -36. }
+            IF z_new > 39 { SET z_new TO 39. }
+            LOCAL samp_n IS aoso_lambert_try_z(radius1, radius2, A, z_new, mu, tof_s).
+            IF samp_n["ok"] {
+                IF ABS(samp_n["err"]) < best_err {
+                    SET best_err TO ABS(samp_n["err"]).
+                    SET best_z TO samp_n["z"].
+                }
+                SET z_a TO z_b.
+                SET err_a TO err_b.
+                SET z_b TO samp_n["z"].
+                SET err_b TO samp_n["err"].
+            }
+            SET p TO p + 1.
+        }
+    }
+
+    IF best_err > aoso_lambert_tof_tol(tof_s) { RETURN out. }
 
     LOCAL y_uni IS aoso_lambert_y(radius1, radius2, A, best_z).
-    IF y_uni <= 1 { RETURN out. }
+    IF y_uni <= 0.01 { RETURN out. }
     LOCAL f_lag IS 1 - y_uni / radius1.
     LOCAL g_lag IS A * SQRT(y_uni / mu).
     IF ABS(g_lag) < 0.001 { RETURN out. }
@@ -246,8 +317,8 @@ FUNCTION aoso_lambert_solve_ks {
 }
 
 // Stable public API. Native math is optional; the pure KerboScript solver
-// remains the acceptance oracle and fallback when the DLL is absent or
-// returns a non-solution.
+// remains the acceptance oracle and fallback when the DLL is absent,
+// returns a non-solution, or misses the requested time of flight.
 FUNCTION aoso_lambert_solve {
     PARAMETER pos1.
     PARAMETER pos2.
@@ -261,7 +332,15 @@ FUNCTION aoso_lambert_solve {
             LOCAL native_sol IS native_obj:LAMBERT(pos1, pos2, tof_s, mu, long_way).
             IF native_sol:ISTYPE("Lexicon") {
                 IF native_sol:HASKEY("ok") {
-                    IF native_sol["ok"] { RETURN native_sol. }
+                    IF native_sol["ok"] {
+                        LOCAL native_use IS TRUE.
+                        IF native_sol:HASKEY("tof_err") {
+                            IF native_sol["tof_err"] > aoso_lambert_tof_tol(tof_s) {
+                                SET native_use TO FALSE.
+                            }
+                        }
+                        IF native_use { RETURN native_sol. }
+                    }
                 }
             }
         }

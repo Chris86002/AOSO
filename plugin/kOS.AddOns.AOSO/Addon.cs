@@ -19,7 +19,7 @@ namespace kOS.AddOns.AOSO
 
         private void InitializeAosoSuffixes()
         {
-            AddSuffix("VERSION", new Suffix<StringValue>(() => new StringValue("0.1.0")));
+            AddSuffix("VERSION", new Suffix<StringValue>(() => new StringValue("0.1.1")));
             AddSuffix("LAMBERT", new VarArgsSuffix<Lexicon, Structure>(Lambert));
         }
 

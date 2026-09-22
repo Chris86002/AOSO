@@ -24,6 +24,8 @@ namespace kOS.AddOns.AOSO.Bridge
             lex.Add(new StringValue("vel2"), ToKos(result.Vel2));
             lex.Add(new StringValue("err"), new StringValue(result.Error ?? string.Empty));
             lex.Add(new StringValue("src"), new StringValue("native"));
+            lex.Add(new StringValue("z"), ScalarValue.Create(result.Z));
+            lex.Add(new StringValue("tof_err"), ScalarValue.Create(result.TofError));
             return lex;
         }
 

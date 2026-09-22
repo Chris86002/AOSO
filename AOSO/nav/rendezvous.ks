@@ -194,6 +194,17 @@ FUNCTION aoso_rendezvous_apply_lambert {
     LOCAL pos2 IS aoso_lambert_rel_pos(hop, t_dep + tof_s, parent_body).
     LOCAL vel_now IS VELOCITYAT(SHIP, t_dep):ORBIT.
     LOCAL mu IS parent_body:MU.
+
+    // Aim beside the body, not through its center. Lambert-to-center is a
+    // lithobrake; the patched PE we want is parking altitude.
+    LOCAL aim_off IS hop:RADIUS + aoso_rendezvous_desired_pe(hop).
+    LOCAL nrm_aim IS VCRS(pos1, pos2).
+    IF nrm_aim:MAG < 0.001 { SET nrm_aim TO VCRS(pos2, V(0, 1, 0)). }
+    IF nrm_aim:MAG > 0.001 {
+        LOCAL miss_dir IS VCRS(pos2, nrm_aim):NORMALIZED.
+        SET pos2 TO pos2 + miss_dir * aim_off.
+    }
+
     LOCAL sol IS aoso_lambert_solve(pos1, pos2, tof_s, mu, FALSE).
     IF NOT sol["ok"] {
         SET sol TO aoso_lambert_solve(pos1, pos2, tof_s, mu, TRUE).
@@ -220,10 +231,11 @@ FUNCTION aoso_rendezvous_apply_dv {
     PARAMETER t_dep.
     PARAMETER dv_pg.
     PARAMETER dv_nml.
+    PARAMETER dv_rad IS 0.
     IF t_dep <= TIME:SECONDS + 25 { RETURN FALSE. }
     SET nd:ETA TO t_dep - TIME:SECONDS.
     IF nd:ETA < 25 { SET nd:ETA TO 25. }
-    SET nd:RADIALOUT TO 0.
+    SET nd:RADIALOUT TO dv_rad.
     SET nd:NORMAL TO dv_nml.
     SET nd:PROGRADE TO dv_pg.
     aoso_rendezvous_clamp_prograde(nd).
@@ -287,8 +299,8 @@ FUNCTION aoso_rendezvous_settle_long {
 }
 
 // NASA-style porkchop for stock KSP: scan departure × prograde Δv ×
-// small normal (plane) on patched conics. Lambert-to-center does not
-// create SOI patches; this grid does. Slow on purpose.
+// small normal (plane) on patched conics. Lambert seeds aim beside the
+// body (parking offset); this grid still owns SOI hits. Slow on purpose.
 FUNCTION aoso_rendezvous_porkchop_search {
     PARAMETER hop.
 
@@ -321,17 +333,25 @@ FUNCTION aoso_rendezvous_porkchop_search {
     LOCAL t_hoh IS TIME:SECONDS + wait_hoh.
     IF t_hoh < t_soon { SET t_hoh TO t_soon. }
 
+    // Coarse orbit scan + SOI-sized samples around the Hohmann window.
+    // Old code stepped ~period/24 (minutes). Minmus's departure window is
+    // ~15-30 s, so the grid walked right past every intercept.
     LOCAL deps IS LIST().
-    LOCAL di IS 0.
-    UNTIL di >= n_dep {
-        deps:ADD(t_soon + di * (p_ship * 2.2 / MAX(1, n_dep - 1))).
-        SET di TO di + 1.
+    LOCAL n_coarse IS 8.
+    LOCAL ci_dep IS 0.
+    UNTIL ci_dep >= n_coarse {
+        deps:ADD(t_soon + ci_dep * (p_ship * 1.2 / MAX(1, n_coarse - 1))).
+        SET ci_dep TO ci_dep + 1.
     }
-    SET di TO 0.
-    UNTIL di >= n_dep {
-        LOCAL t_d IS t_hoh + (di - (n_dep - 1) / 2) * (p_ship / 4).
+    LOCAL step_win IS aoso_rendezvous_search_step_s(hop).
+    LOCAL n_fine IS n_dep.
+    IF n_fine < 12 { SET n_fine TO 12. }
+    LOCAL half_f IS (n_fine - 1) / 2.
+    LOCAL fi_dep IS 0.
+    UNTIL fi_dep >= n_fine {
+        LOCAL t_d IS t_hoh + (fi_dep - half_f) * step_win.
         IF t_d > TIME:SECONDS + 50 { deps:ADD(t_d). }
-        SET di TO di + 1.
+        SET fi_dep TO fi_dep + 1.
     }
 
     LOCAL target_alt IS hop:ORBIT:SEMIMAJORAXIS - SHIP:BODY:RADIUS.
@@ -374,25 +394,41 @@ FUNCTION aoso_rendezvous_porkchop_search {
         } ELSE {
             IF deps:LENGTH > 16 { SET seed_stride TO 2. }
         }
-        LOCAL seed_tofs IS LIST(
-            tof_h,
-            MAX(600, tof_h * 0.7),
-            MAX(600, tof_h * 1.3)
-        ).
+        LOCAL seed_tofs IS LIST().
+        LOCAL n_tof IS aoso_config_get("PORKCHOP_TOF_SAMPLES", 8).
+        IF n_tof < 3 { SET n_tof TO 3. }
+        IF n_tof > 6 { SET n_tof TO 6. }
+        LOCAL tof_lo IS tof_h * aoso_config_get("PORKCHOP_TOF_MIN", 0.06).
+        LOCAL tof_hi IS tof_h * aoso_config_get("PORKCHOP_TOF_MAX", 1.7).
+        IF tof_lo < 600 { SET tof_lo TO 600. }
+        IF tof_hi < tof_lo + 60 { SET tof_hi TO tof_lo + 60. }
+        LOCAL ti_s IS 0.
+        UNTIL ti_s >= n_tof {
+            LOCAL frac_t IS 0.
+            IF n_tof > 1 { SET frac_t TO ti_s / (n_tof - 1). }
+            seed_tofs:ADD(tof_lo + (tof_hi - tof_lo) * frac_t).
+            SET ti_s TO ti_s + 1.
+        }
+        seed_tofs:ADD(tof_h).
         LOCAL seed_hits IS 0.
         LOCAL seed_di IS 0.
         UNTIL seed_di >= deps:LENGTH {
-            LOCAL seed_ti IS 0.
-            UNTIL seed_ti >= seed_tofs:LENGTH {
-                LOCAL tof_try IS seed_tofs[seed_ti].
-                IF aoso_rendezvous_apply_lambert(nd, hop, deps[seed_di], tof_try) {
-                    aoso_rendezvous_settle_long().
-                    IF aoso_rendezvous_node_hits_body(nd, hop) {
-                        SET seed_hits TO seed_hits + 1.
-                        aoso_rendezvous_porkchop_keep(cands, nd, hop, desired, 20).
+            LOCAL t_seed IS deps[seed_di].
+            LOCAL near_win IS FALSE.
+            IF ABS(t_seed - t_hoh) < p_ship * 0.2 { SET near_win TO TRUE. }
+            IF near_win {
+                LOCAL seed_ti IS 0.
+                UNTIL seed_ti >= seed_tofs:LENGTH {
+                    LOCAL tof_try IS seed_tofs[seed_ti].
+                    IF aoso_rendezvous_apply_lambert(nd, hop, t_seed, tof_try) {
+                        aoso_rendezvous_settle_long().
+                        IF aoso_rendezvous_node_hits_body(nd, hop) {
+                            SET seed_hits TO seed_hits + 1.
+                            aoso_rendezvous_porkchop_keep(cands, nd, hop, desired, 20).
+                        }
                     }
+                    SET seed_ti TO seed_ti + 1.
                 }
-                SET seed_ti TO seed_ti + 1.
             }
             SET seed_di TO seed_di + seed_stride.
         }
@@ -443,17 +479,18 @@ FUNCTION aoso_rendezvous_porkchop_search {
             IF hi >= 3 { SET hi TO cands:LENGTH. }
             IF hi < cands:LENGTH {
                 LOCAL seed IS cands[hi].
+                LOCAL step_den IS aoso_rendezvous_search_step_s(hop).
                 LOCAL tj IS 0.
                 UNTIL tj >= 7 {
-                    LOCAL t_r IS seed["ut"] + (tj - 3) * (p_ship / 14).
+                    LOCAL t_r IS seed["ut"] + (tj - 3) * step_den.
                     LOCAL dj IS 0.
                     UNTIL dj >= 7 {
-                        LOCAL dv_r IS seed["pg"] + (dj - 3) * 18.
+                        LOCAL dv_r IS seed["pg"] + (dj - 3) * 8.
                         LOCAL nj IS 0.
                         UNTIL nj >= 3 {
-                            LOCAL nml_r IS seed["nml"] + (nj - 1) * 20.
+                            LOCAL nml_r IS seed["nml"] + (nj - 1) * 8.
                             SET n_done TO n_done + 1.
-                            IF aoso_rendezvous_apply_dv(nd, t_r, dv_r, nml_r) {
+                            IF aoso_rendezvous_apply_dv(nd, t_r, dv_r, nml_r, seed["rad"]) {
                                 aoso_rendezvous_settle_long().
                                 IF aoso_rendezvous_node_hits_body(nd, hop) {
                                     SET n_hit TO n_hit + 1.
@@ -1039,12 +1076,12 @@ FUNCTION aoso_rendezvous_orbit_inc {
 FUNCTION aoso_rendezvous_pe_min {
     PARAMETER hop.
     PARAMETER desired_pe.
-    LOCAL min_pe IS desired_pe * 0.45.
+    LOCAL min_pe IS desired_pe * 0.6.
     IF hop:ATM:EXISTS {
         LOCAL floor_pe IS hop:ATM:HEIGHT + 8000.
         IF min_pe < floor_pe { SET min_pe TO floor_pe. }
     } ELSE {
-        IF min_pe < 3000 { SET min_pe TO 3000. }
+        IF min_pe < 5000 { SET min_pe TO 5000. }
     }
     RETURN min_pe.
 }
@@ -1082,8 +1119,10 @@ FUNCTION aoso_rendezvous_pe_ok_value {
     LOCAL desired IS aoso_rendezvous_desired_pe(hop).
     LOCAL min_pe IS aoso_rendezvous_pe_min(hop, desired).
     IF pe < min_pe { RETURN FALSE. }
-    LOCAL max_pe IS desired * 3.5.
-    IF max_pe < desired + 20000 { SET max_pe TO desired + 20000. }
+    LOCAL max_mult IS aoso_config_get("INTERCEPT_PE_MAX_MULT", 2.2).
+    IF max_mult < 1.3 { SET max_mult TO 1.3. }
+    LOCAL max_pe IS desired * max_mult.
+    IF max_pe < desired + 8000 { SET max_pe TO desired + 8000. }
     LOCAL soi_cap IS aoso_rendezvous_soi_alt(hop) * 0.06.
     IF max_pe > soi_cap { SET max_pe TO soi_cap. }
     IF pe > max_pe { RETURN FALSE. }
@@ -1113,12 +1152,16 @@ FUNCTION aoso_rendezvous_tune_pe {
     PARAMETER hop.
     LOCAL desired IS aoso_rendezvous_desired_pe(hop).
     LOCAL best IS aoso_rendezvous_pe_score(nd, hop, desired).
-    IF best < desired * 0.35 { RETURN TRUE. }
+    IF aoso_rendezvous_pe_ok_value(aoso_rendezvous_orbit_pe(nd:ORBIT, hop), hop) {
+        IF best < desired * 0.12 { RETURN TRUE. }
+    }
 
-    LOCAL step_t IS 40.
-    LOCAL step_dv IS 8.
+    LOCAL step_t IS aoso_rendezvous_search_step_s(hop).
+    IF step_t > 20 { SET step_t TO 20. }
+    IF step_t < 4 { SET step_t TO 4. }
+    LOCAL step_dv IS 5.
     LOCAL rounds IS 0.
-    UNTIL rounds >= 16 {
+    UNTIL rounds >= 22 {
         LOCAL improved IS FALSE.
 
         LOCAL orig_eta IS nd:ETA.
@@ -1213,11 +1256,13 @@ FUNCTION aoso_rendezvous_tune_pe {
             }
         }
 
-        IF best < desired * 0.5 { RETURN TRUE. }
+        IF aoso_rendezvous_pe_ok_value(aoso_rendezvous_orbit_pe(nd:ORBIT, hop), hop) {
+            IF best < desired * 0.12 { RETURN TRUE. }
+        }
         IF NOT improved {
             SET step_t TO step_t * 0.5.
             SET step_dv TO step_dv * 0.5.
-            IF step_dv < 0.3 { RETURN aoso_rendezvous_pe_ok_value(aoso_rendezvous_orbit_pe(nd:ORBIT, hop), hop). }
+            IF step_dv < 0.15 { RETURN aoso_rendezvous_pe_ok_value(aoso_rendezvous_orbit_pe(nd:ORBIT, hop), hop). }
         }
         SET rounds TO rounds + 1.
     }

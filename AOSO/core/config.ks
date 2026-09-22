@@ -54,6 +54,8 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "GOTO_CORRECT_MAX", 5,              // mid-course PE retunes per hop (was 3; grazes need more)
     "ASTROGATOR_INTERCEPTS", FALSE,     // compatibility/status only; AOSO never asks Astrogator for intercept nodes
     "LAMBERT_SEED_PORKCHOP", TRUE,      // seed patched porkchop candidates with AOSO Lambert solutions
+    "LAMBERT_TOF_TOL", 0.001,           // max |t(z)-TOF| / TOF before a Lambert seed is rejected (was 8%)
+    "INTERCEPT_PE_MAX_MULT", 2.2,       // capture PE vs desired; 3.5 used to accept 50 km Minmus "captures"
     "TPI_ELEV_DEG", 27,                 // optional close-rendezvous terminal-phase elevation target
     "CW_MIN_RANGE_M", 500,              // m, below this hand off to close docking logic
     "CW_MAX_RANGE_M", 50000,            // m, above this use long-range rendezvous phasing
@@ -64,7 +66,7 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "PORKCHOP_DEP_SAMPLES", 24,         // departure samples (soon band + Hohmann window)
     "PORKCHOP_DV_SAMPLES", 18,          // prograde Δv samples from ~0.35 Hohmann to near-escape
     "PORKCHOP_NML_SAMPLES", 5,          // small normal/plane samples (odd, centered on 0)
-    "PORKCHOP_TOF_SAMPLES", 8,          // Lambert fallback TOFs if the patched grid finds nothing
+    "PORKCHOP_TOF_SAMPLES", 8,          // Lambert seed TOFs across PORKCHOP_TOF_MIN..MAX (capped at 6 in the search)
     "PORKCHOP_TOF_MIN", 0.06,
     "PORKCHOP_TOF_MAX", 1.7,
     "GOTO_PATCH_FLICKER_S", 15,         // s of physics-2x after a patch vanishes, so conics can rebuild before we resume rails

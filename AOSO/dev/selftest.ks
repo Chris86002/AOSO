@@ -86,15 +86,55 @@ FUNCTION aoso_selftest {
     LOCAL circular_speed IS SQRT(lam_mu / radius_c).
     LOCAL lam_90_ok IS sol_90["ok"].
     IF lam_90_ok {
-        SET lam_90_ok TO ABS(sol_90["vel1"]:MAG - circular_speed) / circular_speed < 0.15.
+        SET lam_90_ok TO ABS(sol_90["vel1"]:MAG - circular_speed) / circular_speed < 0.02.
+    }
+    IF lam_90_ok {
+        IF ABS(VDOT(sol_90["vel1"], pos_a)) > 0.02 * circular_speed * radius_c { SET lam_90_ok TO FALSE. }
+    }
+    IF lam_90_ok {
+        IF sol_90:HASKEY("tof_err") {
+            IF sol_90["tof_err"] > 2 { SET lam_90_ok TO FALSE. }
+        }
     }
     SET fail TO aoso_selftest_check("lambert circular 90", lam_90_ok, fail).
+
+    LOCAL sol_90_ks IS aoso_lambert_solve_ks(pos_a, pos_b, lam_tof, lam_mu, FALSE).
+    LOCAL lam_90_ks_ok IS sol_90_ks["ok"].
+    IF lam_90_ks_ok {
+        SET lam_90_ks_ok TO ABS(sol_90_ks["vel1"]:MAG - circular_speed) / circular_speed < 0.02.
+    }
+    IF lam_90_ks_ok {
+        IF ABS(VDOT(sol_90_ks["vel1"], pos_a)) > 0.02 * circular_speed * radius_c { SET lam_90_ks_ok TO FALSE. }
+    }
+    IF lam_90_ks_ok {
+        IF sol_90_ks:HASKEY("tof_err") {
+            IF sol_90_ks["tof_err"] > 2 { SET lam_90_ks_ok TO FALSE. }
+        }
+    }
+    SET fail TO aoso_selftest_check("lambert ks circular 90", lam_90_ks_ok, fail).
 
     // 8.2 Lambert 180 deg vis-viva special case.
     LOCAL pos_180 IS V(0 - radius_c, 0, 0).
     LOCAL half_period IS CONSTANT:PI * SQRT((radius_c)^3 / lam_mu).
     LOCAL sol_180 IS aoso_lambert_solve(pos_a, pos_180, half_period, lam_mu, FALSE).
-    SET fail TO aoso_selftest_check("lambert 180 special", sol_180["ok"], fail).
+    LOCAL lam_180_ok IS sol_180["ok"].
+    IF lam_180_ok {
+        SET lam_180_ok TO ABS(sol_180["vel1"]:MAG - circular_speed) / circular_speed < 0.02.
+    }
+    SET fail TO aoso_selftest_check("lambert 180 special", lam_180_ok, fail).
+
+    // 8.2b Near-180 must use universal variable (not the Hohmann shortcut)
+    // so a 0.85x TOF seed is not given a half-period vis-viva speed.
+    LOCAL pos_179 IS V(0 - radius_c * COS(1), radius_c * SIN(1), 0).
+    LOCAL sol_179 IS aoso_lambert_solve(pos_a, pos_179, half_period * 0.85, lam_mu, FALSE).
+    LOCAL lam_179_ok IS sol_179["ok"].
+    IF lam_179_ok {
+        IF sol_179:HASKEY("tof_err") {
+            IF sol_179["tof_err"] > 4 { SET lam_179_ok TO FALSE. }
+        }
+        IF ABS(sol_179["vel1"]:MAG - circular_speed) / circular_speed > 0.25 { SET lam_179_ok TO FALSE. }
+    }
+    SET fail TO aoso_selftest_check("lambert near-180 tof", lam_179_ok, fail).
 
     // 8.3 CW intercept algebra.
     LOCAL cw_st IS LEXICON("x", 0, "y", 2000, "z", 0,

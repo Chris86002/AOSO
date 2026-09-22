@@ -44,11 +44,15 @@ Lambert result keys are:
 | `vel2` | Vector | Inertial arrival velocity, m/s |
 | `err` | String | Empty on success; short failure reason otherwise |
 | `src` | String | Always `"native"` |
+| `z` | Scalar | Universal-variable root (0 for the 180° vis-viva path) |
+| `tof_err` | Scalar | Absolute seconds of `|t(z) - TOF|` |
 
 The implementation uses the Vallado universal-variable formulation with
 radian trigonometry and a bracketed zero-revolution root solve. The 180-degree
-singularity uses the same vis-viva-style special handling as the KerboScript
-solver.
+singularity uses a **0.45°** vis-viva fallback (TOF-aware SMA). A 2.5° band
+used to return Hohmann speed for the wrong flight time. `aoso_lambert_solve`
+rejects a native `ok=true` result when `tof_err` exceeds `LAMBERT_TOF_TOL`
+and falls back to KerboScript.
 
 ## KerboScript dispatch and fallback
 
@@ -60,8 +64,9 @@ aoso_lambert_solve(pos1, pos2, tof_s, mu, long_way)
 
 The original solver is retained as `aoso_lambert_solve_ks`. The public
 function asks `core/addons.ks` for the native backend and uses the native
-solution only when it returns a lexicon with `ok=true`. Missing DLL, missing
-suffix, invalid input, or a native numerical non-solution falls back to
+solution only when it returns a lexicon with `ok=true` and, if present,
+`tof_err` within `LAMBERT_TOF_TOL`. Missing DLL, missing suffix, invalid
+input, a native numerical non-solution, or a TOF miss falls back to
 KerboScript.
 
 That means installing this DLL is a performance optimization, not a

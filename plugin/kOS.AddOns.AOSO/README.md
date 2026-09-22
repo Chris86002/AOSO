@@ -58,8 +58,10 @@ directly.
   zero-revolution Vallado universal-variable Lambert solve.
 
 The Lambert suffix returns a lexicon containing `ok`, `vel1`, `vel2`,
-`err`, and `src`. On invalid arguments or a numerical failure it returns
-`ok=false` instead of throwing into the kOS VM.
+`err`, `src`, `z`, and `tof_err`. On invalid arguments or a numerical
+failure it returns `ok=false` instead of throwing into the kOS VM.
+`aoso_lambert_solve` still falls back to KerboScript when `ok=false` or
+when `tof_err` exceeds `LAMBERT_TOF_TOL`.
 
 ## Fallback
 

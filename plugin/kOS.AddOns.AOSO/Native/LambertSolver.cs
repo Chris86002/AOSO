@@ -19,7 +19,7 @@ namespace kOS.AddOns.AOSO.Native
 
         private const double TwoPi = 2.0 * Math.PI;
         private const double AngleReject = 2.0 * Math.PI / 180.0;
-        private const double AnglePiSpecial = 2.5 * Math.PI / 180.0;
+        private const double AnglePiSpecial = 0.45 * Math.PI / 180.0;
         private const double ZUpper = 4.0 * Math.PI * Math.PI - 1.0e-7;
         private const double ZLower = -100.0;
 
@@ -50,7 +50,7 @@ namespace kOS.AddOns.AOSO.Native
                     return Failure("bad_angle");
 
                 if (Math.Abs(transferAngle - Math.PI) < AnglePiSpecial)
-                    return SolvePi(pos1, pos2, radius1, radius2, mu);
+                    return SolvePi(pos1, pos2, radius1, radius2, mu, tofSeconds);
 
                 double sinTransfer = Math.Sin(transferAngle);
                 double oneMinusCos = 1.0 - Math.Cos(transferAngle);
@@ -100,14 +100,25 @@ namespace kOS.AddOns.AOSO.Native
             }
         }
 
-        private static Result SolvePi(Vec pos1, Vec pos2, double radius1, double radius2, double mu)
+        private static Result SolvePi(Vec pos1, Vec pos2, double radius1, double radius2, double mu, double tofSeconds)
         {
-            double semiMajor = (radius1 + radius2) / 2.0;
-            if (semiMajor < 1.0)
+            double minSma = (radius1 + radius2) / 2.0;
+            if (minSma < 1.0)
                 return Failure("bad_pi_sma");
 
-            double vv1 = mu * (2.0 / radius1 - 1.0 / semiMajor);
-            double vv2 = mu * (2.0 / radius2 - 1.0 / semiMajor);
+            // Hohmann SMA is the 180-deg ellipse floor. A longer requested
+            // TOF uses a higher ellipse so vis-viva matches flight time
+            // instead of always returning the half-period Hohmann speed.
+            double sma = minSma;
+            if (tofSeconds > 30.0)
+            {
+                double smaFromTof = Math.Pow(tofSeconds / Math.PI, 2.0 / 3.0) * Math.Pow(mu, 1.0 / 3.0);
+                if (smaFromTof > minSma)
+                    sma = smaFromTof;
+            }
+
+            double vv1 = mu * (2.0 / radius1 - 1.0 / sma);
+            double vv2 = mu * (2.0 / radius2 - 1.0 / sma);
             if (vv1 <= 0.0 || vv2 <= 0.0)
                 return Failure("bad_pi_visviva");
 
@@ -124,6 +135,7 @@ namespace kOS.AddOns.AOSO.Native
             Vec prograde2 = Vec.Cross(normal, pos2.Normalized()).Normalized();
             Vec vel1 = prograde1 * Math.Sqrt(vv1);
             Vec vel2 = prograde2 * Math.Sqrt(vv2);
+            double actualTof = Math.PI * Math.Sqrt(sma * sma * sma / mu);
 
             return new Result
             {
@@ -132,7 +144,7 @@ namespace kOS.AddOns.AOSO.Native
                 Vel2 = vel2,
                 Error = string.Empty,
                 Z = 0.0,
-                TofError = 0.0
+                TofError = Math.Abs(actualTof - tofSeconds)
             };
         }
 
