@@ -193,9 +193,25 @@ FUNCTION aoso_capture_pe_too_high {
 
 // Hill-climb a near-term prograde/retro node until nd:ORBIT periapsis is
 // the parking altitude. Works on hyperbolas (no apoapsis to burn at).
+FUNCTION aoso_capture_safe_pe_floor {
+    PARAMETER target_pe.
+    LOCAL floor_pe IS MAX(5000, target_pe * 0.5).
+    IF SHIP:BODY:ATM:EXISTS {
+        SET floor_pe TO MAX(SHIP:BODY:ATM:HEIGHT + 5000, target_pe * 0.8).
+    }
+    RETURN floor_pe.
+}
+
+// Near-term PE adjust used before capture. The old one-sided hill climb
+// minimized ABS(PE-target) without a collision constraint, so Minmus chose
+// -30.9 km because it was numerically "closer" to +15 km than the previous
+// +1,234 km graze. This search never accepts a candidate below a hard safe
+// floor and refines around the best valid prograde/retrograde impulse.
 FUNCTION aoso_capture_add_pe_adjust {
     PARAMETER target_pe.
     aoso_warp_hard_stop().
+
+    LOCAL safe_floor IS aoso_capture_safe_pe_floor(target_pe).
     LOCAL eta_b IS 40.
     IF ETA:PERIAPSIS > 25 {
         SET eta_b TO ETA:PERIAPSIS * 0.25.
@@ -204,46 +220,100 @@ FUNCTION aoso_capture_add_pe_adjust {
     } ELSE {
         SET eta_b TO 15.
     }
+
     IF HASNODE { RETURN 0. }
     LOCAL nd IS NODE(TIME:SECONDS + eta_b, 0, 0, 0).
     ADD nd.
-    LOCAL step IS 25.
-    LOCAL best_err IS ABS(nd:ORBIT:PERIAPSIS - target_pe).
+
+    LOCAL best_dv IS 0.
+    LOCAL best_pe IS nd:ORBIT:PERIAPSIS.
+    LOCAL best_err IS 1E99.
+    IF best_pe >= safe_floor {
+        SET best_err TO ABS(best_pe - target_pe).
+    }
+
+    LOCAL step IS 128.
+    LOCAL tol IS MAX(1000, target_pe * 0.1).
     LOCAL round_i IS 0.
-    UNTIL round_i >= 12 {
-        LOCAL orig IS nd:PROGRADE.
-        SET nd:PROGRADE TO orig - step.
+    UNTIL round_i >= 22 {
+        LOCAL center_dv IS best_dv.
+        LOCAL round_dv IS best_dv.
+        LOCAL round_pe IS best_pe.
+        LOCAL round_err IS best_err.
+
+        SET nd:PROGRADE TO center_dv - step.
         WAIT 0.
-        LOCAL err IS ABS(nd:ORBIT:PERIAPSIS - target_pe).
-        IF err < best_err {
-            SET best_err TO err.
-        } ELSE {
-            SET nd:PROGRADE TO orig + step.
-            WAIT 0.
-            SET err TO ABS(nd:ORBIT:PERIAPSIS - target_pe).
-            IF err < best_err {
-                SET best_err TO err.
-            } ELSE {
-                SET nd:PROGRADE TO orig.
-                SET step TO step * 0.5.
+        LOCAL pe_minus IS nd:ORBIT:PERIAPSIS.
+        IF pe_minus >= safe_floor {
+            LOCAL err_minus IS ABS(pe_minus - target_pe).
+            IF err_minus < round_err {
+                SET round_err TO err_minus.
+                SET round_dv TO center_dv - step.
+                SET round_pe TO pe_minus.
             }
         }
-        IF best_err < 800 { 
-            SET round_i TO 12.
-        } ELSE {
-            SET round_i TO round_i + 1.
+
+        SET nd:PROGRADE TO center_dv + step.
+        WAIT 0.
+        LOCAL pe_plus IS nd:ORBIT:PERIAPSIS.
+        IF pe_plus >= safe_floor {
+            LOCAL err_plus IS ABS(pe_plus - target_pe).
+            IF err_plus < round_err {
+                SET round_err TO err_plus.
+                SET round_dv TO center_dv + step.
+                SET round_pe TO pe_plus.
+            }
         }
+
+        IF round_err < best_err {
+            SET best_err TO round_err.
+            SET best_dv TO round_dv.
+            SET best_pe TO round_pe.
+        } ELSE {
+            SET step TO step * 0.5.
+        }
+
+        SET nd:PROGRADE TO best_dv.
+        WAIT 0.
+
+        IF best_err <= tol {
+            IF step <= 4 { SET round_i TO 22. }
+        }
+        IF step < 0.5 { SET round_i TO 22. }
+        SET round_i TO round_i + 1.
+    }
+
+    SET nd:PROGRADE TO best_dv.
+    WAIT 0.
+    LOCAL final_pe IS nd:ORBIT:PERIAPSIS.
+    LOCAL final_err IS ABS(final_pe - target_pe).
+
+    IF final_pe < safe_floor {
+        aoso_log_error("EJECTION", "Rejected capture PE-adjust: candidate PE=" + ROUND(final_pe, 0) +
+            "m below safe floor " + ROUND(safe_floor, 0) + "m.").
+        REMOVE nd.
+        RETURN 0.
+    }
+    IF final_err > tol {
+        aoso_log_warn("EJECTION", "Rejected capture PE-adjust: best safe PE=" + ROUND(final_pe, 0) +
+            "m is not close enough to target " + ROUND(target_pe, 0) + "m (tol " + ROUND(tol, 0) + "m).").
+        REMOVE nd.
+        RETURN 0.
     }
     IF nd:DELTAV:MAG < 0.5 {
         REMOVE nd.
         RETURN 0.
     }
     IF nd:DELTAV:MAG > 2500 {
-        aoso_log_warn("EJECTION", "PE-adjust dv " + ROUND(nd:DELTAV:MAG, 0) + " m/s is too large - circularizing at current PE instead.").
+        aoso_log_warn("EJECTION", "Rejected capture PE-adjust dv " + ROUND(nd:DELTAV:MAG, 0) +
+            " m/s as unreasonable; holding current safe trajectory.").
         REMOVE nd.
-        RETURN aoso_hohmann_add_circularize_at_periapsis().
+        RETURN 0.
     }
-    aoso_log_info("EJECTION", "Capture PE-adjust dv=" + ROUND(nd:PROGRADE, 1) + " m/s, PE " + ROUND(PERIAPSIS, 0) + " -> " + ROUND(nd:ORBIT:PERIAPSIS, 0) + "m.").
+
+    aoso_log_info("EJECTION", "Safe capture PE-adjust dv=" + ROUND(nd:PROGRADE, 1) +
+        " m/s, PE " + ROUND(PERIAPSIS, 0) + " -> " + ROUND(final_pe, 0) +
+        "m (floor " + ROUND(safe_floor, 0) + "m).").
     RETURN nd.
 }
 
@@ -287,8 +357,15 @@ FUNCTION aoso_interplanetary_add_capture_node {
     }
 
     IF PERIAPSIS < min_pe {
-        aoso_log_info("EJECTION", "Capture at " + SHIP:BODY:NAME + ": raising periapsis to " + ROUND(min_pe, 0) + "m (now " + ROUND(PERIAPSIS, 0) + "m).").
-        IF aoso_orbit_is_hyperbolic() {
+        LOCAL safe_floor IS aoso_capture_safe_pe_floor(min_pe).
+        aoso_log_info("EJECTION", "Capture at " + SHIP:BODY:NAME + ": raising periapsis to " +
+            ROUND(min_pe, 0) + "m (now " + ROUND(PERIAPSIS, 0) +
+            "m, safe floor " + ROUND(safe_floor, 0) + "m).").
+
+        // If the current conic intersects the body/terrain margin, an
+        // apoapsis burn is too late: impact happens first. Repair PE with a
+        // near-term node whether the conic is hyperbolic or technically bound.
+        IF aoso_orbit_is_hyperbolic() OR PERIAPSIS < safe_floor {
             RETURN aoso_capture_add_pe_adjust(min_pe).
         }
         RETURN aoso_hohmann_add_periapsis_change(min_pe).
