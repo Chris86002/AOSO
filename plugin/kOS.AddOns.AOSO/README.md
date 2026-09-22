@@ -2,8 +2,10 @@
 
 Optional native numerical backend for the AOSO KerboScript autopilot.
 
-Phase 1 exposes Lambert; Phase 2 adds a chunked patched-conic porkchop candidate search. The DLL does **not** create maneuver
-nodes, steer, throttle, stage, warp, or otherwise fly the vessel. AOSO's
+Phase 1 exposes Lambert; Phase 2 adds a chunked patched-conic moon/intercept
+search; v0.4 adds a chunked interplanetary departure-UT x flight-time Lambert
+porkchop. The DLL does **not** create maneuver nodes, steer, throttle, stage,
+warp, or otherwise fly the vessel. AOSO's
 KerboScript remains the executive and remains fully functional without this DLL.
 
 ## Requirements
@@ -54,13 +56,18 @@ directly.
 ## Exposed suffixes
 
 - `ADDONS:AOSO:VERSION` — addon version string.
-- `ADDONS:AOSO:LAMBERT(requestLex)` — native
- — native zero-revolution Vallado universal-variable Lambert solve. AOSO's wrapper packages `pos1`, `pos2`, `tof`, `mu`, and `long_way` into the request lexicon.
+- `ADDONS:AOSO:LAMBERT(requestLex)` — native zero-revolution Vallado universal-variable Lambert solve. AOSO's wrapper packages `pos1`, `pos2`, `tof`, `mu`, and `long_way` into the request lexicon.
 - `ADDONS:AOSO:PORKCHOPSTART(requestLex)` — start the chunked patched-conic candidate search. The request lexicon contains `hop` and `options`.
 - `ADDONS:AOSO:PORKCHOPPOLL()` — run one bounded native search slice.
 - `ADDONS:AOSO:PORKCHOPRESULT()` — retrieve completed candidate burns.
 - `ADDONS:AOSO:PORKCHOP(requestLex)` — bounded one-shot convenience
   call; returns `async_required` if the search would exceed 40 ms.
+- `ADDONS:AOSO:INTERPLANETARYSTART(requestLex)` — start the chunked
+  planetary Lambert porkchop. The request contains `target` and `options`.
+- `ADDONS:AOSO:INTERPLANETARYPOLL()` — run one bounded planetary search slice.
+- `ADDONS:AOSO:INTERPLANETARYRESULT()` — return ranked departure/arrival
+  candidates with estimated ejection/capture dV. KerboScript still creates
+  the node and accepts it only after stock patched-conic validation.
 
 The Lambert suffix returns a lexicon containing `ok`, `vel1`, `vel2`,
 `err`, `src`, `z`, and `tof_err`. On invalid arguments or a numerical
@@ -85,6 +92,6 @@ On Windows, build against the exact KSP/kOS assemblies and install the DLL with:
 ```
 
 Restart KSP after replacing the DLL. The current assembly version is
-`0.4.0.0`. AOSO selftest should report `native phase2 suffixes current`.
-The first accepted Lambert and completed native porkchop search also emit
-explicit native-active log messages.
+`0.4.0.0`. AOSO selftest should report both `native phase2 suffixes current` and
+`native planetary suffixes current`. The first accepted Lambert and completed
+native searches also emit explicit native-active log messages.
