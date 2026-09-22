@@ -1,5 +1,7 @@
 // AOSO/advanced/docking.ks
-// Phase 11 (Advanced): final-approach and docking autopilot, the piece
+// Phase 11 (Advanced): final-approach and docking autopilot. Gross close-in
+// rendezvous is owned by nav/cw.ks; this controller starts at
+// DOCKING_STANDOFF_DIST and keeps the existing RCS final-approach behavior.
 // nav/rendezvous.ks and interplanetary/ejection.ks both explicitly deferred
 // ("precision timing/final-approach refinement belongs to a later phase")
 // once a ship is already in the target's neighborhood. Assumes
