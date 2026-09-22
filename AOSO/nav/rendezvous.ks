@@ -789,6 +789,23 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
         }
     }
 
+    IF target_orbitable:ISTYPE("Vessel") OR target_orbitable:ISTYPE("DockingPort") {
+        LOCAL tgt_ves IS target_orbitable.
+        IF target_orbitable:ISTYPE("DockingPort") { SET tgt_ves TO target_orbitable:SHIP. }
+        LOCAL stcw IS aoso_cw_state_now(tgt_ves).
+        IF stcw["ok"] {
+            IF stcw["range"] <= aoso_config_get("CW_MAX_RANGE_M", 50000) {
+                IF stcw["range"] >= aoso_config_get("CW_MIN_RANGE_M", 500) {
+                    LOCAL nd_cw IS aoso_cw_add_intercept_node(tgt_ves, 0).
+                    IF nd_cw <> 0 {
+                        aoso_log_info("RENDEZVOUS", "CW intercept to " + tgt_ves:NAME + " range=" + ROUND(stcw["range"], 0) + "m dv=" + ROUND(nd_cw:DELTAV:MAG, 1) + " m/s.").
+                        RETURN nd_cw.
+                    }
+                }
+            }
+        }
+    }
+
     LOCAL mu IS SHIP:BODY:MU.
     LOCAL r2 IS target_orbitable:ORBIT:SEMIMAJORAXIS.
     LOCAL target_alt IS r2 - SHIP:BODY:RADIUS.
