@@ -118,8 +118,10 @@ FUNCTION aoso_hud_show_page {
         IF AOSO_HUD_TABLABEL:HASKEY(k) { SET lab TO AOSO_HUD_TABLABEL[k]. }
         IF k = name {
             SET AOSO_HUD_TABS[k]:TEXT TO "[" + lab + "]".
+            SET AOSO_HUD_TABS[k]:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "button_on.png".
         } ELSE {
             SET AOSO_HUD_TABS[k]:TEXT TO lab.
+            SET AOSO_HUD_TABS[k]:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "button_off.png".
         }
     }
     SET AOSO_HUD_TAB_LOCK TO FALSE.
@@ -199,7 +201,9 @@ FUNCTION aoso_hud_skin_apply {
     PARAMETER g.
     LOCAL fs IS aoso_hud_scale_fs().
     SET g:SKIN:LABEL:FONTSIZE TO fs.
+    SET g:SKIN:LABEL:TEXTCOLOR TO RGB(0.30, 1.0, 0.60).
     SET g:SKIN:BUTTON:FONTSIZE TO fs.
+    SET g:SKIN:BUTTON:BG TO AOSO_UI2_ASSET_ROOT + "button_off.png".
     SET g:SKIN:TOGGLE:FONTSIZE TO fs.
     SET g:SKIN:WINDOW:FONTSIZE TO fs.
 }
