@@ -23,6 +23,8 @@ GLOBAL AOSO_HUD_HDR_TITLE IS 0.
 GLOBAL AOSO_HUD_LAST_GUI IS 0.
 GLOBAL AOSO_HUD_GUI_PAINTED IS "".
 GLOBAL AOSO_HUD_TAC_CHIP IS 0.
+GLOBAL AOSO_UI2_AUTO_PAGE IS TRUE.
+GLOBAL AOSO_UI2_MANUAL_UNTIL IS 0.
 
 FUNCTION aoso_hud_set {
     PARAMETER key.
@@ -127,7 +129,47 @@ FUNCTION aoso_hud_show_page {
 FUNCTION aoso_hud_tab_click {
     PARAMETER name.
     IF AOSO_HUD_COMPACT { aoso_hud_set_compact(FALSE). }
+    SET AOSO_UI2_MANUAL_UNTIL TO TIME:SECONDS + 30.
     aoso_hud_show_page(name).
+}
+
+FUNCTION aoso_ui2_auto_page_toggle {
+    PARAMETER on.
+    SET AOSO_UI2_AUTO_PAGE TO on.
+    IF on { SET AOSO_UI2_MANUAL_UNTIL TO 0. }
+}
+
+FUNCTION aoso_ui2_auto_page_tick {
+    IF NOT AOSO_UI2_AUTO_PAGE { RETURN. }
+    IF AOSO_HUD_MODE = "ENGINEERING" { RETURN. }
+    IF TIME:SECONDS < AOSO_UI2_MANUAL_UNTIL { RETURN. }
+    IF AOSO_HUD_PAGE = "HELP" OR AOSO_HUD_PAGE = "DBG" OR AOSO_HUD_PAGE = "LOG" { RETURN. }
+
+    LOCAL want IS "FLT".
+    LOCAL sys IS AOSO_HUD_DATA["systems"].
+    LOCAL o IS AOSO_HUD_DATA["orbit"].
+    LOCAL l IS AOSO_HUD_DATA["landing"].
+
+    IF sys["rollup"] = "FAIL" {
+        SET want TO "SYS".
+    } ELSE {
+        LOCAL tour_st IS "".
+        IF DEFINED AOSO_TOUR { SET tour_st TO AOSO_TOUR["current"]. }
+        IF l["active"] OR tour_st = "POLAR" OR tour_st = "SCAN" OR tour_st = "DEORBIT" OR tour_st = "DESCEND" {
+            SET want TO "LND".
+        } ELSE {
+            IF o["node"] OR o["burning"] {
+                SET want TO "NAV".
+            } ELSE {
+                IF DEFINED AOSO_GOTO {
+                    LOCAL gs IS AOSO_GOTO["current"].
+                    IF gs <> "" AND gs <> "DONE" AND gs <> "ABORTED" { SET want TO "NAV". }
+                }
+            }
+        }
+    }
+
+    IF want <> AOSO_HUD_PAGE { aoso_hud_show_page(want, FALSE). }
 }
 
 FUNCTION aoso_hud_add_tab {
@@ -505,6 +547,8 @@ FUNCTION aoso_hud_gui_init {
     SET b_eng:ONCLICK TO aoso_hud_mode_eng@.
     LOCAL b_fd IS modes:ADDCHECKBOX("FD", TRUE).
     SET b_fd:ONTOGGLE TO aoso_hud_fd_cb_master@.
+    LOCAL b_auto IS modes:ADDCHECKBOX("AUTO", TRUE).
+    SET b_auto:ONTOGGLE TO aoso_ui2_auto_page_toggle@.
 
     LOCAL fdrow IS vbox:ADDHLAYOUT().
     LOCAL c1 IS fdrow:ADDCHECKBOX("PRO", TRUE).
@@ -695,6 +739,7 @@ FUNCTION aoso_hud_gui_upd_header {
     aoso_hud_set("hdr_do", "DOING  " + doing).
     aoso_hud_set("hdr_dt", f["detail"]).
     aoso_hud_tabs_adapt().
+    aoso_ui2_auto_page_tick().
 }
 
 FUNCTION aoso_hud_tabs_adapt {
