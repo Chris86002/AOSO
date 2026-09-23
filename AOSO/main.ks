@@ -125,6 +125,7 @@ RUN ONCE "AOSO/ux/hud_twin".
 RUN ONCE "AOSO/ux/hud_twin_view".
 RUN ONCE "AOSO/ux/ui2_instruments".
 RUN ONCE "AOSO/ux/ui2_hud".
+RUN ONCE "AOSO/ux/ui2_mfd".
 RUN ONCE "AOSO/ux/hud_gui".
 RUN ONCE "AOSO/ux/hud".
 RUN ONCE "AOSO/ux/telemetry".
