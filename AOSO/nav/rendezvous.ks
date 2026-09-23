@@ -1550,7 +1550,11 @@ FUNCTION aoso_rendezvous_add_correction_node {
     PARAMETER hop.
     IF NOT SHIP:ORBIT:HASNEXTPATCH { RETURN 0. }
     LOCAL pe_now IS aoso_rendezvous_orbit_pe(SHIP:ORBIT, hop).
-    IF aoso_rendezvous_pe_ok_value(pe_now, hop) { RETURN 0. }
+    // A good PE several patches later is not enough for a direct moon hop:
+    // if another moon is the first SOI, this correction still has work to do.
+    IF aoso_rendezvous_pe_ok_value(pe_now, hop) {
+        IF aoso_rendezvous_ship_hits_body(hop) { RETURN 0. }
+    }
 
     LOCAL eta_p IS SHIP:ORBIT:NEXTPATCHETA.
     IF eta_p < 150 { RETURN 0. }
