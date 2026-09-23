@@ -309,6 +309,8 @@ namespace kOS.AddOns.AOSO.Game
                 if (TryLambertCandidate(departureUt, seedTofs[seedTofIndex], out candidate))
                     EvaluateCandidate(candidate);
                 ++DoneCount;
+                if (Done)
+                    return;
                 ++seedTofIndex;
                 if (seedTofIndex >= seedTofs.Length)
                 {
@@ -357,6 +359,8 @@ namespace kOS.AddOns.AOSO.Game
                 Normal = normal
             });
             ++DoneCount;
+            if (Done)
+                return;
 
             ++normalIndex;
             if (normalIndex >= options.NormalSamples)
@@ -437,6 +441,8 @@ namespace kOS.AddOns.AOSO.Game
                 });
             }
             ++DoneCount;
+            if (Done)
+                return;
 
             ++sweepNormalIndex;
             if (sweepNormalIndex >= 3)
@@ -502,6 +508,8 @@ namespace kOS.AddOns.AOSO.Game
                 });
             }
             ++DoneCount;
+            if (Done)
+                return;
 
             ++densifyRadialIndex;
             if (densifyRadialIndex >= 5)
