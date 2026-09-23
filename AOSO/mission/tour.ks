@@ -265,21 +265,47 @@ FUNCTION aoso_tour_polar_entry {
         RETURN.
     }
 
+    // A non-impacting hyperbolic flyby is not a landing setup. The Minmus
+    // failure run reached e=5.94 with PE=14.7 km, was falsely marked arrived,
+    // then started FREEFALL from >2,000 km. Refuse that state explicitly.
+    IF aoso_orbit_is_hyperbolic() {
+        aoso_warp_stop().
+        aoso_log_error("TOUR", "Refusing POLAR/LANDING at " + SHIP:BODY:NAME +
+            ": orbit is still hyperbolic (e=" + ROUND(SHIP:ORBIT:ECCENTRICITY, 3) +
+            " PE=" + ROUND(PERIAPSIS, 0) + "m). Capture must bind first.").
+        IF DEFINED AOSO_EVENTS {
+            aoso_event_publish("HOLD", "tour", "unbound arrival at " + SHIP:BODY:NAME).
+        }
+        aoso_state_abort(AOSO_TOUR).
+        RETURN.
+    }
+
     IF NOT aoso_tour_orbit_is_stable() {
         LOCAL park IS aoso_goto_parking_alt(SHIP:BODY).
         IF PERIAPSIS < park {
             aoso_log_info("TOUR", "Raising periapsis to " + ROUND(park, 0) + "m before polar capture.").
             LOCAL nd_pe IS aoso_hohmann_add_periapsis_change(park).
             IF nd_pe = 0 {
-                aoso_descent_start().
-                aoso_state_transition(AOSO_TOUR, "DESCEND").
+                aoso_warp_stop().
+                aoso_log_error("TOUR", "Could not create periapsis stabilization node at " +
+                    SHIP:BODY:NAME + " - SAFE HOLD; stabilization failure is not permission to descend.").
+                IF DEFINED AOSO_EVENTS {
+                    aoso_event_publish("HOLD", "tour", "periapsis stabilization failed").
+                }
+                aoso_state_abort(AOSO_TOUR).
             }
             RETURN.
         }
         aoso_log_info("TOUR", "Circularizing at periapsis before polar.").
         LOCAL nd_c IS aoso_hohmann_add_circularize_at_periapsis().
         IF nd_c = 0 {
-            aoso_state_transition(AOSO_TOUR, "SCAN").
+            aoso_warp_stop().
+            aoso_log_error("TOUR", "Could not create stabilization/circularization node at " +
+                SHIP:BODY:NAME + " - SAFE HOLD; survey requires a bound stable orbit.").
+            IF DEFINED AOSO_EVENTS {
+                aoso_event_publish("HOLD", "tour", "circularization failed").
+            }
+            aoso_state_abort(AOSO_TOUR).
         }
         RETURN.
     }
