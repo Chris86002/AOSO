@@ -61,7 +61,9 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "ASTROGATOR_INTERCEPTS", FALSE,     // compatibility/status only; AOSO never asks Astrogator for intercept nodes
     "LAMBERT_SEED_PORKCHOP", TRUE,      // seed patched porkchop candidates with AOSO Lambert solutions
     "LAMBERT_TOF_TOL", 0.001,           // max |t(z)-TOF| / TOF before a Lambert seed is rejected (was 8%)
-    "INTERCEPT_PE_MAX_MULT", 2.2,       // capture PE vs desired; 3.5 used to accept 50 km Minmus "captures"
+    "INTERCEPT_PE_MAX_MULT", 2.2,       // strict capture-quality PE vs desired.
+    "INTERCEPT_ROUGH_PE_MAX_MULT", 8,   // departure only: accept a safe rough encounter and refine PE later with a mid-course.
+    "INTERCEPT_ROUGH_SOI_FRAC", 0.18,   // rough PE ceiling as fraction of usable target SOI altitude.
     "TPI_ELEV_DEG", 27,                 // optional close-rendezvous terminal-phase elevation target
     "CW_MIN_RANGE_M", 500,              // m, below this hand off to close docking logic
     "CW_MAX_RANGE_M", 50000,            // m, above this use long-range rendezvous phasing
@@ -99,7 +101,7 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "TOUR_REFUEL_BELOW_PCT", 60,        // % LiquidFuel at/below which the grand tour will land and ISRU-refuel
     "TOUR_MIN_LAND_TWR", 1.4,           // surface TWR required before the grand tour will attempt a landing
     "TOUR_POLAR_INCLINATION", 90,       // deg, parking inclination before a landing-site scan
-    "TOUR_POLAR_TOLERANCE_DEG", 15,     // deg, |inc-90| at/below which the orbit is polar enough to scan
+    "TOUR_POLAR_TOLERANCE_DEG", 5,      // deg, require a genuinely near-polar orbit before global site scanning
     "DV_RESERVE_MIN", 200,              // m/s, floor on the dV budget reserve (also FUEL_RESERVE_PCT of total)
     "DV_ABORT_MIN", 100,                // m/s, abort-budget floor carved out of usable dV
     "FEAS_DV_MARGIN", 1.15,             // multiplier on table dV costs before a destination is declared reachable
@@ -107,7 +109,10 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "WINDOW_MIN_EFFICIENCY", 0.82,      // 0-1, current-phase vs Hohmann phase; below this the window is "poor"
     "PLANNER_MIN_SHOULD_SCORE", 30,     // 0-100, CAN destinations below this are not SHOULD
     "LANDING_SCAN_SAMPLES", 36,         // ground-track samples scored before picking a landing site
-    "LANDING_SCAN_ORBITS", 2,           // orbits to rails-warp while confirming the predicted site
+    "LANDING_SCAN_ORBITS", 1,           // one polar orbit is enough to confirm/improve the predicted site
+    "LANDING_SCAN_MAX_S", 7200,          // hard cap on survey duration; scan must hand off to deorbit
+    "LANDING_ROUGHNESS_SAMPLE_M", 200,   // radius for local relief/roughness scoring around a site
+    "LANDING_ROUGHNESS_WEIGHT", 0.08,    // score penalty per metre of local relief (lower total score is better)
     "MAX_Q_LIMIT_MULT", 1.0,            // extra throttle cap near this-flight peak Q (1.0=off; ASCENT_MAX_Q is the real limiter)
     "ASCENT_MAX_Q", 0.30,               // atm (SHIP:Q). Throttle down while Q is still rising above this. 0=off. 0.30≈30 kPa.
     "DESCENT_BURN_MARGIN_S", 4,         // s of surface-speed reaction time added to the suicide-burn trigger altitude
