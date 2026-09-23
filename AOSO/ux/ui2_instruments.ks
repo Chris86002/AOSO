@@ -155,29 +155,29 @@ FUNCTION aoso_crt_fit {
 }
 
 FUNCTION aoso_lex_num {
-    PARAMETER lex.
+    PARAMETER bag.
     PARAMETER key.
     PARAMETER fallback IS 0.
-    IF NOT lex:ISTYPE("LEXICON") { RETURN fallback. }
-    IF NOT lex:HASKEY(key) { RETURN fallback. }
-    RETURN lex[key].
+    IF NOT bag:ISTYPE("LEXICON") { RETURN fallback. }
+    IF NOT bag:HASKEY(key) { RETURN fallback. }
+    RETURN bag[key].
 }
 
 FUNCTION aoso_lex_str {
-    PARAMETER lex.
+    PARAMETER bag.
     PARAMETER key.
     PARAMETER fallback IS "".
-    IF NOT lex:ISTYPE("LEXICON") { RETURN fallback. }
-    IF NOT lex:HASKEY(key) { RETURN fallback. }
-    RETURN lex[key].
+    IF NOT bag:ISTYPE("LEXICON") { RETURN fallback. }
+    IF NOT bag:HASKEY(key) { RETURN fallback. }
+    RETURN bag[key].
 }
 
 FUNCTION aoso_lex_bool {
-    PARAMETER lex.
+    PARAMETER bag.
     PARAMETER key.
-    IF NOT lex:ISTYPE("LEXICON") { RETURN FALSE. }
-    IF NOT lex:HASKEY(key) { RETURN FALSE. }
-    RETURN lex[key].
+    IF NOT bag:ISTYPE("LEXICON") { RETURN FALSE. }
+    IF NOT bag:HASKEY(key) { RETURN FALSE. }
+    RETURN bag[key].
 }
 
 // Baked key art. Empty button text so the mono word in the PNG is the label.
@@ -369,9 +369,9 @@ FUNCTION aoso_ui2_pfd_update {
 
     // OPS3-style movable guidance diamond, projected into the vessel frame.
     // The marker shows commanded attitude error; it is NOT a control input.
-    LOCAL target IS aoso_ui2_steer_target_vector().
-    IF target:MAG > 0.001 {
-        LOCAL u IS target:NORMALIZED.
+    LOCAL steer_vec IS aoso_ui2_steer_target_vector().
+    IF steer_vec:MAG > 0.001 {
+        LOCAL u IS steer_vec:NORMALIZED.
         LOCAL hx IS VDOT(u, SHIP:FACING:STARVECTOR).
         LOCAL vy IS VDOT(u, SHIP:FACING:TOPVECTOR).
         LOCAL want_x IS 210 + aoso_ui2_clamp(hx, -0.75, 0.75) * 155.

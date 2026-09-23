@@ -203,9 +203,9 @@ FUNCTION aoso_ui2_hud_pipper_fast {
         RETURN.
     }
 
-    LOCAL target IS aoso_ui2_steer_target_vector().
-    IF target:MAG < 0.001 { RETURN. }
-    LOCAL u IS target:NORMALIZED.
+    LOCAL steer_vec IS aoso_ui2_steer_target_vector().
+    IF steer_vec:MAG < 0.001 { RETURN. }
+    LOCAL u IS steer_vec:NORMALIZED.
     LOCAL hx IS VDOT(u, SHIP:FACING:STARVECTOR).
     LOCAL vy IS VDOT(u, SHIP:FACING:TOPVECTOR).
     LOCAL want_x IS 180 + aoso_ui2_clamp(hx, -0.75, 0.75) * 135.
