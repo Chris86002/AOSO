@@ -183,7 +183,15 @@ FUNCTION aoso_rendezvous_finalize_node {
         aoso_log_info("RENDEZVOUS", hop:NAME + " intercept PE " + ROUND(pe0, 0) + "m already a capture (want " + ROUND(want, 0) + "m).").
         RETURN TRUE.
     }
-    aoso_log_info("RENDEZVOUS", hop:NAME + " intercept PE " + ROUND(pe0, 0) + "m is not a capture (want " + ROUND(want, 0) + "m) - hill-climbing patched conics before the burn.").
+    IF aoso_rendezvous_pe_rough_ok_value(pe0, hop) {
+        aoso_log_info("RENDEZVOUS", "SAFE ROUGH " + hop:NAME + " intercept PE=" +
+            ROUND(pe0, 0) + "m (final want " + ROUND(want, 0) +
+            "m). No departure-side polishing; mid-course owns final PE.").
+        RETURN TRUE.
+    }
+    aoso_log_info("RENDEZVOUS", hop:NAME + " intercept PE " + ROUND(pe0, 0) +
+        "m is outside the safe rough corridor (want " + ROUND(want, 0) +
+        "m) - refining only enough to obtain a usable encounter.").
     aoso_ui_pulse("Aiming " + hop:NAME + " intercept", "PE " + ROUND(pe0, 0) + "m  want " + ROUND(want, 0) + "m").
     aoso_rendezvous_refine_intercept(nd, hop, nd:PROGRADE).
     aoso_rendezvous_tune_pe(nd, hop).
@@ -1263,6 +1271,22 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
     LOCAL hit IS aoso_rendezvous_search_intercept(nd, target_orbitable, dv).
 
     IF hit {
+        // If the coarse window already produces a safe direct encounter,
+        // commit now. Do not burn CPU/time hill-climbing the final PE here;
+        // the coast controller will correct once target geometry improves.
+        LOCAL rough_pe0 IS aoso_rendezvous_orbit_pe(nd:ORBIT, target_orbitable).
+        IF aoso_rendezvous_node_hits_body(nd, target_orbitable) {
+            IF aoso_rendezvous_pe_rough_ok_value(rough_pe0, target_orbitable) {
+                LOCAL rough_inc0 IS aoso_rendezvous_orbit_inc(nd:ORBIT, target_orbitable).
+                aoso_log_info("RENDEZVOUS", "Rough " + target_orbitable:NAME +
+                    " departure accepted immediately: PE=" + ROUND(rough_pe0, 0) +
+                    "m inc=" + ROUND(rough_inc0, 1) + "deg dv=" +
+                    ROUND(nd:DELTAV:MAG, 1) + " m/s. Mid-course will refine PE.").
+                aoso_ui_clear().
+                RETURN nd.
+            }
+        }
+
         SET rel_now TO aoso_orbit_rel_inc_from_orbit(nd:ORBIT, target_orbitable).
         IF rel_now >= 0.15 {
             IF NOT polar_hop {
