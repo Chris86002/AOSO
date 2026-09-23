@@ -173,7 +173,7 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "UI2_MARKER_SMOOTH", 0.28,           // 0..1 smoothing for pippers/bugs; higher follows commands faster
     "UI2_TRAIL_POINTS", 10,              // recent flown-position trail on the NAV display (0 disables)
     "UI2_NAV_PRED_POINTS", 16,            // conic prediction samples on the graphical NAV display
-    "UI2_NAV_PRED_REFRESH_S", 1.0,        // game seconds between trajectory resamples
+    "UI2_NAV_PRED_REFRESH_S", 1.0,        // real seconds between trajectory resamples; rails/CPU pressure slows it further
     "UI2_DESCENT_PRED_MAX_S", 180,        // max look-ahead for the coast-only landing prediction bug
     "TICK_DT_WARN", 0.12,               // s, game-time gap warning; physics-warp expected dt is handled separately
     "MANEUVER_TICK_GUARD", 0.80,        // fraction of remaining dV allowed in the next measured physics tick
