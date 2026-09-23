@@ -49,7 +49,19 @@ FUNCTION aoso_addons_detect {
     SET AOSO_ADDON_STATUS["SIMPLEJSON"] TO aoso_addons_any_available(LIST("JSON", "simpleJson")).
     SET AOSO_ADDON_STATUS["CHECKED"] TO TRUE.
 
-    aoso_log("INFO", "ADDONS", "AOSO=" + AOSO_ADDON_STATUS["AOSO"] +
+    LOCAL native_ver IS "".
+    IF AOSO_ADDON_STATUS["AOSO"] {
+        IF ADDONS:HASADDON("AOSO") {
+            IF ADDONS:AVAILABLE("AOSO") {
+                LOCAL native_obj IS ADDONS:AOSO.
+                IF native_obj:HASSUFFIX("VERSION") { SET native_ver TO native_obj:VERSION. }
+            }
+        }
+    }
+    LOCAL native_txt IS "".
+    IF native_ver <> "" { SET native_txt TO " v" + native_ver. }
+
+    aoso_log("INFO", "ADDONS", "AOSO=" + AOSO_ADDON_STATUS["AOSO"] + native_txt +
         " MechJeb=" + AOSO_ADDON_STATUS["MECHJEB"] +
         " Astrogator=" + AOSO_ADDON_STATUS["ASTROGATOR"] +
         " KER=" + AOSO_ADDON_STATUS["KER"] +
