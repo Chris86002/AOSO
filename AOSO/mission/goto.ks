@@ -219,8 +219,18 @@ FUNCTION aoso_goto_plan_entry {
     IF data:HASKEY("unexpected_patch_active") {
         SET data["unexpected_patch_active"] TO FALSE.
     }
-    aoso_warp_hard_stop().
     aoso_throttle_set(0).
+    aoso_steer_release().
+
+    // PLAN mutates nodes and may run patched-conic searches. Do not let its
+    // entry run until KSP is fully unpacked at physics 1x. Re-queue this entry
+    // instead of WAITing while rails warp is still draining down.
+    IF NOT aoso_warp_ensure_physics_idle() {
+        SET AOSO_GOTO["need_entry"] TO TRUE.
+        aoso_ui_pulse("Planning hop", "Settling to physics 1x before planning " + data["goal"]).
+        RETURN.
+    }
+
     aoso_maneuver_clear_all().
     aoso_ui_pulse("Planning hop", "Next body toward " + data["goal"]).
 
@@ -798,11 +808,10 @@ FUNCTION aoso_goto_coast_execute {
                     LOCAL cool IS 0.
                     IF data:HASKEY("correct_cool_ut") { SET cool TO data["correct_cool_ut"]. }
                     IF TIME:SECONDS >= cool {
-                        // Correction search mutates a live maneuver node and
-                        // yields while patched conics settle. Stop rails
-                        // completely first or those WAIT 0s can age the new
-                        // node by thousands of game seconds.
-                        aoso_warp_hard_stop().
+                        // Correction search mutates a live maneuver node.
+                        // Settle to unpacked physics across scheduler ticks;
+                        // never WAIT while a rails command is still draining.
+                        IF NOT aoso_warp_ensure_physics_idle() { RETURN. }
                         LOCAL ndc IS aoso_rendezvous_add_correction_node(hop_check).
                         IF ndc <> 0 {
                             SET data["correct_count"] TO ncorr + 1.
@@ -920,8 +929,20 @@ FUNCTION aoso_goto_coast_execute {
 
 FUNCTION aoso_goto_capture_entry {
     PARAMETER data.
-    aoso_warp_hard_stop().
     aoso_throttle_set(0).
+    aoso_steer_release().
+
+    // Capture planning creates live nodes near periapsis; one WAIT 0 at high
+    // rails can make the node stale before it exists. Re-run CAPTURE entry
+    // next scheduler tick until KSP confirms unpacked physics 1x.
+    IF NOT aoso_warp_ensure_physics_idle() {
+        SET data["capture_entry_wait"] TO TRUE.
+        SET AOSO_GOTO["need_entry"] TO TRUE.
+        aoso_ui_set("Capture setup", "Settling to physics 1x at " + SHIP:BODY:NAME).
+        RETURN.
+    }
+    SET data["capture_entry_wait"] TO FALSE.
+
     LOCAL park IS aoso_goto_parking_alt(SHIP:BODY).
     aoso_log_info("GOTO", "Capturing at " + SHIP:BODY:NAME + " periapsis (Oberth) park=" + ROUND(park, 0) + "m PE=" + ROUND(PERIAPSIS, 0) + "m.").
     IF AOSO_WANT_POLAR {
@@ -1039,6 +1060,9 @@ FUNCTION aoso_goto_close_capture_action {
 
 FUNCTION aoso_goto_capture_execute {
     PARAMETER data.
+    IF data:HASKEY("capture_entry_wait") {
+        IF data["capture_entry_wait"] { RETURN. }
+    }
     IF aoso_fuel_abort_check() {
         aoso_state_abort(AOSO_GOTO).
         RETURN.
