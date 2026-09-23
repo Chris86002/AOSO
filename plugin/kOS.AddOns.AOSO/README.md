@@ -92,6 +92,6 @@ On Windows, build against the exact KSP/kOS assemblies and install the DLL with:
 ```
 
 Restart KSP after replacing the DLL. The current assembly version is
-`0.4.0.0`. AOSO selftest should report both `native phase2 suffixes current` and
+`0.4.1.0`. AOSO selftest should report both `native phase2 suffixes current` and
 `native planetary suffixes current`. The first accepted Lambert and completed
 native searches also emit explicit native-active log messages.
