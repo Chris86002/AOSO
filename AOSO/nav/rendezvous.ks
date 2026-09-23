@@ -1633,6 +1633,16 @@ FUNCTION aoso_rendezvous_tune_pe {
 FUNCTION aoso_rendezvous_add_correction_node {
     PARAMETER hop.
     IF NOT SHIP:ORBIT:HASNEXTPATCH { RETURN 0. }
+
+    // tune_pe() deliberately yields so patched conics can settle. Never enter
+    // it while packed/rails/unpacking. The 17.6-day Minmus run spent most of
+    // its bad recovery loop here because WAIT 0 was executed before 1x physics
+    // had actually settled.
+    IF WARP > 0 OR WARPMODE <> "PHYSICS" OR NOT KUNIVERSE:TIMEWARP:ISSETTLED {
+        aoso_warp_ensure_physics_idle().
+        RETURN 0.
+    }
+
     LOCAL pe_now IS aoso_rendezvous_orbit_pe(SHIP:ORBIT, hop).
     // A good PE several patches later is not enough for a direct moon hop:
     // if another moon is the first SOI, this correction still has work to do.
@@ -1642,11 +1652,9 @@ FUNCTION aoso_rendezvous_add_correction_node {
 
     LOCAL eta_p IS SHIP:ORBIT:NEXTPATCHETA.
     IF eta_p < 150 { RETURN 0. }
-    IF DEFINED AOSO_BRAIN {
-        IF eta_p > aoso_config_get("BRAIN_THINK_LEAD_S", 600) {
-            aoso_brain_wait_think("mid-course correction").
-        }
-    }
+    // Mid-course correction is time-sensitive local guidance. Once physics is
+    // settled, calculate it immediately instead of spending another bounded
+    // CPU-quiet wait at 1x.
     // Place the burn soon: hours-out nodes overshoot on rails (Acacius
     // 11 h / 0.3 placement, ETA -360, never aligned). A few minutes is
     // still early enough for a few m/s to move PE.
