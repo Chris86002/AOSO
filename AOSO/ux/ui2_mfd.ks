@@ -177,7 +177,7 @@ FUNCTION aoso_ui2_mission_update {
     LOCAL total_n IS targets:LENGTH.
     IF total_n < done_n { SET total_n TO done_n. }
     LOCAL progress_frac IS 0.
-    IF total_n > 0 { SET progress_frac TO CLAMP(done_n / total_n, 0, 1). }
+    IF total_n > 0 { SET progress_frac TO aoso_ui2_clamp(done_n / total_n, 0, 1). }
     SET AOSO_UI2_MSN_PROGRESS:TEXT TO "TOUR  " +
         aoso_ui2_bar(progress_frac, 26) + "  " +
         ROUND(progress_frac * 100, 0) + "%".

@@ -83,11 +83,17 @@ FUNCTION aoso_ui2_overlay_label {
     RETURN lab.
 }
 
+// kOS has MIN/MAX, but no built-in CLAMP. Shared by all UI2 modules.
+FUNCTION aoso_ui2_clamp {
+    PARAMETER value.
+    PARAMETER lower_bound.
+    PARAMETER upper_bound.
+    RETURN MAX(lower_bound, MIN(value, upper_bound)).
+}
+
 FUNCTION aoso_ui2_clamp01 {
     PARAMETER x.
-    IF x < 0 { RETURN 0. }
-    IF x > 1 { RETURN 1. }
-    RETURN x.
+    RETURN aoso_ui2_clamp(x, 0, 1).
 }
 
 FUNCTION aoso_ui2_bar {
@@ -213,8 +219,8 @@ FUNCTION aoso_ui2_pfd_update {
         LOCAL u IS target:NORMALIZED.
         LOCAL hx IS VDOT(u, SHIP:FACING:STARVECTOR).
         LOCAL vy IS VDOT(u, SHIP:FACING:TOPVECTOR).
-        LOCAL want_x IS 210 + CLAMP(hx, -0.75, 0.75) * 155.
-        LOCAL want_y IS 125 - CLAMP(vy, -0.75, 0.75) * 88.
+        LOCAL want_x IS 210 + aoso_ui2_clamp(hx, -0.75, 0.75) * 155.
+        LOCAL want_y IS 125 - aoso_ui2_clamp(vy, -0.75, 0.75) * 88.
         LOCAL smooth IS aoso_config_get("UI2_MARKER_SMOOTH", 0.28).
         IF smooth < 0.05 { SET smooth TO 0.05. }
         IF smooth > 1 { SET smooth TO 1. }
@@ -309,8 +315,8 @@ FUNCTION aoso_ui2_nav_project {
     LOCAL px IS VDOT(pos_vec, AOSO_UI2_NAV_BASIS_X) / scale.
     LOCAL py IS VDOT(pos_vec, AOSO_UI2_NAV_BASIS_Y) / scale.
     RETURN LIST(
-        210 + CLAMP(px, -1, 1) * 158,
-        125 - CLAMP(py, -1, 1) * 78
+        210 + aoso_ui2_clamp(px, -1, 1) * 158,
+        125 - aoso_ui2_clamp(py, -1, 1) * 78
     ).
 }
 
@@ -499,7 +505,7 @@ FUNCTION aoso_ui2_geo_xy {
     UNTIL lon >= -180 { SET lon TO lon + 360. }
     UNTIL lon <= 180 { SET lon TO lon - 360. }
     LOCAL x IS 35 + ((lon + 180) / 360) * 350.
-    LOCAL y IS 25 + ((90 - CLAMP(lat, -90, 90)) / 180) * 200.
+    LOCAL y IS 25 + ((90 - aoso_ui2_clamp(lat, -90, 90)) / 180) * 200.
     RETURN LIST(x, y).
 }
 
@@ -607,8 +613,8 @@ FUNCTION aoso_ui2_surface_update {
             SET err_m TO horiz:MAG.
 
             LOCAL span IS MAX(1000, MIN(50000, err_m * 1.25)).
-            LOCAL sx IS CLAMP(err_e / span, -1, 1).
-            LOCAL sy IS CLAMP(err_n / span, -1, 1).
+            LOCAL sx IS aoso_ui2_clamp(err_e / span, -1, 1).
+            LOCAL sy IS aoso_ui2_clamp(err_n / span, -1, 1).
             SET AOSO_UI2_SURF_SHIP:STYLE:MARGIN:H TO 210 - sx * 155.
             SET AOSO_UI2_SURF_SHIP:STYLE:MARGIN:V TO 60 + sy * 72.
         } ELSE {
@@ -636,8 +642,8 @@ FUNCTION aoso_ui2_surface_update {
                     LOCAL pe IS VDOT(ph, peast).
                     LOCAL pn IS VDOT(ph, pnorth).
                     LOCAL pspan IS MAX(1000, MIN(50000, MAX(err_m, ph:MAG) * 1.25)).
-                    SET AOSO_UI2_SURF_PRED:STYLE:MARGIN:H TO 210 + CLAMP(pe / pspan, -1, 1) * 155.
-                    SET AOSO_UI2_SURF_PRED:STYLE:MARGIN:V TO 60 - CLAMP(pn / pspan, -1, 1) * 72.
+                    SET AOSO_UI2_SURF_PRED:STYLE:MARGIN:H TO 210 + aoso_ui2_clamp(pe / pspan, -1, 1) * 155.
+                    SET AOSO_UI2_SURF_PRED:STYLE:MARGIN:V TO 60 - aoso_ui2_clamp(pn / pspan, -1, 1) * 72.
                     SET AOSO_UI2_SURF_PRED:VISIBLE TO TRUE.
                 }
             }
@@ -658,8 +664,8 @@ FUNCTION aoso_ui2_surface_update {
         // one scale so the closing margin is visible at a glance.
         SET AOSO_UI2_SURF_VSIT:VISIBLE TO TRUE.
         LOCAL alt_scale IS MAX(100, MAX(l["radar"], l["trig"]) * 1.15).
-        LOCAL alt_frac IS CLAMP(l["radar"] / alt_scale, 0, 1).
-        LOCAL trig_frac IS CLAMP(l["trig"] / alt_scale, 0, 1).
+        LOCAL alt_frac IS aoso_ui2_clamp(l["radar"] / alt_scale, 0, 1).
+        LOCAL trig_frac IS aoso_ui2_clamp(l["trig"] / alt_scale, 0, 1).
         SET AOSO_UI2_SURF_ALTBUG:STYLE:MARGIN:H TO 210.
         SET AOSO_UI2_SURF_ALTBUG:STYLE:MARGIN:V TO 105 - alt_frac * 82.
         SET AOSO_UI2_SURF_TRIGBUG:STYLE:MARGIN:H TO 236.

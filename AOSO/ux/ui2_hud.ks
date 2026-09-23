@@ -186,8 +186,8 @@ FUNCTION aoso_ui2_hud_pipper_fast {
     LOCAL u IS target:NORMALIZED.
     LOCAL hx IS VDOT(u, SHIP:FACING:STARVECTOR).
     LOCAL vy IS VDOT(u, SHIP:FACING:TOPVECTOR).
-    LOCAL want_x IS 210 + CLAMP(hx, -0.75, 0.75) * 155.
-    LOCAL want_y IS 125 - CLAMP(vy, -0.75, 0.75) * 88.
+    LOCAL want_x IS 210 + aoso_ui2_clamp(hx, -0.75, 0.75) * 155.
+    LOCAL want_y IS 125 - aoso_ui2_clamp(vy, -0.75, 0.75) * 88.
     LOCAL smooth IS aoso_config_get("UI2_MARKER_SMOOTH", 0.28).
     IF smooth < 0.05 { SET smooth TO 0.05. }
     IF smooth > 1 { SET smooth TO 1. }
@@ -217,7 +217,7 @@ FUNCTION aoso_ui2_hud_fast {
 
     aoso_ui2_hud_pipper_fast().
     SET AOSO_UI2_HUD_HDG:TEXT TO "HDG " + ROUND(f["hdg"], 0).
-    SET AOSO_UI2_HUD_VS:VALUE TO CLAMP(f["vs"], -250, 250).
+    SET AOSO_UI2_HUD_VS:VALUE TO aoso_ui2_clamp(f["vs"], -250, 250).
 
     LOCAL vel IS f["orb"].
     IF f["in_atm"] { SET vel TO f["srf"]. }
@@ -285,11 +285,11 @@ FUNCTION aoso_ui2_hud_update {
         LOCAL total IS o["node_dv"].
         LOCAL left IS total.
         IF o["burning"] { SET left TO o["burn_left"]. }
-        IF total > 0.01 { SET progress TO 1 - CLAMP(left / total, 0, 1). }
+        IF total > 0.01 { SET progress TO 1 - aoso_ui2_clamp(left / total, 0, 1). }
         SET AOSO_UI2_HUD_BOTTOM:TEXT TO ROUND(left, 0) + "m/s".
     } ELSE {
         LOCAL pct IS MAX(AOSO_HUD_DATA["res"]["lf"], AOSO_HUD_DATA["res"]["ox"]) / 100.
-        SET progress TO CLAMP(pct, 0, 1).
+        SET progress TO aoso_ui2_clamp(pct, 0, 1).
         SET AOSO_UI2_HUD_BOTTOM:TEXT TO "PROP " + ROUND(pct * 100, 0) + "%".
     }
     SET AOSO_UI2_HUD_BURN:VALUE TO progress.
