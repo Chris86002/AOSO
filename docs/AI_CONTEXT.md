@@ -136,3 +136,18 @@ revive `aoso-v2-integration`.
 `run "AOSO/dev/selftest".` after a normal AOSO boot (or it RUN ONCEs
 the core it needs). It must not STAGE, LOCK, WARP, or THROTTLE.
 Manual KSP flights: `docs/AOSO_SCENARIOS.md`.
+
+## UI v2 ownership and invariants
+
+- Read docs/AOSO_UI2.md before changing the HUD/MFD.
+- ui2_instruments.ks owns PFD/NAV/SURF only.
+- ui2_hud.ks owns the separate tactical glass HUD.
+- ui2_mfd.ks exclusively owns Mission/Systems/Vehicle graphical pages.
+- hud_gui.ks owns routing/chrome/AUTO-page behavior and the UI2 startup self-test.
+- UI2 is display-only. It may visualize and highlight, but must never steer,
+  throttle, stage, warp, write SHIP:CONTROL, or change mission state.
+- Expensive visual prediction must use wall-clock throttling
+  (KUNIVERSE:REALTIME) so rails warp cannot trigger it every rendered frame.
+- Never duplicate a UI2 function/global across modules; kOS identifiers are
+  case-insensitive and duplicate ownership is a compile failure.
+
