@@ -284,12 +284,9 @@ FUNCTION aoso_goto_plan_entry {
             aoso_state_transition(AOSO_GOTO, "COAST").
             RETURN.
         }
-        IF SHIP:STATUS = "ESCAPING" {
-            aoso_log_info("GOTO", "Already escaping toward " + np + " - coasting.").
-            SET data["burn_kind"] TO "coast".
-            aoso_state_transition(AOSO_GOTO, "COAST").
-            RETURN.
-        }
+        // A live patch to some other moon/planet is an obstruction, not a
+        // valid leg. The old code accepted any patch while ESCAPING and could
+        // turn a Minmus transfer into an accidental Mun flyby.
         IF SHIP:BODY:NAME <> SUN:NAME {
             IF np = SHIP:BODY:BODY:NAME {
                 aoso_log_info("GOTO", "Existing escape patch to " + np + " - coasting.").
@@ -298,6 +295,8 @@ FUNCTION aoso_goto_plan_entry {
                 RETURN.
             }
         }
+        aoso_log_warn("GOTO", "Ignoring unexpected patch to " + np +
+            " while next hop is " + hop:NAME + " - rebuilding the intended route.").
     }
 
     LOCAL action_hop IS hop:NAME.
@@ -607,10 +606,30 @@ FUNCTION aoso_goto_coast_execute {
         SET data["patch_lost_ut"] TO 0.
         SET data["capture_fails"] TO 0.
         SET data["skip_capture"] TO FALSE.
-        aoso_log_info("GOTO", "SOI change: " + data["depart_body"] + " -> " + SHIP:BODY:NAME + ".").
-        aoso_event_publish("SOI_CHANGED", "goto", data["depart_body"] + "->" + SHIP:BODY:NAME).
         LOCAL hop_name IS "".
         IF data:HASKEY("hop") { SET hop_name TO data["hop"]. }
+        LOCAL expected_soi IS FALSE.
+        IF SHIP:BODY:NAME = goal_name { SET expected_soi TO TRUE. }
+        IF hop_name <> "" {
+            IF SHIP:BODY:NAME = hop_name { SET expected_soi TO TRUE. }
+        }
+        IF data:HASKEY("via") {
+            IF data["via"] <> "" {
+                IF SHIP:BODY:NAME = data["via"] { SET expected_soi TO TRUE. }
+            }
+        }
+
+        aoso_log_info("GOTO", "SOI change: " + data["depart_body"] + " -> " + SHIP:BODY:NAME + ".").
+        aoso_event_publish("SOI_CHANGED", "goto", data["depart_body"] + "->" + SHIP:BODY:NAME).
+        IF NOT expected_soi {
+            aoso_log_warn("GOTO", "UNEXPECTED SOI: entered " + SHIP:BODY:NAME +
+                " while routing to " + hop_name + " / goal " + goal_name +
+                ". Recovering through PLAN; do not treat this as arrival/capture.").
+            aoso_observe_anomaly("UNEXPECTED_SOI", "HIGH", 0, 1).
+            IF DEFINED AOSO_EVENTS {
+                aoso_event_publish("UNEXPECTED_SOI", "goto", data["depart_body"] + "->" + SHIP:BODY:NAME).
+            }
+        }
         IF hop_name <> "" {
             LOCAL ver_t IS aoso_verify_transfer(hop_name).
             aoso_log_info("GOTO", "Transfer verify vs " + hop_name + ": " + ver_t["status"] + " " + ver_t["reason"] + ".").
@@ -627,6 +646,29 @@ FUNCTION aoso_goto_coast_execute {
     LOCAL np IS aoso_goto_patch_body_name().
     IF np <> "" {
         SET data["retry_ut"] TO 0.
+
+        // Never blindly warp into an unrelated SOI. This run's "Minmus"
+        // trajectory changed to Mun; the old coast controller simply followed
+        // the new NEXTPATCH and only noticed after entering Mun.
+        IF NOT aoso_goto_patch_is_ours(data, np) {
+            aoso_warp_hard_stop().
+            aoso_steer_release().
+            SET data["expect_body"] TO "".
+            SET data["expect_ut"] TO 0.
+            SET data["patch_lost_ut"] TO 0.
+            SET data["corrected"] TO FALSE.
+            SET data["correct_count"] TO 0.
+            aoso_log_warn("GOTO", "Unexpected next SOI " + np +
+                " while targeting " + data["hop"] + " / goal " + goal_name +
+                " - stopping warp and replanning before entry.").
+            aoso_observe_anomaly("UNEXPECTED_PATCH", "HIGH", 0, SHIP:ORBIT:NEXTPATCHETA).
+            IF DEFINED AOSO_EVENTS {
+                aoso_event_publish("UNEXPECTED_PATCH", "goto", np).
+            }
+            aoso_state_transition(AOSO_GOTO, "PLAN").
+            RETURN.
+        }
+
         aoso_goto_remember_patch(data, np, SHIP:ORBIT:NEXTPATCHETA).
         LOCAL ncorr IS 0.
         IF data:HASKEY("correct_count") { SET ncorr TO data["correct_count"]. }
