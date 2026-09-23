@@ -73,7 +73,7 @@ FUNCTION aoso_tour_orbit_is_stable {
 
 FUNCTION aoso_tour_is_polar {
     LOCAL tgt IS aoso_config_get("TOUR_POLAR_INCLINATION", 90).
-    LOCAL tol IS aoso_config_get("TOUR_POLAR_TOLERANCE_DEG", 15).
+    LOCAL tol IS aoso_config_get("TOUR_POLAR_TOLERANCE_DEG", 5).
     RETURN ABS(SHIP:ORBIT:INCLINATION - tgt) <= tol.
 }
 
@@ -228,7 +228,12 @@ FUNCTION aoso_tour_goto_execute {
     }
     IF aoso_goto_is_done() {
         LOCAL name IS aoso_tour_current_name(data).
-        IF aoso_tour_should_refuel(name) {
+
+        // A grand-tour stop means LAND when the live feasibility model says
+        // this vessel can land and leave again. Fuel percentage decides
+        // whether surface ISRU runs after touchdown; it must not decide
+        // whether the body is visited only from orbit.
+        IF aoso_tour_landable(name) {
             IF SHIP:STATUS = "LANDED" {
                 aoso_state_transition(AOSO_TOUR, "REFUEL").
             } ELSE {
@@ -298,7 +303,7 @@ FUNCTION aoso_tour_polar_entry {
             }
         }
         aoso_log_info("TOUR", "Plane-changing to polar (" + ROUND(SHIP:ORBIT:INCLINATION, 1) + " -> " + tgt + " deg) at the slow node.").
-        LOCAL nd_p IS aoso_planechange_add_node_for_inclination(tgt, aoso_config_get("TOUR_POLAR_TOLERANCE_DEG", 15)).
+        LOCAL nd_p IS aoso_planechange_add_node_for_inclination(tgt, aoso_config_get("TOUR_POLAR_TOLERANCE_DEG", 5)).
         IF nd_p = 0 {
             aoso_state_transition(AOSO_TOUR, "SCAN").
         }
@@ -736,7 +741,7 @@ FUNCTION aoso_tour_start {
     }
 
     aoso_tour_define_states().
-    SET AOSO_TOUR["data"] TO LEXICON("targets", targets, "index", 0, "site_lat", 0, "site_lng", 0, "site_alt", 0, "site_score", -1, "deorbit_wait_since", 0, "polar_warp_logged", FALSE, "scan_until", 0, "scan_next_sample", 0, "scan_orbits", 2, "accomplished", LEXICON(), "depart_ok", FALSE).
+    SET AOSO_TOUR["data"] TO LEXICON("targets", targets, "index", 0, "site_lat", 0, "site_lng", 0, "site_alt", 0, "site_score", -1, "deorbit_wait_since", 0, "polar_warp_logged", FALSE, "scan_until", 0, "scan_next_sample", 0, "scan_orbits", 1, "accomplished", LEXICON(), "depart_ok", FALSE).
     aoso_log_info("TOUR", "Grand tour armed: " + targets:LENGTH + " bodies (" + aoso_classify_name() + "), then KSC return.").
     aoso_decide("TOUR", "arm", "" + targets:LENGTH, aoso_classify_name(), "n=" + targets:LENGTH).
     aoso_state_transition(AOSO_TOUR, "BOOT").
