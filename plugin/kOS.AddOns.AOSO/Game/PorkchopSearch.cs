@@ -608,6 +608,13 @@ namespace kOS.AddOns.AOSO.Game
                 return;
 
             KeepCandidate(candidate, 20);
+
+            // Departure guidance only needs a safe direct encounter. Do not
+            // spend thousands more patched-conic cells polishing periapsis
+            // here; KerboScript re-validates the real node and a later
+            // mid-course correction owns the final capture PE.
+            if (IsRoughEncounterPe(pe))
+                stage = SearchStage.Done;
         }
 
         private bool TryPatchedPeriapsis(PorkchopCandidate candidate, out double pe)
@@ -638,33 +645,27 @@ namespace kOS.AddOns.AOSO.Game
                 Math.Max(options.PeriodSeconds * 2.5, hohmannTof * 2.0);
             transfer.EndUT = horizon;
 
-            Orbit current = transfer;
-            for (int patch = 0; patch < 5; ++patch)
-            {
-                var next = new Orbit();
-                bool ok = PatchedConics.CalculatePatch(
-                    current,
-                    next,
-                    Math.Max(candidate.Ut, current.StartUT),
-                    solverParameters,
-                    null);
+            // This job is only constructed when target and vessel share the
+            // same parent. Therefore the target must be the FIRST SOI after
+            // the parent-body transfer. Walking several patches deep used to
+            // accept Kerbin -> Mun -> Kerbin -> Minmus as a "Minmus" result.
+            var next = new Orbit();
+            bool ok = PatchedConics.CalculatePatch(
+                transfer,
+                next,
+                candidate.Ut,
+                solverParameters,
+                null);
 
-                if (!ok || next.referenceBody == null)
-                    return false;
+            if (!ok || next.referenceBody == null)
+                return false;
+            if (next.StartUT > horizon)
+                return false;
+            if (next.referenceBody != target)
+                return false;
 
-                if (next.referenceBody == target)
-                {
-                    pe = next.PeA;
-                    return IsFinite(pe);
-                }
-
-                if (next.StartUT > horizon)
-                    return false;
-
-                current = next;
-            }
-
-            return false;
+            pe = next.PeA;
+            return IsFinite(pe);
         }
 
         private double Score(PorkchopCandidate candidate, bool capture)
@@ -696,6 +697,18 @@ namespace kOS.AddOns.AOSO.Game
         private bool IsCapturePe(double pe)
         {
             return pe >= options.MinimumPe && pe <= options.MaximumPe;
+        }
+
+        private bool IsRoughEncounterPe(double pe)
+        {
+            if (!IsFinite(pe) || pe < options.MinimumPe)
+                return false;
+
+            double maxPe = Math.Max(
+                options.DesiredPe + 40000.0,
+                options.DesiredPe * 8.0);
+            maxPe = Math.Min(maxPe, options.SoiAltitude * 0.18);
+            return pe <= maxPe;
         }
 
         private void KeepCandidate(PorkchopCandidate candidate, int maxCount)
