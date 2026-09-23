@@ -34,9 +34,9 @@ GLOBAL AOSO_UI2_NAV_RIGHT IS 0.
 GLOBAL AOSO_UI2_NAV_TRAIL IS LIST().
 GLOBAL AOSO_UI2_NAV_TRAIL_X IS LIST().
 GLOBAL AOSO_UI2_NAV_TRAIL_Y IS LIST().
-GLOBAL AOSO_UI2_NAV_LAST_TRAIL_UT IS -1.
+GLOBAL AOSO_UI2_NAV_LAST_TRAIL_RT IS -1.
 GLOBAL AOSO_UI2_NAV_PRED IS LIST().
-GLOBAL AOSO_UI2_NAV_LAST_PRED_UT IS -1.
+GLOBAL AOSO_UI2_NAV_LAST_PRED_RT IS -1.
 GLOBAL AOSO_UI2_NAV_BASIS_BODY IS "".
 GLOBAL AOSO_UI2_NAV_BASIS_X IS V(1, 0, 0).
 GLOBAL AOSO_UI2_NAV_BASIS_Y IS V(0, 1, 0).
@@ -279,7 +279,7 @@ FUNCTION aoso_ui2_build_nav_display {
     aoso_hud_lab(page, "ui2_nav_detail", "").
     aoso_hud_lab(page, "ui2_nav_burn", "").
 
-    SET AOSO_UI2_NAV_LAST_PRED_UT TO -1.
+    SET AOSO_UI2_NAV_LAST_PRED_RT TO -1.
     SET AOSO_UI2_NAV_BASIS_BODY TO "".
 }
 
@@ -298,7 +298,7 @@ FUNCTION aoso_ui2_nav_basis_ensure {
         SET AOSO_UI2_NAV_BASIS_Y TO y:NORMALIZED.
     }
     SET AOSO_UI2_NAV_BASIS_BODY TO SHIP:BODY:NAME.
-    SET AOSO_UI2_NAV_LAST_PRED_UT TO -1.
+    SET AOSO_UI2_NAV_LAST_PRED_RT TO -1.
     SET AOSO_UI2_NAV_TRAIL_X TO LIST().
     SET AOSO_UI2_NAV_TRAIL_Y TO LIST().
 }
@@ -315,15 +315,30 @@ FUNCTION aoso_ui2_nav_project {
 }
 
 FUNCTION aoso_ui2_nav_predict {
-    LOCAL now IS TIME:SECONDS.
+    // Visual conic sampling is intentionally wall-clock throttled. TIME:SECONDS
+    // may advance thousands of seconds per rendered frame in rails warp, which
+    // would otherwise make the HUD recalculate the trajectory every frame.
+    LOCAL now_rt IS KUNIVERSE:REALTIME.
     LOCAL refresh IS aoso_config_get("UI2_NAV_PRED_REFRESH_S", 1).
     IF refresh < 0.25 { SET refresh TO 0.25. }
-    IF AOSO_UI2_NAV_LAST_PRED_UT >= 0 {
-        IF now - AOSO_UI2_NAV_LAST_PRED_UT < refresh { RETURN. }
+
+    IF WARP > 0 {
+        IF refresh < 2 { SET refresh TO 2. }
     }
-    SET AOSO_UI2_NAV_LAST_PRED_UT TO now.
+    IF DEFINED AOSO_CPU_LEVEL {
+        IF AOSO_CPU_LEVEL >= 3 { RETURN. }
+        IF AOSO_CPU_LEVEL >= 2 {
+            IF refresh < 3 { SET refresh TO 3. }
+        }
+    }
+
+    IF AOSO_UI2_NAV_LAST_PRED_RT >= 0 {
+        IF now_rt - AOSO_UI2_NAV_LAST_PRED_RT < refresh { RETURN. }
+    }
+    SET AOSO_UI2_NAV_LAST_PRED_RT TO now_rt.
     aoso_ui2_nav_basis_ensure().
 
+    LOCAL now_ut IS TIME:SECONDS.
     LOCAL o IS AOSO_HUD_DATA["orbit"].
     LOCAL horizon IS o["period"].
     IF horizon <= 1 { SET horizon TO 3600. }
@@ -339,8 +354,8 @@ FUNCTION aoso_ui2_nav_predict {
     UNTIL i >= n {
         LOCAL frac IS 0.
         IF n > 1 { SET frac TO i / (n - 1). }
-        LOCAL ut IS now + horizon * frac.
-        LOCAL sample_vec IS aoso_orbit_position_at(SHIP, ut).
+        LOCAL sample_ut IS now_ut + horizon * frac.
+        LOCAL sample_vec IS aoso_orbit_position_at(SHIP, sample_ut).
         pts:ADD(sample_vec).
         IF sample_vec:MAG > max_r { SET max_r TO sample_vec:MAG. }
         SET i TO i + 1.
@@ -393,10 +408,10 @@ FUNCTION aoso_ui2_nav_update {
     }
 
     // Flown trail.
-    LOCAL now IS TIME:SECONDS.
+    LOCAL trail_rt IS KUNIVERSE:REALTIME.
     IF AOSO_UI2_NAV_TRAIL:LENGTH > 0 {
-        IF AOSO_UI2_NAV_LAST_TRAIL_UT < 0 OR now - AOSO_UI2_NAV_LAST_TRAIL_UT >= 2 {
-            SET AOSO_UI2_NAV_LAST_TRAIL_UT TO now.
+        IF AOSO_UI2_NAV_LAST_TRAIL_RT < 0 OR trail_rt - AOSO_UI2_NAV_LAST_TRAIL_RT >= 2 {
+            SET AOSO_UI2_NAV_LAST_TRAIL_RT TO trail_rt.
             AOSO_UI2_NAV_TRAIL_X:ADD(pos[0]).
             AOSO_UI2_NAV_TRAIL_Y:ADD(pos[1]).
             IF AOSO_UI2_NAV_TRAIL_X:LENGTH > AOSO_UI2_NAV_TRAIL:LENGTH {
