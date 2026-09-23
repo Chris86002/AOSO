@@ -469,17 +469,20 @@ FUNCTION aoso_hud_gui_build_vehicle {
 
 FUNCTION aoso_hud_gui_build_prop {
     PARAMETER p.
-    aoso_hud_title(p, "PROPULSION").
-    aoso_hud_hint(p, "Fuel and engines. LF=liquid fuel  OX=oxidizer  MP=monopropellant  EC=electric charge  dV=delta-v. Does not throttle.").
-    aoso_hud_lab(p, "prp_thr", "THRUST  -").
-    aoso_hud_lab(p, "prp_twr", "TWR / STAGE  -").
-    aoso_hud_lab(p, "prp_dv", "DELTA-V  -").
-    aoso_hud_lab(p, "prp_eng", "ENGINES  -").
-    aoso_hud_lab(p, "prp_lf", "LIQUID FUEL  -").
-    aoso_hud_lab(p, "prp_ox", "OXIDIZER  -").
-    aoso_hud_lab(p, "prp_mp", "MONOPROP  -").
-    aoso_hud_lab(p, "prp_ec", "ELECTRIC  -").
-    aoso_hud_lab(p, "prp_next", "NEXT STAGE  -").
+    LOCAL row IS p:ADDHLAYOUT().
+    LOCAL engine IS aoso_ops_readout(row, "PROPULSION / ENGINES").
+    aoso_hud_hint(engine, "Read only. AOSO flight control owns throttle and staging.").
+    aoso_hud_lab(engine, "prp_thr", "THRUST  -").
+    aoso_hud_lab(engine, "prp_twr", "TWR / STAGE  -").
+    aoso_hud_lab(engine, "prp_dv", "DELTA-V  -").
+    aoso_hud_lab(engine, "prp_eng", "ENGINES  -").
+    aoso_hud_lab(engine, "prp_next", "NEXT STAGE  -").
+    LOCAL stores IS aoso_ops_readout(row, "PROPULSION / STORES").
+    aoso_hud_hint(stores, "LF liquid fuel   OX oxidizer   MP monopropellant   EC electric charge").
+    aoso_hud_lab(stores, "prp_lf", "LIQUID FUEL  -").
+    aoso_hud_lab(stores, "prp_ox", "OXIDIZER  -").
+    aoso_hud_lab(stores, "prp_mp", "MONOPROP  -").
+    aoso_hud_lab(stores, "prp_ec", "ELECTRIC  -").
 }
 
 FUNCTION aoso_hud_gui_build_land {
@@ -503,13 +506,17 @@ FUNCTION aoso_hud_gui_build_land {
 
 FUNCTION aoso_hud_gui_build_stg {
     PARAMETER p.
-    aoso_hud_title(p, "STAGING").
-    aoso_hud_hint(p, "Current stage fuel and thrust. AOSO stages by itself — this page does not press SPACE.").
-    aoso_hud_lab(p, "stg_cur", "CURRENT  -").
-    aoso_hud_lab(p, "stg_fuel", "STAGE FUEL  -").
-    aoso_hud_lab(p, "stg_thr", "THRUST  -").
-    aoso_hud_lab(p, "stg_eng", "ENGINES  -").
-    aoso_hud_lab(p, "stg_conf", "READY  -").
+    LOCAL row IS p:ADDHLAYOUT().
+    LOCAL state IS aoso_ops_readout(row, "STAGING / CURRENT STAGE").
+    aoso_hud_lab(state, "stg_cur", "CURRENT  -").
+    aoso_hud_lab(state, "stg_fuel", "STAGE FUEL  -").
+    aoso_hud_lab(state, "stg_thr", "THRUST  -").
+    aoso_hud_lab(state, "stg_eng", "ENGINES  -").
+    aoso_hud_lab(state, "stg_conf", "READY  -").
+    LOCAL notes IS aoso_ops_readout(row, "STAGING / CONTROL NOTES").
+    aoso_hud_hint(notes, "The current-stage fields update from the vessel model.").
+    aoso_hud_hint(notes, "AOSO stages automatically when the flight controller determines it is safe.").
+    aoso_hud_hint(notes, "This page never presses SPACE or changes staging.").
 }
 
 FUNCTION aoso_hud_gui_build_sys {
@@ -535,59 +542,65 @@ FUNCTION aoso_hud_gui_build_sys {
 
 FUNCTION aoso_hud_gui_build_log {
     PARAMETER p.
-    aoso_hud_title(p, "EVENT LOG").
-    aoso_hud_hint(p, "Latest AOSO decisions and events. Newest at the bottom.").
-    aoso_hud_lab(p, "log_0", "-").
-    aoso_hud_lab(p, "log_1", "-").
-    aoso_hud_lab(p, "log_2", "-").
-    aoso_hud_lab(p, "log_3", "-").
-    aoso_hud_lab(p, "log_4", "-").
-    aoso_hud_lab(p, "log_5", "-").
-    aoso_hud_lab(p, "log_6", "-").
-    aoso_hud_lab(p, "log_7", "-").
-    aoso_hud_lab(p, "log_8", "-").
-    aoso_hud_lab(p, "log_9", "-").
+    LOCAL row IS p:ADDHLAYOUT().
+    LOCAL older IS aoso_ops_readout(row, "EVENT LOG / EARLIER").
+    aoso_hud_lab(older, "log_0", "-").
+    aoso_hud_lab(older, "log_1", "-").
+    aoso_hud_lab(older, "log_2", "-").
+    aoso_hud_lab(older, "log_3", "-").
+    aoso_hud_lab(older, "log_4", "-").
+    LOCAL recent IS aoso_ops_readout(row, "EVENT LOG / RECENT").
+    aoso_hud_hint(recent, "Latest AOSO decisions and events; newest at the bottom.").
+    aoso_hud_lab(recent, "log_5", "-").
+    aoso_hud_lab(recent, "log_6", "-").
+    aoso_hud_lab(recent, "log_7", "-").
+    aoso_hud_lab(recent, "log_8", "-").
+    aoso_hud_lab(recent, "log_9", "-").
 }
 
 FUNCTION aoso_hud_gui_build_dbg {
     PARAMETER p.
-    aoso_hud_title(p, "DEBUG  (entire HUD)").
-    aoso_hud_hint(p, "Internal HUD clocks and dump. DUMP HUD writes 0:/aoso_hud.json on the kOS archive.").
     LOCAL row IS p:ADDHLAYOUT().
-    LOCAL dump_btn IS row:ADDBUTTON("DUMP HUD").
+    LOCAL flight IS aoso_ops_readout(row, "DEBUG / FLIGHT STATE").
+    LOCAL dump_btn IS flight:ADDBUTTON("DUMP HUD JSON").
     SET dump_btn:ONCLICK TO aoso_hud_debug_dump@.
-    aoso_hud_lab(p, "dbg_cpu", "CPU  -").
-    aoso_hud_lab(p, "dbg_ipu", "IPU  -").
-    aoso_hud_lab(p, "dbg_page", "PAGE  -").
-    aoso_hud_lab(p, "dbg_ctx", "CTX  -").
-    aoso_hud_lab(p, "dbg_gui", "GUI  -").
-    aoso_hud_lab(p, "dbg_sys", "SYS  -").
-    aoso_hud_lab(p, "dbg_fd", "FD  -").
-    aoso_hud_lab(p, "dbg_st", "STATE  -").
-    aoso_hud_lab(p, "dbg_do", "DOING  -").
-    aoso_hud_lab(p, "dbg_flt", "FLT  -").
-    aoso_hud_lab(p, "dbg_warn", "WARN  -").
-    aoso_hud_lab(p, "dbg_err", "ERR  -").
-    aoso_hud_lab(p, "dbg_last", "LAST  -").
-    aoso_hud_lab(p, "dbg_twin", "TWIN  -").
-    aoso_hud_lab(p, "dbg_file", "FILE  0:/aoso_hud.json").
+    aoso_hud_lab(flight, "dbg_page", "PAGE  -").
+    aoso_hud_lab(flight, "dbg_ctx", "CTX  -").
+    aoso_hud_lab(flight, "dbg_gui", "GUI  -").
+    aoso_hud_lab(flight, "dbg_sys", "SYS  -").
+    aoso_hud_lab(flight, "dbg_fd", "FD  -").
+    aoso_hud_lab(flight, "dbg_st", "STATE  -").
+    aoso_hud_lab(flight, "dbg_do", "DOING  -").
+    aoso_hud_lab(flight, "dbg_flt", "FLT  -").
+    LOCAL health IS aoso_ops_readout(row, "DEBUG / HEALTH + CAPTURE").
+    aoso_hud_lab(health, "dbg_cpu", "CPU  -").
+    aoso_hud_lab(health, "dbg_ipu", "IPU  -").
+    aoso_hud_lab(health, "dbg_warn", "WARN  -").
+    aoso_hud_lab(health, "dbg_err", "ERR  -").
+    aoso_hud_lab(health, "dbg_last", "LAST  -").
+    aoso_hud_lab(health, "dbg_twin", "TWIN  -").
+    aoso_hud_lab(health, "dbg_file", "FILE  0:/aoso_hud.json").
+    aoso_hud_hint(health, "DUMP saves HUD geometry, telemetry age and last error.").
 }
 
 FUNCTION aoso_hud_gui_build_help {
     PARAMETER p.
-    aoso_hud_title(p, "OPS DISPLAY r4 / QUICK GUIDE").
-    aoso_hud_hint(p, "All six primary displays keep live telemetry visible beside the graphical instrument. Reload AOSO after an updater run to rebuild the GUI.").
-    aoso_hud_hint(p, "DISPLAY ONLY. AOSO flight controllers own steering, throttle, staging, mission state and warp. UI buttons only change presentation or highlight a twin node.").
-    aoso_hud_hint(p, "PFD  Primary flight display. The moving diamond is commanded-attitude error, with speed/altitude, TWR/throttle, propellant and warning annunciation.").
-    aoso_hud_hint(p, "NAV  Real current-SOI conic samples + recent trail + ship, maneuver-node and next-SOI bugs. ROUGH/SAFE means AOSO intentionally accepted a coarse encounter for later mid-course refinement.").
-    aoso_hud_hint(p, "TOUR  Grand-tour route annunciators, current phase/objective, completion, mission dV and feasibility/assurance state. Route boxes are indicators, not destination buttons.").
-    aoso_hud_hint(p, "VEH  Compact live Digital Twin. Tank/engine states update in place. Clicking a part only highlights it on the vessel. ENG/TWIN exposes the full topology/filter view.").
-    aoso_hud_hint(p, "SURF  In POLAR/SCAN it is a latitude/longitude survey map with the best graded site. In DEORBIT/DESCEND it becomes a landing director with site error, coast-prediction bug, suicide-burn trigger and vertical-situation margin.").
-    aoso_hud_hint(p, "SYS  Shuttle-style caution/warning board. NOM=healthy  DEG=degraded  FAIL=fault. Master caution/warning and WHY summarize what needs attention.").
-    aoso_hud_hint(p, "HUD  Separate OPS-style director. SPEED and ALT are permanent side banks; the vertical tape is VS. DCL declutters, REC restores position, MFD returns here. TEST cycles live/center/edge geometry without commanding flight. DUMP writes a diagnostic JSON file.").
-    aoso_hud_hint(p, "AUTO  Optional phase-based page selection. It starts off so every MFD tab stays where you choose it. Turning AUTO on lets AOSO select NAV/SURF/SYS/TOUR; a manual selection temporarily holds the page.").
-    aoso_hud_hint(p, "FD  3D reference arrows only: PRO=prograde, RET=retrograde, NML=orbit-normal, TGT=target, REL=relative velocity, BURN=node, LAND=surface-retrograde. They never steer.").
-    aoso_hud_hint(p, "CPU protection: flight/safety work remains first. UI prediction/twin work is throttled or deferred as CPU pressure rises; UI load must never become a guidance problem.").
+    LOCAL row IS p:ADDHLAYOUT().
+    LOCAL displays IS aoso_ops_readout(row, "QUICK GUIDE / DISPLAYS").
+    aoso_hud_hint(displays, "Six primary displays keep live telemetry beside the instrument. Reload AOSO after an update.").
+    aoso_hud_hint(displays, "PFD  Flight director, speed/altitude, TWR, propellant and warnings.").
+    aoso_hud_hint(displays, "NAV  Current orbit, recent trail, vessel, maneuver and next-SOI markers.").
+    aoso_hud_hint(displays, "TOUR  Route, current objective, completion, dV and feasibility.").
+    aoso_hud_hint(displays, "VEH  Vessel and Digital Twin. Select a part to highlight it.").
+    aoso_hud_hint(displays, "SURF  Survey map or landing director, depending on mission phase.").
+    aoso_hud_hint(displays, "SYS  Caution/warning board. NOM healthy, DEG degraded, FAIL fault.").
+    LOCAL controls IS aoso_ops_readout(row, "QUICK GUIDE / CONTROLS").
+    aoso_hud_hint(controls, "DISPLAY ONLY. Flight controllers own steering, throttle, staging and warp.").
+    aoso_hud_hint(controls, "HUD  Separate flight director; DCL declutters, REC recenters, TEST checks geometry, DUMP saves diagnostics.").
+    aoso_hud_hint(controls, "AUTO  Optional phase-based screen choice. Starts off so manual tabs stay selected.").
+    aoso_hud_hint(controls, "FD  PRO/RET/NML/TGT/REL/BURN/LAND draw 3D reference arrows only.").
+    aoso_hud_hint(controls, "ENG/TWIN  Full topology and filter view. REBUILD rescans the vessel.").
+    aoso_hud_hint(controls, "CPU protection defers UI prediction and twin work when flight safety needs time.").
 }
 
 FUNCTION aoso_hud_fd_cb_master { PARAMETER on. aoso_hud_fd_enable(on). aoso_hud_trace("FD master=" + on). }

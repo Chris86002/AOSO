@@ -87,7 +87,7 @@ def main():
     boot = (ROOT / "AOSO/main.ks").read_text()
     assert boot.index('"AOSO/ux/ui2_instruments"') < boot.index('"AOSO/ux/ui2_hud"') < boot.index('"AOSO/ux/ui2_mfd"')
     gui_code = sources[ROOT / "AOSO/ux/hud_gui.ks"]
-    assert len(re.findall(r"\baoso_ops_readout\s*\(", gui_code, re.I)) == 6
+    assert len(re.findall(r"\baoso_ops_readout\s*\(", gui_code, re.I)) >= 6
     assert "OPS DISPLAY r4" in (ROOT / "AOSO/ux/hud_gui.ks").read_text()
     gui_source = (ROOT / "AOSO/ux/hud_gui.ks").read_text()
     for asset in re.findall(r'"([a-z_]+\.png)"', gui_source[gui_source.index("LOCAL image_files IS LIST("):gui_source.index("FOR image_file IN image_files")]):

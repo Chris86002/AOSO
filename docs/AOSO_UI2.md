@@ -241,6 +241,8 @@ permanent labelled telemetry bank; no data toggle hides the readings. All tabs
 stay selectable, including standby landing and propulsion pages. AUTO page
 switching is opt-in. The live markers, route indicators and Digital Twin
 buttons remain in the graphical panel. Keep binary assets binary during upload.
+PROP, STAGE, LOG, DBG and HELP use the same framed two-bank layout, while
+TWIN retains its full-width interactive part schematic and filter controls.
 
 kOS provides MIN/MAX, not CLAMP. All UI2 modules share `aoso_ui2_clamp` from
 ui2_instruments.ks, which main.ks loads before ui2_hud.ks and ui2_mfd.ks.
