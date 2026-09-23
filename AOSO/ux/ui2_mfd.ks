@@ -75,7 +75,6 @@ FUNCTION aoso_ui2_mission_build {
         SET b:STYLE:WIDTH TO 49.
         SET b:STYLE:HEIGHT TO 28.
         SET b:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "button_stby.png".
-        SET b:ENABLED TO FALSE.
         AOSO_UI2_MSN_ROUTE:ADD(b).
         SET i TO i + 1.
     }
@@ -195,7 +194,6 @@ FUNCTION aoso_ui2_systems_build {
         SET b:STYLE:WIDTH TO 80.
         SET b:STYLE:HEIGHT TO 28.
         SET b:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "button_stby.png".
-        SET b:ENABLED TO FALSE.
         SET AOSO_UI2_SYS_BOXES[key] TO b.
         SET i TO i + 1.
     }
