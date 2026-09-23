@@ -68,10 +68,26 @@ FUNCTION aoso_rendezvous_wait_time_to_transfer_s {
 // body — the raw Hohmann phase is not enough once the burn is late or the
 // ship is already on a steep ellipse (Acacius missed Mun and sat in
 // 12061x100 km for 24 h). Returns 0 if no window can be computed.
+// A direct transfer from a parent body to one of its moons must enter that
+// moon FIRST. The old validator searched four patches deep, so a trajectory
+// Kerbin -> Mun -> Kerbin -> Minmus was accepted as a "Minmus encounter".
+FUNCTION aoso_rendezvous_requires_direct_child_patch {
+    PARAMETER hop.
+    IF NOT hop:ISTYPE("Body") { RETURN FALSE. }
+    IF hop:NAME = SHIP:BODY:NAME { RETURN FALSE. }
+    RETURN hop:BODY:NAME = SHIP:BODY:NAME.
+}
+
 FUNCTION aoso_rendezvous_node_hits_body {
     PARAMETER nd.
     PARAMETER hop.
     LOCAL cur IS nd:ORBIT.
+
+    IF aoso_rendezvous_requires_direct_child_patch(hop) {
+        IF NOT cur:HASNEXTPATCH { RETURN FALSE. }
+        RETURN cur:NEXTPATCH:BODY:NAME = hop:NAME.
+    }
+
     LOCAL n IS 0.
     UNTIL n >= 4 {
         IF NOT cur:HASNEXTPATCH { RETURN FALSE. }
@@ -85,6 +101,12 @@ FUNCTION aoso_rendezvous_node_hits_body {
 FUNCTION aoso_rendezvous_ship_hits_body {
     PARAMETER hop.
     LOCAL cur IS SHIP:ORBIT.
+
+    IF aoso_rendezvous_requires_direct_child_patch(hop) {
+        IF NOT cur:HASNEXTPATCH { RETURN FALSE. }
+        RETURN cur:NEXTPATCH:BODY:NAME = hop:NAME.
+    }
+
     LOCAL n IS 0.
     UNTIL n >= 4 {
         IF NOT cur:HASNEXTPATCH { RETURN FALSE. }
@@ -151,6 +173,10 @@ FUNCTION aoso_rendezvous_finalize_node {
     PARAMETER nd.
     PARAMETER hop.
     aoso_rendezvous_settle().
+    IF NOT aoso_rendezvous_node_hits_body(nd, hop) {
+        aoso_log_warn("RENDEZVOUS", "Rejected " + hop:NAME + " intercept: another SOI occurs before the target.").
+        RETURN FALSE.
+    }
     LOCAL pe0 IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
     LOCAL want IS aoso_rendezvous_desired_pe(hop).
     IF aoso_rendezvous_pe_ok_value(pe0, hop) {
