@@ -1,17 +1,13 @@
 // AOSO/ux/ui2_hud.ks
-// OPS-style flight HUD. All values come from AOSO telemetry; test mode only
-// paints known geometry and never changes flight state.
-//
-// Separate lightweight HUD inspired by the interaction patterns of high-end
-// kOS avionics: image-backed flight director, movable guidance bug, vertical
-// speed tape, burn/phase annunciation, decluttering, day/night brightness and
-// a one-click return to the full MFD. Presentation only; never commands flight.
+// Glass CRT. The plate is crt_glass.png (740x400). The pitch ladder is
+// baked at (190, 62). Live numbers are pinned into the SPEED / ALT / VS /
+// AUTH / GUID / NOTE boxes. Presentation only. Never commands flight.
 
 GLOBAL AOSO_UI2_HUD_GUI IS 0.
 GLOBAL AOSO_UI2_HUD_MAIN IS 0.
 GLOBAL AOSO_UI2_HUD_PIPPER IS 0.
+GLOBAL AOSO_UI2_HUD_PHASE IS 0.
 GLOBAL AOSO_UI2_HUD_VS IS 0.
-GLOBAL AOSO_UI2_HUD_BURN IS 0.
 GLOBAL AOSO_UI2_HUD_MODE IS 0.
 GLOBAL AOSO_UI2_HUD_HDG IS 0.
 GLOBAL AOSO_UI2_HUD_SPD IS 0.
@@ -20,16 +16,16 @@ GLOBAL AOSO_UI2_HUD_ATT IS 0.
 GLOBAL AOSO_UI2_HUD_EVENT IS 0.
 GLOBAL AOSO_UI2_HUD_BOTTOM IS 0.
 GLOBAL AOSO_UI2_HUD_DIAG IS 0.
-GLOBAL AOSO_UI2_HUD_STRIP IS 0.
+GLOBAL AOSO_UI2_HUD_DCL IS 0.
 GLOBAL AOSO_UI2_HUD_TEST_BUTTON IS 0.
 GLOBAL AOSO_UI2_HUD_TEST IS 0.
 GLOBAL AOSO_UI2_HUD_VISIBLE IS FALSE.
 GLOBAL AOSO_UI2_HUD_DECLUTTER IS FALSE.
 GLOBAL AOSO_UI2_HUD_PX IS 180.
 GLOBAL AOSO_UI2_HUD_PY IS 120.
-GLOBAL AOSO_UI2_HUD_LAST_LIGHT IS "".
 GLOBAL AOSO_UI2_HUD_LAST_FAST_RT IS -1.
 GLOBAL AOSO_UI2_HUD_LAST_FULL_RT IS -1.
+GLOBAL AOSO_UI2_HUD_LAST_LIGHT IS "".
 
 FUNCTION aoso_ui2_hud_mfd {
     aoso_hud_mode_computer().
@@ -37,24 +33,25 @@ FUNCTION aoso_ui2_hud_mfd {
 
 FUNCTION aoso_ui2_hud_toggle_declutter {
     SET AOSO_UI2_HUD_DECLUTTER TO NOT AOSO_UI2_HUD_DECLUTTER.
+    IF AOSO_UI2_HUD_DCL:ISTYPE("BUTTON") {
+        aoso_crt_key_face(AOSO_UI2_HUD_DCL, "dcl", AOSO_UI2_HUD_DECLUTTER).
+    }
 }
 
 FUNCTION aoso_ui2_hud_cycle_test {
     SET AOSO_UI2_HUD_TEST TO AOSO_UI2_HUD_TEST + 1.
     IF AOSO_UI2_HUD_TEST > 2 { SET AOSO_UI2_HUD_TEST TO 0. }
-    IF AOSO_UI2_HUD_TEST = 0 { SET AOSO_UI2_HUD_TEST_BUTTON:TEXT TO "TEST". }
-    IF AOSO_UI2_HUD_TEST = 1 { SET AOSO_UI2_HUD_TEST_BUTTON:TEXT TO "CTR". }
-    IF AOSO_UI2_HUD_TEST = 2 { SET AOSO_UI2_HUD_TEST_BUTTON:TEXT TO "EDGE". }
+    IF AOSO_UI2_HUD_TEST_BUTTON:ISTYPE("BUTTON") {
+        aoso_crt_key_face(AOSO_UI2_HUD_TEST_BUTTON, "test", AOSO_UI2_HUD_TEST > 0).
+    }
     SET AOSO_UI2_HUD_LAST_FAST_RT TO -1.
     SET AOSO_UI2_HUD_LAST_FULL_RT TO -1.
 }
 
 FUNCTION aoso_ui2_hud_recenter {
     IF NOT AOSO_UI2_HUD_GUI:ISTYPE("GUI") { RETURN. }
-    // Safe 1440p-friendly default. The HUD remains draggable for any
-    // resolution/aspect ratio and REC always restores a known-good position.
     SET AOSO_UI2_HUD_GUI:X TO aoso_config_get("UI2_HUD_X", 990).
-    SET AOSO_UI2_HUD_GUI:Y TO aoso_config_get("UI2_HUD_Y", 525).
+    SET AOSO_UI2_HUD_GUI:Y TO aoso_config_get("UI2_HUD_Y", 80).
 }
 
 FUNCTION aoso_ui2_hud_dispose {
@@ -62,8 +59,8 @@ FUNCTION aoso_ui2_hud_dispose {
     SET AOSO_UI2_HUD_GUI TO 0.
     SET AOSO_UI2_HUD_MAIN TO 0.
     SET AOSO_UI2_HUD_PIPPER TO 0.
+    SET AOSO_UI2_HUD_PHASE TO 0.
     SET AOSO_UI2_HUD_VS TO 0.
-    SET AOSO_UI2_HUD_BURN TO 0.
     SET AOSO_UI2_HUD_MODE TO 0.
     SET AOSO_UI2_HUD_HDG TO 0.
     SET AOSO_UI2_HUD_SPD TO 0.
@@ -72,7 +69,7 @@ FUNCTION aoso_ui2_hud_dispose {
     SET AOSO_UI2_HUD_EVENT TO 0.
     SET AOSO_UI2_HUD_BOTTOM TO 0.
     SET AOSO_UI2_HUD_DIAG TO 0.
-    SET AOSO_UI2_HUD_STRIP TO 0.
+    SET AOSO_UI2_HUD_DCL TO 0.
     SET AOSO_UI2_HUD_TEST_BUTTON TO 0.
     SET AOSO_UI2_HUD_TEST TO 0.
     SET AOSO_UI2_HUD_PX TO 180.
@@ -80,122 +77,87 @@ FUNCTION aoso_ui2_hud_dispose {
     SET AOSO_UI2_HUD_VISIBLE TO FALSE.
 }
 
+FUNCTION aoso_ui2_hud_pipper_at {
+    PARAMETER px.
+    PARAMETER py.
+    IF NOT AOSO_UI2_HUD_PIPPER:ISTYPE("LABEL") { RETURN. }
+    // Bore baked at (190, 62), 360x240. px/py are bore-local, center 180,120.
+    aoso_crt_move(AOSO_UI2_HUD_PIPPER, 190 + px - 11, 62 + py - 11, 22, 22).
+}
+
+FUNCTION aoso_ui2_hud_phase_at {
+    PARAMETER code.
+    IF NOT AOSO_UI2_HUD_PHASE:ISTYPE("LABEL") { RETURN. }
+    LOCAL px IS 268.
+    IF code = "ASC" { SET px TO 210. }
+    IF code = "ORB" { SET px TO 268. }
+    IF code = "XFR" { SET px TO 326. }
+    IF code = "RNDZ" { SET px TO 390. }
+    IF code = "DSC" { SET px TO 468. }
+    IF code = "LND" { SET px TO 536. }
+    aoso_crt_move(AOSO_UI2_HUD_PHASE, px, 54, 18, 4).
+    SET AOSO_UI2_HUD_PHASE:VISIBLE TO TRUE.
+}
+
 FUNCTION aoso_ui2_hud_build {
     IF AOSO_UI2_HUD_GUI:ISTYPE("GUI") { RETURN. }
 
-    LOCAL g IS GUI(580, 390).
-    SET g:X TO aoso_config_get("UI2_HUD_X", 990).
-    SET g:Y TO aoso_config_get("UI2_HUD_Y", 525).
+    LOCAL g IS GUI(800).
+    SET g:X TO aoso_config_get("UI2_HUD_X", 80).
+    SET g:Y TO aoso_config_get("UI2_HUD_Y", 40).
     SET g:DRAGGABLE TO TRUE.
-    SET g:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "hud_clear.png".
-    SET g:SKIN:LABEL:TEXTCOLOR TO RGB(0.28, 1.0, 0.36).
-    SET g:SKIN:BUTTON:BG TO AOSO_UI2_ASSET_ROOT + "button_off.png".
-    SET g:SKIN:BUTTON:HOVER:BG TO AOSO_UI2_ASSET_ROOT + "button_hover.png".
-    SET g:SKIN:BUTTON:FOCUSED:BG TO AOSO_UI2_ASSET_ROOT + "button_hover.png".
-    SET g:SKIN:BUTTON:ACTIVE:BG TO AOSO_UI2_ASSET_ROOT + "button_on.png".
-    SET g:SKIN:VERTICALSLIDER:BG TO AOSO_UI2_ASSET_ROOT + "vscale.png".
-    SET g:SKIN:VERTICALSLIDERTHUMB:BG TO AOSO_UI2_ASSET_ROOT + "diamond.png".
-    SET g:SKIN:VERTICALSLIDERTHUMB:WIDTH TO 18.
-    SET g:SKIN:VERTICALSLIDERTHUMB:HEIGHT TO 14.
-    SET g:SKIN:HORIZONTALSLIDER:BG TO AOSO_UI2_ASSET_ROOT + "hscale.png".
-    SET g:SKIN:HORIZONTALSLIDERTHUMB:BG TO AOSO_UI2_ASSET_ROOT + "diamond.png".
-    SET g:SKIN:HORIZONTALSLIDERTHUMB:WIDTH TO 16.
-    SET g:SKIN:HORIZONTALSLIDERTHUMB:HEIGHT TO 16.
+    SET g:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "crt_black.png".
+    SET g:STYLE:PADDING:LEFT TO 6.
+    SET g:STYLE:PADDING:RIGHT TO 6.
+    SET g:STYLE:PADDING:BOTTOM TO 4.
+    SET g:SKIN:LABEL:TEXTCOLOR TO RGB(0.72, 1, 0.62).
+    SET g:SKIN:LABEL:FONTSIZE TO 16.
     SET AOSO_UI2_HUD_GUI TO g.
 
-    LOCAL top IS g:ADDHLAYOUT().
-    SET top:STYLE:WIDTH TO 560.
-    SET AOSO_UI2_HUD_MODE TO top:ADDLABEL("<b>AOSO OPS HUD / LIVE</b>").
-    SET AOSO_UI2_HUD_MODE:STYLE:WIDTH TO 180.
-    SET AOSO_UI2_HUD_HDG TO top:ADDLABEL("HDG ---").
-    SET AOSO_UI2_HUD_HDG:STYLE:WIDTH TO 65.
-    SET AOSO_UI2_HUD_HDG:STYLE:ALIGN TO "right".
-    LOCAL b_declutter IS top:ADDBUTTON("DCL").
-    SET b_declutter:STYLE:WIDTH TO 42.
-    SET b_declutter:ONCLICK TO aoso_ui2_hud_toggle_declutter@.
-    LOCAL b_rec IS top:ADDBUTTON("REC").
-    SET b_rec:STYLE:WIDTH TO 42.
+    LOCAL root IS g:ADDVLAYOUT().
+    aoso_crt_zero(root).
+    SET AOSO_UI2_HUD_MAIN TO root:ADDVLAYOUT().
+    aoso_crt_zero(AOSO_UI2_HUD_MAIN).
+    SET AOSO_UI2_HUD_MAIN:STYLE:HSTRETCH TO FALSE.
+    SET AOSO_UI2_HUD_MAIN:STYLE:VSTRETCH TO FALSE.
+    SET AOSO_UI2_HUD_MAIN:STYLE:WIDTH TO 740.
+    SET AOSO_UI2_HUD_MAIN:STYLE:HEIGHT TO 400.
+    SET AOSO_UI2_HUD_MAIN:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "crt_glass.png".
+
+    SET AOSO_UI2_HUD_PIPPER TO aoso_crt_bug(AOSO_UI2_HUD_MAIN, AOSO_UI2_ASSET_ROOT + "diamond.png", 22).
+    SET AOSO_UI2_HUD_PIPPER:VISIBLE TO TRUE.
+    aoso_ui2_hud_pipper_at(180, 120).
+    SET AOSO_UI2_HUD_PHASE TO aoso_crt_bug(AOSO_UI2_HUD_MAIN, AOSO_UI2_ASSET_ROOT + "phase_mark.png", 18, 4).
+    aoso_ui2_hud_phase_at("ORB").
+
+    SET AOSO_UI2_HUD_SPD TO aoso_crt_label(AOSO_UI2_HUD_MAIN, 32, 150, 130, 22).
+    SET AOSO_UI2_HUD_HDG TO aoso_crt_label(AOSO_UI2_HUD_MAIN, 32, 188, 130, 14).
+    SET AOSO_UI2_HUD_ALT TO aoso_crt_label(AOSO_UI2_HUD_MAIN, 578, 150, 130, 22).
+    SET AOSO_UI2_HUD_VS TO aoso_crt_label(AOSO_UI2_HUD_MAIN, 28, 348, 130, 16).
+    SET AOSO_UI2_HUD_BOTTOM TO aoso_crt_label(AOSO_UI2_HUD_MAIN, 190, 348, 140, 16).
+    SET AOSO_UI2_HUD_MODE TO aoso_crt_label(AOSO_UI2_HUD_MAIN, 350, 348, 140, 16).
+    SET AOSO_UI2_HUD_EVENT TO aoso_crt_label(AOSO_UI2_HUD_MAIN, 530, 348, 180, 14).
+    SET AOSO_UI2_HUD_ATT TO AOSO_UI2_HUD_EVENT.
+    SET AOSO_UI2_HUD_DIAG TO AOSO_UI2_HUD_EVENT.
+
+    LOCAL keys IS root:ADDHLAYOUT().
+    SET keys:STYLE:MARGIN:TOP TO 4.
+    SET keys:STYLE:MARGIN:LEFT TO 8.
+    SET AOSO_UI2_HUD_DCL TO keys:ADDBUTTON("").
+    SET AOSO_UI2_HUD_DCL:ONCLICK TO aoso_ui2_hud_toggle_declutter@.
+    aoso_crt_key_face(AOSO_UI2_HUD_DCL, "dcl", FALSE).
+    LOCAL b_rec IS keys:ADDBUTTON("").
     SET b_rec:ONCLICK TO aoso_ui2_hud_recenter@.
-    SET AOSO_UI2_HUD_TEST_BUTTON TO top:ADDBUTTON("TEST").
-    SET AOSO_UI2_HUD_TEST_BUTTON:STYLE:WIDTH TO 43.
+    aoso_crt_key_face(b_rec, "rec", FALSE).
+    SET AOSO_UI2_HUD_TEST_BUTTON TO keys:ADDBUTTON("").
     SET AOSO_UI2_HUD_TEST_BUTTON:ONCLICK TO aoso_ui2_hud_cycle_test@.
-    LOCAL b_dump IS top:ADDBUTTON("DUMP").
-    SET b_dump:STYLE:WIDTH TO 50.
+    aoso_crt_key_face(AOSO_UI2_HUD_TEST_BUTTON, "test", FALSE).
+    LOCAL b_dump IS keys:ADDBUTTON("").
     SET b_dump:ONCLICK TO aoso_hud_debug_dump@.
-    LOCAL b_mfd IS top:ADDBUTTON("MFD").
-    SET b_mfd:STYLE:WIDTH TO 42.
+    aoso_crt_key_face(b_dump, "dump", FALSE).
+    LOCAL b_mfd IS keys:ADDBUTTON("").
     SET b_mfd:ONCLICK TO aoso_ui2_hud_mfd@.
-
-    SET AOSO_UI2_HUD_STRIP TO g:ADDLABEL("ASC  ORB  XFR  RNDZ  DSC  LND").
-    SET AOSO_UI2_HUD_STRIP:STYLE:WIDTH TO 560.
-    SET AOSO_UI2_HUD_STRIP:STYLE:ALIGN TO "center".
-
-    SET AOSO_UI2_HUD_ATT TO g:ADDLABEL("PITCH ---   ROLL ---   AoA ---").
-    SET AOSO_UI2_HUD_ATT:STYLE:WIDTH TO 560.
-    SET AOSO_UI2_HUD_ATT:STYLE:ALIGN TO "center".
-
-    LOCAL row IS g:ADDHLAYOUT().
-    SET row:STYLE:WIDTH TO 560.
-    SET row:STYLE:HEIGHT TO 240.
-
-    LOCAL speed_bank IS row:ADDVBOX().
-    SET speed_bank:STYLE:WIDTH TO 80.
-    SET speed_bank:STYLE:HEIGHT TO 240.
-    LOCAL speed_heading IS speed_bank:ADDLABEL("SPEED m/s").
-    SET speed_heading:STYLE:WIDTH TO 78.
-    SET AOSO_UI2_HUD_SPD TO speed_bank:ADDLABEL("---").
-    SET AOSO_UI2_HUD_SPD:STYLE:WIDTH TO 78.
-    SET AOSO_UI2_HUD_SPD:STYLE:ALIGN TO "center".
-
-    SET AOSO_UI2_HUD_MAIN TO row:ADDHBOX().
-    SET AOSO_UI2_HUD_MAIN:STYLE:WIDTH TO 360.
-    SET AOSO_UI2_HUD_MAIN:STYLE:HEIGHT TO 240.
-    SET AOSO_UI2_HUD_MAIN:STYLE:ALIGN TO "center".
-    SET AOSO_UI2_HUD_MAIN:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "hud_overlay.png".
-
-    SET AOSO_UI2_HUD_PIPPER TO aoso_ui2_marker(
-        AOSO_UI2_HUD_MAIN,
-        AOSO_UI2_ASSET_ROOT + "diamond.png",
-        22).
-    SET AOSO_UI2_HUD_PIPPER:STYLE:MARGIN:H TO AOSO_UI2_HUD_PX.
-    SET AOSO_UI2_HUD_PIPPER:STYLE:MARGIN:V TO AOSO_UI2_HUD_PY.
-
-    LOCAL alt_bank IS row:ADDVBOX().
-    SET alt_bank:STYLE:WIDTH TO 80.
-    SET alt_bank:STYLE:HEIGHT TO 240.
-    LOCAL alt_heading IS alt_bank:ADDLABEL("ALTITUDE").
-    SET alt_heading:STYLE:WIDTH TO 78.
-    SET AOSO_UI2_HUD_ALT TO alt_bank:ADDLABEL("---").
-    SET AOSO_UI2_HUD_ALT:STYLE:WIDTH TO 78.
-    SET AOSO_UI2_HUD_ALT:STYLE:ALIGN TO "center".
-
-    SET AOSO_UI2_HUD_VS TO row:ADDVSLIDER(0, -250, 250).
-    SET AOSO_UI2_HUD_VS:STYLE:WIDTH TO 20.
-    SET AOSO_UI2_HUD_VS:STYLE:HEIGHT TO 230.
-    SET AOSO_UI2_HUD_VS:STYLE:VSTRETCH TO FALSE.
-    SET AOSO_UI2_HUD_VS:STYLE:HSTRETCH TO FALSE.
-
-    SET AOSO_UI2_HUD_EVENT TO g:ADDLABEL("STANDBY").
-    SET AOSO_UI2_HUD_EVENT:STYLE:WIDTH TO 560.
-    SET AOSO_UI2_HUD_EVENT:STYLE:ALIGN TO "center".
-
-    LOCAL burnrow IS g:ADDHLAYOUT().
-    SET burnrow:STYLE:WIDTH TO 560.
-    SET burnrow:STYLE:HEIGHT TO 22.
-    LOCAL burnlabel IS burnrow:ADDLABEL("dV / PROP").
-    SET burnlabel:STYLE:WIDTH TO 80.
-    SET AOSO_UI2_HUD_BURN TO burnrow:ADDHSLIDER(0, 0, 1).
-    SET AOSO_UI2_HUD_BURN:STYLE:WIDTH TO 335.
-    SET AOSO_UI2_HUD_BURN:STYLE:HEIGHT TO 20.
-    SET AOSO_UI2_HUD_BURN:STYLE:HSTRETCH TO FALSE.
-    SET AOSO_UI2_HUD_BURN:STYLE:VSTRETCH TO FALSE.
-    SET AOSO_UI2_HUD_BOTTOM TO burnrow:ADDLABEL("").
-    SET AOSO_UI2_HUD_BOTTOM:STYLE:WIDTH TO 130.
-    SET AOSO_UI2_HUD_BOTTOM:STYLE:ALIGN TO "right".
-
-    SET AOSO_UI2_HUD_DIAG TO g:ADDLABEL("HUD LIVE / waiting for telemetry").
-    SET AOSO_UI2_HUD_DIAG:STYLE:WIDTH TO 560.
-    SET AOSO_UI2_HUD_DIAG:STYLE:ALIGN TO "center".
+    aoso_crt_key_face(b_mfd, "mfd", FALSE).
 
     g:HIDE().
 }
@@ -209,23 +171,6 @@ FUNCTION aoso_ui2_hud_phase_code {
     IF ctx = "LANDING" { RETURN "LND". }
     IF ctx = "RETURN" { RETURN "DSC". }
     RETURN "ORB".
-}
-
-FUNCTION aoso_ui2_hud_strip_txt {
-    LOCAL cur IS aoso_ui2_hud_phase_code().
-    LOCAL names IS LIST("ASC", "ORB", "XFR", "RNDZ", "DSC", "LND").
-    LOCAL out IS "".
-    LOCAL i IS 0.
-    UNTIL i >= names:LENGTH {
-        IF out <> "" { SET out TO out + "  ". }
-        IF names[i] = cur {
-            SET out TO out + "<b><color=#50FF96>" + names[i] + "</color></b>".
-        } ELSE {
-            SET out TO out + "<color=#3d6b4a>" + names[i] + "</color>".
-        }
-        SET i TO i + 1.
-    }
-    RETURN out.
 }
 
 FUNCTION aoso_ui2_hud_show {
@@ -242,25 +187,6 @@ FUNCTION aoso_ui2_hud_hide {
     SET AOSO_UI2_HUD_VISIBLE TO FALSE.
 }
 
-FUNCTION aoso_ui2_hud_is_night {
-    LOCAL sun_vec IS SUN:POSITION - SHIP:POSITION.
-    IF sun_vec:MAG < 1 { RETURN FALSE. }
-    RETURN VDOT(sun_vec:NORMALIZED, SHIP:UP:VECTOR) < -0.08.
-}
-
-FUNCTION aoso_ui2_hud_brightness {
-    IF NOT AOSO_UI2_HUD_GUI:ISTYPE("GUI") { RETURN. }
-    LOCAL light_mode IS "DAY".
-    IF aoso_ui2_hud_is_night() { SET light_mode TO "NIGHT". }
-    IF light_mode = AOSO_UI2_HUD_LAST_LIGHT { RETURN. }
-    SET AOSO_UI2_HUD_LAST_LIGHT TO light_mode.
-    IF light_mode = "NIGHT" {
-        SET AOSO_UI2_HUD_GUI:SKIN:LABEL:TEXTCOLOR TO RGB(0.22, 0.82, 0.44).
-    } ELSE {
-        SET AOSO_UI2_HUD_GUI:SKIN:LABEL:TEXTCOLOR TO RGB(0.42, 1.0, 0.68).
-    }
-}
-
 FUNCTION aoso_ui2_hud_pipper_fast {
     IF NOT AOSO_UI2_HUD_VISIBLE { RETURN. }
     IF NOT AOSO_UI2_HUD_PIPPER:ISTYPE("LABEL") { RETURN. }
@@ -272,8 +198,7 @@ FUNCTION aoso_ui2_hud_pipper_fast {
             SET AOSO_UI2_HUD_PX TO 314.
             SET AOSO_UI2_HUD_PY TO 35.
         }
-        SET AOSO_UI2_HUD_PIPPER:STYLE:MARGIN:H TO AOSO_UI2_HUD_PX.
-        SET AOSO_UI2_HUD_PIPPER:STYLE:MARGIN:V TO AOSO_UI2_HUD_PY.
+        aoso_ui2_hud_pipper_at(AOSO_UI2_HUD_PX, AOSO_UI2_HUD_PY).
         RETURN.
     }
 
@@ -296,8 +221,7 @@ FUNCTION aoso_ui2_hud_pipper_fast {
     }
     IF bug_moved {
         SET AOSO_UI2_TXT["hud_bug"] TO bug_key.
-        SET AOSO_UI2_HUD_PIPPER:STYLE:MARGIN:H TO AOSO_UI2_HUD_PX.
-        SET AOSO_UI2_HUD_PIPPER:STYLE:MARGIN:V TO AOSO_UI2_HUD_PY.
+        aoso_ui2_hud_pipper_at(AOSO_UI2_HUD_PX, AOSO_UI2_HUD_PY).
     }
 }
 
@@ -314,35 +238,28 @@ FUNCTION aoso_ui2_hud_fast {
 
     aoso_ui2_hud_pipper_fast().
     IF AOSO_UI2_HUD_TEST > 0 {
-        SET AOSO_UI2_HUD_HDG:TEXT TO "HDG 090".
-        SET AOSO_UI2_HUD_VS:VALUE TO 75.
-        SET AOSO_UI2_HUD_SPD:TEXT TO "250" + CHAR(10) + "VS +75".
-        SET AOSO_UI2_HUD_ALT:TEXT TO "10.0km" + CHAR(10) + "AP 80km".
+        aoso_ui2_set_text(AOSO_UI2_HUD_HDG, "hud_hdg", "HDG 090").
+        aoso_ui2_set_text(AOSO_UI2_HUD_VS, "hud_vs", "+75").
+        aoso_ui2_set_text(AOSO_UI2_HUD_SPD, "hud_spd", "250").
+        aoso_ui2_set_text(AOSO_UI2_HUD_ALT, "hud_alt", "10.0km").
         RETURN.
     }
 
     LOCAL f IS AOSO_HUD_DATA["flight"].
-    LOCAL o IS AOSO_HUD_DATA["orbit"].
+    IF NOT f:HASKEY("hdg") { RETURN. }
     aoso_ui2_set_text(AOSO_UI2_HUD_HDG, "hud_hdg", "HDG " + ROUND(f["hdg"], 0)).
-    LOCAL vs_now IS ROUND(aoso_ui2_clamp(f["vs"], -250, 250), 0).
-    LOCAL vs_moved IS TRUE.
-    IF AOSO_UI2_TXT:HASKEY("hud_vs") {
-        IF AOSO_UI2_TXT["hud_vs"] = vs_now { SET vs_moved TO FALSE. }
-    }
-    IF vs_moved {
-        SET AOSO_UI2_TXT["hud_vs"] TO vs_now.
-        SET AOSO_UI2_HUD_VS:VALUE TO vs_now.
-    }
+    aoso_ui2_set_text(AOSO_UI2_HUD_VS, "hud_vs", ROUND(aoso_lex_num(f, "vs", 0), 0) + "").
+    LOCAL vel IS aoso_lex_num(f, "orb", 0).
+    IF aoso_lex_bool(f, "in_atm") { SET vel TO aoso_lex_num(f, "srf", vel). }
+    aoso_ui2_set_text(AOSO_UI2_HUD_SPD, "hud_spd", ROUND(vel, 0) + "").
 
-    LOCAL vel IS f["orb"].
-    IF f["in_atm"] { SET vel TO f["srf"]. }
-    aoso_ui2_set_text(AOSO_UI2_HUD_SPD, "hud_spd", "<size=18>" + ROUND(vel, 0) + "</size>" + CHAR(10) + "VS " + ROUND(f["vs"], 0)).
-
-    LOCAL alt_txt IS aoso_hud_km(f["alt"]).
+    LOCAL alt_txt IS "".
     IF AOSO_HUD_CTX = "LANDING" {
-        SET alt_txt TO ROUND(AOSO_HUD_DATA["landing"]["radar"], 0) + "m".
+        SET alt_txt TO ROUND(aoso_lex_num(AOSO_HUD_DATA["landing"], "radar", 0), 0) + "m".
+    } ELSE {
+        SET alt_txt TO aoso_hud_km(aoso_lex_num(f, "alt", 0)).
     }
-    aoso_ui2_set_text(AOSO_UI2_HUD_ALT, "hud_alt", "<size=18>" + alt_txt + "</size>" + CHAR(10) + "AP " + aoso_hud_km(o["ap"])).
+    aoso_ui2_set_text(AOSO_UI2_HUD_ALT, "hud_alt", alt_txt).
 }
 
 FUNCTION aoso_ui2_hud_update {
@@ -360,94 +277,53 @@ FUNCTION aoso_ui2_hud_update {
         IF full_rt - AOSO_UI2_HUD_LAST_FULL_RT < full_gap { RETURN. }
     }
     SET AOSO_UI2_HUD_LAST_FULL_RT TO full_rt.
-
-    aoso_ui2_hud_brightness().
     aoso_ui2_hud_fast().
 
     IF AOSO_UI2_HUD_TEST > 0 {
-        SET AOSO_UI2_HUD_MODE:TEXT TO "<b>AOSO / GEOM TEST</b>".
-        SET AOSO_UI2_HUD_ATT:TEXT TO "PITCH +12.0   ROLL -08.0   AoA +03.0".
-        SET AOSO_UI2_HUD_ATT:VISIBLE TO TRUE.
-        SET AOSO_UI2_HUD_EVENT:TEXT TO "TEST ONLY - NO FLIGHT COMMANDS".
-        SET AOSO_UI2_HUD_BURN:VALUE TO 0.5.
-        SET AOSO_UI2_HUD_BOTTOM:TEXT TO "50% TEST".
-        SET AOSO_UI2_HUD_DIAG:TEXT TO "ART 360x240  BUG " + ROUND(AOSO_UI2_HUD_PX, 0) + "," + ROUND(AOSO_UI2_HUD_PY, 0) + "  press TEST to advance".
-        IF AOSO_UI2_HUD_STRIP:ISTYPE("LABEL") { SET AOSO_UI2_HUD_STRIP:TEXT TO aoso_ui2_hud_strip_txt(). }
+        aoso_ui2_hud_phase_at("ASC").
+        aoso_ui2_set_text(AOSO_UI2_HUD_BOTTOM, "hud_auth", "TEST").
+        aoso_ui2_set_text(AOSO_UI2_HUD_MODE, "hud_guid", "ASC").
+        aoso_ui2_set_text(AOSO_UI2_HUD_EVENT, "hud_note", "NO COMMANDS").
         RETURN.
     }
 
     LOCAL f IS AOSO_HUD_DATA["flight"].
+    IF NOT f:HASKEY("pitch") { RETURN. }
     LOCAL o IS AOSO_HUD_DATA["orbit"].
     LOCAL m IS AOSO_HUD_DATA["mission"].
     LOCAL sys IS AOSO_HUD_DATA["systems"].
+    LOCAL phase IS aoso_ui2_hud_phase_code().
+    aoso_ui2_hud_phase_at(phase).
 
-    LOCAL phase IS AOSO_HUD_CTX.
-    IF phase = "IDLE" { SET phase TO f["status"]. }
-    SET AOSO_UI2_HUD_MODE:TEXT TO "<b>AOSO  " + aoso_ui2_hud_phase_code() + "</b>  " + f["doing"].
-    IF AOSO_UI2_HUD_STRIP:ISTYPE("LABEL") { SET AOSO_UI2_HUD_STRIP:TEXT TO aoso_ui2_hud_strip_txt(). }
-    LOCAL att_txt IS "P " + ROUND(f["pitch"], 1) + "°   R " + ROUND(f["roll"], 1) + "°".
-    IF f["in_atm"] { SET att_txt TO att_txt + "   AoA " + ROUND(f["aoa"], 1) + "°". }
-    IF AOSO_HUD_DATA:HASKEY("traj") {
-        IF AOSO_HUD_DATA["traj"]["has_cmd"] {
-            SET att_txt TO att_txt + "   PCMD " + ROUND(AOSO_HUD_DATA["traj"]["pitch_cmd"], 0) + "°".
-        }
-    }
-    SET AOSO_UI2_HUD_ATT:TEXT TO att_txt.
+    LOCAL auth_who IS aoso_auth_owner("STEERING").
+    IF auth_who = "" { SET auth_who TO "OPEN". }
+    aoso_ui2_set_text(AOSO_UI2_HUD_BOTTOM, "hud_auth", aoso_crt_fit(auth_who, 12)).
+    aoso_ui2_set_text(AOSO_UI2_HUD_MODE, "hud_guid", phase).
 
-    LOCAL event_txt IS "".
-    IF o["burning"] {
-        SET event_txt TO aoso_ui2_color_state("SAFE", "BURN EXECUTION").
+    LOCAL cue IS "".
+    IF aoso_lex_bool(o, "burning") {
+        SET cue TO "BURN " + ROUND(aoso_lex_num(o, "burn_left", 0), 0).
     } ELSE {
-        IF o["node"] {
-            SET event_txt TO "NODE T-" + aoso_hud_eta(o["node_eta"]).
+        IF aoso_lex_bool(o, "node") {
+            SET cue TO "T-" + aoso_hud_eta(aoso_lex_num(o, "node_eta", 0)).
         } ELSE {
-            IF o["patch"] <> "" {
-                SET event_txt TO o["patch"] + " SOI T-" + aoso_hud_eta(o["patch_eta"]).
+            IF aoso_lex_bool(f, "in_atm") {
+                SET cue TO "P " + ROUND(f["pitch"], 0) + " AoA " + ROUND(aoso_lex_num(f, "aoa", 0), 0).
+            } ELSE {
+                SET cue TO "P " + ROUND(f["pitch"], 0).
             }
         }
     }
-    IF sys["worst"] = "FAIL" { SET event_txt TO aoso_ui2_color_state("FAIL", "MASTER WARNING"). }
-    ELSE {
-        IF sys["worst"] = "DEG" {
-            IF event_txt = "" { SET event_txt TO aoso_ui2_color_state("WARN", "CAUTION"). }
-        }
-    }
-    SET AOSO_UI2_HUD_EVENT:TEXT TO event_txt.
+    IF aoso_lex_str(sys, "worst", "") = "FAIL" { SET cue TO "WARNING". }
+    IF AOSO_UI2_HUD_DECLUTTER { SET cue TO phase. }
+    aoso_ui2_set_text(AOSO_UI2_HUD_EVENT, "hud_note", aoso_crt_fit(cue, 16)).
+    SET AOSO_UI2_HUD_HDG:VISIBLE TO NOT AOSO_UI2_HUD_DECLUTTER.
 
-    LOCAL progress IS 0.
-    IF o["node"] {
-        LOCAL total IS o["node_dv"].
-        LOCAL left IS total.
-        IF o["burning"] { SET left TO o["burn_left"]. }
-        IF total > 0.01 { SET progress TO 1 - aoso_ui2_clamp(left / total, 0, 1). }
-        SET AOSO_UI2_HUD_BOTTOM:TEXT TO ROUND(left, 0) + "m/s".
-    } ELSE {
-        LOCAL pct IS MAX(AOSO_HUD_DATA["res"]["lf"], AOSO_HUD_DATA["res"]["ox"]) / 100.
-        SET progress TO aoso_ui2_clamp(pct, 0, 1).
-        SET AOSO_UI2_HUD_BOTTOM:TEXT TO "PROP " + ROUND(pct * 100, 0) + "%".
-    }
-    SET AOSO_UI2_HUD_BURN:VALUE TO progress.
-    LOCAL auth_who IS aoso_auth_owner("STEERING").
-    IF auth_who = "" { SET auth_who TO "OPEN". }
-    SET AOSO_UI2_HUD_DIAG:TEXT TO "AUTH " + auth_who + "  STEER " + sys["steer_mode"] +
-        "  GUID " + phase + "  BUG " + ROUND(AOSO_UI2_HUD_PX, 0) + "," + ROUND(AOSO_UI2_HUD_PY, 0).
-
-    // Automatic declutter in high-workload terminal phases; the operator can
-    // also toggle DCL manually. Primary speed/altitude/pipper always remain.
-    LOCAL auto_declutter IS FALSE.
-    IF AOSO_HUD_CTX = "LANDING" { SET auto_declutter TO TRUE. }
-    IF o["burning"] { SET auto_declutter TO TRUE. }
-    LOCAL declutter IS AOSO_UI2_HUD_DECLUTTER OR auto_declutter.
-    SET AOSO_UI2_HUD_ATT:VISIBLE TO NOT declutter.
-    IF declutter {
-        IF event_txt = "" { SET AOSO_UI2_HUD_EVENT:TEXT TO phase. }
-    }
-
-    LOCAL goal IS m["goal"].
-    IF goal = "" { SET goal TO m["hop"]. }
+    LOCAL goal IS aoso_lex_str(m, "goal", "").
+    IF goal = "" { SET goal TO aoso_lex_str(m, "hop", ""). }
     IF goal <> "" {
-        IF NOT declutter {
-            SET AOSO_UI2_HUD_MODE:TEXT TO "<b>AOSO  " + phase + "</b>  → " + goal.
+        IF NOT AOSO_UI2_HUD_DECLUTTER {
+            aoso_ui2_set_text(AOSO_UI2_HUD_MODE, "hud_guid", aoso_crt_fit(goal, 12)).
         }
     }
 }

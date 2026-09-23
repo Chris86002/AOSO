@@ -83,6 +83,131 @@ FUNCTION aoso_ui2_overlay_label {
     RETURN lab.
 }
 
+// Absolute pin. kOS MARGIN:H / MARGIN:V set both sides, which stacks every
+// widget and stretches the plate. LEFT/TOP place the widget; RIGHT and
+// BOTTOM cancel that offset so the next sibling still starts at the origin.
+FUNCTION aoso_crt_zero {
+    PARAMETER box.
+    SET box:STYLE:MARGIN:LEFT TO 0.
+    SET box:STYLE:MARGIN:RIGHT TO 0.
+    SET box:STYLE:MARGIN:TOP TO 0.
+    SET box:STYLE:MARGIN:BOTTOM TO 0.
+    SET box:STYLE:PADDING:LEFT TO 0.
+    SET box:STYLE:PADDING:RIGHT TO 0.
+    SET box:STYLE:PADDING:TOP TO 0.
+    SET box:STYLE:PADDING:BOTTOM TO 0.
+    SET box:STYLE:BORDER:LEFT TO 0.
+    SET box:STYLE:BORDER:RIGHT TO 0.
+    SET box:STYLE:BORDER:TOP TO 0.
+    SET box:STYLE:BORDER:BOTTOM TO 0.
+}
+
+FUNCTION aoso_crt_move {
+    PARAMETER widget.
+    PARAMETER x.
+    PARAMETER y.
+    PARAMETER w.
+    PARAMETER h.
+    SET widget:STYLE:HSTRETCH TO FALSE.
+    SET widget:STYLE:VSTRETCH TO FALSE.
+    SET widget:STYLE:WIDTH TO w.
+    SET widget:STYLE:HEIGHT TO h.
+    SET widget:STYLE:MARGIN:LEFT TO x.
+    SET widget:STYLE:MARGIN:TOP TO y.
+    SET widget:STYLE:MARGIN:RIGHT TO -x.
+    SET widget:STYLE:MARGIN:BOTTOM TO -(y + h).
+}
+
+FUNCTION aoso_crt_label {
+    PARAMETER parent.
+    PARAMETER x.
+    PARAMETER y.
+    PARAMETER w.
+    PARAMETER size IS 16.
+    LOCAL lab IS parent:ADDLABEL("").
+    SET lab:STYLE:FONTSIZE TO size.
+    SET lab:STYLE:ALIGN TO "LEFT".
+    SET lab:STYLE:TEXTCOLOR TO RGB(0.72, 1, 0.62).
+    aoso_crt_zero(lab).
+    aoso_crt_move(lab, x, y, w, size + 6).
+    RETURN lab.
+}
+
+FUNCTION aoso_crt_bug {
+    PARAMETER parent.
+    PARAMETER image_path.
+    PARAMETER w.
+    PARAMETER h IS -1.
+    IF h < 0 { SET h TO w. }
+    LOCAL marker IS parent:ADDLABEL("").
+    SET marker:IMAGE TO image_path.
+    aoso_crt_zero(marker).
+    aoso_crt_move(marker, 0, 0, w, h).
+    SET marker:VISIBLE TO FALSE.
+    RETURN marker.
+}
+
+FUNCTION aoso_crt_fit {
+    PARAMETER txt.
+    PARAMETER n.
+    IF txt:LENGTH <= n { RETURN txt. }
+    RETURN txt:SUBSTRING(0, n).
+}
+
+FUNCTION aoso_lex_num {
+    PARAMETER lex.
+    PARAMETER key.
+    PARAMETER fallback IS 0.
+    IF NOT lex:ISTYPE("LEXICON") { RETURN fallback. }
+    IF NOT lex:HASKEY(key) { RETURN fallback. }
+    RETURN lex[key].
+}
+
+FUNCTION aoso_lex_str {
+    PARAMETER lex.
+    PARAMETER key.
+    PARAMETER fallback IS "".
+    IF NOT lex:ISTYPE("LEXICON") { RETURN fallback. }
+    IF NOT lex:HASKEY(key) { RETURN fallback. }
+    RETURN lex[key].
+}
+
+FUNCTION aoso_lex_bool {
+    PARAMETER lex.
+    PARAMETER key.
+    IF NOT lex:ISTYPE("LEXICON") { RETURN FALSE. }
+    IF NOT lex:HASKEY(key) { RETURN FALSE. }
+    RETURN lex[key].
+}
+
+// Baked key art. Empty button text so the mono word in the PNG is the label.
+FUNCTION aoso_crt_key_face {
+    PARAMETER button_widget.
+    PARAMETER slug.
+    PARAMETER on.
+    IF NOT button_widget:ISTYPE("BUTTON") { RETURN. }
+    LOCAL suffix IS "off".
+    IF on { SET suffix TO "on". }
+    LOCAL file IS AOSO_UI2_ASSET_ROOT + "key_" + slug + "_" + suffix + ".png".
+    SET button_widget:TEXT TO "".
+    SET button_widget:STYLE:BG TO file.
+    SET button_widget:STYLE:HOVER:BG TO AOSO_UI2_ASSET_ROOT + "key_" + slug + "_hot.png".
+    SET button_widget:STYLE:FOCUSED:BG TO file.
+    SET button_widget:STYLE:ACTIVE:BG TO AOSO_UI2_ASSET_ROOT + "key_" + slug + "_on.png".
+    SET button_widget:STYLE:BORDER:LEFT TO 0.
+    SET button_widget:STYLE:BORDER:RIGHT TO 0.
+    SET button_widget:STYLE:BORDER:TOP TO 0.
+    SET button_widget:STYLE:BORDER:BOTTOM TO 0.
+    SET button_widget:STYLE:PADDING:LEFT TO 0.
+    SET button_widget:STYLE:PADDING:RIGHT TO 0.
+    SET button_widget:STYLE:PADDING:TOP TO 0.
+    SET button_widget:STYLE:PADDING:BOTTOM TO 0.
+    SET button_widget:STYLE:WIDTH TO 88.
+    SET button_widget:STYLE:HEIGHT TO 28.
+    SET button_widget:STYLE:HSTRETCH TO FALSE.
+    SET button_widget:STYLE:VSTRETCH TO FALSE.
+}
+
 // kOS has MIN/MAX, but no built-in CLAMP. Shared by all UI2 modules.
 FUNCTION aoso_ui2_clamp {
     PARAMETER value.

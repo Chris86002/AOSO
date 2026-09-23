@@ -40,19 +40,21 @@ Long burns follow the live node marker until a few seconds remain, then feather;
 
 AOSO is a full autopilot. On boot it raises `CONFIG:IPU` to **`IPU_TARGET` (default 2000)** if the kOS default is lower. **2000 is headroom, not a utilization target.** Background work stops before a protected opcode reserve (absolute 400 + 18% + extra during ascent/descent) so steering never starves. Do not keep raising IPU in the difficulty menu to “make it think harder” — the extra opcodes are a safety budget. Override `IPU_TARGET` in `0:/aoso_config.json` if you must; the kOS tab still shows the live `CONFIG:IPU`.
 
-The HUD is a **mission computer**, not a PRINT dump:
+The HUD is a **green CRT**, not a tabbed flight deck:
 
-- **GUI window** (draggable). Flight row: PFD / ASC / NAV / VSIT / SYS. Plan row: ROUTE / DV / RNDZ / SURF / VEH. Tools: TWIN / LOG / DBG / HELP. The old TOUR, PROP and STAGE pages were the same numbers as ROUTE, DV and SYS, so they are gone. Instruments keep updating on leftover opcodes when the CPU is busy; the heavy page refresh waits.
-- **Digital Twin** schematic of the vessel AOSO is actually flying: tanks, engines, command, power. Geometry rebuilds on stage/dock/part-count; **fills update live** on the tanks that are feeding. Views: NORM / EXP / STG / SYS / STAT / FUEL / PWR / ENG / CTL. Click a node for UID, mass, resources, modules, and a world HIGHLIGHT.
+- **ASC** altitude versus downrange from the pad. Amber triangles are the flown arc. The yellow bug is the ship.
+- **VSIT** altitude versus range to the landing site, or time to periapsis if no site is picked.
+- **ROUTE** the planned bodies and the next transfer window.
+- **DV** leftover mission dV. If the projection is stale the page says STALE instead of inventing a bar.
+- **RNDZ** range and closing rate. Empty until something is targeted.
+- **HUD** opens the glass director (pitch ladder, speed, altitude, phase). **FD** toggles the 3D reference arrows. **AUTO** lets the phase pick the page. The display never steers, throttles, or stages.
+
+Buttons are the row under the screen. Words on those keys are part of the art, same face as the bezel.
 - **Tactical terminal strip** at the top of the kOS window (always on)
 - **Flight-director VECDRAW** arrows (PRO / TGT / BURN / LAND) — `SET VEC`, not `VECUPDATER`
 - **HUDTEXT alerts** with cooldowns
 
-Buttons: **TAC** hides the GUI, **GUI** brings it back, **ENG** jumps to the Digital Twin. Click a twin node to `HIGHLIGHT` that part in the world. Flow tags are labelled **APPROXIMATE** — kOS does not expose a full crossfeed solver.
-
-Do not name locals `r`, `v`, or `q` — those clobber kOS builtins `R()`, `V()`, `Q()` (`CLOBBERBUILTINS`).
-
-Buttons: **TAC** hides the GUI (flight HUD only), **GUI** brings the computer back, **ENG** jumps to SYSTEMS. Data is cached at three rates (flight ~8 Hz, orbit/fuel ~2 Hz, vehicle from the existing profile ~0.4 Hz). The HUD never `LIST PARTS`. CPU HIGH slows cosmetic updates; CRITICAL keeps a 3-line strip only.
+Buttons under the CRT: **ASC / VSIT / ROUTE / DV / RNDZ** change page, **HUD** opens the glass director, **FD** toggles the 3D arrows, **AUTO** follows the phase. On the glass, **MFD** comes back to the CRT. Data is cached (flight fast, orbit and fuel slower). The HUD never `LIST PARTS`. When the CPU is busy the plots wait; speed, altitude, and the ship bug keep moving.
 
 GOTO and descent run as their own scheduler tasks instead of nested inside the tour FSM. That was the `aoso_goto_update` stack overflow on Acacius (kOS 3000-slot argument cap).
 

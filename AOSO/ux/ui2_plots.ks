@@ -1,21 +1,34 @@
 // AOSO/ux/ui2_plots.ks
-// Phase plots for any vessel: ascent arc, vertical situation, route,
-// projected dV budget, rendezvous. Display only. Consumes hud_data and
-// existing planner/budget/project models. Does not fly the ship.
+// CRT phase plots. The plate PNG is the instrument. Live text and bugs are
+// pinned onto it. Display only. Does not fly the ship.
 //
-// kOS has no polyline canvas. Curves are capped pools of image bugs
-// positioned with STYLE:MARGIN, same as the NAV situation display.
+// Plot rectangle baked into the plates and repeated here:
+// origin (36, 52), size 460 x 280, on a 740 x 400 page.
+// Side-box values: x=524, y=74 + 52*row. Same pixels as the plate art.
 
 GLOBAL AOSO_UI2_ASC_MAIN IS 0.
 GLOBAL AOSO_UI2_ASC_INFO IS 0.
+GLOBAL AOSO_CRT_ASC_Q IS 0.
+GLOBAL AOSO_CRT_ASC_AOA IS 0.
+GLOBAL AOSO_CRT_ASC_TWR IS 0.
+GLOBAL AOSO_CRT_ASC_PITCH IS 0.
+GLOBAL AOSO_CRT_ASC_STG IS 0.
+GLOBAL AOSO_CRT_ASC_LF IS 0.
 GLOBAL AOSO_UI2_ASC_SHIP IS 0.
 GLOBAL AOSO_UI2_ASC_ATM IS 0.
 GLOBAL AOSO_UI2_ASC_AP IS 0.
 GLOBAL AOSO_UI2_ASC_TRAIL IS LIST().
 GLOBAL AOSO_UI2_ASC_SKETCH IS LIST().
+GLOBAL AOSO_UI2_ASC_ATMLINE IS LIST().
 
 GLOBAL AOSO_UI2_VS_MAIN IS 0.
 GLOBAL AOSO_UI2_VS_INFO IS 0.
+GLOBAL AOSO_CRT_VS_HDOT IS 0.
+GLOBAL AOSO_CRT_VS_TWR IS 0.
+GLOBAL AOSO_CRT_VS_MAR IS 0.
+GLOBAL AOSO_CRT_VS_SITE IS 0.
+GLOBAL AOSO_CRT_VS_RAD IS 0.
+GLOBAL AOSO_CRT_VS_DV IS 0.
 GLOBAL AOSO_UI2_VS_SHIP IS 0.
 GLOBAL AOSO_UI2_VS_HIGH IS LIST().
 GLOBAL AOSO_UI2_VS_NOM IS LIST().
@@ -25,19 +38,37 @@ GLOBAL AOSO_UI2_RTE_MAIN IS 0.
 GLOBAL AOSO_UI2_RTE_HEAD IS 0.
 GLOBAL AOSO_UI2_RTE_WIN IS 0.
 GLOBAL AOSO_UI2_RTE_PILLS IS LIST().
-GLOBAL AOSO_UI2_RTE_SIDE IS 0.
+GLOBAL AOSO_CRT_RTE_HOP IS 0.
+GLOBAL AOSO_CRT_RTE_WIN IS 0.
+GLOBAL AOSO_CRT_RTE_CLASS IS 0.
+GLOBAL AOSO_CRT_RTE_END IS 0.
+GLOBAL AOSO_CRT_RTE_RET IS 0.
+GLOBAL AOSO_CRT_RTE_ABT IS 0.
 GLOBAL AOSO_UI2_WIN_UT IS -1.
 GLOBAL AOSO_UI2_WIN_KEY IS "".
 GLOBAL AOSO_UI2_WIN_TXT IS "WINDOW  ---".
+GLOBAL AOSO_UI2_WIN_SHORT IS "---".
 
 GLOBAL AOSO_UI2_BDG_MAIN IS 0.
 GLOBAL AOSO_UI2_BDG_ROWS IS LIST().
-GLOBAL AOSO_UI2_BDG_SIDE IS 0.
+GLOBAL AOSO_UI2_BDG_INFO IS 0.
+GLOBAL AOSO_CRT_BDG_NOW IS 0.
+GLOBAL AOSO_CRT_BDG_UNU IS 0.
+GLOBAL AOSO_CRT_BDG_RES IS 0.
+GLOBAL AOSO_CRT_BDG_LAND IS 0.
+GLOBAL AOSO_CRT_BDG_RET IS 0.
+GLOBAL AOSO_CRT_BDG_ABT IS 0.
 
 GLOBAL AOSO_UI2_RND_MAIN IS 0.
 GLOBAL AOSO_UI2_RND_INFO IS 0.
 GLOBAL AOSO_UI2_RND_SHIP IS 0.
 GLOBAL AOSO_UI2_RND_TGT IS 0.
+GLOBAL AOSO_CRT_RND_NAME IS 0.
+GLOBAL AOSO_CRT_RND_DIST IS 0.
+GLOBAL AOSO_CRT_RND_RATE IS 0.
+GLOBAL AOSO_CRT_RND_BRG IS 0.
+GLOBAL AOSO_CRT_RND_PORT IS 0.
+GLOBAL AOSO_CRT_RND_REL IS 0.
 
 FUNCTION aoso_ui2_plots_clear {
     SET AOSO_UI2_ASC_MAIN TO 0.
@@ -47,6 +78,7 @@ FUNCTION aoso_ui2_plots_clear {
     SET AOSO_UI2_RND_MAIN TO 0.
     SET AOSO_UI2_ASC_TRAIL TO LIST().
     SET AOSO_UI2_ASC_SKETCH TO LIST().
+    SET AOSO_UI2_ASC_ATMLINE TO LIST().
     SET AOSO_UI2_VS_HIGH TO LIST().
     SET AOSO_UI2_VS_NOM TO LIST().
     SET AOSO_UI2_VS_LOW TO LIST().
@@ -67,7 +99,7 @@ FUNCTION aoso_ui2_plot_px {
     IF y_span < 0.001 { SET y_span TO 0.001. }
     LOCAL nx IS aoso_ui2_clamp((x_val - x_min) / x_span, 0, 1).
     LOCAL ny IS aoso_ui2_clamp((y_val - y_min) / y_span, 0, 1).
-    RETURN LIST(40 + nx * 250, 16 + (1 - ny) * 168).
+    RETURN LIST(36 + nx * 460, 52 + (1 - ny) * 280).
 }
 
 FUNCTION aoso_ui2_plot_put {
@@ -75,12 +107,31 @@ FUNCTION aoso_ui2_plot_put {
     PARAMETER px.
     PARAMETER py.
     PARAMETER show.
+    PARAMETER slot IS 0.
     IF NOT mark:ISTYPE("LABEL") { RETURN. }
     SET mark:VISIBLE TO show.
     IF show {
-        SET mark:STYLE:MARGIN:H TO px.
-        SET mark:STYLE:MARGIN:V TO py.
+        LOCAL sz IS mark:STYLE:WIDTH.
+        IF sz < 4 { SET sz TO 12. }
+        aoso_crt_move(mark, px - sz * 0.5, py - sz * 0.5, sz, sz).
     }
+}
+
+FUNCTION aoso_crt_page {
+    PARAMETER page.
+    PARAMETER image_name.
+    aoso_crt_zero(page).
+    SET page:STYLE:HSTRETCH TO FALSE.
+    SET page:STYLE:VSTRETCH TO FALSE.
+    SET page:STYLE:WIDTH TO 740.
+    SET page:STYLE:HEIGHT TO 400.
+    SET page:STYLE:BG TO AOSO_UI2_ASSET_ROOT + image_name.
+}
+
+FUNCTION aoso_crt_side {
+    PARAMETER parent.
+    PARAMETER index.
+    RETURN aoso_crt_label(parent, 524, 74 + index * 52, 188).
 }
 
 FUNCTION aoso_ui2_plot_pool {
@@ -91,23 +142,10 @@ FUNCTION aoso_ui2_plot_pool {
     LOCAL pool IS LIST().
     LOCAL i IS 0.
     UNTIL i >= count {
-        LOCAL mark IS aoso_ui2_marker(parent, AOSO_UI2_ASSET_ROOT + image_name, width).
-        SET mark:VISIBLE TO FALSE.
-        pool:ADD(mark).
+        pool:ADD(aoso_crt_bug(parent, AOSO_UI2_ASSET_ROOT + image_name, width)).
         SET i TO i + 1.
     }
     RETURN pool.
-}
-
-FUNCTION aoso_ui2_plot_frame {
-    PARAMETER page.
-    PARAMETER image_name.
-    LOCAL frame IS page:ADDVLAYOUT().
-    SET frame:STYLE:ALIGN TO "center".
-    SET frame:STYLE:WIDTH TO 420.
-    SET frame:STYLE:HEIGHT TO 210.
-    SET frame:STYLE:BG TO AOSO_UI2_ASSET_ROOT + image_name.
-    RETURN frame.
 }
 
 FUNCTION aoso_ui2_list_has {
@@ -124,33 +162,43 @@ FUNCTION aoso_ui2_list_has {
 
 FUNCTION aoso_ui2_asc_build {
     PARAMETER page.
-    aoso_hud_title(page, "ASC TRAJ  /  ALTITUDE vs DOWNRANGE").
-    SET AOSO_UI2_ASC_MAIN TO aoso_ui2_plot_frame(page, "pfd_frame.png").
-    SET AOSO_UI2_ASC_SKETCH TO aoso_ui2_plot_pool(AOSO_UI2_ASC_MAIN, "pred_bug.png", 8, 8).
-    SET AOSO_UI2_ASC_TRAIL TO aoso_ui2_plot_pool(AOSO_UI2_ASC_MAIN, "trail_bug.png", 12, 8).
-    SET AOSO_UI2_ASC_SHIP TO aoso_ui2_marker(AOSO_UI2_ASC_MAIN, AOSO_UI2_ASSET_ROOT + "ship_bug.png", 18).
-    SET AOSO_UI2_ASC_ATM TO aoso_ui2_overlay_label(AOSO_UI2_ASC_MAIN, "", 250, 20).
-    SET AOSO_UI2_ASC_AP TO aoso_ui2_overlay_label(AOSO_UI2_ASC_MAIN, "", 250, 36).
-    SET AOSO_UI2_ASC_INFO TO page:ADDLABEL("ASC  waiting for telemetry").
-    SET AOSO_UI2_ASC_INFO:STYLE:HSTRETCH TO TRUE.
+    aoso_crt_page(page, "crt_asc.png").
+    SET AOSO_UI2_ASC_MAIN TO page.
+    SET AOSO_UI2_ASC_SHIP TO aoso_crt_bug(page, AOSO_UI2_ASSET_ROOT + "ship_bug.png", 18).
+    SET AOSO_UI2_ASC_SKETCH TO aoso_ui2_plot_pool(page, "pred_bug.png", 8, 8).
+    SET AOSO_UI2_ASC_TRAIL TO aoso_ui2_plot_pool(page, "trail_bug.png", 12, 10).
+    SET AOSO_UI2_ASC_ATMLINE TO aoso_ui2_plot_pool(page, "pred_bug.png", 8, 6).
+    SET AOSO_UI2_ASC_ATM TO aoso_crt_label(page, 44, 80, 70).
+    SET AOSO_UI2_ASC_AP TO aoso_crt_label(page, 44, 96, 70).
+    SET AOSO_CRT_ASC_Q TO aoso_crt_side(page, 0).
+    SET AOSO_CRT_ASC_AOA TO aoso_crt_side(page, 1).
+    SET AOSO_CRT_ASC_TWR TO aoso_crt_side(page, 2).
+    SET AOSO_CRT_ASC_PITCH TO aoso_crt_side(page, 3).
+    SET AOSO_CRT_ASC_STG TO aoso_crt_side(page, 4).
+    SET AOSO_CRT_ASC_LF TO aoso_crt_side(page, 5).
+    SET AOSO_UI2_ASC_INFO TO aoso_crt_label(page, 40, 358, 460).
 }
 
 FUNCTION aoso_ui2_asc_update {
-    IF NOT AOSO_UI2_ASC_MAIN:ISTYPE("BOX") { RETURN. }
+    IF NOT AOSO_UI2_ASC_MAIN:ISTYPE("WIDGET") { RETURN. }
     IF NOT AOSO_HUD_DATA:HASKEY("traj") { RETURN. }
     LOCAL tr IS AOSO_HUD_DATA["traj"].
     LOCAL f IS AOSO_HUD_DATA["flight"].
-    LOCAL x_max IS tr["xmax_km"].
-    LOCAL y_max IS tr["ymax_km"].
+    LOCAL x_max IS aoso_lex_num(tr, "xmax_km", 80).
+    LOCAL y_max IS aoso_lex_num(tr, "ymax_km", 80).
     IF x_max < 5 { SET x_max TO 5. }
     IF y_max < 1 { SET y_max TO 1. }
+    LOCAL ap_km IS aoso_lex_num(tr, "ap_km", 0).
+    LOCAL atm_km IS aoso_lex_num(tr, "atm_km", 0).
+    LOCAL down_km IS aoso_lex_num(tr, "down_km", 0).
+    LOCAL alt_km IS aoso_lex_num(tr, "alt_km", 0).
 
     LOCAL i IS 0.
     UNTIL i >= AOSO_UI2_ASC_SKETCH:LENGTH {
         LOCAL frac IS i / (AOSO_UI2_ASC_SKETCH:LENGTH - 1).
         LOCAL remain IS 1 - frac.
-        LOCAL y_km IS tr["ap_km"] * (1 - (remain * remain)).
-        IF tr["ap_km"] < 0.2 { SET y_km TO y_max * 0.7 * (1 - (remain * remain)). }
+        LOCAL y_km IS ap_km * (1 - (remain * remain)).
+        IF ap_km < 0.2 { SET y_km TO y_max * 0.7 * (1 - (remain * remain)). }
         LOCAL spot IS aoso_ui2_plot_px(frac * x_max, y_km, 0, x_max, 0, y_max).
         aoso_ui2_plot_put(AOSO_UI2_ASC_SKETCH[i], spot[0], spot[1], TRUE).
         SET i TO i + 1.
@@ -168,64 +216,90 @@ FUNCTION aoso_ui2_asc_update {
         SET j TO j + 1.
     }
 
-    LOCAL bug_pt IS aoso_ui2_plot_px(tr["down_km"], tr["alt_km"], 0, x_max, 0, y_max).
+    LOCAL bug_pt IS aoso_ui2_plot_px(down_km, alt_km, 0, x_max, 0, y_max).
     aoso_ui2_plot_put(AOSO_UI2_ASC_SHIP, bug_pt[0], bug_pt[1], TRUE).
 
-    IF tr["atm_km"] > 0.05 {
-        LOCAL atm_pt IS aoso_ui2_plot_px(0, tr["atm_km"], 0, x_max, 0, y_max).
-        SET AOSO_UI2_ASC_ATM:STYLE:MARGIN:H TO 292.
-        SET AOSO_UI2_ASC_ATM:STYLE:MARGIN:V TO atm_pt[1].
-        SET AOSO_UI2_ASC_ATM:TEXT TO "ATM".
+    LOCAL k IS 0.
+    UNTIL k >= AOSO_UI2_ASC_ATMLINE:LENGTH {
+        IF atm_km > 0.05 {
+            LOCAL atm_x IS aoso_ui2_plot_px(x_max * k / (AOSO_UI2_ASC_ATMLINE:LENGTH - 1), atm_km, 0, x_max, 0, y_max).
+            aoso_ui2_plot_put(AOSO_UI2_ASC_ATMLINE[k], atm_x[0], atm_x[1], TRUE).
+        } ELSE {
+            aoso_ui2_plot_put(AOSO_UI2_ASC_ATMLINE[k], 0, 0, FALSE).
+        }
+        SET k TO k + 1.
+    }
+
+    IF atm_km > 0.05 {
+        LOCAL atm_pt IS aoso_ui2_plot_px(0, atm_km, 0, x_max, 0, y_max).
+        aoso_crt_move(AOSO_UI2_ASC_ATM, 44, atm_pt[1] - 8, 70, 22).
+        aoso_ui2_set_text(AOSO_UI2_ASC_ATM, "asc_atm", "ATM").
         SET AOSO_UI2_ASC_ATM:VISIBLE TO TRUE.
     } ELSE {
         SET AOSO_UI2_ASC_ATM:VISIBLE TO FALSE.
     }
-    IF tr["ap_km"] > 0.05 {
-        LOCAL ap_pt IS aoso_ui2_plot_px(0, tr["ap_km"], 0, x_max, 0, y_max).
-        SET AOSO_UI2_ASC_AP:STYLE:MARGIN:H TO 292.
-        SET AOSO_UI2_ASC_AP:STYLE:MARGIN:V TO ap_pt[1].
-        SET AOSO_UI2_ASC_AP:TEXT TO "AP".
+    IF ap_km > 0.05 {
+        LOCAL ap_pt IS aoso_ui2_plot_px(0, ap_km, 0, x_max, 0, y_max).
+        aoso_crt_move(AOSO_UI2_ASC_AP, 90, ap_pt[1] - 8, 70, 22).
+        aoso_ui2_set_text(AOSO_UI2_ASC_AP, "asc_ap", "AP").
         SET AOSO_UI2_ASC_AP:VISIBLE TO TRUE.
     } ELSE {
         SET AOSO_UI2_ASC_AP:VISIBLE TO FALSE.
     }
 
+    LOCAL in_air IS aoso_lex_bool(tr, "in_atm").
+    LOCAL qtxt IS "".
+    LOCAL aoa_txt IS "".
+    IF in_air {
+        SET qtxt TO ROUND(aoso_lex_num(f, "q", 0), 2) + "".
+        SET aoa_txt TO ROUND(aoso_lex_num(f, "aoa", 0), 1) + "".
+    }
+    LOCAL pitch_txt IS ROUND(aoso_lex_num(f, "pitch", 0), 0) + "".
+    IF aoso_lex_bool(tr, "has_cmd") {
+        SET pitch_txt TO pitch_txt + "/" + ROUND(aoso_lex_num(tr, "pitch_cmd", 0), 0).
+    }
+    LOCAL best_txt IS ROUND(aoso_lex_num(tr, "lf", 0), 0) + "".
+    LOCAL best_lf IS aoso_lex_num(tr, "lf_best", -1).
+    IF best_lf >= 0 { SET best_txt TO best_txt + "/" + ROUND(best_lf, 0). }
+    aoso_ui2_set_text(AOSO_CRT_ASC_Q, "asc_q", qtxt).
+    aoso_ui2_set_text(AOSO_CRT_ASC_AOA, "asc_aoa", aoa_txt).
+    aoso_ui2_set_text(AOSO_CRT_ASC_TWR, "asc_twr", ROUND(aoso_lex_num(f, "twr", 0), 2) + "").
+    aoso_ui2_set_text(AOSO_CRT_ASC_PITCH, "asc_pitch", pitch_txt).
+    aoso_ui2_set_text(AOSO_CRT_ASC_STG, "asc_stg", aoso_lex_num(f, "stage", 0) + "").
+    aoso_ui2_set_text(AOSO_CRT_ASC_LF, "asc_lf", best_txt).
     LOCAL origin_txt IS "PAD LOCK".
-    IF NOT tr["has_origin"] { SET origin_txt TO "NO PAD LOCK". }
-    LOCAL cmd_txt IS "PITCH ---".
-    IF tr["has_cmd"] { SET cmd_txt TO "PITCH CMD " + ROUND(tr["pitch_cmd"], 0). }
-    LOCAL best_txt IS "BEST --".
-    IF tr["lf_best"] >= 0 { SET best_txt TO "BEST LF " + ROUND(tr["lf_best"], 0). }
-    LOCAL aero_txt IS "VACUUM".
-    IF tr["in_atm"] { SET aero_txt TO "Q " + ROUND(f["q"], 1) + " kPa  AoA " + ROUND(f["aoa"], 1). }
-    SET AOSO_UI2_ASC_INFO:TEXT TO origin_txt + "  X " + ROUND(tr["down_km"], 1) + " km  Y " +
-        ROUND(tr["alt_km"], 1) + " km  " + aero_txt + "  TWR " + ROUND(f["twr"], 2) +
-        "  " + cmd_txt + "  STG " + f["stage"] + "  LF " + ROUND(tr["lf"], 0) + "  " + best_txt +
-        "  SKETCH=target Ap, not a certified profile".
+    LOCAL has_pad IS aoso_lex_bool(tr, "has_origin").
+    IF NOT has_pad { SET origin_txt TO "NO LOCK". }
+    aoso_ui2_set_text(AOSO_UI2_ASC_INFO, "asc_info", origin_txt + "  " + ROUND(down_km, 1) + " km  " + ROUND(alt_km, 1) + " km").
 }
 
 FUNCTION aoso_ui2_asc_ship_fast {
     IF NOT AOSO_UI2_ASC_SHIP:ISTYPE("LABEL") { RETURN. }
     IF NOT AOSO_HUD_DATA:HASKEY("traj") { RETURN. }
     LOCAL tr IS AOSO_HUD_DATA["traj"].
-    LOCAL x_max IS tr["xmax_km"].
-    LOCAL y_max IS tr["ymax_km"].
+    LOCAL x_max IS aoso_lex_num(tr, "xmax_km", 80).
+    LOCAL y_max IS aoso_lex_num(tr, "ymax_km", 80).
     IF x_max < 5 { SET x_max TO 5. }
     IF y_max < 1 { SET y_max TO 1. }
-    LOCAL bug_pt IS aoso_ui2_plot_px(tr["down_km"], tr["alt_km"], 0, x_max, 0, y_max).
+    LOCAL bug_pt IS aoso_ui2_plot_px(aoso_lex_num(tr, "down_km", 0), aoso_lex_num(tr, "alt_km", 0), 0, x_max, 0, y_max).
     aoso_ui2_plot_put(AOSO_UI2_ASC_SHIP, bug_pt[0], bug_pt[1], TRUE).
 }
 
 FUNCTION aoso_ui2_vs_build {
     PARAMETER page.
-    aoso_hud_title(page, "VSIT  /  ALTITUDE vs RANGE TO SITE").
-    SET AOSO_UI2_VS_MAIN TO aoso_ui2_plot_frame(page, "descent_frame.png").
-    SET AOSO_UI2_VS_HIGH TO aoso_ui2_plot_pool(AOSO_UI2_VS_MAIN, "pred_bug.png", 5, 8).
-    SET AOSO_UI2_VS_NOM TO aoso_ui2_plot_pool(AOSO_UI2_VS_MAIN, "pred_bug.png", 5, 8).
-    SET AOSO_UI2_VS_LOW TO aoso_ui2_plot_pool(AOSO_UI2_VS_MAIN, "trail_bug.png", 5, 8).
-    SET AOSO_UI2_VS_SHIP TO aoso_ui2_marker(AOSO_UI2_VS_MAIN, AOSO_UI2_ASSET_ROOT + "ship_bug.png", 18).
-    SET AOSO_UI2_VS_INFO TO page:ADDLABEL("VSIT  waiting for telemetry").
-    SET AOSO_UI2_VS_INFO:STYLE:HSTRETCH TO TRUE.
+    aoso_crt_page(page, "crt_vs.png").
+    SET AOSO_UI2_VS_MAIN TO page.
+    SET AOSO_UI2_VS_SHIP TO aoso_crt_bug(page, AOSO_UI2_ASSET_ROOT + "ship_bug.png", 18).
+    SET AOSO_UI2_VS_HIGH TO aoso_ui2_plot_pool(page, "pred_bug.png", 5, 8).
+    SET AOSO_UI2_VS_NOM TO aoso_ui2_plot_pool(page, "pred_bug.png", 5, 8).
+    SET AOSO_UI2_VS_LOW TO aoso_ui2_plot_pool(page, "trail_bug.png", 5, 10).
+    SET AOSO_CRT_VS_HDOT TO aoso_crt_side(page, 0).
+    SET AOSO_CRT_VS_TWR TO aoso_crt_side(page, 1).
+    SET AOSO_CRT_VS_MAR TO aoso_crt_side(page, 2).
+    SET AOSO_CRT_VS_SITE TO aoso_crt_side(page, 3).
+    SET AOSO_CRT_VS_RAD TO aoso_crt_side(page, 4).
+    SET AOSO_CRT_VS_DV TO aoso_crt_side(page, 5).
+    SET AOSO_UI2_VS_INFO TO aoso_crt_label(page, 40, 358, 460).
 }
 
 FUNCTION aoso_ui2_vs_corridor {
@@ -234,6 +308,7 @@ FUNCTION aoso_ui2_vs_corridor {
     PARAMETER y_max.
     PARAMETER gain.
     PARAMETER show.
+    PARAMETER slot_base IS 0.
     LOCAL i IS 0.
     UNTIL i >= pool:LENGTH {
         IF NOT show {
@@ -250,49 +325,53 @@ FUNCTION aoso_ui2_vs_corridor {
 }
 
 FUNCTION aoso_ui2_vs_update {
-    IF NOT AOSO_UI2_VS_MAIN:ISTYPE("BOX") { RETURN. }
+    IF NOT AOSO_UI2_VS_MAIN:ISTYPE("WIDGET") { RETURN. }
     IF NOT AOSO_HUD_DATA:HASKEY("traj") { RETURN. }
     LOCAL tr IS AOSO_HUD_DATA["traj"].
     LOCAL f IS AOSO_HUD_DATA["flight"].
     LOCAL lnd IS AOSO_HUD_DATA["landing"].
     LOCAL res IS AOSO_HUD_DATA["res"].
-    LOCAL margin IS tr["dv_margin"].
+    LOCAL margin IS aoso_lex_num(tr, "dv_margin", 0).
     LOCAL band IS "NOM".
-    LOCAL band_state IS "SAFE".
-    IF margin < 150 { SET band TO "MARGIN". SET band_state TO "WARN". }
-    IF margin < 0 { SET band TO "ABORT". SET band_state TO "FAIL". }
+    IF margin < 150 { SET band TO "MARGIN". }
+    IF margin < 0 { SET band TO "ABORT". }
+    aoso_ui2_set_text(AOSO_CRT_VS_HDOT, "vs_hdot", ROUND(aoso_lex_num(f, "vs", 0), 0) + "").
+    aoso_ui2_set_text(AOSO_CRT_VS_TWR, "vs_twr", ROUND(aoso_lex_num(f, "twr", 0), 2) + "").
+    aoso_ui2_set_text(AOSO_CRT_VS_MAR, "vs_mar", band + " " + ROUND(margin, 0)).
+    aoso_ui2_set_text(AOSO_CRT_VS_DV, "vs_dv", ROUND(aoso_lex_num(res, "land_dv", 0), 0) + "").
 
-    IF tr["site_ok"] {
-        LOCAL x_max IS tr["site_km"] * 1.15.
+    LOCAL alt_km IS aoso_lex_num(tr, "alt_km", 0).
+    IF aoso_lex_bool(tr, "site_ok") {
+        LOCAL site_km IS aoso_lex_num(tr, "site_km", 0).
+        LOCAL x_max IS site_km * 1.15.
         IF x_max < 5 { SET x_max TO 5. }
-        LOCAL y_max IS MAX(tr["alt_km"], x_max * 0.15 * 1.4) * 1.1.
+        LOCAL y_max IS MAX(alt_km, x_max * 0.15 * 1.4) * 1.1.
         IF y_max < 1 { SET y_max TO 1. }
         aoso_ui2_vs_corridor(AOSO_UI2_VS_HIGH, x_max, y_max, 1.4, TRUE).
         aoso_ui2_vs_corridor(AOSO_UI2_VS_NOM, x_max, y_max, 1.0, TRUE).
         aoso_ui2_vs_corridor(AOSO_UI2_VS_LOW, x_max, y_max, 0.55, TRUE).
-        LOCAL x_plot IS x_max - tr["site_km"].
-        LOCAL bug_pt IS aoso_ui2_plot_px(x_plot, tr["alt_km"], 0, x_max, 0, y_max).
+        LOCAL bug_pt IS aoso_ui2_plot_px(x_max - site_km, alt_km, 0, x_max, 0, y_max).
         aoso_ui2_plot_put(AOSO_UI2_VS_SHIP, bug_pt[0], bug_pt[1], TRUE).
-        SET AOSO_UI2_VS_INFO:TEXT TO "SITE " + ROUND(tr["site_km"], 1) + " km  ALT " +
-            ROUND(tr["alt_km"], 1) + " km  HDOT " + ROUND(f["vs"], 0) + " m/s  TWR " +
-            ROUND(f["twr"], 2) + "  " + lnd["state"] + "  dV MARGIN " +
-            aoso_ui2_color_state(band_state, band + " " + ROUND(margin, 0) + " m/s") +
-            "  LAND " + ROUND(res["land_dv"], 0) + "  HAVE " + ROUND(res["mission_dv"], 0) +
-            "  GUIDE SKETCH 0.15 km alt per km range".
+        aoso_ui2_set_text(AOSO_CRT_VS_SITE, "vs_site", ROUND(site_km, 1) + " km").
+        LOCAL radar_now IS aoso_lex_num(lnd, "radar", 0).
+        LOCAL radar_txt IS "".
+        IF radar_now > 0 {
+            IF radar_now < 8000 { SET radar_txt TO ROUND(radar_now, 0) + " m". }
+        }
+        aoso_ui2_set_text(AOSO_CRT_VS_RAD, "vs_rad", radar_txt).
+        aoso_ui2_set_text(AOSO_UI2_VS_INFO, "vs_info", aoso_lex_str(lnd, "state", "") + "  " + ROUND(alt_km, 1) + " km").
     } ELSE {
         aoso_ui2_vs_corridor(AOSO_UI2_VS_HIGH, 1, 1, 1, FALSE).
         aoso_ui2_vs_corridor(AOSO_UI2_VS_NOM, 1, 1, 1, FALSE).
         aoso_ui2_vs_corridor(AOSO_UI2_VS_LOW, 1, 1, 1, FALSE).
-        LOCAL eta_pe IS 0.
-        IF AOSO_HUD_DATA["orbit"]:HASKEY("pe_eta") { SET eta_pe TO AOSO_HUD_DATA["orbit"]["pe_eta"]. }
+        LOCAL eta_pe IS aoso_lex_num(AOSO_HUD_DATA["orbit"], "pe_eta", 0).
         LOCAL x_max IS MAX(eta_pe, 30).
-        LOCAL y_max IS MAX(tr["alt_km"], 1) * 1.1.
-        LOCAL bug_pt IS aoso_ui2_plot_px(x_max - MIN(eta_pe, x_max), tr["alt_km"], 0, x_max, 0, y_max).
+        LOCAL y_max IS MAX(alt_km, 1) * 1.1.
+        LOCAL bug_pt IS aoso_ui2_plot_px(x_max - MIN(eta_pe, x_max), alt_km, 0, x_max, 0, y_max).
         aoso_ui2_plot_put(AOSO_UI2_VS_SHIP, bug_pt[0], bug_pt[1], TRUE).
-        SET AOSO_UI2_VS_INFO:TEXT TO "PE-REL  no landing site yet  T-Pe " +
-            ROUND(eta_pe, 0) + " s  ALT " + ROUND(tr["alt_km"], 1) + " km  HDOT " +
-            ROUND(f["vs"], 0) + "  dV MARGIN " +
-            aoso_ui2_color_state(band_state, band + " " + ROUND(margin, 0) + " m/s").
+        aoso_ui2_set_text(AOSO_CRT_VS_SITE, "vs_site", "PE-REL").
+        aoso_ui2_set_text(AOSO_CRT_VS_RAD, "vs_rad", "").
+        aoso_ui2_set_text(AOSO_UI2_VS_INFO, "vs_info", "NO SITE  T-" + ROUND(eta_pe, 0) + " s").
     }
 }
 
@@ -300,55 +379,57 @@ FUNCTION aoso_ui2_vs_ship_fast {
     IF NOT AOSO_UI2_VS_SHIP:ISTYPE("LABEL") { RETURN. }
     IF NOT AOSO_HUD_DATA:HASKEY("traj") { RETURN. }
     LOCAL tr IS AOSO_HUD_DATA["traj"].
-    IF tr["site_ok"] {
-        LOCAL x_max IS tr["site_km"] * 1.15.
+    IF aoso_lex_bool(tr, "site_ok") {
+        LOCAL site_km IS aoso_lex_num(tr, "site_km", 0).
+        LOCAL alt_km IS aoso_lex_num(tr, "alt_km", 0).
+        LOCAL x_max IS site_km * 1.15.
         IF x_max < 5 { SET x_max TO 5. }
-        LOCAL y_max IS MAX(tr["alt_km"], x_max * 0.21) * 1.1.
+        LOCAL y_max IS MAX(alt_km, x_max * 0.21) * 1.1.
         IF y_max < 1 { SET y_max TO 1. }
-        LOCAL bug_pt IS aoso_ui2_plot_px(x_max - tr["site_km"], tr["alt_km"], 0, x_max, 0, y_max).
+        LOCAL bug_pt IS aoso_ui2_plot_px(x_max - site_km, alt_km, 0, x_max, 0, y_max).
         aoso_ui2_plot_put(AOSO_UI2_VS_SHIP, bug_pt[0], bug_pt[1], TRUE).
     }
 }
 
 FUNCTION aoso_ui2_rte_build {
     PARAMETER page.
-    aoso_hud_title(page, "ROUTE  /  WINDOWS").
-    SET AOSO_UI2_RTE_MAIN TO page:ADDVLAYOUT().
-    SET AOSO_UI2_RTE_MAIN:STYLE:WIDTH TO 420.
-    SET AOSO_UI2_RTE_MAIN:STYLE:ALIGN TO "center".
-    SET AOSO_UI2_RTE_HEAD TO AOSO_UI2_RTE_MAIN:ADDLABEL("ROUTE  ---").
-    SET AOSO_UI2_RTE_HEAD:STYLE:HSTRETCH TO TRUE.
-    SET AOSO_UI2_RTE_WIN TO AOSO_UI2_RTE_MAIN:ADDLABEL("WINDOW  ---").
-    SET AOSO_UI2_RTE_WIN:STYLE:HSTRETCH TO TRUE.
-    LOCAL row_a IS AOSO_UI2_RTE_MAIN:ADDHLAYOUT().
-    LOCAL row_b IS AOSO_UI2_RTE_MAIN:ADDHLAYOUT().
+    aoso_crt_page(page, "crt_rte.png").
+    SET AOSO_UI2_RTE_MAIN TO page.
     SET AOSO_UI2_RTE_PILLS TO LIST().
     LOCAL i IS 0.
-    UNTIL i >= 12 {
-        LOCAL row IS row_a.
-        IF i >= 6 { SET row TO row_b. }
-        LOCAL pill IS row:ADDLABEL("---").
-        SET pill:STYLE:WIDTH TO 64.
+    UNTIL i >= 8 {
+        LOCAL col IS i - FLOOR(i / 4) * 4.
+        LOCAL row_n IS FLOOR(i / 4).
+        LOCAL pill IS aoso_crt_label(page, 52 + col * 108, 78 + row_n * 32, 100, 13).
         SET pill:VISIBLE TO FALSE.
         AOSO_UI2_RTE_PILLS:ADD(pill).
         SET i TO i + 1.
     }
-    SET AOSO_UI2_RTE_SIDE TO page:ADDLABEL("").
-    SET AOSO_UI2_RTE_SIDE:STYLE:HSTRETCH TO TRUE.
-    SET AOSO_UI2_RTE_SIDE:STYLE:WORDWRAP TO TRUE.
+    SET AOSO_UI2_RTE_HEAD TO aoso_crt_label(page, 52, 190, 430, 14).
+    SET AOSO_UI2_RTE_WIN TO aoso_crt_label(page, 52, 216, 430, 14).
+    SET AOSO_CRT_RTE_HOP TO aoso_crt_side(page, 0).
+    SET AOSO_CRT_RTE_WIN TO aoso_crt_side(page, 1).
+    SET AOSO_CRT_RTE_CLASS TO aoso_crt_side(page, 2).
+    SET AOSO_CRT_RTE_END TO aoso_crt_side(page, 3).
+    SET AOSO_CRT_RTE_RET TO aoso_crt_side(page, 4).
+    SET AOSO_CRT_RTE_ABT TO aoso_crt_side(page, 5).
 }
 
 FUNCTION aoso_ui2_rte_window {
     PARAMETER here_name.
     PARAMETER dest_name.
-    IF dest_name = "" { RETURN "WINDOW  no next body". }
-    // kOS allows NOT or DEFINED, not both. Nest the check.
+    IF dest_name = "" {
+        SET AOSO_UI2_WIN_SHORT TO "---".
+        RETURN "NO NEXT BODY".
+    }
     IF DEFINED aoso_feas_planet_of {
         IF aoso_feas_planet_of(here_name) = aoso_feas_planet_of(dest_name) {
-            RETURN "LOCAL HOP  " + here_name + " -> " + dest_name + "  window n/a".
+            SET AOSO_UI2_WIN_SHORT TO "LOCAL".
+            RETURN "LOCAL HOP  " + here_name + " -> " + dest_name.
         }
     } ELSE {
-        RETURN "WINDOW  planner not loaded".
+        SET AOSO_UI2_WIN_SHORT TO "---".
+        RETURN "PLANNER NOT LOADED".
     }
     LOCAL key IS here_name + ">" + dest_name.
     LOCAL now_ut IS TIME:SECONDS.
@@ -356,7 +437,7 @@ FUNCTION aoso_ui2_rte_window {
     IF DEFINED AOSO_CPU_LEVEL {
         IF AOSO_CPU_LEVEL >= 2 { SET cpu_hot TO TRUE. }
     }
-    IF cpu_hot { RETURN AOSO_UI2_WIN_TXT + "  (held, CPU)". }
+    IF cpu_hot { RETURN AOSO_UI2_WIN_TXT. }
     IF DEFINED aoso_window_evaluate {
         IF key = AOSO_UI2_WIN_KEY {
             IF AOSO_UI2_WIN_UT >= 0 {
@@ -366,16 +447,18 @@ FUNCTION aoso_ui2_rte_window {
         LOCAL ev IS aoso_window_evaluate(here_name, dest_name).
         SET AOSO_UI2_WIN_KEY TO key.
         SET AOSO_UI2_WIN_UT TO now_ut.
-        SET AOSO_UI2_WIN_TXT TO "WINDOW  " + here_name + " -> " + dest_name +
-            "  open " + ev["wait_days"] + " d  phase err " + ev["phase_err"] +
-            " deg  dV~ " + ROUND(ev["now_dv"], 0) + " m/s".
+        SET AOSO_UI2_WIN_SHORT TO ev["wait_days"] + " d".
+        SET AOSO_UI2_WIN_TXT TO here_name + " -> " + dest_name +
+            "   T+" + ev["wait_days"] + " d   err " + ev["phase_err"] +
+            " deg   dV " + ROUND(ev["now_dv"], 0).
         RETURN AOSO_UI2_WIN_TXT.
     }
-    RETURN "WINDOW  not loaded".
+    SET AOSO_UI2_WIN_SHORT TO "---".
+    RETURN "WINDOW NOT LOADED".
 }
 
 FUNCTION aoso_ui2_rte_update {
-    IF NOT AOSO_UI2_RTE_MAIN:ISTYPE("BOX") { RETURN. }
+    IF NOT AOSO_UI2_RTE_MAIN:ISTYPE("WIDGET") { RETURN. }
     LOCAL targets IS LIST().
     LOCAL skipped IS LIST().
     LOCAL orbit_only IS LIST().
@@ -392,8 +475,7 @@ FUNCTION aoso_ui2_rte_update {
         IF AOSO_PLAN_LAST:HASKEY("class") { SET plan_class TO AOSO_PLAN_LAST["class"]. }
         IF AOSO_PLAN_LAST:HASKEY("from") { SET plan_from TO AOSO_PLAN_LAST["from"]. }
     }
-    LOCAL idx IS 0.
-    IF AOSO_HUD_DATA["mission"]:HASKEY("idx") { SET idx TO AOSO_HUD_DATA["mission"]["idx"]. }
+    LOCAL idx IS aoso_lex_num(AOSO_HUD_DATA["mission"], "idx", 0).
     LOCAL next_name IS "".
     IF idx >= 0 {
         IF idx < targets:LENGTH { SET next_name TO targets[idx]. }
@@ -404,19 +486,25 @@ FUNCTION aoso_ui2_rte_update {
         LOCAL pill IS AOSO_UI2_RTE_PILLS[i].
         IF i < targets:LENGTH {
             LOCAL body_name IS targets[i].
-            LOCAL tag IS "CAPABLE".
-            LOCAL col IS "#50FF96".
+            LOCAL tag IS "CAP".
+            SET pill:STYLE:TEXTCOLOR TO RGB(0.72, 1, 0.62).
             IF aoso_ui2_list_has(orbit_only, body_name) {
-                SET tag TO "ORBIT".
-                SET col TO "#7EC8FF".
+                SET tag TO "ORB".
+                SET pill:STYLE:TEXTCOLOR TO RGB(0.49, 0.78, 1).
             }
             IF aoso_ui2_list_has(skipped, body_name) {
                 SET tag TO "SKIP".
-                SET col TO "#8A8A8A".
+                SET pill:STYLE:TEXTCOLOR TO RGB(0.45, 0.45, 0.45).
             }
-            IF i < idx { SET tag TO "DONE". }
-            IF i = idx { SET tag TO "NOW". SET col TO "#FFCD46". }
-            SET pill:TEXT TO "<color=" + col + ">" + aoso_ui2_short_body(body_name) + "</color>" + CHAR(10) + tag.
+            IF i < idx {
+                SET tag TO "DONE".
+                SET pill:STYLE:TEXTCOLOR TO RGB(0.35, 0.55, 0.4).
+            }
+            IF i = idx {
+                SET tag TO "NOW".
+                SET pill:STYLE:TEXTCOLOR TO RGB(1, 0.8, 0.28).
+            }
+            aoso_ui2_set_text(pill, "rte_p" + i, aoso_ui2_short_body(body_name) + " " + tag).
             SET pill:VISIBLE TO TRUE.
         } ELSE {
             SET pill:VISIBLE TO FALSE.
@@ -425,60 +513,73 @@ FUNCTION aoso_ui2_rte_update {
     }
 
     IF have_plan {
-        SET AOSO_UI2_RTE_HEAD:TEXT TO "HOP  " + plan_from + " -> " + next_name +
-            "   " + (idx + 1) + "/" + targets:LENGTH + "   CLASS " + plan_class.
+        aoso_ui2_set_text(AOSO_UI2_RTE_HEAD, "rte_head", plan_from + " -> " + next_name + "   " + (idx + 1) + "/" + targets:LENGTH).
     } ELSE {
-        SET AOSO_UI2_RTE_HEAD:TEXT TO "NO PLAN  route not built yet".
+        aoso_ui2_set_text(AOSO_UI2_RTE_HEAD, "rte_head", "NO PLAN").
     }
-    SET AOSO_UI2_RTE_WIN:TEXT TO aoso_ui2_rte_window(SHIP:BODY:NAME, next_name).
+    aoso_ui2_set_text(AOSO_UI2_RTE_WIN, "rte_win", aoso_ui2_rte_window(SHIP:BODY:NAME, next_name)).
 
     LOCAL res IS AOSO_HUD_DATA["res"].
     LOCAL end_dv IS -1.
     IF DEFINED AOSO_PROJECT_LAST {
         IF AOSO_PROJECT_LAST:HASKEY("end_dv") { SET end_dv TO AOSO_PROJECT_LAST["end_dv"]. }
     }
-    LOCAL end_txt IS "LEDGER  waiting for project".
-    IF end_dv >= 0 { SET end_txt TO "LEDGER END " + ROUND(end_dv, 0) + " m/s". }
-    SET AOSO_UI2_RTE_SIDE:TEXT TO end_txt + "   MISSION " + ROUND(res["mission_dv"], 0) +
-        "   RETURN " + ROUND(res["return_dv"], 0) + "   ABORT " + ROUND(res["abort_dv"], 0) +
-        "   " + AOSO_HUD_DATA["mission"]["feas"].
+    LOCAL end_txt IS "---".
+    IF end_dv >= 0 { SET end_txt TO ROUND(end_dv, 0) + "". }
+    aoso_ui2_set_text(AOSO_CRT_RTE_HOP, "rte_hop", aoso_crt_fit(aoso_ui2_short_body(next_name), 10)).
+    aoso_ui2_set_text(AOSO_CRT_RTE_WIN, "rte_wside", AOSO_UI2_WIN_SHORT).
+    aoso_ui2_set_text(AOSO_CRT_RTE_CLASS, "rte_class", aoso_crt_fit(plan_class, 10)).
+    aoso_ui2_set_text(AOSO_CRT_RTE_END, "rte_end", end_txt).
+    aoso_ui2_set_text(AOSO_CRT_RTE_RET, "rte_ret", ROUND(aoso_lex_num(res, "return_dv", 0), 0) + "").
+    aoso_ui2_set_text(AOSO_CRT_RTE_ABT, "rte_abt", ROUND(aoso_lex_num(res, "abort_dv", 0), 0) + "").
 }
 
 FUNCTION aoso_ui2_bdg_build {
     PARAMETER page.
-    aoso_hud_title(page, "BUDGET  /  PROJECTED STATE").
-    SET AOSO_UI2_BDG_MAIN TO page:ADDVLAYOUT().
-    SET AOSO_UI2_BDG_MAIN:STYLE:WIDTH TO 420.
+    aoso_crt_page(page, "crt_bdg.png").
+    SET AOSO_UI2_BDG_MAIN TO page.
     SET AOSO_UI2_BDG_ROWS TO LIST().
     LOCAL i IS 0.
     UNTIL i >= 8 {
-        LOCAL row IS AOSO_UI2_BDG_MAIN:ADDLABEL("").
-        SET row:STYLE:HSTRETCH TO TRUE.
+        LOCAL row IS aoso_crt_label(page, 48, 80 + i * 28, 450, 14).
         AOSO_UI2_BDG_ROWS:ADD(row).
         SET i TO i + 1.
     }
-    SET AOSO_UI2_BDG_SIDE TO page:ADDLABEL("").
-    SET AOSO_UI2_BDG_SIDE:STYLE:HSTRETCH TO TRUE.
-    SET AOSO_UI2_BDG_SIDE:STYLE:WORDWRAP TO TRUE.
+    SET AOSO_UI2_BDG_INFO TO aoso_crt_label(page, 48, 308, 450, 14).
+    SET AOSO_CRT_BDG_NOW TO aoso_crt_side(page, 0).
+    SET AOSO_CRT_BDG_UNU TO aoso_crt_side(page, 1).
+    SET AOSO_CRT_BDG_RES TO aoso_crt_side(page, 2).
+    SET AOSO_CRT_BDG_LAND TO aoso_crt_side(page, 3).
+    SET AOSO_CRT_BDG_RET TO aoso_crt_side(page, 4).
+    SET AOSO_CRT_BDG_ABT TO aoso_crt_side(page, 5).
 }
 
 FUNCTION aoso_ui2_bdg_line {
     PARAMETER label_txt.
     PARAMETER dv.
     PARAMETER state_name.
-    LOCAL width IS 18.
+    LOCAL width IS 12.
     LOCAL span IS 4000.
     IF dv > span { SET span TO dv. }
     LOCAL frac IS 0.
     IF span > 0 { SET frac TO dv / span. }
     IF frac < 0 { SET frac TO 0. }
-    RETURN aoso_ui2_color_state(state_name, label_txt) + "  " + aoso_ui2_bar(frac, width) + "  " + ROUND(dv, 0).
+    IF frac > 1 { SET frac TO 1. }
+    LOCAL fill IS ROUND(frac * width, 0).
+    LOCAL bar IS "".
+    LOCAL i IS 0.
+    UNTIL i >= width {
+        IF i < fill { SET bar TO bar + "#". }
+        ELSE { SET bar TO bar + "-". }
+        SET i TO i + 1.
+    }
+    RETURN aoso_ui2_color_state(state_name, aoso_crt_fit(label_txt, 10)) + " " + bar + " " + ROUND(dv, 0).
 }
 
 FUNCTION aoso_ui2_bdg_update {
-    IF NOT AOSO_UI2_BDG_MAIN:ISTYPE("BOX") { RETURN. }
+    IF NOT AOSO_UI2_BDG_MAIN:ISTYPE("WIDGET") { RETURN. }
     LOCAL res IS AOSO_HUD_DATA["res"].
-    LOCAL now_dv IS res["mission_dv"].
+    LOCAL now_dv IS aoso_lex_num(res, "mission_dv", 0).
     LOCAL targets IS LIST().
     LOCAL legs IS LEXICON().
     LOCAL have_legs IS FALSE.
@@ -494,78 +595,99 @@ FUNCTION aoso_ui2_bdg_update {
         }
     }
     LOCAL lines IS LIST().
-    lines:ADD(aoso_ui2_bdg_line("NOW", now_dv, "SAFE")).
-    LOCAL i IS 0.
-    UNTIL i >= targets:LENGTH {
-        IF lines:LENGTH >= 8 { BREAK. }
-        LOCAL body_name IS targets[i].
-        IF legs:HASKEY(body_name) {
-            LOCAL leg IS legs[body_name].
-            LOCAL state_name IS "SAFE".
-            IF NOT leg["ok"] { SET state_name TO "FAIL". }
-            ELSE {
-                IF leg["margin"] < 200 { SET state_name TO "WARN". }
+    IF have_legs {
+        IF NOT stale {
+            lines:ADD(aoso_ui2_bdg_line("NOW", now_dv, "SAFE")).
+            LOCAL i IS 0.
+            UNTIL i >= targets:LENGTH {
+                IF lines:LENGTH >= 8 { BREAK. }
+                LOCAL body_name IS targets[i].
+                IF legs:HASKEY(body_name) {
+                    LOCAL leg IS legs[body_name].
+                    LOCAL state_name IS "SAFE".
+                    IF NOT leg["ok"] { SET state_name TO "FAIL". }
+                    ELSE {
+                        IF leg["margin"] < 200 { SET state_name TO "WARN". }
+                    }
+                    LOCAL did_refuel IS FALSE.
+                    IF leg:HASKEY("refueled") { SET did_refuel TO leg["refueled"]. }
+                    LOCAL bump IS "".
+                    IF did_refuel { SET bump TO "+ISRU". }
+                    lines:ADD(aoso_ui2_bdg_line(aoso_ui2_short_body(body_name) + bump, leg["leftover_out"], state_name)).
+                }
+                SET i TO i + 1.
             }
-            LOCAL did_refuel IS FALSE.
-            IF leg:HASKEY("refueled") { SET did_refuel TO leg["refueled"]. }
-            LOCAL bump IS "".
-            IF did_refuel { SET bump TO " +ISRU". }
-            lines:ADD(aoso_ui2_bdg_line(aoso_ui2_short_body(body_name) + bump, leg["leftover_out"], state_name)).
         }
-        SET i TO i + 1.
     }
     LOCAL row_i IS 0.
     UNTIL row_i >= AOSO_UI2_BDG_ROWS:LENGTH {
         IF row_i < lines:LENGTH {
-            SET AOSO_UI2_BDG_ROWS[row_i]:TEXT TO lines[row_i].
+            aoso_ui2_set_text(AOSO_UI2_BDG_ROWS[row_i], "bdg_r" + row_i, lines[row_i]).
         } ELSE {
-            SET AOSO_UI2_BDG_ROWS[row_i]:TEXT TO "".
+            aoso_ui2_set_text(AOSO_UI2_BDG_ROWS[row_i], "bdg_r" + row_i, "").
         }
         SET row_i TO row_i + 1.
     }
-    LOCAL stamp IS "SOURCE budget.ks".
+    LOCAL stamp IS "LIVE BUDGET".
     IF have_legs {
-        SET stamp TO "SOURCE project.ks leftover ledger".
-        IF stale { SET stamp TO "STALE  " + stamp. }
+        IF stale { SET stamp TO "STALE". }
+        ELSE { SET stamp TO "PROJECT LIVE". }
     } ELSE {
-        SET stamp TO "STALE  planner has not projected the route".
+        SET stamp TO "STALE  NO LEDGER".
     }
-    SET AOSO_UI2_BDG_SIDE:TEXT TO stamp + CHAR(10) +
-        "MISSION " + ROUND(res["mission_dv"], 0) + "   UNUSABLE " + ROUND(res["unusable_dv"], 0) +
-        "   RESERVE " + ROUND(res["reserve_dv"], 0) + "   LAND " + ROUND(res["land_dv"], 0) +
-        "   RETURN " + ROUND(res["return_dv"], 0) + "   ABORT " + ROUND(res["abort_dv"], 0) +
-        "   TOTAL " + ROUND(res["total_dv"], 0).
+    aoso_ui2_set_text(AOSO_UI2_BDG_INFO, "bdg_info", stamp).
+    aoso_ui2_set_text(AOSO_CRT_BDG_NOW, "bdg_now", ROUND(now_dv, 0) + "").
+    aoso_ui2_set_text(AOSO_CRT_BDG_UNU, "bdg_unu", ROUND(aoso_lex_num(res, "unusable_dv", 0), 0) + "").
+    aoso_ui2_set_text(AOSO_CRT_BDG_RES, "bdg_res", ROUND(aoso_lex_num(res, "reserve_dv", 0), 0) + "").
+    aoso_ui2_set_text(AOSO_CRT_BDG_LAND, "bdg_land", ROUND(aoso_lex_num(res, "land_dv", 0), 0) + "").
+    aoso_ui2_set_text(AOSO_CRT_BDG_RET, "bdg_ret", ROUND(aoso_lex_num(res, "return_dv", 0), 0) + "").
+    aoso_ui2_set_text(AOSO_CRT_BDG_ABT, "bdg_abt", ROUND(aoso_lex_num(res, "abort_dv", 0), 0) + "").
 }
 
 FUNCTION aoso_ui2_rnd_build {
     PARAMETER page.
-    aoso_hud_title(page, "RNDZ  /  RELATIVE NAV").
-    SET AOSO_UI2_RND_MAIN TO aoso_ui2_plot_frame(page, "nav_frame.png").
-    SET AOSO_UI2_RND_SHIP TO aoso_ui2_marker(AOSO_UI2_RND_MAIN, AOSO_UI2_ASSET_ROOT + "ship_bug.png", 18).
-    SET AOSO_UI2_RND_TGT TO aoso_ui2_marker(AOSO_UI2_RND_MAIN, AOSO_UI2_ASSET_ROOT + "target_bug.png", 16).
-    SET AOSO_UI2_RND_SHIP:STYLE:MARGIN:H TO 70.
-    SET AOSO_UI2_RND_SHIP:STYLE:MARGIN:V TO 96.
-    SET AOSO_UI2_RND_INFO TO page:ADDLABEL("RNDZ  NO TGT") .
-    SET AOSO_UI2_RND_INFO:STYLE:HSTRETCH TO TRUE.
+    aoso_crt_page(page, "crt_rnd.png").
+    SET AOSO_UI2_RND_MAIN TO page.
+    SET AOSO_UI2_RND_SHIP TO aoso_crt_bug(page, AOSO_UI2_ASSET_ROOT + "ship_bug.png", 18).
+    SET AOSO_UI2_RND_TGT TO aoso_crt_bug(page, AOSO_UI2_ASSET_ROOT + "target_bug.png", 16).
+    aoso_crt_move(AOSO_UI2_RND_SHIP, 70, 180, 18, 18).
+    SET AOSO_UI2_RND_SHIP:VISIBLE TO TRUE.
+    SET AOSO_UI2_RND_INFO TO aoso_crt_label(page, 48, 300, 450, 14).
+    SET AOSO_CRT_RND_NAME TO aoso_crt_side(page, 0).
+    SET AOSO_CRT_RND_DIST TO aoso_crt_side(page, 1).
+    SET AOSO_CRT_RND_RATE TO aoso_crt_side(page, 2).
+    SET AOSO_CRT_RND_BRG TO aoso_crt_side(page, 3).
+    SET AOSO_CRT_RND_PORT TO aoso_crt_side(page, 4).
+    SET AOSO_CRT_RND_REL TO aoso_crt_side(page, 5).
 }
 
 FUNCTION aoso_ui2_rnd_update {
-    IF NOT AOSO_UI2_RND_MAIN:ISTYPE("BOX") { RETURN. }
+    IF NOT AOSO_UI2_RND_MAIN:ISTYPE("WIDGET") { RETURN. }
     LOCAL tgt IS AOSO_HUD_DATA["target"].
-    IF NOT tgt["has"] {
+    IF NOT aoso_lex_bool(tgt, "has") {
         SET AOSO_UI2_RND_TGT:VISIBLE TO FALSE.
-        SET AOSO_UI2_RND_INFO:TEXT TO "NO TGT  select a vessel or docking step".
+        aoso_ui2_set_text(AOSO_UI2_RND_INFO, "rnd_info", "NO TARGET").
+        aoso_ui2_set_text(AOSO_CRT_RND_NAME, "rnd_name", "").
+        aoso_ui2_set_text(AOSO_CRT_RND_DIST, "rnd_dist", "").
+        aoso_ui2_set_text(AOSO_CRT_RND_RATE, "rnd_rate", "").
+        aoso_ui2_set_text(AOSO_CRT_RND_BRG, "rnd_brg", "").
+        aoso_ui2_set_text(AOSO_CRT_RND_PORT, "rnd_port", "").
+        aoso_ui2_set_text(AOSO_CRT_RND_REL, "rnd_rel", "").
         RETURN.
     }
-    LOCAL dist_m IS tgt["dist"].
+    LOCAL dist_m IS aoso_lex_num(tgt, "dist", 0).
     LOCAL scale_m IS MAX(dist_m, 100).
     LOCAL nx IS aoso_ui2_clamp(dist_m / scale_m, 0, 1).
     SET AOSO_UI2_RND_TGT:VISIBLE TO TRUE.
-    SET AOSO_UI2_RND_TGT:STYLE:MARGIN:H TO 70 + nx * 220.
-    SET AOSO_UI2_RND_TGT:STYLE:MARGIN:V TO 96.
-    LOCAL closing IS 0.
-    IF dist_m > 1 { SET closing TO 1 - aoso_ui2_clamp(dist_m / 10000, 0, 1). }
-    SET AOSO_UI2_RND_INFO:TEXT TO tgt["name"] + "  RANGE " + ROUND(dist_m, 0) + " m  REL " +
-        ROUND(tgt["rel"], 2) + " m/s  BRG " + ROUND(tgt["bearing"], 0) + "  CLOSE " +
-        aoso_ui2_bar(closing, 12).
+    aoso_crt_move(AOSO_UI2_RND_TGT, 80 + nx * 400, 180, 16, 16).
+    LOCAL rel_spd IS aoso_lex_num(tgt, "rel", 0).
+    LOCAL port_txt IS "FAR".
+    IF dist_m < 200 { SET port_txt TO "NEAR". }
+    aoso_ui2_set_text(AOSO_CRT_RND_NAME, "rnd_name", aoso_crt_fit(aoso_lex_str(tgt, "name", ""), 12)).
+    aoso_ui2_set_text(AOSO_CRT_RND_DIST, "rnd_dist", ROUND(dist_m, 0) + " m").
+    aoso_ui2_set_text(AOSO_CRT_RND_RATE, "rnd_rate", ROUND(rel_spd, 2) + "").
+    aoso_ui2_set_text(AOSO_CRT_RND_BRG, "rnd_brg", ROUND(aoso_lex_num(tgt, "bearing", 0), 0) + "").
+    aoso_ui2_set_text(AOSO_CRT_RND_PORT, "rnd_port", port_txt).
+    aoso_ui2_set_text(AOSO_CRT_RND_REL, "rnd_rel", ROUND(rel_spd, 1) + " m/s").
+    aoso_ui2_set_text(AOSO_UI2_RND_INFO, "rnd_info", aoso_lex_str(tgt, "name", "")).
 }

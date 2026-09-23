@@ -96,6 +96,8 @@ UI2 deliberately reuses:
 
 Do not move flight-control logic into the UI just to make a display easier.
 
+The booted face is the CRT, not the old flight-deck tabs. `aoso_hud_gui_init` builds only ASC, VSIT, RTE, BDG and RNDZ on the plate art in `ux/ui2_assets/crt_*.png`, plus the glass director. Keys under the plate are ASC / VSIT / ROUTE / DV / RNDZ / HUD / FD / AUTO. AUTO starts on and follows the phase. The pages below (PFD, NAV, SURF, SYS, twin) remain in the source as unused builders. Do not put them back on the face.
+
 ## Flight-deck displays
 
 ### PFD

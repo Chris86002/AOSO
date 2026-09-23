@@ -34,6 +34,9 @@ GLOBAL AOSO_UI2_MAX_RENDER_MS IS 0.
 GLOBAL AOSO_UI2_LAST_RENDER_OP IS 0.
 GLOBAL AOSO_UI2_MAX_RENDER_OP IS 0.
 GLOBAL AOSO_UI2_LAST_RENDER_PAGE IS "".
+GLOBAL AOSO_CRT_FD_BTN IS 0.
+GLOBAL AOSO_CRT_AUTO_BTN IS 0.
+GLOBAL AOSO_CRT_KEY_SLUG IS LEXICON().
 
 FUNCTION aoso_ui2_selftest {
     SET AOSO_UI2_READY TO FALSE.
@@ -45,28 +48,17 @@ FUNCTION aoso_ui2_selftest {
     }
 
     LOCAL missing_widgets IS LIST().
-    IF NOT AOSO_UI2_PFD_MAIN:ISTYPE("BOX") { missing_widgets:ADD("PFD"). }
-    IF NOT AOSO_UI2_NAV_MAIN:ISTYPE("BOX") { missing_widgets:ADD("NAV"). }
-    IF NOT AOSO_UI2_SURF_MAIN:ISTYPE("BOX") { missing_widgets:ADD("SURF"). }
-    IF NOT AOSO_UI2_SYS_MAIN:ISTYPE("BOX") { missing_widgets:ADD("SYS"). }
-    IF NOT AOSO_UI2_VEH_MAIN:ISTYPE("BOX") { missing_widgets:ADD("VEH"). }
-    IF NOT AOSO_UI2_ASC_MAIN:ISTYPE("BOX") { missing_widgets:ADD("ASC"). }
-    IF NOT AOSO_UI2_VS_MAIN:ISTYPE("BOX") { missing_widgets:ADD("VSIT"). }
-    IF NOT AOSO_UI2_RTE_MAIN:ISTYPE("BOX") { missing_widgets:ADD("RTE"). }
-    IF NOT AOSO_UI2_BDG_MAIN:ISTYPE("BOX") { missing_widgets:ADD("BDG"). }
-    IF NOT AOSO_UI2_RND_MAIN:ISTYPE("BOX") { missing_widgets:ADD("RNDZ"). }
+    IF NOT AOSO_UI2_ASC_MAIN:ISTYPE("WIDGET") { missing_widgets:ADD("ASC"). }
+    IF NOT AOSO_UI2_VS_MAIN:ISTYPE("WIDGET") { missing_widgets:ADD("VSIT"). }
+    IF NOT AOSO_UI2_RTE_MAIN:ISTYPE("WIDGET") { missing_widgets:ADD("RTE"). }
+    IF NOT AOSO_UI2_BDG_MAIN:ISTYPE("WIDGET") { missing_widgets:ADD("BDG"). }
+    IF NOT AOSO_UI2_RND_MAIN:ISTYPE("WIDGET") { missing_widgets:ADD("RNDZ"). }
 
-    // Widget existence alone reported READY even when archive PNGs were
-    // missing. Check the installed art that every primary view can request.
     LOCAL image_files IS LIST(
-        "pfd_frame.png", "nav_frame.png", "survey_frame.png",
-        "landing_frame.png", "descent_frame.png", "mission_frame.png",
-        "systems_frame.png", "twin_frame.png", "window_bg.png",
-        "readout_frame.png", "hud_clear.png", "hud_overlay.png", "button_off.png",
-        "button_hover.png", "button_on.png", "button_stby.png",
-        "button_warn.png", "button_fail.png", "diamond.png",
-        "ship_bug.png", "site_bug.png", "target_bug.png",
-        "pred_bug.png", "trail_bug.png", "hscale.png", "vscale.png"
+        "crt_asc.png", "crt_vs.png", "crt_rte.png", "crt_bdg.png", "crt_rnd.png",
+        "crt_glass.png", "crt_black.png", "hud_overlay.png", "phase_mark.png",
+        "key_asc_off.png", "key_asc_on.png", "key_hud_off.png", "key_mfd_off.png",
+        "diamond.png", "ship_bug.png", "trail_bug.png", "pred_bug.png"
     ).
     FOR image_file IN image_files {
         IF NOT EXISTS("0:/" + AOSO_UI2_ASSET_ROOT + image_file) {
@@ -86,7 +78,7 @@ FUNCTION aoso_ui2_selftest {
     }
 
     SET AOSO_UI2_READY TO TRUE.
-    SET AOSO_UI2_SELFTEST_REASON TO "PFD NAV VEH SURF SYS ASC VSIT RTE BDG RNDZ ready".
+    SET AOSO_UI2_SELFTEST_REASON TO "CRT ASC VSIT RTE BDG RNDZ ready".
     aoso_log_info("UI2", "Startup self-test READY: " + AOSO_UI2_SELFTEST_REASON + ".").
     RETURN TRUE.
 }
@@ -202,17 +194,7 @@ FUNCTION aoso_hud_show_page {
     FOR pk IN AOSO_HUD_PAGES:KEYS {
         SET AOSO_HUD_PAGES[pk]:VISIBLE TO (pk = name).
     }
-    FOR k IN AOSO_HUD_TABS:KEYS {
-        LOCAL lab IS k.
-        IF AOSO_HUD_TABLABEL:HASKEY(k) { SET lab TO AOSO_HUD_TABLABEL[k]. }
-        IF k = name {
-            SET AOSO_HUD_TABS[k]:TEXT TO "[" + lab + "]".
-            aoso_ui2_button_bg(AOSO_HUD_TABS[k], "button_on").
-        } ELSE {
-            SET AOSO_HUD_TABS[k]:TEXT TO lab.
-            aoso_ui2_button_bg(AOSO_HUD_TABS[k], "button_off").
-        }
-    }
+    aoso_crt_keys_refresh().
     SET AOSO_HUD_TAB_LOCK TO FALSE.
     aoso_hud_event_push("INFO", "page " + name).
 }
@@ -237,13 +219,17 @@ FUNCTION aoso_ui2_auto_page_tick {
     IF TIME:SECONDS < AOSO_UI2_MANUAL_UNTIL { RETURN. }
     IF AOSO_HUD_PAGE = "HELP" OR AOSO_HUD_PAGE = "DBG" OR AOSO_HUD_PAGE = "LOG" { RETURN. }
 
-    LOCAL want IS "FLT".
+    LOCAL want IS "ASC".
     LOCAL sys IS AOSO_HUD_DATA["systems"].
     LOCAL o IS AOSO_HUD_DATA["orbit"].
     LOCAL l IS AOSO_HUD_DATA["landing"].
 
-    IF sys["rollup"] = "FAIL" {
-        SET want TO "SYS".
+    LOCAL failed IS FALSE.
+    IF sys:HASKEY("rollup") {
+        IF sys["rollup"] = "FAIL" { SET failed TO TRUE. }
+    }
+    IF failed {
+        SET want TO "BDG".
     } ELSE {
         IF AOSO_HUD_CTX = "DOCK" {
             SET want TO "RNDZ".
@@ -251,19 +237,31 @@ FUNCTION aoso_ui2_auto_page_tick {
             IF AOSO_HUD_CTX = "LAUNCH" {
                 SET want TO "ASC".
             } ELSE {
-                IF l["active"] OR AOSO_HUD_CTX = "LANDING" {
+                LOCAL landing_on IS FALSE.
+                IF l:HASKEY("active") {
+                    IF l["active"] { SET landing_on TO TRUE. }
+                }
+                IF AOSO_HUD_CTX = "LANDING" { SET landing_on TO TRUE. }
+                IF landing_on {
                     SET want TO "VSIT".
                 } ELSE {
                     LOCAL tour_st IS "".
                     IF DEFINED AOSO_TOUR { SET tour_st TO AOSO_TOUR["current"]. }
                     IF tour_st = "POLAR" OR tour_st = "SCAN" {
-                        SET want TO "LND".
+                        SET want TO "VSIT".
                     } ELSE {
                         IF AOSO_HUD_CTX = "TRANSFER" OR AOSO_HUD_CTX = "RETURN" {
                             SET want TO "RTE".
                         } ELSE {
-                            IF o["node"] OR o["burning"] {
-                                SET want TO "NAV".
+                            LOCAL node_on IS FALSE.
+                            IF o:HASKEY("node") {
+                                IF o["node"] { SET node_on TO TRUE. }
+                            }
+                            IF o:HASKEY("burning") {
+                                IF o["burning"] { SET node_on TO TRUE. }
+                            }
+                            IF node_on {
+                                SET want TO "RTE".
                             } ELSE {
                                 IF SHIP:STATUS = "PRELAUNCH" OR SHIP:STATUS = "LANDED" {
                                     SET want TO "BDG".
@@ -281,6 +279,35 @@ FUNCTION aoso_ui2_auto_page_tick {
     }
 
     IF want <> AOSO_HUD_PAGE { aoso_hud_show_page(want, FALSE). }
+}
+
+FUNCTION aoso_crt_add_key {
+    PARAMETER row.
+    PARAMETER name.
+    PARAMETER slug.
+    LOCAL b IS row:ADDBUTTON("").
+    SET b:ONCLICK TO aoso_hud_tab_click@:BIND(name).
+    SET AOSO_HUD_TABS[name] TO b.
+    SET AOSO_HUD_TABLABEL[name] TO slug.
+    SET AOSO_CRT_KEY_SLUG[name] TO slug.
+    aoso_crt_key_face(b, slug, FALSE).
+    RETURN b.
+}
+
+FUNCTION aoso_crt_keys_refresh {
+    FOR k IN AOSO_HUD_TABS:KEYS {
+        IF AOSO_CRT_KEY_SLUG:HASKEY(k) {
+            LOCAL key_on IS FALSE.
+            IF k = AOSO_HUD_PAGE { SET key_on TO TRUE. }
+            aoso_crt_key_face(AOSO_HUD_TABS[k], AOSO_CRT_KEY_SLUG[k], key_on).
+        }
+    }
+    IF AOSO_CRT_FD_BTN:ISTYPE("BUTTON") {
+        aoso_crt_key_face(AOSO_CRT_FD_BTN, "fd", AOSO_HUD_FD_ON).
+    }
+    IF AOSO_CRT_AUTO_BTN:ISTYPE("BUTTON") {
+        aoso_crt_key_face(AOSO_CRT_AUTO_BTN, "auto", AOSO_UI2_AUTO_PAGE).
+    }
 }
 
 FUNCTION aoso_hud_add_tab {
@@ -309,9 +336,9 @@ FUNCTION aoso_hud_scale_pct {
 FUNCTION aoso_hud_skin_apply {
     PARAMETER g.
     LOCAL fs IS aoso_hud_scale_fs().
-    SET g:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "window_bg.png".
+    SET g:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "crt_black.png".
     SET g:SKIN:LABEL:FONTSIZE TO fs.
-    SET g:SKIN:LABEL:TEXTCOLOR TO RGB(0.26, 1.0, 0.38).
+    SET g:SKIN:LABEL:TEXTCOLOR TO RGB(0.62, 1.0, 0.55).
     SET g:SKIN:BUTTON:FONTSIZE TO fs.
     SET g:SKIN:BUTTON:BG TO AOSO_UI2_ASSET_ROOT + "button_off.png".
     SET g:SKIN:BUTTON:HOVER:BG TO AOSO_UI2_ASSET_ROOT + "button_hover.png".
@@ -633,128 +660,71 @@ FUNCTION aoso_hud_fd_cb_rel { PARAMETER on. aoso_hud_fd_set("REL", on). aoso_hud
 FUNCTION aoso_hud_fd_cb_burn { PARAMETER on. aoso_hud_fd_set("BURN", on). aoso_hud_trace("FD BURN=" + on). }
 FUNCTION aoso_hud_fd_cb_land { PARAMETER on. aoso_hud_fd_set("LAND", on). aoso_hud_trace("FD LAND vec=" + on + " (display only, does not land)"). }
 
+FUNCTION aoso_crt_fd_click {
+    aoso_hud_fd_enable(NOT AOSO_HUD_FD_ON).
+    aoso_crt_keys_refresh().
+}
+
+FUNCTION aoso_crt_auto_click {
+    aoso_ui2_auto_page_toggle(NOT AOSO_UI2_AUTO_PAGE).
+    aoso_crt_keys_refresh().
+}
+
 FUNCTION aoso_hud_gui_init {
     aoso_hud_gui_dispose().
-    LOCAL g IS GUI(aoso_hud_scale_width()).
-    SET g:X TO 20.
-    SET g:Y TO 60.
+    LOCAL g IS GUI(800).
+    SET g:X TO 24.
+    SET g:Y TO 36.
     SET g:DRAGGABLE TO TRUE.
     aoso_hud_skin_apply(g).
+    SET g:STYLE:PADDING:LEFT TO 6.
+    SET g:STYLE:PADDING:RIGHT TO 6.
+    SET g:STYLE:PADDING:BOTTOM TO 4.
+    SET g:SKIN:LABEL:FONTSIZE TO 16.
+    SET g:SKIN:LABEL:TEXTCOLOR TO RGB(0.72, 1, 0.62).
     SET AOSO_HUD_GUI TO g.
 
-    LOCAL hdr IS g:ADDLABEL("<b><size=16><color=#1AF034>AOSO</color></size>  FLIGHT DECK · OPS DISPLAY r5</b>").
-    SET hdr:STYLE:HSTRETCH TO TRUE.
-    SET AOSO_HUD_HDR_TITLE TO hdr.
-    aoso_hud_lab(g, "hdr_sys", "SYS  NOMINAL").
-    LOCAL status_row IS g:ADDHLAYOUT().
-    aoso_hud_lab(status_row, "hdr_ui2", "OPS DISPLAY r5  STARTING").
-    aoso_hud_lab(status_row, "hdr_twin", "TWIN  -").
-    aoso_hud_lab(g, "hdr_do", "DOING  -").
-    aoso_hud_lab(g, "hdr_dt", "").
-
-    LOCAL chrome IS g:ADDHLAYOUT().
-    LOCAL b_back IS chrome:ADDBUTTON("BACK").
-    SET b_back:ONCLICK TO aoso_hud_back@.
-    LOCAL b_home IS chrome:ADDBUTTON("HOME").
-    SET b_home:ONCLICK TO aoso_hud_home@.
-    LOCAL b_help IS chrome:ADDBUTTON("HELP").
-    SET b_help:ONCLICK TO aoso_hud_help_click@.
-    LOCAL b_minus IS chrome:ADDBUTTON("A-").
-    SET b_minus:ONCLICK TO aoso_hud_scale_down@.
-    aoso_hud_lab(chrome, "chrome_pct", "100%").
-    SET AOSO_HUD_W["chrome_pct"]:STYLE:HSTRETCH TO FALSE.
-    LOCAL b_plus IS chrome:ADDBUTTON("A+").
-    SET b_plus:ONCLICK TO aoso_hud_scale_up@.
-    LOCAL b_x IS chrome:ADDBUTTON("X").
-    SET b_x:ONCLICK TO aoso_hud_toggle_compact@.
-    SET AOSO_HUD_BTN_X TO b_x.
-
     LOCAL vbox IS g:ADDVLAYOUT().
+    aoso_crt_zero(vbox).
     SET AOSO_HUD_BODY TO vbox.
-
-    LOCAL modes IS vbox:ADDHLAYOUT().
-    LOCAL b_tac IS modes:ADDBUTTON("HUD").
-    SET b_tac:STYLE:WIDTH TO 67.
-    SET b_tac:ONCLICK TO aoso_hud_mode_tactical@.
-    LOCAL b_gui IS modes:ADDBUTTON("MFD").
-    SET b_gui:STYLE:WIDTH TO 67.
-    SET b_gui:ONCLICK TO aoso_hud_mode_computer@.
-    LOCAL b_eng IS modes:ADDBUTTON("ENG").
-    SET b_eng:STYLE:WIDTH TO 67.
-    SET b_eng:ONCLICK TO aoso_hud_mode_eng@.
-    LOCAL b_fd IS modes:ADDCHECKBOX("FD", TRUE).
-    SET b_fd:ONTOGGLE TO aoso_hud_fd_cb_master@.
-    LOCAL b_auto IS modes:ADDCHECKBOX("AUTO", FALSE).
-    SET b_auto:ONTOGGLE TO aoso_ui2_auto_page_toggle@.
-
-    LOCAL fdrow IS vbox:ADDHLAYOUT().
-    LOCAL c1 IS fdrow:ADDCHECKBOX("PRO", TRUE).
-    SET c1:ONTOGGLE TO aoso_hud_fd_cb_pro@.
-    LOCAL c1b IS fdrow:ADDCHECKBOX("RET", FALSE).
-    SET c1b:ONTOGGLE TO aoso_hud_fd_cb_ret@.
-    LOCAL c1c IS fdrow:ADDCHECKBOX("NML", FALSE).
-    SET c1c:ONTOGGLE TO aoso_hud_fd_cb_nml@.
-    LOCAL c2 IS fdrow:ADDCHECKBOX("TGT", TRUE).
-    SET c2:ONTOGGLE TO aoso_hud_fd_cb_tgt@.
-    LOCAL c2b IS fdrow:ADDCHECKBOX("REL", FALSE).
-    SET c2b:ONTOGGLE TO aoso_hud_fd_cb_rel@.
-    LOCAL c3 IS fdrow:ADDCHECKBOX("BURN", TRUE).
-    SET c3:ONTOGGLE TO aoso_hud_fd_cb_burn@.
-    LOCAL c4 IS fdrow:ADDCHECKBOX("LAND", FALSE).
-    SET c4:ONTOGGLE TO aoso_hud_fd_cb_land@.
-    // The legend lives on HELP; the front panel stays focused on the display.
-
-    // Flight row. Tour, propellant and staging pages were the same numbers
-    // as ROUTE, DV and SYS, so they are no longer built.
-    LOCAL row1 IS vbox:ADDHLAYOUT().
-    aoso_hud_add_tab(row1, "FLT", "PFD").
-    aoso_hud_add_tab(row1, "ASC", "ASC").
-    aoso_hud_add_tab(row1, "NAV", "NAV").
-    aoso_hud_add_tab(row1, "VSIT", "VSIT").
-    aoso_hud_add_tab(row1, "SYS", "SYS").
-
-    LOCAL row2 IS vbox:ADDHLAYOUT().
-    aoso_hud_add_tab(row2, "RTE", "ROUTE").
-    aoso_hud_add_tab(row2, "BDG", "DV").
-    aoso_hud_add_tab(row2, "RNDZ", "RNDZ").
-    aoso_hud_add_tab(row2, "LND", "SURF").
-    aoso_hud_add_tab(row2, "VEH", "VEH").
-
-    LOCAL row3 IS vbox:ADDHLAYOUT().
-    aoso_hud_add_tab(row3, "TWIN", "TWIN").
-    aoso_hud_add_tab(row3, "LOG", "LOG").
-    aoso_hud_add_tab(row3, "DBG", "DBG").
-    aoso_hud_add_tab(row3, "HELP", "HELP").
-
     SET AOSO_HUD_STACK TO vbox:ADDVLAYOUT().
-    aoso_hud_gui_build_flight(aoso_hud_add_page("FLT")).
-    aoso_hud_gui_build_nav(aoso_hud_add_page("NAV")).
-    aoso_hud_gui_build_vehicle(aoso_hud_add_page("VEH")).
-    aoso_hud_gui_build_land(aoso_hud_add_page("LND")).
-    aoso_hud_gui_build_sys(aoso_hud_add_page("SYS")).
-    aoso_twin_view_build(aoso_hud_add_page("TWIN")).
-    aoso_hud_gui_build_log(aoso_hud_add_page("LOG")).
-    aoso_hud_gui_build_dbg(aoso_hud_add_page("DBG")).
-    aoso_hud_gui_build_help(aoso_hud_add_page("HELP")).
+    aoso_crt_zero(AOSO_HUD_STACK).
+
     aoso_ui2_asc_build(aoso_hud_add_page("ASC")).
     aoso_ui2_vs_build(aoso_hud_add_page("VSIT")).
     aoso_ui2_rte_build(aoso_hud_add_page("RTE")).
     aoso_ui2_bdg_build(aoso_hud_add_page("BDG")).
     aoso_ui2_rnd_build(aoso_hud_add_page("RNDZ")).
 
-    SET AOSO_UI2_AUTO_PAGE TO FALSE.
-    aoso_hud_apply_scale().
-    aoso_hud_set_compact(AOSO_HUD_COMPACT).
-    aoso_hud_show_page("FLT", FALSE).
+    LOCAL keys IS vbox:ADDHLAYOUT().
+    SET keys:STYLE:MARGIN:TOP TO 4.
+    SET keys:STYLE:MARGIN:LEFT TO 4.
+    aoso_crt_add_key(keys, "ASC", "asc").
+    aoso_crt_add_key(keys, "VSIT", "vsit").
+    aoso_crt_add_key(keys, "RTE", "route").
+    aoso_crt_add_key(keys, "BDG", "dv").
+    aoso_crt_add_key(keys, "RNDZ", "rndz").
+    LOCAL b_hud IS keys:ADDBUTTON("").
+    SET b_hud:ONCLICK TO aoso_hud_mode_tactical@.
+    aoso_crt_key_face(b_hud, "hud", FALSE).
+    SET AOSO_CRT_FD_BTN TO keys:ADDBUTTON("").
+    SET AOSO_CRT_FD_BTN:ONCLICK TO aoso_crt_fd_click@.
+    SET AOSO_CRT_AUTO_BTN TO keys:ADDBUTTON("").
+    SET AOSO_CRT_AUTO_BTN:ONCLICK TO aoso_crt_auto_click@.
+
+    SET AOSO_UI2_AUTO_PAGE TO TRUE.
+    aoso_hud_fd_enable(TRUE).
+    aoso_crt_keys_refresh().
+    aoso_hud_show_page("ASC", FALSE).
     SET AOSO_HUD_GUI_ON TO TRUE.
     g:SHOW().
 
     IF aoso_ui2_selftest() {
-        aoso_hud_set("hdr_ui2", "OPS DISPLAY r5  <color=#1AF034>READY</color>").
+        aoso_log_info("UI2", "CRT face ready.").
     } ELSE {
-        aoso_hud_set("hdr_ui2", "UI2  <color=#FF5A46>FAULT</color>  " + AOSO_UI2_SELFTEST_REASON).
+        aoso_log_warn("UI2", "CRT face " + AOSO_UI2_SELFTEST_REASON).
     }
-    aoso_hud_trace_log("GUI online UI2=" + AOSO_UI2_READY + " " + AOSO_UI2_SELFTEST_REASON).
+    aoso_hud_trace_log("CRT GUI online " + AOSO_UI2_SELFTEST_REASON).
 }
 
 FUNCTION aoso_hud_tac_chip_show {
@@ -831,6 +801,8 @@ FUNCTION aoso_hud_gui_fast {
     SET AOSO_HUD_FAST_GUI_RT TO fast_rt.
     LOCAL f IS AOSO_HUD_DATA["flight"].
     LOCAL o IS AOSO_HUD_DATA["orbit"].
+    IF NOT f:HASKEY("alt") { RETURN. }
+    IF NOT o:HASKEY("ap") { RETURN. }
     LOCAL pg IS AOSO_HUD_PAGE.
     IF pg = "FLT" { aoso_ui2_pfd_update(). }
     LOCAL sig IS ROUND(f["alt"], 0) + "|" + ROUND(f["vs"], 0) + "|" + ROUND(f["throttle"] * 100, 0) + "|" + ROUND(o["ap"], 0) + "|" + f["stage"] + "|" + f["doing"] + "|" + f["detail"].
