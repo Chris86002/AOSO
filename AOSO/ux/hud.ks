@@ -191,7 +191,9 @@ FUNCTION aoso_hud_tick {
         }
     }
     IF rates["term"] {
-        IF NOT AOSO_HUD_GUI_ON { aoso_hud_term_tick(compact). }
+        IF NOT AOSO_HUD_GUI_ON {
+            IF NOT AOSO_UI2_HUD_VISIBLE { aoso_hud_term_tick(compact). }
+        }
     }
     IF NOT compact {
         aoso_hud_watch_alerts().
@@ -284,6 +286,7 @@ FUNCTION aoso_hud_init {
     aoso_hud_alert_init().
     aoso_hud_fd_init().
     aoso_twin_init().
+    aoso_ui2_hud_dispose().
     aoso_hud_gui_init().
     SET AOSO_HUD_MODE TO "COMPUTER".
     SET AOSO_HUD_READY TO TRUE.
