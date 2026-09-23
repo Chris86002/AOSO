@@ -351,7 +351,7 @@ FUNCTION aoso_hud_gui_build_nav {
 
 FUNCTION aoso_hud_gui_build_mission {
     PARAMETER p.
-    aoso_ui2_build_mission_display(p).
+    aoso_ui2_mission_build(p).
 
     LOCAL data IS p:ADDVBOX().
     SET data:STYLE:WIDTH TO 420.
@@ -373,10 +373,8 @@ FUNCTION aoso_hud_gui_build_mission {
 
 FUNCTION aoso_hud_gui_build_vehicle {
     PARAMETER p.
-    aoso_hud_title(p, "VEHICLE / DIGITAL TWIN").
-    aoso_ui2_build_vehicle_frame(p).
-    aoso_ui2_build_twin_display(AOSO_UI2_VEH_MAIN).
-    aoso_hud_hint(p, "Live stage/resource schematic. Green arrow = current separation band. Display only; never stages the vessel.").
+    aoso_ui2_vehicle_build(p).
+    aoso_hud_hint(p, "Live clickable digital twin. Selecting a node only highlights the matching vessel part; it never stages or commands the ship.").
     aoso_hud_lab(p, "veh_id", "SHIP  -").
     aoso_hud_lab(p, "veh_cls", "CLASS  -").
     aoso_hud_lab(p, "veh_crew", "CREW  -").
@@ -436,7 +434,7 @@ FUNCTION aoso_hud_gui_build_stg {
 
 FUNCTION aoso_hud_gui_build_sys {
     PARAMETER p.
-    aoso_ui2_build_systems_display(p).
+    aoso_ui2_systems_build(p).
 
     LOCAL data IS p:ADDVBOX().
     SET data:STYLE:WIDTH TO 420.
