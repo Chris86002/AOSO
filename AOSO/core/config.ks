@@ -9,7 +9,7 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "ABORT_FUEL_PCT", 3,                // % remaining that forces an abort
     "MAX_WARP_FACTOR", 7,               // cap on SET WARP. 7=100000x rails, but adaptive frame guards only permit it on long safe coasts.
     "WARP_PROMOTE_MARGIN", 1.35,         // extra guard required to raise rails rate; prevents threshold chatter while ETA/frame time moves.
-    "WARP_SOI_RAILS_CUTOFF_S", 300,      // leave rails at least this many seconds before an SOI crossing; large vessels can take seconds to unpack.
+    "WARP_SOI_RAILS_CUTOFF_S", 45,       // leave rails shortly before SOI; enough for the measured ~8 s large-vessel unpack without a 5-minute physics coast.
     "WARP_STATUS_REAL_S", 30,            // real seconds between file-only coast breadcrumbs; rate/mode changes still print immediately.
     "OPTIMIZATION_MODE", "BALANCED",    // FUEL | TIME | SAFETY | BALANCED | MINIMUM_DV
     "LOG_LEVEL", "INFO",                // TRACE..FATAL  (INFO default; TRACE is for hard bugs)
