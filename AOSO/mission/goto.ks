@@ -660,7 +660,7 @@ FUNCTION aoso_goto_coast_execute {
             SET data["correct_count"] TO 0.
             aoso_log_warn("GOTO", "Unexpected next SOI " + np +
                 " while targeting " + data["hop"] + " / goal " + goal_name +
-                " - stopping warp before entry.") .
+                " - stopping warp before entry.").
             aoso_observe_anomaly("UNEXPECTED_PATCH", "HIGH", 0, SHIP:ORBIT:NEXTPATCHETA).
             IF DEFINED AOSO_EVENTS {
                 aoso_event_publish("UNEXPECTED_PATCH", "goto", np).
@@ -670,19 +670,21 @@ FUNCTION aoso_goto_coast_execute {
             // parent->moon hop this asks the correction solver to make the
             // intended moon the FIRST patch, not merely appear later in the
             // conic chain.
-            LOCAL intended IS BODY(data["hop"]).
-            IF intended:ISTYPE("Body") {
-                IF intended:BODY:NAME = SHIP:BODY:NAME {
-                    IF SHIP:ORBIT:NEXTPATCHETA > 150 {
-                        LOCAL nd_avoid IS aoso_rendezvous_add_correction_node(intended).
-                        IF nd_avoid <> 0 {
-                            SET data["corrected"] TO TRUE.
-                            SET data["correct_count"] TO 1.
-                            SET data["burn_kind"] TO "correct".
-                            aoso_log_info("GOTO", "Avoiding unintended " + np +
-                                " SOI with a correction back onto direct " + intended:NAME + " intercept.").
-                            aoso_state_transition(AOSO_GOTO, "BURN").
-                            RETURN.
+            IF data["hop"] <> "" {
+                LOCAL intended IS BODY(data["hop"]).
+                IF intended:ISTYPE("Body") {
+                    IF intended:BODY:NAME = SHIP:BODY:NAME {
+                        IF SHIP:ORBIT:NEXTPATCHETA > 150 {
+                            LOCAL nd_avoid IS aoso_rendezvous_add_correction_node(intended).
+                            IF nd_avoid <> 0 {
+                                SET data["corrected"] TO TRUE.
+                                SET data["correct_count"] TO 1.
+                                SET data["burn_kind"] TO "correct".
+                                aoso_log_info("GOTO", "Avoiding unintended " + np +
+                                    " SOI with a correction back onto direct " + intended:NAME + " intercept.").
+                                aoso_state_transition(AOSO_GOTO, "BURN").
+                                RETURN.
+                            }
                         }
                     }
                 }
