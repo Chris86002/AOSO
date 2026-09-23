@@ -35,6 +35,12 @@ GLOBAL AOSO_UI2_NAV_TRAIL IS LIST().
 GLOBAL AOSO_UI2_NAV_TRAIL_X IS LIST().
 GLOBAL AOSO_UI2_NAV_TRAIL_Y IS LIST().
 GLOBAL AOSO_UI2_NAV_LAST_TRAIL_UT IS -1.
+GLOBAL AOSO_UI2_NAV_PRED IS LIST().
+GLOBAL AOSO_UI2_NAV_LAST_PRED_UT IS -1.
+GLOBAL AOSO_UI2_NAV_BASIS_BODY IS "".
+GLOBAL AOSO_UI2_NAV_BASIS_X IS V(1, 0, 0).
+GLOBAL AOSO_UI2_NAV_BASIS_Y IS V(0, 1, 0).
+GLOBAL AOSO_UI2_NAV_SCALE IS 1.
 
 GLOBAL AOSO_UI2_SURF_MAIN IS 0.
 GLOBAL AOSO_UI2_SURF_SHIP IS 0.
@@ -223,7 +229,7 @@ FUNCTION aoso_ui2_pfd_update {
 FUNCTION aoso_ui2_build_nav_display {
     PARAMETER page.
 
-    SET AOSO_UI2_NAV_TITLE TO page:ADDLABEL("<b><size=18>NAVIGATION DISPLAY</size></b>").
+    SET AOSO_UI2_NAV_TITLE TO page:ADDLABEL("<b><size=18>NAVIGATION SITUATION DISPLAY</size></b>").
     SET AOSO_UI2_NAV_TITLE:STYLE:ALIGN TO "center".
     SET AOSO_UI2_NAV_TITLE:STYLE:HSTRETCH TO TRUE.
 
@@ -233,6 +239,22 @@ FUNCTION aoso_ui2_build_nav_display {
     SET AOSO_UI2_NAV_MAIN:STYLE:HEIGHT TO 250.
     SET AOSO_UI2_NAV_MAIN:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "nav_frame.png".
 
+    // Predicted conic samples: sparse image bugs updated in-place about once
+    // per second. This is the real osculating/patched-conic geometry inside
+    // the current SOI, not a decorative ellipse.
+    SET AOSO_UI2_NAV_PRED TO LIST().
+    LOCAL pred_n IS ROUND(aoso_config_get("UI2_NAV_PRED_POINTS", 16), 0).
+    IF pred_n < 6 { SET pred_n TO 6. }
+    IF pred_n > 24 { SET pred_n TO 24. }
+    LOCAL pi IS 0.
+    UNTIL pi >= pred_n {
+        LOCAL pm IS aoso_ui2_marker(AOSO_UI2_NAV_MAIN, AOSO_UI2_ASSET_ROOT + "pred_bug.png", 8).
+        SET pm:VISIBLE TO FALSE.
+        AOSO_UI2_NAV_PRED:ADD(pm).
+        SET pi TO pi + 1.
+    }
+
+    // Recent flown trail. Unlike the prediction this is historical position.
     LOCAL trail_n IS ROUND(aoso_config_get("UI2_TRAIL_POINTS", 10), 0).
     IF trail_n < 0 { SET trail_n TO 0. }
     IF trail_n > 16 { SET trail_n TO 16. }
@@ -241,7 +263,7 @@ FUNCTION aoso_ui2_build_nav_display {
     SET AOSO_UI2_NAV_TRAIL_Y TO LIST().
     LOCAL i IS 0.
     UNTIL i >= trail_n {
-        LOCAL mark IS aoso_ui2_marker(AOSO_UI2_NAV_MAIN, AOSO_UI2_ASSET_ROOT + "target_bug.png", 6).
+        LOCAL mark IS aoso_ui2_marker(AOSO_UI2_NAV_MAIN, AOSO_UI2_ASSET_ROOT + "trail_bug.png", 8).
         SET mark:VISIBLE TO FALSE.
         AOSO_UI2_NAV_TRAIL:ADD(mark).
         SET i TO i + 1.
@@ -257,14 +279,83 @@ FUNCTION aoso_ui2_build_nav_display {
 
     aoso_hud_lab(page, "ui2_nav_detail", "").
     aoso_hud_lab(page, "ui2_nav_burn", "").
+
+    SET AOSO_UI2_NAV_LAST_PRED_UT TO -1.
+    SET AOSO_UI2_NAV_BASIS_BODY TO "".
 }
 
-FUNCTION aoso_ui2_nav_xy {
-    PARAMETER frac.
-    // Schematic normalized orbit position. This is deliberately labelled
-    // SCHEMATIC: it communicates timing/course state, not a map-view ephemeris.
-    LOCAL ang IS frac * 360.
-    RETURN LIST(210 + COS(ang) * 145, 125 + SIN(ang) * 68).
+FUNCTION aoso_ui2_nav_basis_ensure {
+    IF AOSO_UI2_NAV_BASIS_BODY = SHIP:BODY:NAME { RETURN. }
+
+    LOCAL r IS aoso_orbit_position_now(SHIP).
+    IF r:MAG < 1 {
+        SET AOSO_UI2_NAV_BASIS_X TO V(1, 0, 0).
+        SET AOSO_UI2_NAV_BASIS_Y TO V(0, 1, 0).
+    } ELSE {
+        SET AOSO_UI2_NAV_BASIS_X TO r:NORMALIZED.
+        LOCAL n IS aoso_orbit_normal_now(SHIP).
+        LOCAL y IS VCRS(n, AOSO_UI2_NAV_BASIS_X).
+        IF y:MAG < 0.001 { SET y TO V(0, 1, 0). }
+        SET AOSO_UI2_NAV_BASIS_Y TO y:NORMALIZED.
+    }
+    SET AOSO_UI2_NAV_BASIS_BODY TO SHIP:BODY:NAME.
+    SET AOSO_UI2_NAV_LAST_PRED_UT TO -1.
+    SET AOSO_UI2_NAV_TRAIL_X TO LIST().
+    SET AOSO_UI2_NAV_TRAIL_Y TO LIST().
+}
+
+FUNCTION aoso_ui2_nav_project {
+    PARAMETER r.
+    LOCAL scale IS MAX(1, AOSO_UI2_NAV_SCALE).
+    LOCAL px IS VDOT(r, AOSO_UI2_NAV_BASIS_X) / scale.
+    LOCAL py IS VDOT(r, AOSO_UI2_NAV_BASIS_Y) / scale.
+    RETURN LIST(
+        210 + CLAMP(px, -1, 1) * 158,
+        125 - CLAMP(py, -1, 1) * 78
+    ).
+}
+
+FUNCTION aoso_ui2_nav_predict {
+    LOCAL now IS TIME:SECONDS.
+    LOCAL refresh IS aoso_config_get("UI2_NAV_PRED_REFRESH_S", 1).
+    IF refresh < 0.25 { SET refresh TO 0.25. }
+    IF AOSO_UI2_NAV_LAST_PRED_UT >= 0 {
+        IF now - AOSO_UI2_NAV_LAST_PRED_UT < refresh { RETURN. }
+    }
+    SET AOSO_UI2_NAV_LAST_PRED_UT TO now.
+    aoso_ui2_nav_basis_ensure().
+
+    LOCAL o IS AOSO_HUD_DATA["orbit"].
+    LOCAL horizon IS o["period"].
+    IF horizon <= 1 { SET horizon TO 3600. }
+    IF o["patch"] <> "" {
+        IF o["patch_eta"] > 1 { SET horizon TO o["patch_eta"]. }
+    }
+    IF horizon < 60 { SET horizon TO 60. }
+
+    LOCAL pts IS LIST().
+    LOCAL max_r IS MAX(1, aoso_orbit_position_now(SHIP):MAG).
+    LOCAL n IS AOSO_UI2_NAV_PRED:LENGTH.
+    LOCAL i IS 0.
+    UNTIL i >= n {
+        LOCAL frac IS 0.
+        IF n > 1 { SET frac TO i / (n - 1). }
+        LOCAL ut IS now + horizon * frac.
+        LOCAL r IS aoso_orbit_position_at(SHIP, ut).
+        pts:ADD(r).
+        IF r:MAG > max_r { SET max_r TO r:MAG. }
+        SET i TO i + 1.
+    }
+    SET AOSO_UI2_NAV_SCALE TO max_r * 1.08.
+
+    SET i TO 0.
+    UNTIL i >= n {
+        LOCAL p IS aoso_ui2_nav_project(pts[i]).
+        SET AOSO_UI2_NAV_PRED[i]:STYLE:MARGIN:H TO p[0].
+        SET AOSO_UI2_NAV_PRED[i]:STYLE:MARGIN:V TO p[1].
+        SET AOSO_UI2_NAV_PRED[i]:VISIBLE TO TRUE.
+        SET i TO i + 1.
+    }
 }
 
 FUNCTION aoso_ui2_nav_update {
@@ -272,46 +363,37 @@ FUNCTION aoso_ui2_nav_update {
     LOCAL m IS AOSO_HUD_DATA["mission"].
     LOCAL res IS AOSO_HUD_DATA["res"].
 
-    LOCAL period IS o["period"].
-    LOCAL frac IS 0.
-    IF period > 1 {
-        SET frac TO o["ap_eta"] / period.
-        SET frac TO frac - FLOOR(frac).
-    }
-    LOCAL pos IS aoso_ui2_nav_xy(frac).
+    aoso_ui2_nav_basis_ensure().
+    aoso_ui2_nav_predict().
+
+    LOCAL ship_r IS aoso_orbit_position_now(SHIP).
+    LOCAL pos IS aoso_ui2_nav_project(ship_r).
     SET AOSO_UI2_NAV_SHIP:STYLE:MARGIN:H TO pos[0].
     SET AOSO_UI2_NAV_SHIP:STYLE:MARGIN:V TO pos[1].
 
-    LOCAL target_frac IS frac + 0.25.
-    IF o["patch"] <> "" {
-        IF period > 1 {
-            SET target_frac TO frac + o["patch_eta"] / period.
-        }
+    // The target bug marks the actual next SOI boundary point on the current
+    // conic. This makes a Minmus/Mun encounter visibly different before SOI.
+    IF o["patch"] <> "" AND o["patch_eta"] > 0 {
+        LOCAL pr IS aoso_orbit_position_at(SHIP, TIME:SECONDS + o["patch_eta"]).
+        LOCAL pp IS aoso_ui2_nav_project(pr).
+        SET AOSO_UI2_NAV_TARGET:STYLE:MARGIN:H TO pp[0].
+        SET AOSO_UI2_NAV_TARGET:STYLE:MARGIN:V TO pp[1].
+        SET AOSO_UI2_NAV_TARGET:VISIBLE TO TRUE.
     } ELSE {
-        IF o["node"] {
-            IF period > 1 { SET target_frac TO frac + o["node_eta"] / period. }
-        }
+        SET AOSO_UI2_NAV_TARGET:VISIBLE TO FALSE.
     }
-    SET target_frac TO target_frac - FLOOR(target_frac).
-    LOCAL tpos IS aoso_ui2_nav_xy(target_frac).
-    SET AOSO_UI2_NAV_TARGET:STYLE:MARGIN:H TO tpos[0].
-    SET AOSO_UI2_NAV_TARGET:STYLE:MARGIN:V TO tpos[1].
-    SET AOSO_UI2_NAV_TARGET:VISIBLE TO (o["patch"] <> "" OR m["goal"] <> "" OR m["hop"] <> "").
 
     IF o["node"] {
-        LOCAL nfrac IS frac.
-        IF period > 1 { SET nfrac TO frac + o["node_eta"] / period. }
-        SET nfrac TO nfrac - FLOOR(nfrac).
-        LOCAL npos IS aoso_ui2_nav_xy(nfrac).
-        SET AOSO_UI2_NAV_NODE:STYLE:MARGIN:H TO npos[0].
-        SET AOSO_UI2_NAV_NODE:STYLE:MARGIN:V TO npos[1].
+        LOCAL nr IS aoso_orbit_position_at(SHIP, TIME:SECONDS + MAX(0, o["node_eta"])).
+        LOCAL np IS aoso_ui2_nav_project(nr).
+        SET AOSO_UI2_NAV_NODE:STYLE:MARGIN:H TO np[0].
+        SET AOSO_UI2_NAV_NODE:STYLE:MARGIN:V TO np[1].
         SET AOSO_UI2_NAV_NODE:VISIBLE TO TRUE.
     } ELSE {
         SET AOSO_UI2_NAV_NODE:VISIBLE TO FALSE.
     }
 
-    // Trail of recent schematic positions, matching OPS3's useful "where
-    // have I been on this display" visual language without copying its code.
+    // Flown trail.
     LOCAL now IS TIME:SECONDS.
     IF AOSO_UI2_NAV_TRAIL:LENGTH > 0 {
         IF AOSO_UI2_NAV_LAST_TRAIL_UT < 0 OR now - AOSO_UI2_NAV_LAST_TRAIL_UT >= 2 {
@@ -347,26 +429,36 @@ FUNCTION aoso_ui2_nav_update {
     LOCAL patch_txt IS "NO PATCH".
     IF o["patch"] <> "" {
         SET patch_txt TO o["patch"] + CHAR(10) + "PE " + aoso_hud_km(o["patch_pe"]) +
-            "\nT-" + aoso_hud_eta(o["patch_eta"]).
+            CHAR(10) + "T-" + aoso_hud_eta(o["patch_eta"]).
     }
     SET AOSO_UI2_NAV_RIGHT:TEXT TO patch_txt.
 
     LOCAL quality IS "MONITOR".
+    LOCAL quality_state IS "SAFE".
     IF o["patch"] <> "" {
-        SET quality TO "ROUGH / SAFE".
-        IF m["goal"] <> "" {
-            IF o["patch"] <> m["goal"] AND o["patch"] <> m["hop"] {
+        SET quality TO "ENCOUNTER / CORRECT".
+        IF goal <> "NO TARGET" {
+            IF o["patch"] <> goal AND o["patch"] <> m["hop"] {
                 SET quality TO "UNEXPECTED PATCH".
+                SET quality_state TO "WARN".
+            } ELSE {
+                LOCAL patch_body IS BODY(o["patch"]).
+                IF aoso_rendezvous_pe_ok_value(o["patch_pe"], patch_body) {
+                    SET quality TO "CAPTURE CORRIDOR".
+                } ELSE {
+                    IF aoso_rendezvous_pe_rough_ok_value(o["patch_pe"], patch_body) {
+                        SET quality TO "ROUGH / SAFE".
+                    }
+                }
             }
         }
     }
     IF o["node"] { SET quality TO "MANEUVER READY". }
     IF o["burning"] { SET quality TO "BURN EXECUTION". }
-    LOCAL quality_state IS "SAFE".
-    IF quality = "UNEXPECTED PATCH" { SET quality_state TO "WARN". }
     SET AOSO_UI2_NAV_COURSE:TEXT TO aoso_ui2_color_state(quality_state, quality).
 
-    LOCAL detail IS "SCHEMATIC  dV " + ROUND(res["mission_dv"], 0) + " m/s".
+    LOCAL detail IS "PREDICTED CONIC  " + AOSO_UI2_NAV_PRED:LENGTH +
+        " samples   dV " + ROUND(res["mission_dv"], 0) + " m/s".
     IF o["patch"] <> "" {
         SET detail TO detail + "   PATCH PE " + aoso_hud_km(o["patch_pe"]).
     }
