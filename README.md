@@ -64,6 +64,7 @@ Three separate streams, not one dump:
 - **Event log** (`0:/aoso_log.txt`) — human-readable PRINT + file, default INFO. Reset every boot.
 - **Telemetry** (`0:/aoso_telemetry.csv`) — timed CSV samples (AUTO rate by phase), RAM-buffered and flushed every few seconds or on STAGE/BURN/LAND. Append-only.
 - **Events + flight record** (`0:/aoso_events.csv`, `0:/aoso_flightrec.txt`) — structured decisions/anomalies and a pre-event ring dump around STAGE/BURN/LAND/ABORT, plus a few post samples. Append-only mission history.
+- **CPU trace** (`0:/aoso_cpu.csv`) — one row per task every few real seconds, and again when the load band or flight phase changes. `win_avg` is that window only, so you can compare ascent to landing. `hud_fast` is the instrument path. Previous boot is `0:/aoso_cpu_prev.csv`. Set `CPU_TRACE_S` to `0` to keep only the band and phase rows.
 
 Ascent steering is MechJeb Classic's pitch-vs-altitude program (shape exponent, AoA-limited), not a prograde lead angle. While in atmosphere the HUD shows `Q` (SHIP:Q, Kerbin atmospheres), AoA, and drag kN. Drag comes from MechJeb (`ADDONS:MJ:VESSEL:DRAG`) when the kOS.MechJeb2 addon is present, otherwise from an accelerometer residual, otherwise Q-only (no kN). A rising-Q throttle cap (`ASCENT_MAX_Q`, default 0.30 atm) pulls throttle before max-Q instead of after it. Leftover-LF still ranks pad-revert trials; a start that slams Q and AoA without beating the best LF is not followed by a *faster* start.
 

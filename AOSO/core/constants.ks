@@ -31,6 +31,8 @@ GLOBAL AOSO_CONST IS LEXICON(
     "EVENTS_PREV_FILE", "0:/aoso_events_prev.csv",
     "FLIGHTREC_FILE", "0:/aoso_flightrec.txt",
     "FLIGHTREC_PREV_FILE", "0:/aoso_flightrec_prev.txt",
+    "CPU_FILE", "0:/aoso_cpu.csv",
+    "CPU_PREV_FILE", "0:/aoso_cpu_prev.csv",
     "TICK_FILE", "0:/aoso_ticks.csv",
     "HUD_FILE", "0:/aoso_hud.json",
     "SCHEMA_VERSION", 2,

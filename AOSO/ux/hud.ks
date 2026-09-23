@@ -19,6 +19,10 @@ GLOBAL AOSO_HUD_BUS_LAST IS "".
 GLOBAL AOSO_HUD_BUS_UT IS 0.
 GLOBAL AOSO_HUD_PEER IS FALSE.
 GLOBAL AOSO_HUD_FAST_SKIP IS 0.
+GLOBAL AOSO_HUD_FAST_LAST_OP IS 0.
+GLOBAL AOSO_HUD_FAST_SUM_OP IS 0.
+GLOBAL AOSO_HUD_FAST_MAX_OP IS 0.
+GLOBAL AOSO_HUD_FAST_N IS 0.
 
 FUNCTION aoso_ui_set {
     PARAMETER doing.
@@ -270,9 +274,16 @@ FUNCTION aoso_hud_bus_write {
 FUNCTION aoso_hud_fast_tick {
     IF NOT AOSO_HUD_READY { RETURN. }
     IF OPCODESLEFT < 80 { RETURN. }
+    LOCAL op0 IS OPCODESLEFT.
     aoso_hud_collect_fast().
     aoso_hud_gui_fast().
     aoso_hud_bus_write().
+    LOCAL used_op IS op0 - OPCODESLEFT.
+    IF used_op < 0 { SET used_op TO op0. }
+    SET AOSO_HUD_FAST_LAST_OP TO used_op.
+    SET AOSO_HUD_FAST_SUM_OP TO AOSO_HUD_FAST_SUM_OP + used_op.
+    IF used_op > AOSO_HUD_FAST_MAX_OP { SET AOSO_HUD_FAST_MAX_OP TO used_op. }
+    SET AOSO_HUD_FAST_N TO AOSO_HUD_FAST_N + 1.
 }
 
 FUNCTION aoso_hud_draw {

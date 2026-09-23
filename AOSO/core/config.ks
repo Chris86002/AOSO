@@ -181,7 +181,8 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "UI2_DESCENT_PRED_MAX_S", 180,        // max look-ahead for the coast-only landing prediction bug
     "TICK_DT_WARN", 0.12,               // s, game-time gap warning; physics-warp expected dt is handled separately
     "MANEUVER_TICK_GUARD", 0.80,        // fraction of remaining dV allowed in the next measured physics tick
-    "CPU_PROFILE", FALSE                // extra per-task opcode stats (also honors PROF_ENABLED)
+    "CPU_PROFILE", FALSE,               // extra per-task wall-time stats (also honors PROF_ENABLED)
+    "CPU_TRACE_S", 5                    // real seconds between 0:/aoso_cpu.csv samples; 0 disables the timer (band and phase changes still record)
 ).
 
 FUNCTION aoso_config_get {

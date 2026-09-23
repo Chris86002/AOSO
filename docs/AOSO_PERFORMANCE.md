@@ -55,6 +55,18 @@ Each scheduler task tracks `last_op`, `sum_op`, `max_op`,
 `deferred_n`, `shed_n`. Enable `CPU_PROFILE` or `PROF_ENABLED` for
 wall-time `last_dt` as well.
 
+`0:/aoso_cpu.csv` is the comparison file. It appends one row per task
+every `CPU_TRACE_S` real seconds (default 5; `0` turns the timer off)
+and again whenever the CPU band or flight phase changes. The previous
+boot is kept as `0:/aoso_cpu_prev.csv`.
+
+`win_avg`, `win_runs`, `win_deferred`, and `win_shed` are only the
+time since the previous sample, so ascent and landing do not average
+together. `last_op` is the most recent run. `max_op` is the worst
+single run since boot. `hud_fast` is the instrument path outside the
+scheduler. `why` is `timer`, `band`, `phase`, `band+phase`, or `boot`.
+Rows for tasks that did nothing in a timer window are omitted.
+
 HUD DBG: IPU, used, left, band, deferred, shed.
 
 ## Safe compute windows

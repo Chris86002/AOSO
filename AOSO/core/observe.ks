@@ -8,6 +8,13 @@
 // Do not name locals `path` -- that clobbers kOS's builtin PATH().
 
 GLOBAL AOSO_OBS_PHASE IS "BOOT".
+GLOBAL AOSO_CPU_ROOM IS 400.
+GLOBAL AOSO_CPU_ROOM_UT IS -1.
+GLOBAL AOSO_CPU_TRACE_BUF IS LIST().
+GLOBAL AOSO_CPU_TRACE_RT IS -1.
+GLOBAL AOSO_CPU_TRACE_BAND IS "".
+GLOBAL AOSO_CPU_TRACE_PHASE IS "".
+GLOBAL AOSO_CPU_TRACE_PREV IS LEXICON().
 GLOBAL AOSO_CPU_LEVEL IS 0.
 GLOBAL AOSO_CPU_NAME IS "NORMAL".
 GLOBAL AOSO_PROF IS LEXICON().
@@ -66,6 +73,11 @@ FUNCTION aoso_observe_reset_files {
     LOCAL telemprev IS AOSO_CONST["TELEMETRY_PREV_FILE"].
     IF EXISTS(telemprev) { DELETEPATH(telemprev). }
     IF EXISTS(telempath) { MOVEPATH(telempath, telemprev). }
+
+    LOCAL cpupath IS AOSO_CONST["CPU_FILE"].
+    LOCAL cpuprev IS AOSO_CONST["CPU_PREV_FILE"].
+    IF EXISTS(cpuprev) { DELETEPATH(cpuprev). }
+    IF EXISTS(cpupath) { MOVEPATH(cpupath, cpuprev). }
 }
 
 FUNCTION aoso_observe_init {
@@ -90,6 +102,17 @@ FUNCTION aoso_observe_init {
     SET AOSO_CPU_STREAK TO 0.
     SET AOSO_CPU_LOG_UT TO 0.
     SET AOSO_CPU_LOG_NAME TO "NORMAL".
+    SET AOSO_CPU_TRACE_BUF TO LIST().
+    SET AOSO_CPU_TRACE_RT TO -1.
+    SET AOSO_CPU_TRACE_BAND TO "".
+    SET AOSO_CPU_TRACE_PHASE TO "".
+    SET AOSO_CPU_TRACE_PREV TO LEXICON().
+    IF DEFINED AOSO_HUD_FAST_N {
+        SET AOSO_HUD_FAST_N TO 0.
+        SET AOSO_HUD_FAST_SUM_OP TO 0.
+        SET AOSO_HUD_FAST_MAX_OP TO 0.
+        SET AOSO_HUD_FAST_LAST_OP TO 0.
+    }
     SET AOSO_CPU_HOLD_UT TO 0.
     SET AOSO_CPU_RECOVER TO 0.
     SET AOSO_DUMP_PENDING TO "".
@@ -476,9 +499,6 @@ FUNCTION aoso_prof_end {
     IF dt > s["max"] { SET s["max"] TO dt. }
 }
 
-GLOBAL AOSO_CPU_ROOM IS 400.
-GLOBAL AOSO_CPU_ROOM_UT IS -1.
-
 FUNCTION aoso_cpu_headroom {
     // Scheduler asks for this several times per physics tick. The answer
     // cannot change until the next tick, so reuse it.
@@ -552,18 +572,167 @@ FUNCTION aoso_yield_hud {
     }
 }
 
+FUNCTION aoso_cpu_trace_one {
+    PARAMETER task_name.
+    PARAMETER last_op.
+    PARAMETER max_op.
+    PARAMETER sum_op.
+    PARAMETER runs.
+    PARAMETER deferred_n.
+    PARAMETER shed_n.
+    PARAMETER phase.
+    PARAMETER band.
+    PARAMETER alt_m.
+    PARAMETER frac.
+    PARAMETER wall.
+    PARAMETER why.
+    PARAMETER keep_idle.
+
+    LOCAL prev_sum IS 0.
+    LOCAL prev_runs IS 0.
+    LOCAL prev_def IS 0.
+    LOCAL prev_shed IS 0.
+    LOCAL seen IS FALSE.
+    IF AOSO_CPU_TRACE_PREV:HASKEY(task_name) {
+        SET seen TO TRUE.
+        LOCAL prev IS AOSO_CPU_TRACE_PREV[task_name].
+        SET prev_sum TO prev["sum"].
+        SET prev_runs TO prev["runs"].
+        SET prev_def TO prev["def"].
+        SET prev_shed TO prev["shed"].
+    }
+    LOCAL win_runs IS runs - prev_runs.
+    IF win_runs < 0 { SET win_runs TO 0. }
+    LOCAL win_sum IS sum_op - prev_sum.
+    IF win_sum < 0 { SET win_sum TO 0. }
+    LOCAL win_def IS deferred_n - prev_def.
+    IF win_def < 0 { SET win_def TO 0. }
+    LOCAL win_shed IS shed_n - prev_shed.
+    IF win_shed < 0 { SET win_shed TO 0. }
+    SET AOSO_CPU_TRACE_PREV[task_name] TO LEXICON(
+        "sum", sum_op,
+        "runs", runs,
+        "def", deferred_n,
+        "shed", shed_n
+    ).
+    IF seen {
+        IF NOT keep_idle {
+            IF win_runs = 0 {
+                IF win_def = 0 {
+                    IF win_shed = 0 { RETURN. }
+                }
+            }
+        }
+    }
+    LOCAL win_avg IS 0.
+    IF win_runs > 0 { SET win_avg TO win_sum / win_runs. }
+    AOSO_CPU_TRACE_BUF:ADD(
+        ROUND(TIME:SECONDS, 1) + "," + phase + "," + band + "," + alt_m + "," +
+        frac + "," + wall + "," + why + "," + task_name + "," +
+        ROUND(last_op, 0) + "," + ROUND(max_op, 0) + "," + ROUND(win_avg, 0) + "," +
+        win_runs + "," + win_def + "," + win_shed
+    ).
+}
+
+FUNCTION aoso_cpu_trace_maybe {
+    LOCAL every_s IS aoso_config_get("CPU_TRACE_S", 5).
+    IF every_s <= 0 { RETURN. }
+    LOCAL band IS AOSO_CPU_NAME.
+    LOCAL phase IS AOSO_OBS_PHASE.
+    LOCAL band_chg IS FALSE.
+    IF band <> AOSO_CPU_TRACE_BAND { SET band_chg TO TRUE. }
+    LOCAL phase_chg IS FALSE.
+    IF phase <> AOSO_CPU_TRACE_PHASE { SET phase_chg TO TRUE. }
+    LOCAL timed IS FALSE.
+    IF AOSO_CPU_TRACE_RT < 0 { SET timed TO TRUE. }
+    ELSE {
+        IF KUNIVERSE:REALTIME - AOSO_CPU_TRACE_RT >= every_s { SET timed TO TRUE. }
+    }
+    IF NOT band_chg {
+        IF NOT phase_chg {
+            IF NOT timed { RETURN. }
+            // Timer samples wait for leftover opcodes. A band or phase
+            // change is the row we cannot afford to miss.
+            IF OPCODESLEFT < 150 { RETURN. }
+        }
+    }
+    LOCAL why IS "timer".
+    IF AOSO_CPU_TRACE_RT < 0 { SET why TO "boot". }
+    IF phase_chg { SET why TO "phase". }
+    IF band_chg { SET why TO "band". }
+    IF band_chg {
+        IF phase_chg { SET why TO "band+phase". }
+    }
+    SET AOSO_CPU_TRACE_RT TO KUNIVERSE:REALTIME.
+    SET AOSO_CPU_TRACE_BAND TO band.
+    SET AOSO_CPU_TRACE_PHASE TO phase.
+
+    LOCAL alt_m IS ROUND(ALTITUDE, 0).
+    LOCAL frac IS ROUND(AOSO_CPU_FRAC, 2).
+    LOCAL wall IS ROUND(AOSO_CPU_LAST_WALL, 3).
+    LOCAL keep_idle IS TRUE.
+    IF why = "timer" { SET keep_idle TO FALSE. }
+    IF DEFINED AOSO_TASKS {
+        FOR t IN AOSO_TASKS {
+            aoso_cpu_trace_one(
+                t["name"], t["last_op"], t["max_op"], t["sum_op"], t["run_count"],
+                t["deferred_n"], t["shed_n"], phase, band, alt_m, frac, wall, why, keep_idle
+            ).
+        }
+    }
+    IF DEFINED AOSO_HUD_FAST_N {
+        aoso_cpu_trace_one(
+            "hud_fast", AOSO_HUD_FAST_LAST_OP, AOSO_HUD_FAST_MAX_OP, AOSO_HUD_FAST_SUM_OP,
+            AOSO_HUD_FAST_N, 0, 0, phase, band, alt_m, frac, wall, why, keep_idle
+        ).
+    }
+}
+
+FUNCTION aoso_cpu_trace_flush {
+    IF AOSO_CPU_TRACE_BUF:LENGTH = 0 { RETURN. }
+    LOCAL cpu_path IS AOSO_CONST["CPU_FILE"].
+    LOCAL created IS FALSE.
+    LOCAL out IS 0.
+    IF EXISTS(cpu_path) {
+        SET out TO OPEN(cpu_path).
+    } ELSE {
+        SET out TO CREATE(cpu_path).
+        SET created TO TRUE.
+    }
+    IF created {
+        out:WRITELN("ut,phase,band,alt_m,frac,wall,why,task,last_op,max_op,win_avg,win_runs,win_deferred,win_shed").
+    }
+    UNTIL AOSO_CPU_TRACE_BUF:LENGTH = 0 {
+        out:WRITELN(AOSO_CPU_TRACE_BUF[0]).
+        AOSO_CPU_TRACE_BUF:REMOVE(0).
+    }
+}
+
 FUNCTION aoso_observe_idle {
-    IF AOSO_DUMP_PENDING = "" {
-        IF AOSO_EVT_BUF:LENGTH < 8 { RETURN. }
+    LOCAL want IS FALSE.
+    IF AOSO_DUMP_PENDING <> "" { SET want TO TRUE. }
+    IF AOSO_EVT_BUF:LENGTH >= 8 { SET want TO TRUE. }
+    IF AOSO_CPU_TRACE_BUF:LENGTH > 0 { SET want TO TRUE. }
+    IF NOT want { RETURN. }
+    LOCAL room_ok IS TRUE.
+    IF OPCODESLEFT < aoso_cpu_headroom() { SET room_ok TO FALSE. }
+    IF NOT room_ok {
+        IF AOSO_CPU_TRACE_BUF:LENGTH < 80 { RETURN. }
     }
-    IF OPCODESLEFT < aoso_cpu_headroom() { RETURN. }
-    IF AOSO_DUMP_PENDING <> "" {
-        LOCAL why IS AOSO_DUMP_PENDING.
-        SET AOSO_DUMP_PENDING TO "".
-        aoso_observe_dump_pre(why).
-        IF OPCODESLEFT < aoso_cpu_headroom() { RETURN. }
+    IF room_ok {
+        IF AOSO_DUMP_PENDING <> "" {
+            LOCAL why IS AOSO_DUMP_PENDING.
+            SET AOSO_DUMP_PENDING TO "".
+            aoso_observe_dump_pre(why).
+            IF OPCODESLEFT < aoso_cpu_headroom() { SET room_ok TO FALSE. }
+        }
     }
-    IF AOSO_EVT_BUF:LENGTH >= 8 { aoso_observe_flush(). }
+    IF room_ok {
+        IF AOSO_EVT_BUF:LENGTH >= 8 { aoso_observe_flush(). }
+    }
+    IF AOSO_CPU_TRACE_BUF:LENGTH > 0 {
+        IF room_ok OR AOSO_CPU_TRACE_BUF:LENGTH >= 80 { aoso_cpu_trace_flush(). }
+    }
 }
 
 FUNCTION aoso_observe_cpu_end {
@@ -680,6 +849,7 @@ FUNCTION aoso_observe_cpu_end {
             }
         }
     }
+    aoso_cpu_trace_maybe().
 }
 
 FUNCTION aoso_observe_fingerprint {
