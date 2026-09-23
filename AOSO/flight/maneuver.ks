@@ -137,9 +137,28 @@ FUNCTION aoso_warp_set_physics_cruise {
         SET WARP TO 0.
         RETURN FALSE.
     }
-    IF NOT aoso_warp_ensure_physics_idle() { RETURN FALSE. }
+
+    // Changing out of rails must first reach WARP=0, then switch mode, then
+    // wait until KSP reports the transition settled. Do not command steering
+    // during any of those ticks.
+    IF WARPMODE <> "PHYSICS" {
+        IF WARP > 0 {
+            SET WARP TO 0.
+            RETURN FALSE.
+        }
+        SET WARPMODE TO "PHYSICS".
+        RETURN FALSE.
+    }
+    IF NOT KUNIVERSE:TIMEWARP:ISSETTLED { RETURN FALSE. }
+
+    // Already in physics mode: requesting 2x does not pack the vessel, but
+    // wait for the rate change itself to settle before attitude control.
     LOCAL widx IS aoso_warp_physics_index().
-    IF WARP <> widx { SET WARP TO widx. }
+    IF WARP <> widx {
+        SET WARP TO widx.
+        RETURN FALSE.
+    }
+    IF NOT KUNIVERSE:TIMEWARP:ISSETTLED { RETURN FALSE. }
     RETURN TRUE.
 }
 
@@ -235,9 +254,15 @@ FUNCTION aoso_warp_approach {
     IF physics_until_s < crucial_s { SET physics_until_s TO crucial_s. }
 
     IF eta_s <= physics_until_s {
-        IF AOSO_STEER_MODE <> "OFF" { aoso_steer_release(). }
+        LOCAL precision_transition IS FALSE.
+        IF WARP > 0 { SET precision_transition TO TRUE. }
+        IF WARPMODE <> "PHYSICS" { SET precision_transition TO TRUE. }
+        IF NOT KUNIVERSE:TIMEWARP:ISSETTLED { SET precision_transition TO TRUE. }
+        IF precision_transition {
+            IF AOSO_STEER_MODE <> "OFF" { aoso_steer_release(). }
+        }
         IF NOT aoso_warp_ensure_physics_idle() {
-            aoso_warp_report("UNPACK", eta_s, "rails -> physics settling before precision").
+            aoso_warp_report("UNPACK", eta_s, "warp settling to physics 1x before precision").
             RETURN "transition".
         }
         aoso_warp_report("PRECISION", eta_s, "1x inside T-" + ROUND(physics_until_s, 0) + "s").
@@ -256,7 +281,12 @@ FUNCTION aoso_warp_approach {
 
     LOCAL want IS aoso_warp_rails_want(eta_s, rails_lead_s).
     IF want <= 0 {
-        IF AOSO_STEER_MODE <> "OFF" { aoso_steer_release(). }
+        LOCAL align_transition IS FALSE.
+        IF WARPMODE <> "PHYSICS" { SET align_transition TO TRUE. }
+        IF NOT KUNIVERSE:TIMEWARP:ISSETTLED { SET align_transition TO TRUE. }
+        IF align_transition {
+            IF AOSO_STEER_MODE <> "OFF" { aoso_steer_release(). }
+        }
         IF NOT aoso_warp_set_physics_cruise() {
             aoso_warp_report("UNPACK", eta_s, "rails -> physics settling before align").
             RETURN "transition".
