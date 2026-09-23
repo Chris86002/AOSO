@@ -476,7 +476,13 @@ FUNCTION aoso_prof_end {
     IF dt > s["max"] { SET s["max"] TO dt. }
 }
 
+GLOBAL AOSO_CPU_ROOM IS 400.
+GLOBAL AOSO_CPU_ROOM_UT IS -1.
+
 FUNCTION aoso_cpu_headroom {
+    // Scheduler asks for this several times per physics tick. The answer
+    // cannot change until the next tick, so reuse it.
+    IF AOSO_CPU_ROOM_UT = TIME:SECONDS { RETURN AOSO_CPU_ROOM. }
     LOCAL ipu IS CONFIG:IPU.
     LOCAL frac IS aoso_config_get("CPU_RESERVE_FRAC", 0.18).
     LOCAL n IS FLOOR(ipu * frac).
@@ -495,6 +501,8 @@ FUNCTION aoso_cpu_headroom {
     LOCAL half IS FLOOR(ipu * 0.5).
     IF n > half { SET n TO half. }
     IF n < 80 { SET n TO 80. }
+    SET AOSO_CPU_ROOM TO n.
+    SET AOSO_CPU_ROOM_UT TO TIME:SECONDS.
     RETURN n.
 }
 

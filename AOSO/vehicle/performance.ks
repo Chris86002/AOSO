@@ -3,13 +3,22 @@
 // the rest of AOSO never has a hard dependency on KER (see core/addons.ks).
 // Every figure here is derived only from stock kOS suffixes.
 
+GLOBAL AOSO_PERF_TWR_UT IS -1.
+GLOBAL AOSO_PERF_TWR_V IS 0.
+
 // Instantaneous thrust-to-weight ratio at the current altitude/body, usable
 // as a cheap one-off check (e.g. before deciding to stage) without needing a
-// full aoso_capabilities_refresh().
+// full aoso_capabilities_refresh(). Same value for the whole physics tick.
 FUNCTION aoso_perf_twr {
-    IF SHIP:MASS <= 0 { RETURN 0. }
-    LOCAL g IS SHIP:BODY:MU / (SHIP:BODY:RADIUS + ALTITUDE) ^ 2.
-    RETURN SHIP:AVAILABLETHRUST / (SHIP:MASS * g).
+    IF AOSO_PERF_TWR_UT = TIME:SECONDS { RETURN AOSO_PERF_TWR_V. }
+    LOCAL twr IS 0.
+    IF SHIP:MASS > 0 {
+        LOCAL g IS SHIP:BODY:MU / (SHIP:BODY:RADIUS + ALTITUDE) ^ 2.
+        IF g > 0 { SET twr TO SHIP:AVAILABLETHRUST / (SHIP:MASS * g). }
+    }
+    SET AOSO_PERF_TWR_UT TO TIME:SECONDS.
+    SET AOSO_PERF_TWR_V TO twr.
+    RETURN twr.
 }
 
 // Estimated burn time (s) to achieve a given delta-v with the currently

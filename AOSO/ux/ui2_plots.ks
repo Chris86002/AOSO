@@ -168,8 +168,8 @@ FUNCTION aoso_ui2_asc_update {
         SET j TO j + 1.
     }
 
-    LOCAL ship IS aoso_ui2_plot_px(tr["down_km"], tr["alt_km"], 0, x_max, 0, y_max).
-    aoso_ui2_plot_put(AOSO_UI2_ASC_SHIP, ship[0], ship[1], TRUE).
+    LOCAL bug_pt IS aoso_ui2_plot_px(tr["down_km"], tr["alt_km"], 0, x_max, 0, y_max).
+    aoso_ui2_plot_put(AOSO_UI2_ASC_SHIP, bug_pt[0], bug_pt[1], TRUE).
 
     IF tr["atm_km"] > 0.05 {
         LOCAL atm_pt IS aoso_ui2_plot_px(0, tr["atm_km"], 0, x_max, 0, y_max).
@@ -212,8 +212,8 @@ FUNCTION aoso_ui2_asc_ship_fast {
     LOCAL y_max IS tr["ymax_km"].
     IF x_max < 5 { SET x_max TO 5. }
     IF y_max < 1 { SET y_max TO 1. }
-    LOCAL ship IS aoso_ui2_plot_px(tr["down_km"], tr["alt_km"], 0, x_max, 0, y_max).
-    aoso_ui2_plot_put(AOSO_UI2_ASC_SHIP, ship[0], ship[1], TRUE).
+    LOCAL bug_pt IS aoso_ui2_plot_px(tr["down_km"], tr["alt_km"], 0, x_max, 0, y_max).
+    aoso_ui2_plot_put(AOSO_UI2_ASC_SHIP, bug_pt[0], bug_pt[1], TRUE).
 }
 
 FUNCTION aoso_ui2_vs_build {
@@ -271,8 +271,8 @@ FUNCTION aoso_ui2_vs_update {
         aoso_ui2_vs_corridor(AOSO_UI2_VS_NOM, x_max, y_max, 1.0, TRUE).
         aoso_ui2_vs_corridor(AOSO_UI2_VS_LOW, x_max, y_max, 0.55, TRUE).
         LOCAL x_plot IS x_max - tr["site_km"].
-        LOCAL ship IS aoso_ui2_plot_px(x_plot, tr["alt_km"], 0, x_max, 0, y_max).
-        aoso_ui2_plot_put(AOSO_UI2_VS_SHIP, ship[0], ship[1], TRUE).
+        LOCAL bug_pt IS aoso_ui2_plot_px(x_plot, tr["alt_km"], 0, x_max, 0, y_max).
+        aoso_ui2_plot_put(AOSO_UI2_VS_SHIP, bug_pt[0], bug_pt[1], TRUE).
         SET AOSO_UI2_VS_INFO:TEXT TO "SITE " + ROUND(tr["site_km"], 1) + " km  ALT " +
             ROUND(tr["alt_km"], 1) + " km  HDOT " + ROUND(f["vs"], 0) + " m/s  TWR " +
             ROUND(f["twr"], 2) + "  " + lnd["state"] + "  dV MARGIN " +
@@ -287,8 +287,8 @@ FUNCTION aoso_ui2_vs_update {
         IF AOSO_HUD_DATA["orbit"]:HASKEY("pe_eta") { SET eta_pe TO AOSO_HUD_DATA["orbit"]["pe_eta"]. }
         LOCAL x_max IS MAX(eta_pe, 30).
         LOCAL y_max IS MAX(tr["alt_km"], 1) * 1.1.
-        LOCAL ship IS aoso_ui2_plot_px(x_max - MIN(eta_pe, x_max), tr["alt_km"], 0, x_max, 0, y_max).
-        aoso_ui2_plot_put(AOSO_UI2_VS_SHIP, ship[0], ship[1], TRUE).
+        LOCAL bug_pt IS aoso_ui2_plot_px(x_max - MIN(eta_pe, x_max), tr["alt_km"], 0, x_max, 0, y_max).
+        aoso_ui2_plot_put(AOSO_UI2_VS_SHIP, bug_pt[0], bug_pt[1], TRUE).
         SET AOSO_UI2_VS_INFO:TEXT TO "PE-REL  no landing site yet  T-Pe " +
             ROUND(eta_pe, 0) + " s  ALT " + ROUND(tr["alt_km"], 1) + " km  HDOT " +
             ROUND(f["vs"], 0) + "  dV MARGIN " +
@@ -305,8 +305,8 @@ FUNCTION aoso_ui2_vs_ship_fast {
         IF x_max < 5 { SET x_max TO 5. }
         LOCAL y_max IS MAX(tr["alt_km"], x_max * 0.21) * 1.1.
         IF y_max < 1 { SET y_max TO 1. }
-        LOCAL ship IS aoso_ui2_plot_px(x_max - tr["site_km"], tr["alt_km"], 0, x_max, 0, y_max).
-        aoso_ui2_plot_put(AOSO_UI2_VS_SHIP, ship[0], ship[1], TRUE).
+        LOCAL bug_pt IS aoso_ui2_plot_px(x_max - tr["site_km"], tr["alt_km"], 0, x_max, 0, y_max).
+        aoso_ui2_plot_put(AOSO_UI2_VS_SHIP, bug_pt[0], bug_pt[1], TRUE).
     }
 }
 

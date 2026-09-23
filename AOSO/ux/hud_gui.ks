@@ -22,6 +22,7 @@ GLOBAL AOSO_HUD_BTN_X IS 0.
 GLOBAL AOSO_HUD_HDR_TITLE IS 0.
 GLOBAL AOSO_HUD_LAST_GUI IS 0.
 GLOBAL AOSO_HUD_FAST_GUI_RT IS -1.
+GLOBAL AOSO_HUD_FAST_SIG IS "".
 GLOBAL AOSO_HUD_GUI_PAINTED IS "".
 GLOBAL AOSO_HUD_TAC_CHIP IS 0.
 GLOBAL AOSO_UI2_AUTO_PAGE IS TRUE.
@@ -830,45 +831,47 @@ FUNCTION aoso_hud_gui_fast {
     SET AOSO_HUD_FAST_GUI_RT TO fast_rt.
     LOCAL f IS AOSO_HUD_DATA["flight"].
     LOCAL o IS AOSO_HUD_DATA["orbit"].
-    LOCAL doing IS aoso_hud_doing_fast().
-    aoso_hud_set("hdr_do", "DOING  " + doing).
-    aoso_hud_set("hdr_dt", f["detail"]).
-    LOCAL roll IS "".
-    IF AOSO_HUD_DATA["systems"]:HASKEY("rollup") { SET roll TO AOSO_HUD_DATA["systems"]["rollup"] + "  ". }
-    aoso_hud_set("hdr_sys", "SYS  " + roll + f["body"] + "  " + f["status"] + "  STG " + f["stage"]).
-    LOCAL live IS "ALT " + aoso_hud_km(f["alt"]) + "  VS " + ROUND(f["vs"], 1) + "  AP " + aoso_hud_km(o["ap"]) + "  PE " + aoso_hud_km(o["pe"]).
-    IF o["node"] {
-        SET live TO live + "  NODE " + ROUND(o["node_dv"], 1) + " m/s T-" + aoso_hud_eta(o["node_eta"]).
-    }
     LOCAL pg IS AOSO_HUD_PAGE.
-    IF pg = "FLT" {
-        aoso_ui2_pfd_update().
-        aoso_hud_set("flt_alt", "ALT  " + aoso_hud_km(f["alt"]) + "   VS " + ROUND(f["vs"], 1) + " m/s").
-        IF f["in_atm"] {
-            aoso_hud_set("flt_spd", "SRF " + ROUND(f["srf"], 0) + "  GS " + ROUND(f["gs"], 0) + " m/s").
-        } ELSE {
-            aoso_hud_set("flt_spd", "ORB " + ROUND(f["orb"], 0) + "  SRF " + ROUND(f["srf"], 0) + " m/s").
+    IF pg = "FLT" { aoso_ui2_pfd_update(). }
+    LOCAL sig IS ROUND(f["alt"], 0) + "|" + ROUND(f["vs"], 0) + "|" + ROUND(f["throttle"] * 100, 0) + "|" + ROUND(o["ap"], 0) + "|" + f["stage"] + "|" + f["doing"] + "|" + f["detail"].
+    IF sig <> AOSO_HUD_FAST_SIG {
+        SET AOSO_HUD_FAST_SIG TO sig.
+        LOCAL doing IS f["doing"].
+        IF doing = "" { SET doing TO aoso_hud_doing_fast(). }
+        aoso_hud_set("hdr_do", "DOING  " + doing).
+        aoso_hud_set("hdr_dt", f["detail"]).
+        LOCAL roll IS "".
+        IF AOSO_HUD_DATA["systems"]:HASKEY("rollup") { SET roll TO AOSO_HUD_DATA["systems"]["rollup"] + "  ". }
+        aoso_hud_set("hdr_sys", "SYS  " + roll + f["body"] + "  " + f["status"] + "  STG " + f["stage"]).
+        IF pg = "FLT" {
+            aoso_hud_set("flt_alt", "ALT  " + aoso_hud_km(f["alt"]) + "   VS " + ROUND(f["vs"], 1) + " m/s").
+            IF f["in_atm"] {
+                aoso_hud_set("flt_spd", "SRF " + ROUND(f["srf"], 0) + "  GS " + ROUND(f["gs"], 0) + " m/s").
+            } ELSE {
+                aoso_hud_set("flt_spd", "ORB " + ROUND(f["orb"], 0) + "  SRF " + ROUND(f["srf"], 0) + " m/s").
+            }
+            aoso_hud_set("flt_orb", "AP " + aoso_hud_km(o["ap"]) + "  PE " + aoso_hud_km(o["pe"])).
+            aoso_hud_set("flt_twr", "TWR " + ROUND(f["twr"], 2) + "  THR " + ROUND(f["throttle"] * 100, 0) + "%  MASS " + ROUND(f["mass"], 2) + " t  STG " + f["stage"]).
+            aoso_hud_set("flt_guid", doing).
+            IF o["node"] {
+                LOCAL ntxt IS "NODE  " + ROUND(o["node_dv"], 1) + " m/s  T-" + aoso_hud_eta(o["node_eta"]).
+                IF o["burning"] { SET ntxt TO "BURN  " + ROUND(o["node_dv"], 1) + " m/s". }
+                aoso_hud_set("flt_pri", ntxt).
+            }
         }
-        aoso_hud_set("flt_orb", "AP " + aoso_hud_km(o["ap"]) + "  PE " + aoso_hud_km(o["pe"])).
-        aoso_hud_set("flt_twr", "TWR " + ROUND(f["twr"], 2) + "  THR " + ROUND(f["throttle"] * 100, 0) + "%  MASS " + ROUND(f["mass"], 2) + " t  STG " + f["stage"]).
-        aoso_hud_set("flt_guid", doing).
-        IF o["node"] {
-            LOCAL ntxt IS "NODE  " + ROUND(o["node_dv"], 1) + " m/s  T-" + aoso_hud_eta(o["node_eta"]).
-            IF o["burning"] { SET ntxt TO "BURN  " + ROUND(o["node_dv"], 1) + " m/s". }
-            aoso_hud_set("flt_pri", ntxt).
+        IF pg = "DBG" {
+            LOCAL live IS "ALT " + aoso_hud_km(f["alt"]) + "  VS " + ROUND(f["vs"], 1) + "  AP " + aoso_hud_km(o["ap"]) + "  PE " + aoso_hud_km(o["pe"]).
+            aoso_hud_set("dbg_do", "DOING  " + doing + "  " + f["detail"]).
+            aoso_hud_set("dbg_cpu", live).
         }
-    }
-    IF pg = "DBG" {
-        aoso_hud_set("dbg_do", "DOING  " + doing + "  " + f["detail"]).
-        aoso_hud_set("dbg_cpu", live).
-    }
-    IF pg = "NAV" {
-        IF o["node"] {
-            aoso_hud_set("nav_node", "NODE  " + ROUND(o["node_dv"], 1) + " m/s  T-" + aoso_hud_eta(o["node_eta"])).
-        } ELSE {
-            aoso_hud_set("nav_node", "NODE  none").
+        IF pg = "NAV" {
+            IF o["node"] {
+                aoso_hud_set("nav_node", "NODE  " + ROUND(o["node_dv"], 1) + " m/s  T-" + aoso_hud_eta(o["node_eta"])).
+            } ELSE {
+                aoso_hud_set("nav_node", "NODE  none").
+            }
+            aoso_hud_set("nav_orb", "ORBIT  AP " + aoso_hud_km(o["ap"]) + "  PE " + aoso_hud_km(o["pe"])).
         }
-        aoso_hud_set("nav_orb", "ORBIT  AP " + aoso_hud_km(o["ap"]) + "  PE " + aoso_hud_km(o["pe"])).
     }
     IF pg = "ASC" OR pg = "VSIT" {
         IF OPCODESLEFT >= 160 {

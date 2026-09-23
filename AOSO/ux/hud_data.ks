@@ -4,6 +4,7 @@
 
 GLOBAL AOSO_HUD_DATA IS LEXICON().
 GLOBAL AOSO_HUD_FAST_UT IS -1.
+GLOBAL AOSO_HUD_FAST_SLOW IS -1.
 GLOBAL AOSO_HUD_LAST_HI IS 0.
 GLOBAL AOSO_HUD_LAST_MD IS 0.
 GLOBAL AOSO_HUD_LAST_LO IS 0.
@@ -20,41 +21,62 @@ FUNCTION aoso_hud_collect_fast {
     LOCAL f IS AOSO_HUD_DATA["flight"].
     SET f["alt"] TO ALTITUDE.
     SET f["vs"] TO VERTICALSPEED.
-    SET f["gs"] TO SHIP:GROUNDSPEED.
-    SET f["srf"] TO SHIP:VELOCITY:SURFACE:MAG.
-    SET f["orb"] TO SHIP:VELOCITY:ORBIT:MAG.
     SET f["throttle"] TO THROTTLE.
-    SET f["mass"] TO SHIP:MASS.
-    SET f["thrust"] TO SHIP:AVAILABLETHRUST.
-    SET f["stage"] TO STAGE:NUMBER.
-    SET f["body"] TO SHIP:BODY:NAME.
-    SET f["status"] TO SHIP:STATUS.
     SET f["doing"] TO AOSO_UI["doing"].
     SET f["detail"] TO AOSO_UI["detail"].
-    LOCAL rad IS SHIP:BODY:RADIUS + ALTITUDE.
-    LOCAL g IS 9.81.
-    IF rad > 0 { SET g TO SHIP:BODY:MU / (rad * rad). }
-    LOCAL twr IS 0.
-    IF SHIP:MASS > 0 {
-        IF g > 0 { SET twr TO SHIP:AVAILABLETHRUST / (SHIP:MASS * g). }
+    // One speed live. TWR, body and the node vector are the expensive reads.
+    LOCAL in_air IS FALSE.
+    IF f:HASKEY("in_atm") { SET in_air TO f["in_atm"]. }
+    IF in_air {
+        SET f["srf"] TO SHIP:VELOCITY:SURFACE:MAG.
+        SET f["gs"] TO SHIP:GROUNDSPEED.
+    } ELSE {
+        SET f["orb"] TO SHIP:VELOCITY:ORBIT:MAG.
     }
-    SET f["twr"] TO twr.
-    SET f["in_atm"] TO FALSE.
-    IF SHIP:BODY:ATM:EXISTS {
-        IF ALTITUDE < SHIP:BODY:ATM:HEIGHT { SET f["in_atm"] TO TRUE. }
+    LOCAL slow IS FALSE.
+    IF TIME:SECONDS - AOSO_HUD_FAST_SLOW >= 0.4 { SET slow TO TRUE. }
+    IF slow {
+        SET AOSO_HUD_FAST_SLOW TO TIME:SECONDS.
+        LOCAL bod IS SHIP:BODY.
+        SET f["mass"] TO SHIP:MASS.
+        SET f["thrust"] TO SHIP:AVAILABLETHRUST.
+        SET f["stage"] TO STAGE:NUMBER.
+        SET f["body"] TO bod:NAME.
+        SET f["status"] TO SHIP:STATUS.
+        SET f["srf"] TO SHIP:VELOCITY:SURFACE:MAG.
+        SET f["orb"] TO SHIP:VELOCITY:ORBIT:MAG.
+        SET f["gs"] TO SHIP:GROUNDSPEED.
+        LOCAL rad IS bod:RADIUS + f["alt"].
+        LOCAL g IS 9.81.
+        IF rad > 0 { SET g TO bod:MU / (rad * rad). }
+        LOCAL twr IS 0.
+        IF f["mass"] > 0 {
+            IF g > 0 { SET twr TO f["thrust"] / (f["mass"] * g). }
+        }
+        SET f["twr"] TO twr.
+        SET f["in_atm"] TO FALSE.
+        IF bod:ATM:EXISTS {
+            IF f["alt"] < bod:ATM:HEIGHT { SET f["in_atm"] TO TRUE. }
+        }
     }
     LOCAL o IS AOSO_HUD_DATA["orbit"].
     SET o["ap"] TO APOAPSIS.
     SET o["pe"] TO PERIAPSIS.
-    SET o["node"] TO HASNODE.
-    SET o["node_dv"] TO 0.
-    SET o["node_eta"] TO 0.
     SET o["burning"] TO FALSE.
     IF DEFINED AOSO_MANEUVER_BURNING { SET o["burning"] TO AOSO_MANEUVER_BURNING. }
     IF HASNODE {
-        LOCAL nd IS NEXTNODE.
-        SET o["node_dv"] TO nd:DELTAV:MAG.
-        SET o["node_eta"] TO nd:ETA.
+        SET o["node"] TO TRUE.
+        LOCAL want_nd IS slow.
+        IF o["burning"] { SET want_nd TO TRUE. }
+        IF want_nd {
+            LOCAL nd IS NEXTNODE.
+            SET o["node_dv"] TO nd:DELTAV:MAG.
+            SET o["node_eta"] TO nd:ETA.
+        }
+    } ELSE {
+        SET o["node"] TO FALSE.
+        SET o["node_dv"] TO 0.
+        SET o["node_eta"] TO 0.
     }
     SET AOSO_HUD_FAST_UT TO TIME:SECONDS.
 }

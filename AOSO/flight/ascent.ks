@@ -14,11 +14,19 @@
 
 GLOBAL AOSO_ASCENT IS aoso_state_new_machine().
 GLOBAL AOSO_ASCENT_MAX_Q_SEEN IS 0.
+GLOBAL AOSO_FPA_UT IS -1.
+GLOBAL AOSO_FPA_V IS 90.
+GLOBAL AOSO_ATM_IN_UT IS -1.
+GLOBAL AOSO_ATM_IN_V IS FALSE.
 
 FUNCTION aoso_ascent_flight_path_pitch {
+    IF AOSO_FPA_UT = TIME:SECONDS { RETURN AOSO_FPA_V. }
     LOCAL vel IS SHIP:VELOCITY:SURFACE.
-    IF vel:MAG < 1 { RETURN 90. }
-    RETURN MAX(0, MIN(90, 90 - VANG(SHIP:UP:VECTOR, vel))).
+    LOCAL fpa IS 90.
+    IF vel:MAG >= 1 { SET fpa TO MAX(0, MIN(90, 90 - VANG(SHIP:UP:VECTOR, vel))). }
+    SET AOSO_FPA_UT TO TIME:SECONDS.
+    SET AOSO_FPA_V TO fpa.
+    RETURN fpa.
 }
 
 FUNCTION aoso_ascent_facing_pitch {
@@ -26,8 +34,14 @@ FUNCTION aoso_ascent_facing_pitch {
 }
 
 FUNCTION aoso_ascent_in_atmosphere {
-    IF NOT SHIP:BODY:ATM:EXISTS { RETURN FALSE. }
-    RETURN ALTITUDE < SHIP:BODY:ATM:HEIGHT.
+    IF AOSO_ATM_IN_UT = TIME:SECONDS { RETURN AOSO_ATM_IN_V. }
+    LOCAL in_air IS FALSE.
+    IF SHIP:BODY:ATM:EXISTS {
+        IF ALTITUDE < SHIP:BODY:ATM:HEIGHT { SET in_air TO TRUE. }
+    }
+    SET AOSO_ATM_IN_UT TO TIME:SECONDS.
+    SET AOSO_ATM_IN_V TO in_air.
+    RETURN in_air.
 }
 
 FUNCTION aoso_ascent_stack_layout {
@@ -300,9 +314,17 @@ FUNCTION aoso_ascent_throttle_for_q {
             SET th TO cap / MAX(qnow, 0.001).
             IF th < 0.35 { SET th TO 0.35. }
             IF th > 1 { SET th TO 1. }
-            aoso_log_every(8, "ASCENT", "Max-Q throttle Q=" + ROUND(qnow, 3) + " cap=" + ROUND(cap, 3) +
-                " th=" + ROUND(th, 2) + " AoA=" + ROUND(aoso_aero_aoa(), 1) + " deg drag=" +
-                ROUND(aoso_aero_drag_kn(), 1) + " kN (" + aoso_aero_drag_source() + ").").
+            // kOS evaluates log arguments before the call, so the aero
+            // walk stays outside the rate limit.
+            LOCAL q_due IS TRUE.
+            IF AOSO_LOG_LAST:HASKEY("ASCENT") {
+                IF TIME:SECONDS - AOSO_LOG_LAST["ASCENT"] < 8 { SET q_due TO FALSE. }
+            }
+            IF q_due {
+                aoso_log_every(8, "ASCENT", "Max-Q throttle Q=" + ROUND(qnow, 3) + " cap=" + ROUND(cap, 3) +
+                    " th=" + ROUND(th, 2) + " AoA=" + ROUND(aoso_aero_aoa(), 1) + " deg drag=" +
+                    ROUND(aoso_aero_drag_kn(), 1) + " kN (" + aoso_aero_drag_source() + ").").
+            }
         }
     }
 
