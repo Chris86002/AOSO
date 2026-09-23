@@ -98,6 +98,8 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "PROJECT_REFUEL_S", 1800,
     "GOTO_PATCH_FLICKER_S", 15,         // s of physics-2x after a patch vanishes, so conics can rebuild before we resume rails
     "GOTO_PATCH_TRUST_S", 600,          // s past expected SOI before we give up on a vanished intercept
+    "GOTO_GEOM_MAX_ETA_S", 86400,       // trust a missing sibling-body patch only while live range/closing imply SOI within one day
+    "GOTO_GEOM_COAST_HORIZON_S", 3600,  // re-evaluate the range clock at least hourly while the patch is absent
     "TOUR_REFUEL_BELOW_PCT", 60,        // % LiquidFuel at/below which the grand tour will land and ISRU-refuel
     "TOUR_MIN_LAND_TWR", 1.4,           // surface TWR required before the grand tour will attempt a landing
     "TOUR_POLAR_INCLINATION", 90,       // deg, parking inclination before a landing-site scan

@@ -174,6 +174,38 @@ FUNCTION aoso_goto_remember_patch {
     SET data["last_patch_ut"] TO TIME:SECONDS.
 }
 
+// A moon's live range is independent of the stock NEXTPATCH display. When
+// that display vanishes, use the current relative motion as a rolling,
+// conservative SOI clock instead of treating its last ETA as a hard stop.
+// Orbital velocities share a reference body only for sibling orbits.
+FUNCTION aoso_goto_soi_geometry {
+    PARAMETER body_name.
+    LOCAL result IS LEXICON("valid", FALSE, "inside", FALSE, "range", 0,
+        "soi", 0, "closing", 0, "eta", 0).
+    IF body_name = "" { RETURN result. }
+    IF NOT BODYEXISTS(body_name) { RETURN result. }
+    LOCAL target_body IS BODY(body_name).
+    IF NOT target_body:HASBODY { RETURN result. }
+    IF target_body:BODY:NAME <> SHIP:BODY:NAME { RETURN result. }
+    LOCAL displacement IS target_body:POSITION - SHIP:POSITION.
+    LOCAL range_m IS displacement:MAG.
+    LOCAL soi_m IS target_body:SOIRADIUS.
+    IF range_m < 1 OR soi_m <= 0 { RETURN result. }
+    SET result["valid"] TO TRUE.
+    SET result["range"] TO range_m.
+    SET result["soi"] TO soi_m.
+    IF range_m <= soi_m {
+        SET result["inside"] TO TRUE.
+        RETURN result.
+    }
+    LOCAL relative_v IS SHIP:VELOCITY:ORBIT - target_body:VELOCITY:ORBIT.
+    SET result["closing"] TO VDOT(displacement:NORMALIZED, relative_v).
+    IF result["closing"] > 1 {
+        SET result["eta"] TO (range_m - soi_m) / result["closing"].
+    }
+    RETURN result.
+}
+
 FUNCTION aoso_goto_ensure_transfer_action {
     PARAMETER data.
     PARAMETER target_name.
@@ -873,8 +905,19 @@ FUNCTION aoso_goto_coast_execute {
     IF data:HASKEY("expect_ut") { SET expect_ut TO data["expect_ut"]. }
     LOCAL now IS TIME:SECONDS.
     LOCAL trust_after IS aoso_config_get("GOTO_PATCH_TRUST_S", 600).
+    LOCAL geometry IS aoso_goto_soi_geometry(expect_body).
+    LOCAL geometry_closing IS FALSE.
+    IF geometry["valid"] {
+        IF NOT geometry["inside"] {
+            IF geometry["closing"] > 5 AND geometry["eta"] > 0 {
+                IF geometry["eta"] < aoso_config_get("GOTO_GEOM_MAX_ETA_S", 86400) {
+                    SET geometry_closing TO TRUE.
+                }
+            }
+        }
+    }
     IF expect_body <> "" {
-        IF expect_ut > now - trust_after {
+        IF expect_ut > now - trust_after OR geometry_closing OR geometry["inside"] {
             IF NOT data:HASKEY("patch_lost_ut") { SET data["patch_lost_ut"] TO 0. }
             IF data["patch_lost_ut"] <= 0 {
                 SET data["patch_lost_ut"] TO now.
@@ -888,15 +931,41 @@ FUNCTION aoso_goto_coast_execute {
                 aoso_ui_set("Re-checking " + expect_body + " patch", "physics so conics can catch up  T-" + aoso_hud_eta(eta_saved)).
                 RETURN.
             }
-            IF eta_saved > 30 {
+            IF geometry["inside"] {
+                SET WARP TO 0.
+                aoso_log_warn_every(60, "SOI_HANDOFF", expect_body + " is geometrically inside its SOI but KSP still reports " + SHIP:BODY:NAME + "; waiting at 1x for the body handoff.").
+                aoso_ui_set("Waiting for " + expect_body + " SOI", "inside boundary; KSP handoff pending at 1x").
+                RETURN.
+            }
+            LOCAL eta_nav IS eta_saved.
+            LOCAL eta_est IS eta_saved.
+            LOCAL clock IS "PATCH".
+            IF geometry_closing {
+                IF eta_saved < 900 OR geometry["eta"] < eta_saved {
+                    // Re-evaluate every tick. A bounded, early clock keeps
+                    // rails from skipping a small SOI if closing accelerates.
+                    SET eta_nav TO MIN(aoso_config_get("GOTO_GEOM_COAST_HORIZON_S", 3600), geometry["eta"] * 0.65).
+                    SET eta_est TO geometry["eta"].
+                    SET clock TO "RANGE".
+                }
+            }
+            IF eta_nav > 30 {
                 aoso_steer_release().
                 LOCAL soi_lead_saved IS MAX(aoso_maneuver_align_s(), aoso_config_get("WARP_SOI_RAILS_CUTOFF_S", 45)).
-                aoso_warp_approach(eta_saved, soi_lead_saved, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
-                aoso_log_every(60, "GOTO", "No live patch, trusting " + expect_body + " SOI in " + ROUND(eta_saved, 0) + "s " + aoso_warp_diag_txt() + ".").
-                aoso_ui_set("Trusting " + expect_body + " intercept", aoso_hud_eta(eta_saved) + "  " + aoso_warp_diag_txt()).
+                aoso_warp_approach(eta_nav, soi_lead_saved, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
+                IF geometry["valid"] {
+                    aoso_log_every(60, "GOTO", "No live " + expect_body + " patch; " + clock + " SOI ETA=" + ROUND(eta_est, 0) + "s next-check=" + ROUND(eta_nav, 0) + "s saved=" + ROUND(eta_saved, 0) + "s range=" + ROUND(geometry["range"] / 1000, 0) + "km SOI=" + ROUND(geometry["soi"] / 1000, 0) + "km closing=" + ROUND(geometry["closing"], 0) + "m/s " + aoso_warp_diag_txt() + ".").
+                } ELSE {
+                    aoso_log_every(60, "GOTO", "No live patch, trusting " + expect_body + " SOI in " + ROUND(eta_saved, 0) + "s " + aoso_warp_diag_txt() + ".").
+                }
+                IF clock = "RANGE" {
+                    aoso_ui_set("Tracking " + expect_body + " SOI", "range ETA " + aoso_hud_eta(eta_est) + "  recheck " + aoso_hud_eta(eta_nav) + "  " + aoso_warp_diag_txt()).
+                } ELSE {
+                    aoso_ui_set("Tracking " + expect_body + " SOI", "saved ETA " + aoso_hud_eta(eta_est) + "  " + aoso_warp_diag_txt()).
+                }
             } ELSE {
                 SET WARP TO 0.
-                aoso_ui_set("Waiting on " + expect_body + " SOI", "conics still empty").
+                aoso_ui_set("Waiting on " + expect_body + " SOI", clock + " clock near boundary; conics empty").
             }
             RETURN.
         }

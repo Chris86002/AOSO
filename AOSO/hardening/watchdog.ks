@@ -90,6 +90,21 @@ FUNCTION aoso_watchdog_in_critical_flight {
     RETURN FALSE.
 }
 
+// A transfer window or SOI coast can legitimately remain in one state for
+// days. GOTO owns the encounter clock and its own no-patch replan path;
+// absence of a state transition here is not evidence of a stalled CPU.
+FUNCTION aoso_watchdog_deliberate_wait {
+    IF DEFINED AOSO_GOTO {
+        IF DEFINED AOSO_CTX {
+            IF aoso_ctx_get("controller", "") = "goto" {
+                IF AOSO_GOTO["current"] = "COAST" { RETURN TRUE. }
+                IF AOSO_GOTO["current"] = "WAIT" { RETURN TRUE. }
+            }
+        }
+    }
+    RETURN FALSE.
+}
+
 FUNCTION aoso_watchdog_recovery_kind {
     PARAMETER stalled.
     PARAMETER critical.
@@ -188,6 +203,7 @@ FUNCTION aoso_watchdog_tick {
         RETURN.
     }
     IF flying { RETURN. }
+    IF aoso_watchdog_deliberate_wait() { RETURN. }
     aoso_watchdog_recover().
 }
 

@@ -307,6 +307,10 @@ FUNCTION aoso_warp_approach {
     }
 
     IF NOT KUNIVERSE:TIMEWARP:ISSETTLED {
+        // The settle gate must not block a safety downshift. A late Minmus
+        // node stayed at 10000x while KSP was ramping and crossed ETA=0
+        // before the next settled tick.
+        IF want < WARP { SET WARP TO want. }
         RETURN "transition".
     }
 

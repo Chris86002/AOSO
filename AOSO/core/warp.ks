@@ -96,8 +96,8 @@ FUNCTION aoso_warp_update_wall_est {
 
 FUNCTION aoso_warp_min_remain {
     PARAMETER idx.
-    IF idx = 7 { RETURN 43200. } // only use 100000x with >=12 h before lead
-    IF idx = 6 { RETURN 2400. }
+    IF idx = 7 { RETURN 86400. } // leave 100000x at least a day before a critical event
+    IF idx = 6 { RETURN 7200. }  // KSP can jump several thousand seconds per scheduler tick at 10000x
     IF idx = 5 { RETURN 480. }
     IF idx = 4 { RETURN 150. }
     IF idx = 3 { RETURN 70. }
