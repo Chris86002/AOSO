@@ -348,27 +348,40 @@ FUNCTION aoso_tour_scan_entry {
         SET data["site_lng"] TO result["lng"].
         SET data["site_score"] TO result["score"].
         SET data["site_alt"] TO result["alt"].
-        aoso_log_info("TOUR", "Landing site lat=" + ROUND(result["lat"], 2) + " lng=" + ROUND(result["lng"], 2) +
-            " alt=" + ROUND(result["alt"], 0) + "m slope=" + ROUND(result["slope"], 1) + " deg.").
+        LOCAL rough0 IS 0.
+        IF result:HASKEY("roughness") { SET rough0 TO result["roughness"]. }
+        SET data["site_roughness"] TO rough0.
+        aoso_log_info("TOUR", "Landing site seed lat=" + ROUND(result["lat"], 2) +
+            " lng=" + ROUND(result["lng"], 2) + " alt=" + ROUND(result["alt"], 0) +
+            "m slope=" + ROUND(result["slope"], 1) + "deg rough=" +
+            ROUND(rough0, 0) + "m score=" + ROUND(result["score"], 2) + ".").
         aoso_decide("TOUR", "site", ROUND(result["lat"], 2) + "/" + ROUND(result["lng"], 2), "scan", "score=" + ROUND(result["score"], 2) + " slope=" + ROUND(result["slope"], 1)).
     } ELSE {
         SET data["site_lat"] TO SHIP:GEOPOSITION:LAT.
         SET data["site_lng"] TO SHIP:GEOPOSITION:LNG.
         SET data["site_alt"] TO SHIP:GEOPOSITION:TERRAINHEIGHT.
-        aoso_log_warn("TOUR", "Scan found nothing safer than the current ground track - landing near lat=" +
+        SET data["site_roughness"] TO aoso_landing_site_roughness_m(SHIP:GEOPOSITION).
+        aoso_log_warn("TOUR", "Predictive scan found no safe candidate; using the current ground track as the live-survey seed near lat=" +
             ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) + ".").
-        SET data["site_score"] TO 0.
+        SET data["site_score"] TO aoso_landing_site_score(SHIP:GEOPOSITION).
     }
 
-    LOCAL orbits IS aoso_config_get("LANDING_SCAN_ORBITS", 2).
+    LOCAL orbits IS aoso_config_get("LANDING_SCAN_ORBITS", 1).
     IF orbits < 1 { SET orbits TO 1. }
-    IF orbits > 4 { SET orbits TO 4. }
+    IF orbits > 2 { SET orbits TO 2. }
     LOCAL period IS aoso_orbit_period_s().
     IF period <= 0 { SET period TO 600. }
-    SET data["scan_until"] TO TIME:SECONDS + (period * orbits).
+    LOCAL scan_span IS period * orbits.
+    LOCAL scan_cap IS aoso_config_get("LANDING_SCAN_MAX_S", 7200).
+    IF scan_cap > 0 {
+        IF scan_span > scan_cap { SET scan_span TO scan_cap. }
+    }
+    SET data["scan_until"] TO TIME:SECONDS + scan_span.
     SET data["scan_next_sample"] TO TIME:SECONDS.
     SET data["scan_orbits"] TO orbits.
-    aoso_log_info("TOUR", "Warping " + orbits + " orbit(s) over the ground track to confirm the predicted site (live samples are logged, they do not replace it).").
+    aoso_log_info("TOUR", "Surveying up to " + ROUND(scan_span, 0) +
+        "s of the polar ground track (" + orbits +
+        " orbit max). Live overflight samples may replace the predicted seed when they score better.").
 }
 
 FUNCTION aoso_tour_scan_execute {
@@ -380,8 +393,26 @@ FUNCTION aoso_tour_scan_execute {
                 LOCAL geo IS SHIP:GEOPOSITION.
                 LOCAL sc IS aoso_landing_site_score(geo).
                 IF sc >= 0 {
-                    aoso_log_every(80, "TOUR", "Overflight sample lat=" + ROUND(geo:LAT, 2) + " lng=" + ROUND(geo:LNG, 2) +
-                        " score=" + ROUND(sc, 2) + " (keeping predicted site).").
+                    LOCAL improve IS FALSE.
+                    IF data["site_score"] < 0 { SET improve TO TRUE. }
+                    IF sc < data["site_score"] { SET improve TO TRUE. }
+                    IF improve {
+                        LOCAL old_sc IS data["site_score"].
+                        SET data["site_lat"] TO geo:LAT.
+                        SET data["site_lng"] TO geo:LNG.
+                        SET data["site_alt"] TO geo:TERRAINHEIGHT.
+                        SET data["site_score"] TO sc.
+                        SET data["site_roughness"] TO aoso_landing_site_roughness_m(geo).
+                        aoso_log_info("TOUR", "Live polar overflight improved landing site: score " +
+                            ROUND(old_sc, 2) + " -> " + ROUND(sc, 2) + " lat=" +
+                            ROUND(geo:LAT, 2) + " lng=" + ROUND(geo:LNG, 2) +
+                            " alt=" + ROUND(geo:TERRAINHEIGHT, 0) + "m rough=" +
+                            ROUND(data["site_roughness"], 0) + "m.").
+                    } ELSE {
+                        aoso_log_every(80, "TOUR", "Overflight sample lat=" + ROUND(geo:LAT, 2) +
+                            " lng=" + ROUND(geo:LNG, 2) + " score=" + ROUND(sc, 2) +
+                            " best=" + ROUND(data["site_score"], 2) + ".").
+                    }
                 }
                 SET data["scan_next_sample"] TO now + 25.
             }
@@ -392,14 +423,19 @@ FUNCTION aoso_tour_scan_execute {
             RETURN.
         }
     }
-    IF WARP > 0 {
-        SET WARP TO 0.
+    IF WARP > 0 OR WARPMODE <> "PHYSICS" OR NOT KUNIVERSE:TIMEWARP:ISSETTLED {
+        aoso_warp_hard_stop().
         RETURN.
     }
     SET data["deorbit_wait_since"] TO TIME:SECONDS.
-    aoso_log_info("TOUR", "Scan confirm done. Site lat=" + ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) +
-        " score=" + ROUND(data["site_score"], 2) + " AP=" + ROUND(APOAPSIS, 0) + " PE=" + ROUND(PERIAPSIS, 0) +
-        " inc=" + ROUND(SHIP:ORBIT:INCLINATION, 1) + " - deorbit next.").
+    LOCAL final_rough IS 0.
+    IF data:HASKEY("site_roughness") { SET final_rough TO data["site_roughness"]. }
+    aoso_log_info("TOUR", "Polar survey complete. Selected site lat=" +
+        ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) +
+        " score=" + ROUND(data["site_score"], 2) + " rough=" +
+        ROUND(final_rough, 0) + "m AP=" + ROUND(APOAPSIS, 0) +
+        " PE=" + ROUND(PERIAPSIS, 0) + " inc=" +
+        ROUND(SHIP:ORBIT:INCLINATION, 1) + " - timing deorbit/descent next.").
     aoso_state_transition(AOSO_TOUR, "DEORBIT").
 }
 
