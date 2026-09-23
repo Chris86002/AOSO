@@ -104,24 +104,24 @@ FUNCTION aoso_ui2_hud_build {
     LOCAL top IS g:ADDHLAYOUT().
     SET top:STYLE:WIDTH TO 560.
     SET AOSO_UI2_HUD_MODE TO top:ADDLABEL("<b>AOSO OPS HUD / LIVE</b>").
-    SET AOSO_UI2_HUD_MODE:STYLE:WIDTH TO 225.
+    SET AOSO_UI2_HUD_MODE:STYLE:WIDTH TO 180.
     SET AOSO_UI2_HUD_HDG TO top:ADDLABEL("HDG ---").
-    SET AOSO_UI2_HUD_HDG:STYLE:WIDTH TO 72.
+    SET AOSO_UI2_HUD_HDG:STYLE:WIDTH TO 65.
     SET AOSO_UI2_HUD_HDG:STYLE:ALIGN TO "right".
     LOCAL b_declutter IS top:ADDBUTTON("DCL").
-    SET b_declutter:STYLE:WIDTH TO 48.
+    SET b_declutter:STYLE:WIDTH TO 42.
     SET b_declutter:ONCLICK TO aoso_ui2_hud_toggle_declutter@.
     LOCAL b_rec IS top:ADDBUTTON("REC").
-    SET b_rec:STYLE:WIDTH TO 48.
+    SET b_rec:STYLE:WIDTH TO 42.
     SET b_rec:ONCLICK TO aoso_ui2_hud_recenter@.
     SET AOSO_UI2_HUD_TEST_BUTTON TO top:ADDBUTTON("TEST").
-    SET AOSO_UI2_HUD_TEST_BUTTON:STYLE:WIDTH TO 48.
+    SET AOSO_UI2_HUD_TEST_BUTTON:STYLE:WIDTH TO 43.
     SET AOSO_UI2_HUD_TEST_BUTTON:ONCLICK TO aoso_ui2_hud_cycle_test@.
     LOCAL b_dump IS top:ADDBUTTON("DUMP").
-    SET b_dump:STYLE:WIDTH TO 54.
+    SET b_dump:STYLE:WIDTH TO 50.
     SET b_dump:ONCLICK TO aoso_hud_debug_dump@.
     LOCAL b_mfd IS top:ADDBUTTON("MFD").
-    SET b_mfd:STYLE:WIDTH TO 48.
+    SET b_mfd:STYLE:WIDTH TO 42.
     SET b_mfd:ONCLICK TO aoso_ui2_hud_mfd@.
 
     SET AOSO_UI2_HUD_ATT TO g:ADDLABEL("PITCH ---   ROLL ---   AoA ---").
@@ -133,12 +133,12 @@ FUNCTION aoso_ui2_hud_build {
     SET row:STYLE:HEIGHT TO 240.
 
     LOCAL speed_bank IS row:ADDVBOX().
-    SET speed_bank:STYLE:WIDTH TO 86.
+    SET speed_bank:STYLE:WIDTH TO 80.
     SET speed_bank:STYLE:HEIGHT TO 240.
     LOCAL speed_heading IS speed_bank:ADDLABEL("SPEED m/s").
-    SET speed_heading:STYLE:WIDTH TO 84.
+    SET speed_heading:STYLE:WIDTH TO 78.
     SET AOSO_UI2_HUD_SPD TO speed_bank:ADDLABEL("---").
-    SET AOSO_UI2_HUD_SPD:STYLE:WIDTH TO 84.
+    SET AOSO_UI2_HUD_SPD:STYLE:WIDTH TO 78.
     SET AOSO_UI2_HUD_SPD:STYLE:ALIGN TO "center".
 
     SET AOSO_UI2_HUD_MAIN TO row:ADDHBOX().
@@ -155,12 +155,12 @@ FUNCTION aoso_ui2_hud_build {
     SET AOSO_UI2_HUD_PIPPER:STYLE:MARGIN:V TO AOSO_UI2_HUD_PY.
 
     LOCAL alt_bank IS row:ADDVBOX().
-    SET alt_bank:STYLE:WIDTH TO 86.
+    SET alt_bank:STYLE:WIDTH TO 80.
     SET alt_bank:STYLE:HEIGHT TO 240.
     LOCAL alt_heading IS alt_bank:ADDLABEL("ALTITUDE").
-    SET alt_heading:STYLE:WIDTH TO 84.
+    SET alt_heading:STYLE:WIDTH TO 78.
     SET AOSO_UI2_HUD_ALT TO alt_bank:ADDLABEL("---").
-    SET AOSO_UI2_HUD_ALT:STYLE:WIDTH TO 84.
+    SET AOSO_UI2_HUD_ALT:STYLE:WIDTH TO 78.
     SET AOSO_UI2_HUD_ALT:STYLE:ALIGN TO "center".
 
     SET AOSO_UI2_HUD_VS TO row:ADDVSLIDER(0, -250, 250).
@@ -319,7 +319,7 @@ FUNCTION aoso_ui2_hud_update {
     aoso_ui2_hud_fast().
 
     IF AOSO_UI2_HUD_TEST > 0 {
-        SET AOSO_UI2_HUD_MODE:TEXT TO "<b>AOSO OPS HUD / GEOMETRY TEST</b>".
+        SET AOSO_UI2_HUD_MODE:TEXT TO "<b>AOSO / GEOM TEST</b>".
         SET AOSO_UI2_HUD_ATT:TEXT TO "PITCH +12.0   ROLL -08.0   AoA +03.0".
         SET AOSO_UI2_HUD_ATT:VISIBLE TO TRUE.
         SET AOSO_UI2_HUD_EVENT:TEXT TO "TEST ONLY - NO FLIGHT COMMANDS".
