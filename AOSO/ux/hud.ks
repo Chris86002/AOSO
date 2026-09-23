@@ -187,7 +187,7 @@ FUNCTION aoso_hud_tick {
     LOCAL compact IS FALSE.
     IF DEFINED AOSO_CPU_LEVEL {
         IF AOSO_CPU_LEVEL >= 3 {
-            IF AOSO_HUD_PAGE = "TWIN" { SET compact TO TRUE. }
+            IF AOSO_HUD_PAGE = "TWIN" OR AOSO_HUD_PAGE = "VEH" { SET compact TO TRUE. }
         }
     }
     IF rates["term"] {
@@ -199,7 +199,7 @@ FUNCTION aoso_hud_tick {
         aoso_hud_watch_alerts().
         aoso_hud_fd_tick(rates["fd"]).
         LOCAL want_twin IS FALSE.
-        IF AOSO_HUD_PAGE = "TWIN" {
+        IF AOSO_HUD_PAGE = "TWIN" OR AOSO_HUD_PAGE = "VEH" {
             IF NOT AOSO_HUD_COMPACT { SET want_twin TO TRUE. }
         }
         IF rates["lo"] > 0 {
@@ -211,7 +211,7 @@ FUNCTION aoso_hud_tick {
             IF DEFINED AOSO_CPU_LEVEL {
                 IF AOSO_CPU_LEVEL >= 2 { SET twin_geom TO FALSE. }
             }
-            IF AOSO_HUD_PAGE <> "TWIN" { SET twin_geom TO FALSE. }
+            IF AOSO_HUD_PAGE <> "TWIN" AND AOSO_HUD_PAGE <> "VEH" { SET twin_geom TO FALSE. }
             aoso_twin_tick(twin_geom, twin_fill).
         }
     }
