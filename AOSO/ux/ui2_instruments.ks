@@ -96,6 +96,21 @@ FUNCTION aoso_ui2_clamp01 {
     RETURN aoso_ui2_clamp(x, 0, 1).
 }
 
+GLOBAL AOSO_UI2_TXT IS LEXICON().
+
+// Skip identical widget writes. kOS GUI text changes are the expensive part.
+FUNCTION aoso_ui2_set_text {
+    PARAMETER widget.
+    PARAMETER key.
+    PARAMETER txt.
+    IF NOT widget:ISTYPE("LABEL") { RETURN. }
+    IF AOSO_UI2_TXT:HASKEY(key) {
+        IF AOSO_UI2_TXT[key] = txt { RETURN. }
+    }
+    SET AOSO_UI2_TXT[key] TO txt.
+    SET widget:TEXT TO txt.
+}
+
 // Set every interactive state: Unity otherwise falls back to a white hover
 // texture even when a button's normal background is dark.
 FUNCTION aoso_ui2_button_bg {
@@ -194,31 +209,31 @@ FUNCTION aoso_ui2_pfd_update {
 
     LOCAL mode IS AOSO_HUD_CTX.
     IF mode = "IDLE" { SET mode TO f["status"]. }
-    SET AOSO_UI2_PFD_MODE:TEXT TO "<b>" + mode + "</b>  " + f["doing"].
-    SET AOSO_UI2_PFD_HDG:TEXT TO "HDG " + ROUND(f["hdg"], 0).
+    aoso_ui2_set_text(AOSO_UI2_PFD_MODE, "pfd_mode", "<b>" + mode + "</b>  " + f["doing"]).
+    aoso_ui2_set_text(AOSO_UI2_PFD_HDG, "pfd_hdg", "HDG " + ROUND(f["hdg"], 0)).
 
     LOCAL vel IS f["orb"].
     IF f["in_atm"] { SET vel TO f["srf"]. }
-    SET AOSO_UI2_PFD_LEFT:TEXT TO "<size=16>" + ROUND(vel, 0) + "</size>" + CHAR(10) +
-        "VS " + ROUND(f["vs"], 1).
+    aoso_ui2_set_text(AOSO_UI2_PFD_LEFT, "pfd_left", "<size=16>" + ROUND(vel, 0) + "</size>" + CHAR(10) +
+        "VS " + ROUND(f["vs"], 1)).
 
     LOCAL alt_txt IS aoso_hud_km(f["alt"]).
     IF AOSO_HUD_CTX = "LANDING" {
         SET alt_txt TO ROUND(AOSO_HUD_DATA["landing"]["radar"], 0) + "m RAD".
     }
-    SET AOSO_UI2_PFD_RIGHT:TEXT TO "<size=16>" + alt_txt + "</size>" + CHAR(10) +
-        "AP " + aoso_hud_km(o["ap"]).
+    aoso_ui2_set_text(AOSO_UI2_PFD_RIGHT, "pfd_right", "<size=16>" + alt_txt + "</size>" + CHAR(10) +
+        "AP " + aoso_hud_km(o["ap"])).
 
     LOCAL fuel IS MAX(res["lf"], res["ox"]).
     LOCAL fuel_txt IS "PROP " + aoso_ui2_bar(fuel / 100, 16) + " " + ROUND(fuel, 0) + "%".
-    SET AOSO_UI2_PFD_BOTTOM:TEXT TO fuel_txt.
+    aoso_ui2_set_text(AOSO_UI2_PFD_BOTTOM, "pfd_fuel", fuel_txt).
 
     LOCAL warning IS "".
     IF sys["worst"] = "FAIL" { SET warning TO aoso_ui2_color_state("FAIL", "MASTER WARNING"). }
     ELSE {
         IF sys["worst"] = "DEG" { SET warning TO aoso_ui2_color_state("WARN", "CAUTION"). }
     }
-    SET AOSO_UI2_PFD_WARN:TEXT TO warning.
+    aoso_ui2_set_text(AOSO_UI2_PFD_WARN, "pfd_warn", warning).
 
     aoso_hud_set("ui2_pfd_att", "PITCH " + ROUND(f["pitch"], 1) + "°   ROLL " +
         ROUND(f["roll"], 1) + "°   AoA " + ROUND(f["aoa"], 1) + "°").
@@ -241,8 +256,16 @@ FUNCTION aoso_ui2_pfd_update {
         IF smooth > 1 { SET smooth TO 1. }
         SET AOSO_UI2_PFD_PX TO AOSO_UI2_PFD_PX + smooth * (want_x - AOSO_UI2_PFD_PX).
         SET AOSO_UI2_PFD_PY TO AOSO_UI2_PFD_PY + smooth * (want_y - AOSO_UI2_PFD_PY).
-        SET AOSO_UI2_PFD_PIPPER:STYLE:MARGIN:H TO AOSO_UI2_PFD_PX.
-        SET AOSO_UI2_PFD_PIPPER:STYLE:MARGIN:V TO AOSO_UI2_PFD_PY.
+        LOCAL bug_key IS ROUND(AOSO_UI2_PFD_PX, 0) + "," + ROUND(AOSO_UI2_PFD_PY, 0).
+        LOCAL bug_moved IS TRUE.
+        IF AOSO_UI2_TXT:HASKEY("pfd_bug") {
+            IF AOSO_UI2_TXT["pfd_bug"] = bug_key { SET bug_moved TO FALSE. }
+        }
+        IF bug_moved {
+            SET AOSO_UI2_TXT["pfd_bug"] TO bug_key.
+            SET AOSO_UI2_PFD_PIPPER:STYLE:MARGIN:H TO AOSO_UI2_PFD_PX.
+            SET AOSO_UI2_PFD_PIPPER:STYLE:MARGIN:V TO AOSO_UI2_PFD_PY.
+        }
     }
 }
 
@@ -263,9 +286,9 @@ FUNCTION aoso_ui2_build_nav_display {
     // per second. This is the real osculating/patched-conic geometry inside
     // the current SOI, not a decorative ellipse.
     SET AOSO_UI2_NAV_PRED TO LIST().
-    LOCAL pred_n IS ROUND(aoso_config_get("UI2_NAV_PRED_POINTS", 16), 0).
+    LOCAL pred_n IS ROUND(aoso_config_get("UI2_NAV_PRED_POINTS", 8), 0).
     IF pred_n < 6 { SET pred_n TO 6. }
-    IF pred_n > 24 { SET pred_n TO 24. }
+    IF pred_n > 8 { SET pred_n TO 8. }
     LOCAL pi IS 0.
     UNTIL pi >= pred_n {
         LOCAL pm IS aoso_ui2_marker(AOSO_UI2_NAV_MAIN, AOSO_UI2_ASSET_ROOT + "pred_bug.png", 8).
@@ -277,7 +300,7 @@ FUNCTION aoso_ui2_build_nav_display {
     // Recent flown trail. Unlike the prediction this is historical position.
     LOCAL trail_n IS ROUND(aoso_config_get("UI2_TRAIL_POINTS", 10), 0).
     IF trail_n < 0 { SET trail_n TO 0. }
-    IF trail_n > 16 { SET trail_n TO 16. }
+    IF trail_n > 8 { SET trail_n TO 8. }
     SET AOSO_UI2_NAV_TRAIL TO LIST().
     SET AOSO_UI2_NAV_TRAIL_X TO LIST().
     SET AOSO_UI2_NAV_TRAIL_Y TO LIST().

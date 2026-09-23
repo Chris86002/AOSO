@@ -126,8 +126,8 @@ FUNCTION aoso_ui2_asc_build {
     PARAMETER page.
     aoso_hud_title(page, "ASC TRAJ  /  ALTITUDE vs DOWNRANGE").
     SET AOSO_UI2_ASC_MAIN TO aoso_ui2_plot_frame(page, "pfd_frame.png").
-    SET AOSO_UI2_ASC_SKETCH TO aoso_ui2_plot_pool(AOSO_UI2_ASC_MAIN, "pred_bug.png", 12, 8).
-    SET AOSO_UI2_ASC_TRAIL TO aoso_ui2_plot_pool(AOSO_UI2_ASC_MAIN, "trail_bug.png", 16, 8).
+    SET AOSO_UI2_ASC_SKETCH TO aoso_ui2_plot_pool(AOSO_UI2_ASC_MAIN, "pred_bug.png", 8, 8).
+    SET AOSO_UI2_ASC_TRAIL TO aoso_ui2_plot_pool(AOSO_UI2_ASC_MAIN, "trail_bug.png", 12, 8).
     SET AOSO_UI2_ASC_SHIP TO aoso_ui2_marker(AOSO_UI2_ASC_MAIN, AOSO_UI2_ASSET_ROOT + "ship_bug.png", 18).
     SET AOSO_UI2_ASC_ATM TO aoso_ui2_overlay_label(AOSO_UI2_ASC_MAIN, "", 250, 20).
     SET AOSO_UI2_ASC_AP TO aoso_ui2_overlay_label(AOSO_UI2_ASC_MAIN, "", 250, 36).
@@ -204,13 +204,25 @@ FUNCTION aoso_ui2_asc_update {
         "  SKETCH=target Ap, not a certified profile".
 }
 
+FUNCTION aoso_ui2_asc_ship_fast {
+    IF NOT AOSO_UI2_ASC_SHIP:ISTYPE("LABEL") { RETURN. }
+    IF NOT AOSO_HUD_DATA:HASKEY("traj") { RETURN. }
+    LOCAL tr IS AOSO_HUD_DATA["traj"].
+    LOCAL x_max IS tr["xmax_km"].
+    LOCAL y_max IS tr["ymax_km"].
+    IF x_max < 5 { SET x_max TO 5. }
+    IF y_max < 1 { SET y_max TO 1. }
+    LOCAL ship IS aoso_ui2_plot_px(tr["down_km"], tr["alt_km"], 0, x_max, 0, y_max).
+    aoso_ui2_plot_put(AOSO_UI2_ASC_SHIP, ship[0], ship[1], TRUE).
+}
+
 FUNCTION aoso_ui2_vs_build {
     PARAMETER page.
     aoso_hud_title(page, "VSIT  /  ALTITUDE vs RANGE TO SITE").
     SET AOSO_UI2_VS_MAIN TO aoso_ui2_plot_frame(page, "descent_frame.png").
-    SET AOSO_UI2_VS_HIGH TO aoso_ui2_plot_pool(AOSO_UI2_VS_MAIN, "pred_bug.png", 8, 8).
-    SET AOSO_UI2_VS_NOM TO aoso_ui2_plot_pool(AOSO_UI2_VS_MAIN, "pred_bug.png", 8, 8).
-    SET AOSO_UI2_VS_LOW TO aoso_ui2_plot_pool(AOSO_UI2_VS_MAIN, "trail_bug.png", 8, 8).
+    SET AOSO_UI2_VS_HIGH TO aoso_ui2_plot_pool(AOSO_UI2_VS_MAIN, "pred_bug.png", 5, 8).
+    SET AOSO_UI2_VS_NOM TO aoso_ui2_plot_pool(AOSO_UI2_VS_MAIN, "pred_bug.png", 5, 8).
+    SET AOSO_UI2_VS_LOW TO aoso_ui2_plot_pool(AOSO_UI2_VS_MAIN, "trail_bug.png", 5, 8).
     SET AOSO_UI2_VS_SHIP TO aoso_ui2_marker(AOSO_UI2_VS_MAIN, AOSO_UI2_ASSET_ROOT + "ship_bug.png", 18).
     SET AOSO_UI2_VS_INFO TO page:ADDLABEL("VSIT  waiting for telemetry").
     SET AOSO_UI2_VS_INFO:STYLE:HSTRETCH TO TRUE.
@@ -284,6 +296,20 @@ FUNCTION aoso_ui2_vs_update {
     }
 }
 
+FUNCTION aoso_ui2_vs_ship_fast {
+    IF NOT AOSO_UI2_VS_SHIP:ISTYPE("LABEL") { RETURN. }
+    IF NOT AOSO_HUD_DATA:HASKEY("traj") { RETURN. }
+    LOCAL tr IS AOSO_HUD_DATA["traj"].
+    IF tr["site_ok"] {
+        LOCAL x_max IS tr["site_km"] * 1.15.
+        IF x_max < 5 { SET x_max TO 5. }
+        LOCAL y_max IS MAX(tr["alt_km"], x_max * 0.21) * 1.1.
+        IF y_max < 1 { SET y_max TO 1. }
+        LOCAL ship IS aoso_ui2_plot_px(x_max - tr["site_km"], tr["alt_km"], 0, x_max, 0, y_max).
+        aoso_ui2_plot_put(AOSO_UI2_VS_SHIP, ship[0], ship[1], TRUE).
+    }
+}
+
 FUNCTION aoso_ui2_rte_build {
     PARAMETER page.
     aoso_hud_title(page, "ROUTE  /  WINDOWS").
@@ -316,9 +342,13 @@ FUNCTION aoso_ui2_rte_window {
     PARAMETER here_name.
     PARAMETER dest_name.
     IF dest_name = "" { RETURN "WINDOW  no next body". }
-    IF NOT DEFINED aoso_feas_planet_of { RETURN "WINDOW  planner not loaded". }
-    IF aoso_feas_planet_of(here_name) = aoso_feas_planet_of(dest_name) {
-        RETURN "LOCAL HOP  " + here_name + " -> " + dest_name + "  window n/a".
+    // kOS allows NOT or DEFINED, not both. Nest the check.
+    IF DEFINED aoso_feas_planet_of {
+        IF aoso_feas_planet_of(here_name) = aoso_feas_planet_of(dest_name) {
+            RETURN "LOCAL HOP  " + here_name + " -> " + dest_name + "  window n/a".
+        }
+    } ELSE {
+        RETURN "WINDOW  planner not loaded".
     }
     LOCAL key IS here_name + ">" + dest_name.
     LOCAL now_ut IS TIME:SECONDS.
@@ -327,19 +357,21 @@ FUNCTION aoso_ui2_rte_window {
         IF AOSO_CPU_LEVEL >= 2 { SET cpu_hot TO TRUE. }
     }
     IF cpu_hot { RETURN AOSO_UI2_WIN_TXT + "  (held, CPU)". }
-    IF key = AOSO_UI2_WIN_KEY {
-        IF AOSO_UI2_WIN_UT >= 0 {
-            IF now_ut - AOSO_UI2_WIN_UT < 5 { RETURN AOSO_UI2_WIN_TXT. }
+    IF DEFINED aoso_window_evaluate {
+        IF key = AOSO_UI2_WIN_KEY {
+            IF AOSO_UI2_WIN_UT >= 0 {
+                IF now_ut - AOSO_UI2_WIN_UT < 8 { RETURN AOSO_UI2_WIN_TXT. }
+            }
         }
+        LOCAL ev IS aoso_window_evaluate(here_name, dest_name).
+        SET AOSO_UI2_WIN_KEY TO key.
+        SET AOSO_UI2_WIN_UT TO now_ut.
+        SET AOSO_UI2_WIN_TXT TO "WINDOW  " + here_name + " -> " + dest_name +
+            "  open " + ev["wait_days"] + " d  phase err " + ev["phase_err"] +
+            " deg  dV~ " + ROUND(ev["now_dv"], 0) + " m/s".
+        RETURN AOSO_UI2_WIN_TXT.
     }
-    IF NOT DEFINED aoso_window_evaluate { RETURN "WINDOW  not loaded". }
-    LOCAL ev IS aoso_window_evaluate(here_name, dest_name).
-    SET AOSO_UI2_WIN_KEY TO key.
-    SET AOSO_UI2_WIN_UT TO now_ut.
-    SET AOSO_UI2_WIN_TXT TO "WINDOW  " + here_name + " -> " + dest_name +
-        "  open " + ev["wait_days"] + " d  phase err " + ev["phase_err"] +
-        " deg  dV~ " + ROUND(ev["now_dv"], 0) + " m/s".
-    RETURN AOSO_UI2_WIN_TXT.
+    RETURN "WINDOW  not loaded".
 }
 
 FUNCTION aoso_ui2_rte_update {

@@ -21,6 +21,7 @@ GLOBAL AOSO_HUD_COMPACT IS FALSE.
 GLOBAL AOSO_HUD_BTN_X IS 0.
 GLOBAL AOSO_HUD_HDR_TITLE IS 0.
 GLOBAL AOSO_HUD_LAST_GUI IS 0.
+GLOBAL AOSO_HUD_FAST_GUI_RT IS -1.
 GLOBAL AOSO_HUD_GUI_PAINTED IS "".
 GLOBAL AOSO_HUD_TAC_CHIP IS 0.
 GLOBAL AOSO_UI2_AUTO_PAGE IS TRUE.
@@ -46,7 +47,6 @@ FUNCTION aoso_ui2_selftest {
     IF NOT AOSO_UI2_PFD_MAIN:ISTYPE("BOX") { missing_widgets:ADD("PFD"). }
     IF NOT AOSO_UI2_NAV_MAIN:ISTYPE("BOX") { missing_widgets:ADD("NAV"). }
     IF NOT AOSO_UI2_SURF_MAIN:ISTYPE("BOX") { missing_widgets:ADD("SURF"). }
-    IF NOT AOSO_UI2_MSN_MAIN:ISTYPE("BOX") { missing_widgets:ADD("TOUR"). }
     IF NOT AOSO_UI2_SYS_MAIN:ISTYPE("BOX") { missing_widgets:ADD("SYS"). }
     IF NOT AOSO_UI2_VEH_MAIN:ISTYPE("BOX") { missing_widgets:ADD("VEH"). }
     IF NOT AOSO_UI2_ASC_MAIN:ISTYPE("BOX") { missing_widgets:ADD("ASC"). }
@@ -85,7 +85,7 @@ FUNCTION aoso_ui2_selftest {
     }
 
     SET AOSO_UI2_READY TO TRUE.
-    SET AOSO_UI2_SELFTEST_REASON TO "PFD NAV TOUR VEH SURF SYS ASC VSIT RTE BDG RNDZ ready".
+    SET AOSO_UI2_SELFTEST_REASON TO "PFD NAV VEH SURF SYS ASC VSIT RTE BDG RNDZ ready".
     aoso_log_info("UI2", "Startup self-test READY: " + AOSO_UI2_SELFTEST_REASON + ".").
     RETURN TRUE.
 }
@@ -268,7 +268,7 @@ FUNCTION aoso_ui2_auto_page_tick {
                                     SET want TO "BDG".
                                 } ELSE {
                                     IF tour_st = "PLAN" OR tour_st = "REFUEL" OR tour_st = "TAKEOFF" {
-                                        SET want TO "MSN".
+                                        SET want TO "RTE".
                                     }
                                 }
                             }
@@ -606,16 +606,14 @@ FUNCTION aoso_hud_gui_build_help {
     LOCAL displays IS aoso_ops_readout(row, "QUICK GUIDE / DISPLAYS").
     aoso_hud_hint(displays, "Six primary displays keep live telemetry beside the instrument. Reload AOSO after an update.").
     aoso_hud_hint(displays, "PFD  Flight director, speed/altitude, TWR, propellant and warnings.").
-    aoso_hud_hint(displays, "NAV  Current orbit, recent trail, vessel, maneuver and next-SOI markers.").
-    aoso_hud_hint(displays, "TOUR  Route, current objective, completion, dV and feasibility.").
-    aoso_hud_hint(displays, "VEH  Vessel and Digital Twin. Select a part to highlight it.").
-    aoso_hud_hint(displays, "SURF  Survey map or landing director, depending on mission phase.").
-    aoso_hud_hint(displays, "SYS  Caution/warning board. NOM healthy, DEG degraded, FAIL fault.").
     aoso_hud_hint(displays, "ASC  Altitude vs downrange from the pad. Amber marks are the flown arc.").
+    aoso_hud_hint(displays, "NAV  Current orbit, recent trail, vessel, maneuver and next-SOI markers.").
     aoso_hud_hint(displays, "VSIT  Altitude vs range-to-site, or periapsis time if no site is picked.").
-    aoso_hud_hint(displays, "ROUTE  Planned bodies and the next transfer window. Display only.").
-    aoso_hud_hint(displays, "DV  Mission-usable dV now and projected leftover after each hop.").
-    aoso_hud_hint(displays, "RNDZ  Range, closing speed and bearing. Hidden content until a target exists.").
+    aoso_hud_hint(displays, "ROUTE  Planned bodies, windows and mission phase. Replaces the old tour list.").
+    aoso_hud_hint(displays, "DV  Mission-usable dV now and projected leftover. Replaces the propellant page.").
+    aoso_hud_hint(displays, "SURF  Survey map. Landing energy is on VSIT.").
+    aoso_hud_hint(displays, "SYS  Caution board, including staging and power. NOM / DEG / FAIL.").
+    aoso_hud_hint(displays, "VEH  Digital twin. ENG opens the full topology. LOG and DBG stay for diagnosis.").
     LOCAL controls IS aoso_ops_readout(row, "QUICK GUIDE / CONTROLS").
     aoso_hud_hint(controls, "DISPLAY ONLY. Flight controllers own steering, throttle, staging and warp.").
     aoso_hud_hint(controls, "HUD  Separate flight director; DCL declutters, REC recenters, TEST checks geometry, DUMP saves diagnostics.").
@@ -705,39 +703,33 @@ FUNCTION aoso_hud_gui_init {
     SET c4:ONTOGGLE TO aoso_hud_fd_cb_land@.
     // The legend lives on HELP; the front panel stays focused on the display.
 
-    // Flight-deck row: phase-aware primary displays.
+    // Flight row. Tour, propellant and staging pages were the same numbers
+    // as ROUTE, DV and SYS, so they are no longer built.
     LOCAL row1 IS vbox:ADDHLAYOUT().
     aoso_hud_add_tab(row1, "FLT", "PFD").
+    aoso_hud_add_tab(row1, "ASC", "ASC").
     aoso_hud_add_tab(row1, "NAV", "NAV").
-    aoso_hud_add_tab(row1, "MSN", "TOUR").
-    aoso_hud_add_tab(row1, "VEH", "VEH").
-    aoso_hud_add_tab(row1, "LND", "SURF").
+    aoso_hud_add_tab(row1, "VSIT", "VSIT").
     aoso_hud_add_tab(row1, "SYS", "SYS").
 
-    // Engineering row: detailed subsystems and diagnostics.
     LOCAL row2 IS vbox:ADDHLAYOUT().
-    aoso_hud_add_tab(row2, "PRP", "PROP").
-    aoso_hud_add_tab(row2, "STG", "STAGE").
-    aoso_hud_add_tab(row2, "TWIN", "TWIN").
-    aoso_hud_add_tab(row2, "LOG", "LOG").
-    aoso_hud_add_tab(row2, "DBG", "DBG").
-    aoso_hud_add_tab(row2, "HELP", "HELP").
+    aoso_hud_add_tab(row2, "RTE", "ROUTE").
+    aoso_hud_add_tab(row2, "BDG", "DV").
+    aoso_hud_add_tab(row2, "RNDZ", "RNDZ").
+    aoso_hud_add_tab(row2, "LND", "SURF").
+    aoso_hud_add_tab(row2, "VEH", "VEH").
 
     LOCAL row3 IS vbox:ADDHLAYOUT().
-    aoso_hud_add_tab(row3, "ASC", "ASC").
-    aoso_hud_add_tab(row3, "VSIT", "VSIT").
-    aoso_hud_add_tab(row3, "RTE", "ROUTE").
-    aoso_hud_add_tab(row3, "BDG", "DV").
-    aoso_hud_add_tab(row3, "RNDZ", "RNDZ").
+    aoso_hud_add_tab(row3, "TWIN", "TWIN").
+    aoso_hud_add_tab(row3, "LOG", "LOG").
+    aoso_hud_add_tab(row3, "DBG", "DBG").
+    aoso_hud_add_tab(row3, "HELP", "HELP").
 
     SET AOSO_HUD_STACK TO vbox:ADDVLAYOUT().
     aoso_hud_gui_build_flight(aoso_hud_add_page("FLT")).
     aoso_hud_gui_build_nav(aoso_hud_add_page("NAV")).
-    aoso_hud_gui_build_mission(aoso_hud_add_page("MSN")).
     aoso_hud_gui_build_vehicle(aoso_hud_add_page("VEH")).
-    aoso_hud_gui_build_prop(aoso_hud_add_page("PRP")).
     aoso_hud_gui_build_land(aoso_hud_add_page("LND")).
-    aoso_hud_gui_build_stg(aoso_hud_add_page("STG")).
     aoso_hud_gui_build_sys(aoso_hud_add_page("SYS")).
     aoso_twin_view_build(aoso_hud_add_page("TWIN")).
     aoso_hud_gui_build_log(aoso_hud_add_page("LOG")).
@@ -831,6 +823,11 @@ FUNCTION aoso_hud_gui_fast {
     IF AOSO_UI2_HUD_VISIBLE { aoso_ui2_hud_fast(). }
     IF NOT AOSO_HUD_GUI_ON { RETURN. }
     IF NOT AOSO_HUD_GUI:ISTYPE("GUI") { RETURN. }
+    LOCAL fast_rt IS KUNIVERSE:REALTIME.
+    IF AOSO_HUD_FAST_GUI_RT >= 0 {
+        IF fast_rt - AOSO_HUD_FAST_GUI_RT < 0.12 { RETURN. }
+    }
+    SET AOSO_HUD_FAST_GUI_RT TO fast_rt.
     LOCAL f IS AOSO_HUD_DATA["flight"].
     LOCAL o IS AOSO_HUD_DATA["orbit"].
     LOCAL doing IS aoso_hud_doing_fast().
@@ -845,6 +842,7 @@ FUNCTION aoso_hud_gui_fast {
     }
     LOCAL pg IS AOSO_HUD_PAGE.
     IF pg = "FLT" {
+        aoso_ui2_pfd_update().
         aoso_hud_set("flt_alt", "ALT  " + aoso_hud_km(f["alt"]) + "   VS " + ROUND(f["vs"], 1) + " m/s").
         IF f["in_atm"] {
             aoso_hud_set("flt_spd", "SRF " + ROUND(f["srf"], 0) + "  GS " + ROUND(f["gs"], 0) + " m/s").
@@ -872,6 +870,13 @@ FUNCTION aoso_hud_gui_fast {
         }
         aoso_hud_set("nav_orb", "ORBIT  AP " + aoso_hud_km(o["ap"]) + "  PE " + aoso_hud_km(o["pe"])).
     }
+    IF pg = "ASC" OR pg = "VSIT" {
+        IF OPCODESLEFT >= 160 {
+            aoso_hud_collect_traj().
+            IF pg = "ASC" { aoso_ui2_asc_ship_fast(). }
+            IF pg = "VSIT" { aoso_ui2_vs_ship_fast(). }
+        }
+    }
 }
 
 FUNCTION aoso_hud_gui_upd_header {
@@ -898,7 +903,6 @@ FUNCTION aoso_hud_gui_upd_header {
     IF doing = "" { SET doing TO aoso_hud_doing_text(). }
     aoso_hud_set("hdr_do", "DOING  " + doing).
     aoso_hud_set("hdr_dt", f["detail"]).
-    aoso_hud_tabs_adapt().
     aoso_ui2_auto_page_tick().
 }
 

@@ -158,7 +158,9 @@ FUNCTION aoso_sched_keep {
         }
         RETURN aoso_cpu_allow(1).
     }
-    IF name = "hud" { RETURN aoso_cpu_allow(1). }
+    // Heavy HUD refresh yields when the frame is already critical. The
+    // cheap instrument path in main still runs on leftover opcodes.
+    IF name = "hud" { RETURN aoso_cpu_allow(2). }
     IF name = "brain" { RETURN aoso_cpu_allow(2). }
     IF name = "telemetry" {
         IF DEFINED AOSO_POST_LEFT {

@@ -183,6 +183,20 @@ FUNCTION aoso_hud_term_tick {
 
 FUNCTION aoso_hud_tick {
     IF NOT AOSO_HUD_READY { RETURN. }
+    // Full collect/paint yields while the frame is already critical so
+    // steering keeps the reserved opcodes. Instruments stay on the fast path.
+    IF DEFINED AOSO_CPU_LEVEL {
+        IF AOSO_CPU_LEVEL >= 3 {
+            aoso_hud_collect_fast().
+            aoso_hud_gui_fast().
+            RETURN.
+        }
+    }
+    IF OPCODESLEFT < aoso_cpu_headroom() {
+        aoso_hud_collect_fast().
+        aoso_hud_gui_fast().
+        RETURN.
+    }
     LOCAL rates IS aoso_hud_collect().
     LOCAL compact IS FALSE.
     IF DEFINED AOSO_CPU_LEVEL {
@@ -216,7 +230,11 @@ FUNCTION aoso_hud_tick {
         }
     }
     aoso_hud_gui_tick(TRUE).
-    aoso_log_every(20, "HUD_HB", aoso_hud_debug_line()).
+    LOCAL hb_due IS TRUE.
+    IF AOSO_LOG_LAST:HASKEY("HUD_HB") {
+        IF TIME:SECONDS - AOSO_LOG_LAST["HUD_HB"] < 20 { SET hb_due TO FALSE. }
+    }
+    IF hb_due { aoso_log_every(20, "HUD_HB", aoso_hud_debug_line()). }
     IF AOSO_HUD_PAGE = "DBG" {
         IF TIME:SECONDS - AOSO_HUD_LAST_DUMP >= 20 { aoso_hud_debug_write(). }
     }
@@ -251,14 +269,7 @@ FUNCTION aoso_hud_bus_write {
 
 FUNCTION aoso_hud_fast_tick {
     IF NOT AOSO_HUD_READY { RETURN. }
-    IF OPCODESLEFT < 100 { RETURN. }
-    IF DEFINED AOSO_CPU_LEVEL {
-        IF AOSO_CPU_LEVEL >= 3 {
-            SET AOSO_HUD_FAST_SKIP TO AOSO_HUD_FAST_SKIP + 1.
-            IF AOSO_HUD_FAST_SKIP < 2 { RETURN. }
-            SET AOSO_HUD_FAST_SKIP TO 0.
-        }
-    }
+    IF OPCODESLEFT < 80 { RETURN. }
     aoso_hud_collect_fast().
     aoso_hud_gui_fast().
     aoso_hud_bus_write().
@@ -299,7 +310,7 @@ FUNCTION aoso_hud_init {
 }
 
 FUNCTION aoso_hud_register_task {
-    PARAMETER interval_s IS 0.25.
+    PARAMETER interval_s IS 0.5.
     aoso_hud_init().
     aoso_sched_add("hud", interval_s, aoso_hud_tick@).
 }

@@ -108,12 +108,12 @@ FUNCTION aoso_hud_rates {
     LOCAL lvl IS 0.
     IF DEFINED AOSO_CPU_LEVEL { SET lvl TO AOSO_CPU_LEVEL. }
     IF lvl >= 3 {
-        RETURN LEXICON("hi", 0.20, "md", 1.2, "lo", 5, "gui", TRUE, "fd", FALSE, "term", TRUE).
+        RETURN LEXICON("hi", 0.20, "md", 2.0, "lo", 6, "gui", TRUE, "fd", FALSE, "term", TRUE).
     }
     IF lvl >= 2 {
-        RETURN LEXICON("hi", 0.12, "md", 0.7, "lo", 3.5, "gui", TRUE, "fd", FALSE, "term", TRUE).
+        RETURN LEXICON("hi", 0.12, "md", 1.2, "lo", 4, "gui", TRUE, "fd", FALSE, "term", TRUE).
     }
-    RETURN LEXICON("hi", 0.05, "md", 0.25, "lo", 1.5, "gui", TRUE, "fd", TRUE, "term", TRUE).
+    RETURN LEXICON("hi", 0.10, "md", 0.80, "lo", 2.0, "gui", TRUE, "fd", TRUE, "term", TRUE).
 }
 
 FUNCTION aoso_hud_local_g {
@@ -556,7 +556,7 @@ FUNCTION aoso_hud_collect_traj {
                 SET AOSO_HUD_ASC_SAMPLE_UT TO TIME:SECONDS.
                 AOSO_HUD_ASC_X:ADD(down_km).
                 AOSO_HUD_ASC_Y:ADD(alt_km).
-                IF AOSO_HUD_ASC_X:LENGTH > 16 {
+                IF AOSO_HUD_ASC_X:LENGTH > 12 {
                     AOSO_HUD_ASC_X:REMOVE(0).
                     AOSO_HUD_ASC_Y:REMOVE(0).
                 }
@@ -888,7 +888,6 @@ FUNCTION aoso_hud_collect {
         aoso_hud_collect_res().
         aoso_hud_collect_mission().
         aoso_hud_collect_landing().
-        aoso_hud_collect_traj().
         aoso_hud_collect_systems().
         aoso_hud_collect_debug().
         aoso_hud_refresh_context().

@@ -182,9 +182,9 @@ FUNCTION aoso_main {
         IF hud_every < 1 { SET hud_every TO 1. }
         LOCAL hud_rem IS AOSO_TICK_N - FLOOR(AOSO_TICK_N / hud_every) * hud_every.
         IF hud_rem = 0 {
-            IF OPCODESLEFT >= aoso_cpu_headroom() + 150 {
-                IF aoso_cpu_allow(2) { aoso_hud_fast_tick(). }
-            }
+            // Leftover opcodes die at WAIT 0. Spend a small remainder on
+            // the instrument path even when the heavy HUD task has yielded.
+            IF OPCODESLEFT >= 100 { aoso_hud_fast_tick(). }
         }
         aoso_observe_cpu_end().
         aoso_observe_idle().

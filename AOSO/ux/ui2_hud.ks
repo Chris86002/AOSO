@@ -289,8 +289,16 @@ FUNCTION aoso_ui2_hud_pipper_fast {
     IF smooth > 1 { SET smooth TO 1. }
     SET AOSO_UI2_HUD_PX TO AOSO_UI2_HUD_PX + smooth * (want_x - AOSO_UI2_HUD_PX).
     SET AOSO_UI2_HUD_PY TO AOSO_UI2_HUD_PY + smooth * (want_y - AOSO_UI2_HUD_PY).
-    SET AOSO_UI2_HUD_PIPPER:STYLE:MARGIN:H TO AOSO_UI2_HUD_PX.
-    SET AOSO_UI2_HUD_PIPPER:STYLE:MARGIN:V TO AOSO_UI2_HUD_PY.
+    LOCAL bug_key IS ROUND(AOSO_UI2_HUD_PX, 0) + "," + ROUND(AOSO_UI2_HUD_PY, 0).
+    LOCAL bug_moved IS TRUE.
+    IF AOSO_UI2_TXT:HASKEY("hud_bug") {
+        IF AOSO_UI2_TXT["hud_bug"] = bug_key { SET bug_moved TO FALSE. }
+    }
+    IF bug_moved {
+        SET AOSO_UI2_TXT["hud_bug"] TO bug_key.
+        SET AOSO_UI2_HUD_PIPPER:STYLE:MARGIN:H TO AOSO_UI2_HUD_PX.
+        SET AOSO_UI2_HUD_PIPPER:STYLE:MARGIN:V TO AOSO_UI2_HUD_PY.
+    }
 }
 
 FUNCTION aoso_ui2_hud_fast {
@@ -299,10 +307,6 @@ FUNCTION aoso_ui2_hud_fast {
     LOCAL fast_rt IS KUNIVERSE:REALTIME.
     LOCAL fast_gap IS 0.05.
     IF WARP > 0 { SET fast_gap TO 0.20. }
-    IF DEFINED AOSO_CPU_LEVEL {
-        IF AOSO_CPU_LEVEL >= 2 { SET fast_gap TO MAX(fast_gap, 0.10). }
-        IF AOSO_CPU_LEVEL >= 3 { SET fast_gap TO MAX(fast_gap, 0.25). }
-    }
     IF AOSO_UI2_HUD_LAST_FAST_RT >= 0 {
         IF fast_rt - AOSO_UI2_HUD_LAST_FAST_RT < fast_gap { RETURN. }
     }
@@ -319,18 +323,26 @@ FUNCTION aoso_ui2_hud_fast {
 
     LOCAL f IS AOSO_HUD_DATA["flight"].
     LOCAL o IS AOSO_HUD_DATA["orbit"].
-    SET AOSO_UI2_HUD_HDG:TEXT TO "HDG " + ROUND(f["hdg"], 0).
-    SET AOSO_UI2_HUD_VS:VALUE TO aoso_ui2_clamp(f["vs"], -250, 250).
+    aoso_ui2_set_text(AOSO_UI2_HUD_HDG, "hud_hdg", "HDG " + ROUND(f["hdg"], 0)).
+    LOCAL vs_now IS ROUND(aoso_ui2_clamp(f["vs"], -250, 250), 0).
+    LOCAL vs_moved IS TRUE.
+    IF AOSO_UI2_TXT:HASKEY("hud_vs") {
+        IF AOSO_UI2_TXT["hud_vs"] = vs_now { SET vs_moved TO FALSE. }
+    }
+    IF vs_moved {
+        SET AOSO_UI2_TXT["hud_vs"] TO vs_now.
+        SET AOSO_UI2_HUD_VS:VALUE TO vs_now.
+    }
 
     LOCAL vel IS f["orb"].
     IF f["in_atm"] { SET vel TO f["srf"]. }
-    SET AOSO_UI2_HUD_SPD:TEXT TO "<size=18>" + ROUND(vel, 0) + "</size>" + CHAR(10) + "VS " + ROUND(f["vs"], 0).
+    aoso_ui2_set_text(AOSO_UI2_HUD_SPD, "hud_spd", "<size=18>" + ROUND(vel, 0) + "</size>" + CHAR(10) + "VS " + ROUND(f["vs"], 0)).
 
     LOCAL alt_txt IS aoso_hud_km(f["alt"]).
     IF AOSO_HUD_CTX = "LANDING" {
         SET alt_txt TO ROUND(AOSO_HUD_DATA["landing"]["radar"], 0) + "m".
     }
-    SET AOSO_UI2_HUD_ALT:TEXT TO "<size=18>" + alt_txt + "</size>" + CHAR(10) + "AP " + aoso_hud_km(o["ap"]).
+    aoso_ui2_set_text(AOSO_UI2_HUD_ALT, "hud_alt", "<size=18>" + alt_txt + "</size>" + CHAR(10) + "AP " + aoso_hud_km(o["ap"])).
 }
 
 FUNCTION aoso_ui2_hud_update {
