@@ -334,7 +334,7 @@ FUNCTION aoso_hud_gui_build_nav {
 
 FUNCTION aoso_hud_gui_build_mission {
     PARAMETER p.
-    aoso_ui2_mission_build(p).
+    aoso_ui2_build_mission_display(p).
 
     LOCAL data IS p:ADDVBOX().
     SET data:STYLE:WIDTH TO 420.
@@ -350,26 +350,24 @@ FUNCTION aoso_hud_gui_build_mission {
     aoso_hud_lab(data, "msn_feas", "FEASIBLE  -").
     aoso_hud_lab(data, "msn_class", "CLASS  -").
     aoso_hud_lab(data, "msn_time", "ROUTE  -").
-    aoso_hud_lab(data, "msn_legend", "green=done  amber=current  dark=ahead").
+    aoso_hud_lab(data, "msn_legend", "Green = current  blue = next  check = completed in this route window.").
     aoso_hud_lab(data, "msn_skip", "").
 }
 
 FUNCTION aoso_hud_gui_build_vehicle {
     PARAMETER p.
     aoso_hud_title(p, "VEHICLE / DIGITAL TWIN").
-    aoso_ui2_vehicle_build(p).
-
-    LOCAL data IS p:ADDVBOX().
-    SET data:STYLE:WIDTH TO 420.
-    SET data:STYLE:ALIGN TO "center".
-    aoso_hud_lab(data, "veh_id", "SHIP  -").
-    aoso_hud_lab(data, "veh_cls", "CLASS  -").
-    aoso_hud_lab(data, "veh_crew", "CREW  -").
-    aoso_hud_lab(data, "veh_hw", "HARDWARE  -").
-    aoso_hud_lab(data, "veh_mob", "MOBILITY  -").
-    aoso_hud_lab(data, "veh_cap", "CAPABILITIES  -").
-    aoso_hud_lab(data, "veh_pwr", "POWER  -").
-    aoso_hud_lab(data, "veh_twin", "TWIN  -").
+    aoso_ui2_build_vehicle_frame(p).
+    aoso_ui2_build_twin_display(AOSO_UI2_VEH_MAIN).
+    aoso_hud_hint(p, "Live stage/resource schematic. Green arrow = current separation band. Display only; never stages the vessel.").
+    aoso_hud_lab(p, "veh_id", "SHIP  -").
+    aoso_hud_lab(p, "veh_cls", "CLASS  -").
+    aoso_hud_lab(p, "veh_crew", "CREW  -").
+    aoso_hud_lab(p, "veh_hw", "HARDWARE  -").
+    aoso_hud_lab(p, "veh_mob", "MOBILITY  -").
+    aoso_hud_lab(p, "veh_cap", "CAPABILITIES  -").
+    aoso_hud_lab(p, "veh_pwr", "POWER  -").
+    aoso_hud_lab(p, "veh_twin", "TWIN  -").
 }
 
 FUNCTION aoso_hud_gui_build_prop {
@@ -421,7 +419,7 @@ FUNCTION aoso_hud_gui_build_stg {
 
 FUNCTION aoso_hud_gui_build_sys {
     PARAMETER p.
-    aoso_ui2_systems_build(p).
+    aoso_ui2_build_systems_display(p).
 
     LOCAL data IS p:ADDVBOX().
     SET data:STYLE:WIDTH TO 420.
