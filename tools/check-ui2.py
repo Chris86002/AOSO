@@ -79,7 +79,7 @@ def main():
         assert not stack, f"{p.name}: unclosed delimiters"
         for name in re.findall(r"\bFUNCTION\s+(\w+)", code, re.I):
             assert functions[name.lower()] == 1 and name.lower() not in globals_, f"{p.name}: collision {name}"
-        assert not re.search(r"\b(?:LOCAL|PARAMETER)\s+(?:path|obt|note|alt|r|v|q|status)\b", code, re.I), f"{p.name}: reserved name"
+        assert not re.search(r"\b(?:LOCAL|PARAMETER)\s+(?:path|obt|note|alt|r|v|q|status|heading)\b", code, re.I), f"{p.name}: reserved name"
         assert not re.search(r"\bIF\s+NOT\s+DEFINED\b", code, re.I), f"{p.name}: IF NOT DEFINED"
         assert not re.search(r"\b(?:UNLOCK|LOCK)\s+(?:STEERING|THROTTLE)|\bSET\s+(?:WARP|WARPMODE|THROTTLE|SHIP\s*:\s*CONTROL)\b|\bSTAGE\s*\(", code, re.I), f"{p.name}: flight-control write"
         for call in re.findall(r"\b(aoso_\w+)\s*\(", code, re.I):

@@ -133,9 +133,9 @@ FUNCTION aoso_ops_readout {
     SET bank:STYLE:WIDTH TO 430.
     SET bank:STYLE:HEIGHT TO 480.
     SET bank:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "readout_frame.png".
-    LOCAL heading IS bank:ADDLABEL("<b>" + title + "</b>").
-    SET heading:STYLE:HSTRETCH TO TRUE.
-    SET heading:STYLE:ALIGN TO "center".
+    LOCAL bank_title_widget IS bank:ADDLABEL("<b>" + title + "</b>").
+    SET bank_title_widget:STYLE:HSTRETCH TO TRUE.
+    SET bank_title_widget:STYLE:ALIGN TO "center".
     RETURN bank.
 }
 

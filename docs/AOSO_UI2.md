@@ -273,3 +273,7 @@ and last errors. Run `python tools/inspect-hud-dump.py <path-to-aoso_hud.json>`
 to get a quick diagnosis. `python tools/render-hud-preview.py out.png` generates
 an offline visual sample of the expected geometry (requires Pillow); it does
 not replace the in-game TEST check.
+
+If kOS reports that a declaration clobbers a built-in function, run
+`powershell -NoProfile -File tools/check-kos-builtins.ps1 -KspRoot 'C:\path\to\Kerbal Space Program'`.
+This checks every AOSO script against the built-in functions in that kOS install.
