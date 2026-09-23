@@ -186,7 +186,7 @@ FUNCTION aoso_hud_apply_scale {
     SET g:STYLE:WIDTH TO wid.
     aoso_hud_scale_walk(g, fs).
     IF AOSO_HUD_HDR_TITLE:ISTYPE("LABEL") {
-        SET AOSO_HUD_HDR_TITLE:TEXT TO "<b><size=" + (fs + 4) + "><color=#7EC8FF>AOSO</color></size>  MISSION COMPUTER</b>".
+        SET AOSO_HUD_HDR_TITLE:TEXT TO "<b><size=" + (fs + 4) + "><color=#50FF96>AOSO</color></size>  AUTONOMOUS FLIGHT COMPUTER · UI v2</b>".
     }
     aoso_hud_set("chrome_pct", "" + aoso_hud_scale_pct() + "%").
 }
@@ -251,33 +251,39 @@ FUNCTION aoso_hud_toggle_compact {
 
 FUNCTION aoso_hud_gui_build_flight {
     PARAMETER p.
-    aoso_hud_title(p, "FLIGHT").
-    aoso_hud_hint(p, "Live ship state. Display only — AOSO is already flying.").
-    aoso_hud_lab(p, "flt_body", "BODY  -").
-    aoso_hud_lab(p, "flt_alt", "ALT  -").
-    aoso_hud_lab(p, "flt_spd", "SPEED  -").
-    aoso_hud_lab(p, "flt_att", "ATT  -").
-    aoso_hud_lab(p, "flt_orb", "ORBIT  -").
-    aoso_hud_lab(p, "flt_twr", "TWR  -").
-    aoso_hud_lab(p, "flt_guid", "GUIDANCE  -").
-    aoso_hud_lab(p, "flt_steer", "STEERING  -").
-    aoso_hud_lab(p, "flt_thr", "THROTTLE  -").
-    aoso_hud_lab(p, "flt_nav", "NAVIGATION  -").
-    aoso_hud_lab(p, "flt_pri", "").
+    aoso_ui2_build_pfd(p).
+
+    LOCAL data IS p:ADDVBOX().
+    SET data:STYLE:WIDTH TO 420.
+    SET data:STYLE:ALIGN TO "center".
+    aoso_hud_lab(data, "flt_body", "BODY  -").
+    aoso_hud_lab(data, "flt_alt", "ALT  -").
+    aoso_hud_lab(data, "flt_spd", "SPEED  -").
+    aoso_hud_lab(data, "flt_att", "ATT  -").
+    aoso_hud_lab(data, "flt_orb", "ORBIT  -").
+    aoso_hud_lab(data, "flt_twr", "TWR  -").
+    aoso_hud_lab(data, "flt_guid", "GUIDANCE  -").
+    aoso_hud_lab(data, "flt_steer", "STEERING  -").
+    aoso_hud_lab(data, "flt_thr", "THROTTLE  -").
+    aoso_hud_lab(data, "flt_nav", "").
+    aoso_hud_lab(data, "flt_pri", "").
 }
 
 FUNCTION aoso_hud_gui_build_nav {
     PARAMETER p.
-    aoso_hud_title(p, "NAVIGATION").
-    aoso_hud_hint(p, "Orbit, target, and burn node. GOTO = transfer autopilot state. Does not retarget.").
-    aoso_hud_lab(p, "nav_soi", "SPHERE OF INFLUENCE  -").
-    aoso_hud_lab(p, "nav_orb", "ORBIT  -").
-    aoso_hud_lab(p, "nav_tgt", "TARGET  NO TARGET").
-    aoso_hud_lab(p, "nav_rel", "REL VEL  -").
-    aoso_hud_lab(p, "nav_patch", "PATCH  -").
-    aoso_hud_lab(p, "nav_node", "NODE  -").
-    aoso_hud_lab(p, "nav_burn", "BURN  -").
-    aoso_hud_lab(p, "nav_goto", "GOTO  -").
+    aoso_ui2_build_nav_display(p).
+
+    LOCAL data IS p:ADDVBOX().
+    SET data:STYLE:WIDTH TO 420.
+    SET data:STYLE:ALIGN TO "center".
+    aoso_hud_lab(data, "nav_soi", "SPHERE OF INFLUENCE  -").
+    aoso_hud_lab(data, "nav_orb", "ORBIT  -").
+    aoso_hud_lab(data, "nav_tgt", "TARGET  NO TARGET").
+    aoso_hud_lab(data, "nav_rel", "REL VEL  -").
+    aoso_hud_lab(data, "nav_patch", "PATCH  -").
+    aoso_hud_lab(data, "nav_node", "NODE  -").
+    aoso_hud_lab(data, "nav_burn", "BURN  -").
+    aoso_hud_lab(data, "nav_goto", "GOTO  -").
 }
 
 FUNCTION aoso_hud_gui_build_mission {
@@ -301,8 +307,9 @@ FUNCTION aoso_hud_gui_build_mission {
 
 FUNCTION aoso_hud_gui_build_vehicle {
     PARAMETER p.
-    aoso_hud_title(p, "VEHICLE").
-    aoso_hud_hint(p, "What this ship is and what AOSO thinks it can do.").
+    aoso_hud_title(p, "VEHICLE / DIGITAL TWIN").
+    aoso_ui2_build_vehicle_frame(p).
+    aoso_hud_hint(p, "Vehicle schematic and capability state. The graphical twin remains display-only.").
     aoso_hud_lab(p, "veh_id", "SHIP  -").
     aoso_hud_lab(p, "veh_cls", "CLASS  -").
     aoso_hud_lab(p, "veh_crew", "CREW  -").
@@ -330,20 +337,23 @@ FUNCTION aoso_hud_gui_build_prop {
 
 FUNCTION aoso_hud_gui_build_land {
     PARAMETER p.
-    aoso_hud_title(p, "LANDING").
-    aoso_hud_hint(p, "Landing radar and suicide-burn numbers. The LAND light is an arrow, not a land command. AOSO flies the landing.").
-    aoso_hud_lab(p, "lnd_st", "LANDING SYSTEM  STANDBY").
-    aoso_hud_lab(p, "lnd_site", "SITE  -").
-    aoso_hud_lab(p, "lnd_alt", "RADAR  -").
-    aoso_hud_lab(p, "lnd_spd", "VSPD / HSPD  -").
-    aoso_hud_lab(p, "lnd_twr", "TWR / THROTTLE  -").
-    aoso_hud_lab(p, "lnd_trig", "SUICIDE  -").
-    aoso_hud_lab(p, "lnd_dv", "LANDING dV  -").
-    aoso_hud_lab(p, "lnd_gear", "GEAR  -").
-    aoso_hud_lab(p, "lnd_ret0", "").
-    aoso_hud_lab(p, "lnd_ret1", "").
-    aoso_hud_lab(p, "lnd_ret2", "").
-    aoso_hud_lab(p, "lnd_ret3", "").
+    aoso_ui2_build_surface_display(p).
+
+    LOCAL data IS p:ADDVBOX().
+    SET data:STYLE:WIDTH TO 420.
+    SET data:STYLE:ALIGN TO "center".
+    aoso_hud_lab(data, "lnd_st", "LANDING SYSTEM  STANDBY").
+    aoso_hud_lab(data, "lnd_site", "SITE  -").
+    aoso_hud_lab(data, "lnd_alt", "RADAR  -").
+    aoso_hud_lab(data, "lnd_spd", "VSPD / HSPD  -").
+    aoso_hud_lab(data, "lnd_twr", "TWR / THROTTLE  -").
+    aoso_hud_lab(data, "lnd_trig", "SUICIDE  -").
+    aoso_hud_lab(data, "lnd_dv", "LANDING dV  -").
+    aoso_hud_lab(data, "lnd_gear", "GEAR  -").
+    aoso_hud_lab(data, "lnd_ret0", "").
+    aoso_hud_lab(data, "lnd_ret1", "").
+    aoso_hud_lab(data, "lnd_ret2", "").
+    aoso_hud_lab(data, "lnd_ret3", "").
 }
 
 FUNCTION aoso_hud_gui_build_stg {
@@ -449,7 +459,7 @@ FUNCTION aoso_hud_gui_init {
     aoso_hud_skin_apply(g).
     SET AOSO_HUD_GUI TO g.
 
-    LOCAL hdr IS g:ADDLABEL("<b><size=16><color=#7EC8FF>AOSO</color></size>  MISSION COMPUTER</b>").
+    LOCAL hdr IS g:ADDLABEL("<b><size=16><color=#50FF96>AOSO</color></size>  AUTONOMOUS FLIGHT COMPUTER · UI v2</b>").
     SET hdr:STYLE:HSTRETCH TO TRUE.
     SET AOSO_HUD_HDR_TITLE TO hdr.
     aoso_hud_lab(g, "hdr_sys", "SYS  NOMINAL").
@@ -713,6 +723,7 @@ FUNCTION aoso_hud_tabs_adapt {
 }
 
 FUNCTION aoso_hud_gui_upd_flight {
+    aoso_ui2_pfd_update().
     LOCAL f IS AOSO_HUD_DATA["flight"].
     LOCAL o IS AOSO_HUD_DATA["orbit"].
     LOCAL sys IS AOSO_HUD_DATA["systems"].
@@ -808,6 +819,7 @@ FUNCTION aoso_hud_flight_priority_txt {
 }
 
 FUNCTION aoso_hud_gui_upd_nav {
+    aoso_ui2_nav_update().
     LOCAL o IS AOSO_HUD_DATA["orbit"].
     LOCAL t IS AOSO_HUD_DATA["target"].
     LOCAL m IS AOSO_HUD_DATA["mission"].
@@ -937,6 +949,7 @@ FUNCTION aoso_hud_gui_upd_prop {
 }
 
 FUNCTION aoso_hud_gui_upd_land {
+    aoso_ui2_surface_update().
     LOCAL l IS AOSO_HUD_DATA["landing"].
     LOCAL f IS AOSO_HUD_DATA["flight"].
     LOCAL rsrc IS AOSO_HUD_DATA["res"].
