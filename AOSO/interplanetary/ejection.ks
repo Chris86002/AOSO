@@ -382,7 +382,9 @@ FUNCTION aoso_capture_safe_pe_floor {
 // floor and refines around the best valid prograde/retrograde impulse.
 FUNCTION aoso_capture_add_pe_adjust {
     PARAMETER target_pe.
-    aoso_warp_hard_stop().
+    IF NOT aoso_warp_ensure_physics_idle() {
+        RETURN 0.
+    }
 
     LOCAL safe_floor IS aoso_capture_safe_pe_floor(target_pe).
     LOCAL eta_b IS 40.
