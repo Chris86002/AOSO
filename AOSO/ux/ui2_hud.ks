@@ -32,6 +32,14 @@ FUNCTION aoso_ui2_hud_toggle_declutter {
     SET AOSO_UI2_HUD_DECLUTTER TO NOT AOSO_UI2_HUD_DECLUTTER.
 }
 
+FUNCTION aoso_ui2_hud_recenter {
+    IF NOT AOSO_UI2_HUD_GUI:ISTYPE("GUI") { RETURN. }
+    // Safe 1440p-friendly default. The HUD remains draggable for any
+    // resolution/aspect ratio and REC always restores a known-good position.
+    SET AOSO_UI2_HUD_GUI:X TO 490.
+    SET AOSO_UI2_HUD_GUI:Y TO 70.
+}
+
 FUNCTION aoso_ui2_hud_dispose {
     IF AOSO_UI2_HUD_GUI:ISTYPE("GUI") { AOSO_UI2_HUD_GUI:DISPOSE(). }
     SET AOSO_UI2_HUD_GUI TO 0.
@@ -57,6 +65,7 @@ FUNCTION aoso_ui2_hud_build {
     SET g:Y TO 70.
     SET g:DRAGGABLE TO TRUE.
     SET g:SKIN:LABEL:TEXTCOLOR TO RGB(0.30, 1.0, 0.60).
+    SET g:SKIN:BUTTON:BG TO AOSO_UI2_ASSET_ROOT + "button_off.png".
     SET g:SKIN:VERTICALSLIDER:BG TO AOSO_UI2_ASSET_ROOT + "vscale.png".
     SET g:SKIN:VERTICALSLIDERTHUMB:BG TO AOSO_UI2_ASSET_ROOT + "diamond.png".
     SET g:SKIN:VERTICALSLIDERTHUMB:WIDTH TO 18.
@@ -70,13 +79,16 @@ FUNCTION aoso_ui2_hud_build {
     LOCAL top IS g:ADDHLAYOUT().
     SET top:STYLE:WIDTH TO 440.
     SET AOSO_UI2_HUD_MODE TO top:ADDLABEL("<b>AOSO FLIGHT DIRECTOR</b>").
-    SET AOSO_UI2_HUD_MODE:STYLE:WIDTH TO 250.
+    SET AOSO_UI2_HUD_MODE:STYLE:WIDTH TO 205.
     SET AOSO_UI2_HUD_HDG TO top:ADDLABEL("HDG ---").
-    SET AOSO_UI2_HUD_HDG:STYLE:WIDTH TO 80.
+    SET AOSO_UI2_HUD_HDG:STYLE:WIDTH TO 65.
     SET AOSO_UI2_HUD_HDG:STYLE:ALIGN TO "right".
     LOCAL b_declutter IS top:ADDBUTTON("DCL").
     SET b_declutter:STYLE:WIDTH TO 45.
     SET b_declutter:ONCLICK TO aoso_ui2_hud_toggle_declutter@.
+    LOCAL b_rec IS top:ADDBUTTON("REC").
+    SET b_rec:STYLE:WIDTH TO 45.
+    SET b_rec:ONCLICK TO aoso_ui2_hud_recenter@.
     LOCAL b_mfd IS top:ADDBUTTON("MFD").
     SET b_mfd:STYLE:WIDTH TO 45.
     SET b_mfd:ONCLICK TO aoso_ui2_hud_mfd@.
