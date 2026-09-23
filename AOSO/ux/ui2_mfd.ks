@@ -276,10 +276,16 @@ FUNCTION aoso_ui2_systems_update {
     LOCAL debug_data IS AOSO_HUD_DATA["debug"].
     LOCAL cpu_band IS "".
     IF debug_data:HASKEY("band") { SET cpu_band TO debug_data["band"]. }
+    LOCAL ui_cost_txt IS "".
+    IF DEFINED AOSO_UI2_LAST_RENDER_MS {
+        SET ui_cost_txt TO "   UI " + AOSO_UI2_LAST_RENDER_PAGE + " " +
+            ROUND(AOSO_UI2_LAST_RENDER_MS, 2) + "ms/" +
+            AOSO_UI2_LAST_RENDER_OP + "op".
+    }
     SET AOSO_UI2_SYS_CPU:TEXT TO "CPU " + debug_data["cpu"] + " " +
         cpu_band + "   " + ROUND(100 * debug_data["frac"], 0) +
         "% / " + debug_data["ipu"] + " IPU   LEFT " + debug_data["left"] +
-        "   EC " + ROUND(AOSO_HUD_DATA["res"]["ec"], 0) + "%".
+        "   EC " + ROUND(AOSO_HUD_DATA["res"]["ec"], 0) + "%" + ui_cost_txt.
 }
 
 FUNCTION aoso_ui2_build_vehicle_frame {
