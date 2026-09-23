@@ -442,13 +442,17 @@ FUNCTION aoso_ui2_nav_update {
                 SET quality TO "UNEXPECTED PATCH".
                 SET quality_state TO "WARN".
             } ELSE {
-                LOCAL patch_body IS BODY(o["patch"]).
-                IF aoso_rendezvous_pe_ok_value(o["patch_pe"], patch_body) {
-                    SET quality TO "CAPTURE CORRIDOR".
-                } ELSE {
-                    IF aoso_rendezvous_pe_rough_ok_value(o["patch_pe"], patch_body) {
-                        SET quality TO "ROUGH / SAFE".
+                IF o["patch"] = goal {
+                    LOCAL patch_body IS BODY(o["patch"]).
+                    IF aoso_rendezvous_pe_ok_value(o["patch_pe"], patch_body) {
+                        SET quality TO "CAPTURE CORRIDOR".
+                    } ELSE {
+                        IF aoso_rendezvous_pe_rough_ok_value(o["patch_pe"], patch_body) {
+                            SET quality TO "ROUGH / SAFE".
+                        }
                     }
+                } ELSE {
+                    SET quality TO "ROUTE PATCH".
                 }
             }
         }
