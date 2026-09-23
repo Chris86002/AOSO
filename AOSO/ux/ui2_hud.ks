@@ -177,7 +177,7 @@ FUNCTION aoso_ui2_hud_brightness {
 
 FUNCTION aoso_ui2_hud_pipper_fast {
     IF NOT AOSO_UI2_HUD_VISIBLE { RETURN. }
-    IF NOT AOSO_UI2_HUD_PIPPER:ISTYPE("Label") { RETURN. }
+    IF NOT AOSO_UI2_HUD_PIPPER:ISTYPE("LABEL") { RETURN. }
 
     LOCAL target IS aoso_ui2_steer_target_vector().
     IF target:MAG < 0.001 { RETURN. }
@@ -202,7 +202,7 @@ FUNCTION aoso_ui2_hud_fast {
 
     aoso_ui2_hud_pipper_fast().
     SET AOSO_UI2_HUD_HDG:TEXT TO "HDG " + ROUND(f["hdg"], 0).
-    SET AOSO_UI2_HUD_VS:VALUE TO CLAMP(f["vs"], AOSO_UI2_HUD_VS:MIN, AOSO_UI2_HUD_VS:MAX).
+    SET AOSO_UI2_HUD_VS:VALUE TO CLAMP(f["vs"], -250, 250).
 
     LOCAL vel IS f["orb"].
     IF f["in_atm"] { SET vel TO f["srf"]. }
