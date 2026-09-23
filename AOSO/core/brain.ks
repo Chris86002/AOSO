@@ -28,6 +28,10 @@ FUNCTION aoso_brain_is_quiet {
     IF DEFINED AOSO_MANEUVER_BURNING {
         IF AOSO_MANEUVER_BURNING { RETURN FALSE. }
     }
+    // Strategic planning must never yield while timewarp is advancing UT.
+    // WAIT 0 during rails can jump minutes/hours and made SCAN look like
+    // endless warp while the planner rebuilt the full tour in the background.
+    IF WARP > 0 { RETURN FALSE. }
     LOCAL st IS SHIP:STATUS.
     // Sit on the pad or on the surface and take as long as the math needs.
     IF st = "PRELAUNCH" { RETURN TRUE. }
@@ -116,8 +120,26 @@ FUNCTION aoso_brain_consider_replan {
     SET AOSO_BRAIN["pending_replan"] TO reason.
 }
 
+// Local flight guidance owns the current leg. Model updates may dirty the
+// strategic plan, but they must not tear down/rebuild the full tour in the
+// middle of GOTO, polar insertion, site survey, deorbit, or descent.
+FUNCTION aoso_brain_local_guidance_active {
+    IF DEFINED AOSO_GOTO {
+        LOCAL gs IS AOSO_GOTO["current"].
+        IF gs <> "" AND gs <> "DONE" AND gs <> "ABORTED" { RETURN TRUE. }
+    }
+    IF DEFINED AOSO_TOUR {
+        LOCAL ts IS AOSO_TOUR["current"].
+        IF ts = "POLAR" OR ts = "SCAN" OR ts = "DEORBIT" OR ts = "DESCEND" {
+            RETURN TRUE.
+        }
+    }
+    RETURN FALSE.
+}
+
 FUNCTION aoso_brain_do_replan {
     PARAMETER reason.
+    IF aoso_brain_local_guidance_active() { RETURN. }
     IF DEFINED AOSO_PLAN_LAST {
         IF DEFINED AOSO_CPU_LEVEL {
             IF AOSO_CPU_LEVEL >= 2 {
