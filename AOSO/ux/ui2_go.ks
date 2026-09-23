@@ -29,9 +29,12 @@ FUNCTION aoso_ui2_go_lamp {
     PARAMETER lamp_id.
     PARAMETER col.
     PARAMETER row_i.
-    LOCAL btn IS page:ADDBUTTON("---").
+    LOCAL holder IS aoso_crt_holder(page).
+    LOCAL btn IS holder:ADDBUTTON("---").
     aoso_crt_zero(btn).
     aoso_crt_move(btn, 28 + col * 214, 64 + row_i * 40, 200, 32).
+    SET btn:STYLE:FONTSIZE TO 12.
+    SET btn:STYLE:ALIGN TO "CENTER".
     aoso_ui2_button_bg(btn, "button_stby").
     SET AOSO_UI2_GO_BTNS[lamp_id] TO btn.
 }
@@ -56,7 +59,7 @@ FUNCTION aoso_ui2_go_build {
         SET i TO i + 1.
     }
 
-    SET AOSO_UI2_GO_ARM TO page:ADDBUTTON("").
+    SET AOSO_UI2_GO_ARM TO aoso_crt_holder(page):ADDBUTTON("").
     SET AOSO_UI2_GO_ARM:ONCLICK TO aoso_ui2_go_click@.
     aoso_crt_zero(AOSO_UI2_GO_ARM).
     aoso_crt_move(AOSO_UI2_GO_ARM, 490, 148, 200, 72).

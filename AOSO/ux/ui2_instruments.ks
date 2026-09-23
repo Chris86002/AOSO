@@ -83,9 +83,13 @@ FUNCTION aoso_ui2_overlay_label {
     RETURN lab.
 }
 
-// Absolute pin. kOS MARGIN:H / MARGIN:V set both sides, which stacks every
-// widget and stretches the plate. LEFT/TOP place the widget; RIGHT and
-// BOTTOM cancel that offset so the next sibling still starts at the origin.
+// Absolute pin. Unity lays a vertical group out by advancing one full
+// widget height per child, and it uses max(previous bottom, next top)
+// for the gap. A negative bottom margin therefore does not pull the
+// next sibling back, which is why lamps stacked off the bottom of the
+// plate. Each pin is a 1px holder; the real widget hangs out of it.
+GLOBAL AOSO_CRT_LAST_SLOT IS 0.
+
 FUNCTION aoso_crt_zero {
     PARAMETER box.
     SET box:STYLE:MARGIN:LEFT TO 0.
@@ -102,20 +106,36 @@ FUNCTION aoso_crt_zero {
     SET box:STYLE:BORDER:BOTTOM TO 0.
 }
 
+FUNCTION aoso_crt_holder {
+    PARAMETER parent.
+    SET AOSO_CRT_LAST_SLOT TO parent:WIDGETS:LENGTH.
+    LOCAL holder IS parent:ADDVLAYOUT().
+    aoso_crt_zero(holder).
+    SET holder:STYLE:HSTRETCH TO FALSE.
+    SET holder:STYLE:VSTRETCH TO FALSE.
+    SET holder:STYLE:WIDTH TO 1.
+    SET holder:STYLE:HEIGHT TO 1.
+    RETURN holder.
+}
+
 FUNCTION aoso_crt_move {
     PARAMETER widget.
     PARAMETER x.
     PARAMETER y.
     PARAMETER w.
     PARAMETER h.
+    LOCAL slot IS AOSO_CRT_LAST_SLOT.
+    LOCAL saved IS widget:STYLE:MARGIN:RIGHT.
+    IF saved >= 1 { SET slot TO saved - 1. }
     SET widget:STYLE:HSTRETCH TO FALSE.
     SET widget:STYLE:VSTRETCH TO FALSE.
     SET widget:STYLE:WIDTH TO w.
     SET widget:STYLE:HEIGHT TO h.
     SET widget:STYLE:MARGIN:LEFT TO x.
-    SET widget:STYLE:MARGIN:TOP TO y.
-    SET widget:STYLE:MARGIN:RIGHT TO -x.
-    SET widget:STYLE:MARGIN:BOTTOM TO -(y + h).
+    SET widget:STYLE:MARGIN:TOP TO y - slot.
+    SET widget:STYLE:MARGIN:BOTTOM TO 0.
+    // RIGHT remembers the holder index. It is not a gap: the holder is 1px.
+    SET widget:STYLE:MARGIN:RIGHT TO slot + 1.
 }
 
 FUNCTION aoso_crt_label {
@@ -124,7 +144,8 @@ FUNCTION aoso_crt_label {
     PARAMETER y.
     PARAMETER w.
     PARAMETER size IS 16.
-    LOCAL lab IS parent:ADDLABEL("").
+    LOCAL holder IS aoso_crt_holder(parent).
+    LOCAL lab IS holder:ADDLABEL("").
     SET lab:STYLE:FONTSIZE TO size.
     SET lab:STYLE:ALIGN TO "LEFT".
     SET lab:STYLE:TEXTCOLOR TO RGB(0.72, 1, 0.62).
@@ -139,12 +160,29 @@ FUNCTION aoso_crt_bug {
     PARAMETER w.
     PARAMETER h IS -1.
     IF h < 0 { SET h TO w. }
-    LOCAL marker IS parent:ADDLABEL("").
+    LOCAL holder IS aoso_crt_holder(parent).
+    LOCAL marker IS holder:ADDLABEL("").
     SET marker:IMAGE TO image_path.
     aoso_crt_zero(marker).
     aoso_crt_move(marker, 0, 0, w, h).
     SET marker:VISIBLE TO FALSE.
     RETURN marker.
+}
+
+// Outer window frame. The plate art only borders the 740px page, so the
+// key row and the extra window width were sitting on bare black.
+FUNCTION aoso_crt_frame {
+    PARAMETER g.
+    LOCAL frame IS AOSO_UI2_ASSET_ROOT + "crt_bezel.png".
+    SET g:STYLE:BG TO frame.
+    SET g:STYLE:BORDER:LEFT TO 10.
+    SET g:STYLE:BORDER:RIGHT TO 10.
+    SET g:STYLE:BORDER:TOP TO 10.
+    SET g:STYLE:BORDER:BOTTOM TO 10.
+    SET g:STYLE:PADDING:LEFT TO 8.
+    SET g:STYLE:PADDING:RIGHT TO 8.
+    SET g:STYLE:PADDING:TOP TO 8.
+    SET g:STYLE:PADDING:BOTTOM TO 12.
 }
 
 FUNCTION aoso_crt_fit {
@@ -202,6 +240,10 @@ FUNCTION aoso_crt_key_face {
     SET button_widget:STYLE:PADDING:RIGHT TO 0.
     SET button_widget:STYLE:PADDING:TOP TO 0.
     SET button_widget:STYLE:PADDING:BOTTOM TO 0.
+    SET button_widget:STYLE:MARGIN:LEFT TO 2.
+    SET button_widget:STYLE:MARGIN:RIGHT TO 2.
+    SET button_widget:STYLE:MARGIN:TOP TO 0.
+    SET button_widget:STYLE:MARGIN:BOTTOM TO 0.
     SET button_widget:STYLE:WIDTH TO 88.
     SET button_widget:STYLE:HEIGHT TO 28.
     SET button_widget:STYLE:HSTRETCH TO FALSE.

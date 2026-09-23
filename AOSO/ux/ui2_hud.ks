@@ -102,14 +102,11 @@ FUNCTION aoso_ui2_hud_phase_at {
 FUNCTION aoso_ui2_hud_build {
     IF AOSO_UI2_HUD_GUI:ISTYPE("GUI") { RETURN. }
 
-    LOCAL g IS GUI(800).
+    LOCAL g IS GUI(780).
     SET g:X TO aoso_config_get("UI2_HUD_X", 80).
     SET g:Y TO aoso_config_get("UI2_HUD_Y", 40).
     SET g:DRAGGABLE TO TRUE.
-    SET g:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "crt_black.png".
-    SET g:STYLE:PADDING:LEFT TO 6.
-    SET g:STYLE:PADDING:RIGHT TO 6.
-    SET g:STYLE:PADDING:BOTTOM TO 4.
+    aoso_crt_frame(g).
     SET g:SKIN:LABEL:TEXTCOLOR TO RGB(0.72, 1, 0.62).
     SET g:SKIN:LABEL:FONTSIZE TO 16.
     SET AOSO_UI2_HUD_GUI TO g.

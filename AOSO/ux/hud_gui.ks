@@ -57,7 +57,7 @@ FUNCTION aoso_ui2_selftest {
 
     LOCAL image_files IS LIST(
         "crt_go.png", "crt_asc.png", "crt_vs.png", "crt_rte.png", "crt_bdg.png", "crt_rnd.png",
-        "crt_glass.png", "crt_black.png", "hud_overlay.png", "phase_mark.png",
+        "crt_glass.png", "crt_black.png", "crt_bezel.png", "hud_overlay.png", "phase_mark.png",
         "key_go_off.png", "key_asc_off.png", "key_asc_on.png", "key_hud_off.png", "key_mfd_off.png",
         "launch_go.png", "launch_hold.png", "launch_nogo.png", "launch_commit.png",
         "diamond.png", "ship_bug.png", "trail_bug.png", "pred_bug.png"
@@ -346,7 +346,7 @@ FUNCTION aoso_hud_scale_pct {
 FUNCTION aoso_hud_skin_apply {
     PARAMETER g.
     LOCAL fs IS aoso_hud_scale_fs().
-    SET g:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "crt_black.png".
+    SET g:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "crt_bezel.png".
     SET g:SKIN:LABEL:FONTSIZE TO fs.
     SET g:SKIN:LABEL:TEXTCOLOR TO RGB(0.62, 1.0, 0.55).
     SET g:SKIN:BUTTON:FONTSIZE TO fs.
@@ -364,6 +364,7 @@ FUNCTION aoso_hud_skin_apply {
     SET g:SKIN:VERTICALSLIDERTHUMB:HEIGHT TO 16.
     SET g:SKIN:TOGGLE:FONTSIZE TO fs.
     SET g:SKIN:WINDOW:FONTSIZE TO fs.
+    aoso_crt_frame(g).
 }
 
 FUNCTION aoso_hud_scale_walk {
@@ -682,14 +683,12 @@ FUNCTION aoso_crt_auto_click {
 
 FUNCTION aoso_hud_gui_init {
     aoso_hud_gui_dispose().
-    LOCAL g IS GUI(920).
+    LOCAL g IS GUI(880).
     SET g:X TO 24.
     SET g:Y TO 36.
     SET g:DRAGGABLE TO TRUE.
     aoso_hud_skin_apply(g).
-    SET g:STYLE:PADDING:LEFT TO 6.
-    SET g:STYLE:PADDING:RIGHT TO 6.
-    SET g:STYLE:PADDING:BOTTOM TO 4.
+    aoso_crt_frame(g).
     SET g:SKIN:LABEL:FONTSIZE TO 16.
     SET g:SKIN:LABEL:TEXTCOLOR TO RGB(0.72, 1, 0.62).
     SET AOSO_HUD_GUI TO g.
@@ -708,8 +707,11 @@ FUNCTION aoso_hud_gui_init {
     aoso_ui2_rnd_build(aoso_hud_add_page("RNDZ")).
 
     LOCAL keys IS vbox:ADDHLAYOUT().
-    SET keys:STYLE:MARGIN:TOP TO 4.
-    SET keys:STYLE:MARGIN:LEFT TO 4.
+    SET keys:STYLE:MARGIN:TOP TO 6.
+    SET keys:STYLE:MARGIN:LEFT TO 0.
+    SET keys:STYLE:MARGIN:BOTTOM TO 2.
+    SET keys:STYLE:HEIGHT TO 32.
+    SET keys:STYLE:VSTRETCH TO FALSE.
     aoso_crt_add_key(keys, "GO", "go").
     aoso_crt_add_key(keys, "ASC", "asc").
     aoso_crt_add_key(keys, "VSIT", "vsit").
