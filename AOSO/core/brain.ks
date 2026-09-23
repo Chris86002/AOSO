@@ -32,6 +32,8 @@ FUNCTION aoso_brain_is_quiet {
     // WAIT 0 during rails can jump minutes/hours and made SCAN look like
     // endless warp while the planner rebuilt the full tour in the background.
     IF WARP > 0 { RETURN FALSE. }
+    IF WARPMODE <> "PHYSICS" { RETURN FALSE. }
+    IF NOT KUNIVERSE:TIMEWARP:ISSETTLED { RETURN FALSE. }
     LOCAL st IS SHIP:STATUS.
     // Sit on the pad or on the surface and take as long as the math needs.
     IF st = "PRELAUNCH" { RETURN TRUE. }
