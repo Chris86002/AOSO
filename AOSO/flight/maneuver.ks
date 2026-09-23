@@ -98,12 +98,29 @@ FUNCTION aoso_warp_force_rails {
     aoso_yield_hud().
 }
 
+// Rails -> physics is not instantaneous in KSP. A large vessel can remain
+// packed for several real seconds after WARP reaches zero. During that gap,
+// LOCK STEERING is immediately rejected/disabled by kOS, so trying to steer
+// creates a True/False fly-by-wire storm and can stall the game.
+//
+// This helper is deliberately non-blocking. Call once per scheduler tick.
+// TRUE means the vessel is fully back in settled physics at 1x and it is safe
+// for a controller to LOCK STEERING or request physics warp.
+FUNCTION aoso_warp_ensure_physics_idle {
+    IF WARP > 0 {
+        SET WARP TO 0.
+        RETURN FALSE.
+    }
+    IF WARPMODE <> "PHYSICS" {
+        SET WARPMODE TO "PHYSICS".
+        RETURN FALSE.
+    }
+    IF NOT KUNIVERSE:TIMEWARP:ISSETTLED { RETURN FALSE. }
+    RETURN TRUE.
+}
+
 FUNCTION aoso_warp_force_physics {
-    IF WARPMODE = "PHYSICS" { RETURN. }
-    SET WARP TO 0.
-    aoso_yield_hud().
-    SET WARPMODE TO "PHYSICS".
-    aoso_yield_hud().
+    RETURN aoso_warp_ensure_physics_idle().
 }
 
 // kOS PHYSICS WARP: 1=2x, 2=3x, 3=4x. Config is the multiplier (2 = 2x).
@@ -118,11 +135,12 @@ FUNCTION aoso_warp_physics_index {
 FUNCTION aoso_warp_set_physics_cruise {
     IF SHIP:STATUS = "PRELAUNCH" {
         SET WARP TO 0.
-        RETURN.
+        RETURN FALSE.
     }
-    aoso_warp_force_physics().
+    IF NOT aoso_warp_ensure_physics_idle() { RETURN FALSE. }
     LOCAL widx IS aoso_warp_physics_index().
     IF WARP <> widx { SET WARP TO widx. }
+    RETURN TRUE.
 }
 
 FUNCTION aoso_warp_stop {
@@ -217,7 +235,11 @@ FUNCTION aoso_warp_approach {
     IF physics_until_s < crucial_s { SET physics_until_s TO crucial_s. }
 
     IF eta_s <= physics_until_s {
-        SET WARP TO 0.
+        IF AOSO_STEER_MODE <> "OFF" { aoso_steer_release(). }
+        IF NOT aoso_warp_ensure_physics_idle() {
+            aoso_warp_report("UNPACK", eta_s, "rails -> physics settling before precision").
+            RETURN "transition".
+        }
         aoso_warp_report("PRECISION", eta_s, "1x inside T-" + ROUND(physics_until_s, 0) + "s").
         RETURN "now".
     }
@@ -234,7 +256,11 @@ FUNCTION aoso_warp_approach {
 
     LOCAL want IS aoso_warp_rails_want(eta_s, rails_lead_s).
     IF want <= 0 {
-        aoso_warp_set_physics_cruise().
+        IF AOSO_STEER_MODE <> "OFF" { aoso_steer_release(). }
+        IF NOT aoso_warp_set_physics_cruise() {
+            aoso_warp_report("UNPACK", eta_s, "rails -> physics settling before align").
+            RETURN "transition".
+        }
         aoso_warp_report("ALIGN", eta_s, "precision lead T-" + ROUND(rails_lead_s, 0) + "s").
         RETURN "physics".
     }
@@ -553,7 +579,7 @@ FUNCTION aoso_maneuver_execute_next {
         // could still return 5x. Each scheduler tick then did LOCK -> UNLOCK
         // STEERING and could also force a rails/physics transition.
         LOCAL wstate IS aoso_warp_request(nd:ETA, warp_lead, physics_until).
-        IF wstate = "rails" {
+        IF wstate = "rails" OR wstate = "transition" {
             RCS OFF.
             aoso_throttle_set(0).
             RETURN FALSE.
