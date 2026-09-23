@@ -166,15 +166,11 @@ FUNCTION aoso_warp_stop {
     IF WARP > 0 { SET WARP TO 0. }
 }
 
-// WAIT 0 while rails is still running advances UT by hours. Capture
-// planning did that and then "missed" a 40 s node by 28000 s forever.
+// Emergency/ownership stop request. Never WAIT here: a WAIT 0 issued while
+// KSP is still at high rails warp can advance UT by minutes or hours before
+// the rate change is applied. Callers that need unpacked physics must use
+// aoso_warp_ensure_physics_idle() across scheduler ticks.
 FUNCTION aoso_warp_hard_stop {
-    IF WARP > 0 { SET WARP TO 0. }
-    WAIT 0.
-    IF WARP > 0 {
-        SET WARP TO 0.
-        WAIT 0.
-    }
     IF WARP > 0 { SET WARP TO 0. }
 }
 
@@ -296,9 +292,22 @@ FUNCTION aoso_warp_approach {
     }
     IF AOSO_STEER_MODE <> "OFF" { aoso_steer_release(). }
     IF WARPMODE <> "RAILS" {
-        aoso_warp_hard_stop().
+        // Mode changes are tick-driven. Do not WAIT 0 here; under a previous
+        // rails command that can age the maneuver before KSP applies 1x.
+        IF WARP > 0 {
+            SET WARP TO 0.
+            aoso_warp_report("TRANSITION", eta_s, "settling to 1x before rails mode").
+            RETURN "transition".
+        }
+        IF NOT KUNIVERSE:TIMEWARP:ISSETTLED {
+            RETURN "transition".
+        }
         SET WARPMODE TO "RAILS".
-        WAIT 0.
+        RETURN "transition".
+    }
+
+    IF NOT KUNIVERSE:TIMEWARP:ISSETTLED {
+        RETURN "transition".
     }
 
     IF WARP <> want {
