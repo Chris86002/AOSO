@@ -288,12 +288,12 @@ FUNCTION aoso_ui2_build_nav_display {
 FUNCTION aoso_ui2_nav_basis_ensure {
     IF AOSO_UI2_NAV_BASIS_BODY = SHIP:BODY:NAME { RETURN. }
 
-    LOCAL r IS aoso_orbit_position_now(SHIP).
-    IF r:MAG < 1 {
+    LOCAL pos_vec IS aoso_orbit_position_now(SHIP).
+    IF pos_vec:MAG < 1 {
         SET AOSO_UI2_NAV_BASIS_X TO V(1, 0, 0).
         SET AOSO_UI2_NAV_BASIS_Y TO V(0, 1, 0).
     } ELSE {
-        SET AOSO_UI2_NAV_BASIS_X TO r:NORMALIZED.
+        SET AOSO_UI2_NAV_BASIS_X TO pos_vec:NORMALIZED.
         LOCAL n IS aoso_orbit_normal_now(SHIP).
         LOCAL y IS VCRS(n, AOSO_UI2_NAV_BASIS_X).
         IF y:MAG < 0.001 { SET y TO V(0, 1, 0). }
@@ -306,10 +306,10 @@ FUNCTION aoso_ui2_nav_basis_ensure {
 }
 
 FUNCTION aoso_ui2_nav_project {
-    PARAMETER r.
+    PARAMETER pos_vec.
     LOCAL scale IS MAX(1, AOSO_UI2_NAV_SCALE).
-    LOCAL px IS VDOT(r, AOSO_UI2_NAV_BASIS_X) / scale.
-    LOCAL py IS VDOT(r, AOSO_UI2_NAV_BASIS_Y) / scale.
+    LOCAL px IS VDOT(pos_vec, AOSO_UI2_NAV_BASIS_X) / scale.
+    LOCAL py IS VDOT(pos_vec, AOSO_UI2_NAV_BASIS_Y) / scale.
     RETURN LIST(
         210 + CLAMP(px, -1, 1) * 158,
         125 - CLAMP(py, -1, 1) * 78
@@ -342,9 +342,9 @@ FUNCTION aoso_ui2_nav_predict {
         LOCAL frac IS 0.
         IF n > 1 { SET frac TO i / (n - 1). }
         LOCAL ut IS now + horizon * frac.
-        LOCAL r IS aoso_orbit_position_at(SHIP, ut).
-        pts:ADD(r).
-        IF r:MAG > max_r { SET max_r TO r:MAG. }
+        LOCAL sample_vec IS aoso_orbit_position_at(SHIP, ut).
+        pts:ADD(sample_vec).
+        IF sample_vec:MAG > max_r { SET max_r TO sample_vec:MAG. }
         SET i TO i + 1.
     }
     SET AOSO_UI2_NAV_SCALE TO max_r * 1.08.
@@ -874,16 +874,16 @@ FUNCTION aoso_ui2_build_systems_display {
         "THROTTLE", "STAGING", "MISSION",
         "LANDING", "POWER", "COMMS"
     ).
-    LOCAL r IS 0.
-    UNTIL r >= 3 {
+    LOCAL row_i IS 0.
+    UNTIL row_i >= 3 {
         LOCAL row IS AOSO_UI2_SYS_MAIN:ADDHLAYOUT().
         SET row:STYLE:WIDTH TO 310.
         SET row:STYLE:HEIGHT TO 1.
         SET row:STYLE:MARGIN:H TO 55.
-        SET row:STYLE:MARGIN:V TO 27 + r * 48.
+        SET row:STYLE:MARGIN:V TO 27 + row_i * 48.
         LOCAL col IS 0.
         UNTIL col >= 3 {
-            LOCAL n IS r * 3 + col.
+            LOCAL n IS row_i * 3 + col.
             LOCAL lab IS row:ADDLABEL(names[n]).
             SET lab:STYLE:WIDTH TO 100.
             SET lab:STYLE:HEIGHT TO 28.
@@ -892,7 +892,7 @@ FUNCTION aoso_ui2_build_systems_display {
             AOSO_UI2_SYS_CELLS:ADD(lab).
             SET col TO col + 1.
         }
-        SET r TO r + 1.
+        SET row_i TO row_i + 1.
     }
 
     SET AOSO_UI2_SYS_MASTER TO aoso_ui2_overlay_label(AOSO_UI2_SYS_MAIN, "", 126, 154).
@@ -997,8 +997,11 @@ FUNCTION aoso_ui2_twin_band_summary {
 }
 
 FUNCTION aoso_ui2_twin_update {
-    IF NOT DEFINED AOSO_TWIN { RETURN. }
-    IF NOT AOSO_TWIN:HASKEY("nodes") { RETURN. }
+    IF DEFINED AOSO_TWIN {
+        IF NOT AOSO_TWIN:HASKEY("nodes") { RETURN. }
+    } ELSE {
+        RETURN.
+    }
 
     LOCAL bands IS aoso_twin_bands_stage(AOSO_TWIN["nodes"]).
     SET AOSO_UI2_TWIN_TITLE:TEXT TO "<b>" + AOSO_TWIN["status"] + "</b>   " +
