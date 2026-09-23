@@ -25,6 +25,42 @@ GLOBAL AOSO_HUD_GUI_PAINTED IS "".
 GLOBAL AOSO_HUD_TAC_CHIP IS 0.
 GLOBAL AOSO_UI2_AUTO_PAGE IS TRUE.
 GLOBAL AOSO_UI2_MANUAL_UNTIL IS 0.
+GLOBAL AOSO_UI2_READY IS FALSE.
+GLOBAL AOSO_UI2_SELFTEST_REASON IS "not run".
+
+FUNCTION aoso_ui2_selftest {
+    SET AOSO_UI2_READY TO FALSE.
+    SET AOSO_UI2_SELFTEST_REASON TO "".
+
+    IF NOT aoso_config_get("UI2_ENABLED", TRUE) {
+        SET AOSO_UI2_SELFTEST_REASON TO "disabled by config".
+        RETURN FALSE.
+    }
+
+    LOCAL missing_widgets IS LIST().
+    IF NOT AOSO_UI2_PFD_MAIN:ISTYPE("BOX") { missing_widgets:ADD("PFD"). }
+    IF NOT AOSO_UI2_NAV_MAIN:ISTYPE("BOX") { missing_widgets:ADD("NAV"). }
+    IF NOT AOSO_UI2_SURF_MAIN:ISTYPE("BOX") { missing_widgets:ADD("SURF"). }
+    IF NOT AOSO_UI2_MSN_MAIN:ISTYPE("BOX") { missing_widgets:ADD("TOUR"). }
+    IF NOT AOSO_UI2_SYS_MAIN:ISTYPE("BOX") { missing_widgets:ADD("SYS"). }
+    IF NOT AOSO_UI2_VEH_MAIN:ISTYPE("BOX") { missing_widgets:ADD("VEH"). }
+
+    IF missing_widgets:LENGTH > 0 {
+        LOCAL miss_txt IS "".
+        FOR missing_widget IN missing_widgets {
+            IF miss_txt <> "" { SET miss_txt TO miss_txt + ",". }
+            SET miss_txt TO miss_txt + missing_widget.
+        }
+        SET AOSO_UI2_SELFTEST_REASON TO "missing " + miss_txt.
+        aoso_log_warn("UI2", "Startup self-test FAILED: " + AOSO_UI2_SELFTEST_REASON + ".").
+        RETURN FALSE.
+    }
+
+    SET AOSO_UI2_READY TO TRUE.
+    SET AOSO_UI2_SELFTEST_REASON TO "PFD NAV TOUR VEH SURF SYS ready".
+    aoso_log_info("UI2", "Startup self-test READY: " + AOSO_UI2_SELFTEST_REASON + ".").
+    RETURN TRUE.
+}
 
 FUNCTION aoso_hud_set {
     PARAMETER key.
@@ -497,16 +533,18 @@ FUNCTION aoso_hud_gui_build_dbg {
 
 FUNCTION aoso_hud_gui_build_help {
     PARAMETER p.
-    aoso_hud_title(p, "HOW TO USE THIS HUD").
-    aoso_hud_hint(p, "This window is a display. AOSO flies the ship. Nothing here STAGES, ABORTS, or LANDS.").
-    aoso_hud_hint(p, "FLIGHT DECK  PFD=flight director  NAV=trajectory/target  TOUR=mission route  VEH=graphical twin  SURF=survey/landing  SYS=caution-warning.  ENGINEERING  PROP/STAGE/TWIN/LOG/DBG.").
-    aoso_hud_hint(p, "GREEN LIGHTS  3D arrows drawn on the ship. They do not steer. PRO=prograde (where you are going)  RET=retrograde (opposite)  NML=orbit-normal (out of plane)  TGT=toward target  REL=relative velocity  BURN=maneuver node  LAND=surface-retrograde.").
-    aoso_hud_hint(p, "FD master switch turns all arrows off. Lights that are on still only draw; AOSO keeps flying.").
-    aoso_hud_hint(p, "CPU HIGH means kOS is using most of its instruction budget (usual during a burn). The HUD keeps painting. Twin rebuilds and the vehicle profile pause so steering/staging stay first. Not a hardware failure.").
-    aoso_hud_hint(p, "SYS  NOMINAL=all good  DEGRADED=something weak  FAIL=something broken. Open SYS and read WHY.").
-    aoso_hud_hint(p, "ROUTE  (now)=current hop  (done)=already visited  unmarked=still ahead.").
-    aoso_hud_hint(p, "CHROME  HUD=glass flight director  MFD=this computer  ENG=full twin  AUTO=follows mission phase  FD=3D vector overlays  BACK/HOME/HELP/A-/A+/X are display controls only.").
-    aoso_hud_hint(p, "MODES  TAC=terminal strip only  GUI=this computer  ENG=engineering + twin. Drag the window by its top.").
+    aoso_hud_title(p, "AOSO UI v2 QUICK GUIDE").
+    aoso_hud_hint(p, "DISPLAY ONLY. AOSO flight controllers own steering, throttle, staging, mission state and warp. UI buttons only change presentation or highlight a twin node.").
+    aoso_hud_hint(p, "PFD  Primary flight display. The moving diamond is commanded-attitude error, with speed/altitude, TWR/throttle, propellant and warning annunciation.").
+    aoso_hud_hint(p, "NAV  Real current-SOI conic samples + recent trail + ship, maneuver-node and next-SOI bugs. ROUGH/SAFE means AOSO intentionally accepted a coarse encounter for later mid-course refinement.").
+    aoso_hud_hint(p, "TOUR  Grand-tour route annunciators, current phase/objective, completion, mission dV and feasibility/assurance state. Route boxes are indicators, not destination buttons.").
+    aoso_hud_hint(p, "VEH  Compact live Digital Twin. Tank/engine states update in place. Clicking a part only highlights it on the vessel. ENG/TWIN exposes the full topology/filter view.").
+    aoso_hud_hint(p, "SURF  In POLAR/SCAN it is a latitude/longitude survey map with the best graded site. In DEORBIT/DESCEND it becomes a landing director with site error, coast-prediction bug, suicide-burn trigger and vertical-situation margin.").
+    aoso_hud_hint(p, "SYS  Shuttle-style caution/warning board. NOM=healthy  DEG=degraded  FAIL=fault. Master caution/warning and WHY summarize what needs attention.").
+    aoso_hud_hint(p, "HUD  Separate draggable glass flight director. DCL toggles declutter, REC restores its default position, MFD returns here. Brightness adapts between day/night conditions.").
+    aoso_hud_hint(p, "AUTO  Automatically selects NAV/SURF/SYS/TOUR as flight phase changes. Manual tab selection temporarily holds your page before AUTO resumes. Turn AUTO off for fully manual pages.").
+    aoso_hud_hint(p, "FD  3D reference arrows only: PRO=prograde, RET=retrograde, NML=orbit-normal, TGT=target, REL=relative velocity, BURN=node, LAND=surface-retrograde. They never steer.").
+    aoso_hud_hint(p, "CPU protection: flight/safety work remains first. UI prediction/twin work is throttled or deferred as CPU pressure rises; UI load must never become a guidance problem.").
 }
 
 FUNCTION aoso_hud_fd_cb_master { PARAMETER on. aoso_hud_fd_enable(on). aoso_hud_trace("FD master=" + on). }
@@ -531,6 +569,7 @@ FUNCTION aoso_hud_gui_init {
     SET hdr:STYLE:HSTRETCH TO TRUE.
     SET AOSO_HUD_HDR_TITLE TO hdr.
     aoso_hud_lab(g, "hdr_sys", "SYS  NOMINAL").
+    aoso_hud_lab(g, "hdr_ui2", "UI2  STARTING").
     aoso_hud_lab(g, "hdr_twin", "TWIN  -").
     aoso_hud_lab(g, "hdr_do", "DOING  -").
     aoso_hud_lab(g, "hdr_dt", "").
@@ -622,7 +661,13 @@ FUNCTION aoso_hud_gui_init {
     aoso_hud_show_page("FLT", FALSE).
     SET AOSO_HUD_GUI_ON TO TRUE.
     g:SHOW().
-    aoso_hud_trace_log("GUI online").
+
+    IF aoso_ui2_selftest() {
+        aoso_hud_set("hdr_ui2", "UI2  <color=#50FF96>READY</color>").
+    } ELSE {
+        aoso_hud_set("hdr_ui2", "UI2  <color=#FF5A46>FAULT</color>  " + AOSO_UI2_SELFTEST_REASON).
+    }
+    aoso_hud_trace_log("GUI online UI2=" + AOSO_UI2_READY + " " + AOSO_UI2_SELFTEST_REASON).
 }
 
 FUNCTION aoso_hud_tac_chip_show {
