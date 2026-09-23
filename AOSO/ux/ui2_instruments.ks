@@ -358,9 +358,9 @@ FUNCTION aoso_ui2_nav_update {
     }
     IF o["node"] { SET quality TO "MANEUVER READY". }
     IF o["burning"] { SET quality TO "BURN EXECUTION". }
-    SET AOSO_UI2_NAV_COURSE:TEXT TO aoso_ui2_color_state(
-        CHOOSE quality = "UNEXPECTED PATCH" THEN "WARN" ELSE "SAFE",
-        quality).
+    LOCAL quality_state IS "SAFE".
+    IF quality = "UNEXPECTED PATCH" { SET quality_state TO "WARN". }
+    SET AOSO_UI2_NAV_COURSE:TEXT TO aoso_ui2_color_state(quality_state, quality).
 
     LOCAL detail IS "SCHEMATIC  dV " + ROUND(res["mission_dv"], 0) + " m/s".
     IF o["patch"] <> "" {
