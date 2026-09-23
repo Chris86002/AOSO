@@ -80,7 +80,7 @@ FUNCTION aoso_ui2_mission_build {
         LOCAL route_box IS route_row:ADDBUTTON("---").
         SET route_box:STYLE:WIDTH TO 49.
         SET route_box:STYLE:HEIGHT TO 28.
-        SET route_box:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "button_stby.png".
+        aoso_ui2_button_bg(route_box, "button_stby").
         AOSO_UI2_MSN_ROUTE:ADD(route_box).
         SET route_i TO route_i + 1.
     }
@@ -149,7 +149,12 @@ FUNCTION aoso_ui2_mission_update {
                     IF route_i < target_idx { SET bg_img TO AOSO_UI2_ASSET_ROOT + "button_on.png". }
                 }
             }
+            // The route is an annunciator, but keeping every texture state
+            // consistent prevents the default white Unity button on hover.
             SET route_box:STYLE:BG TO bg_img.
+            SET route_box:STYLE:HOVER:BG TO bg_img.
+            SET route_box:STYLE:FOCUSED:BG TO bg_img.
+            SET route_box:STYLE:ACTIVE:BG TO bg_img.
         } ELSE {
             SET route_box:TEXT TO "".
             SET route_box:VISIBLE TO FALSE.
@@ -220,7 +225,7 @@ FUNCTION aoso_ui2_systems_build {
         LOCAL sys_box IS sys_row:ADDBUTTON(AOSO_UI2_SYS_LABELS[sys_key]).
         SET sys_box:STYLE:WIDTH TO 80.
         SET sys_box:STYLE:HEIGHT TO 28.
-        SET sys_box:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "button_stby.png".
+        aoso_ui2_button_bg(sys_box, "button_stby").
         SET AOSO_UI2_SYS_BOXES[sys_key] TO sys_box.
         SET sys_i TO sys_i + 1.
     }
@@ -248,7 +253,11 @@ FUNCTION aoso_ui2_systems_update {
         IF AOSO_UI2_SYS_BOXES:HASKEY(sys_key) {
             LOCAL state_text IS "STBY".
             IF system_data:HASKEY(sys_key) { SET state_text TO system_data[sys_key]. }
-            SET AOSO_UI2_SYS_BOXES[sys_key]:STYLE:BG TO aoso_ui2_system_bg(state_text).
+            LOCAL state_bg IS aoso_ui2_system_bg(state_text).
+            SET AOSO_UI2_SYS_BOXES[sys_key]:STYLE:BG TO state_bg.
+            SET AOSO_UI2_SYS_BOXES[sys_key]:STYLE:HOVER:BG TO state_bg.
+            SET AOSO_UI2_SYS_BOXES[sys_key]:STYLE:FOCUSED:BG TO state_bg.
+            SET AOSO_UI2_SYS_BOXES[sys_key]:STYLE:ACTIVE:BG TO state_bg.
             SET AOSO_UI2_SYS_BOXES[sys_key]:TEXT TO
                 AOSO_UI2_SYS_LABELS[sys_key] + CHAR(10) + state_text.
         }

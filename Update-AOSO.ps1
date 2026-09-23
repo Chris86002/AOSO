@@ -423,6 +423,11 @@ Steam installs KSP under Program Files, which Windows protects.
         }
 
         $summary = "Installed $updated files (removed $removed) at $short; native=$nativePluginStatus."
+        $kspProcess = Get-Process -Name "KSP_x64", "KSP" -ErrorAction SilentlyContinue
+        if ($kspProcess) {
+            Write-Host "KSP is running. Restart the AOSO program (or KSP) to rebuild its GUI from the updated scripts." -ForegroundColor Yellow
+            Write-Host "The existing in-memory GUI can continue showing the previous panel after an update." -ForegroundColor Yellow
+        }
         if (-not $Auto) {
             Write-Host ""
             Write-Host "========================================" -ForegroundColor Green

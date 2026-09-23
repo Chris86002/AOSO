@@ -54,7 +54,7 @@ def code_only(source):
 
 def main():
     pngs = list(ASSETS.glob("*.png"))
-    assert len(pngs) == 21
+    assert len(pngs) == 26
     for p in pngs:
         check_png(p)
     sources = {p: code_only(p.read_text(encoding="utf-8-sig")) for p in (ROOT / "AOSO").rglob("*.ks")}
@@ -63,7 +63,7 @@ def main():
         functions.update(n.lower() for n in re.findall(r"\bFUNCTION\s+(\w+)", code, re.I))
         globals_.update(n.lower() for n in re.findall(r"\bGLOBAL\s+(\w+)\s+IS\b", code, re.I))
         assert not re.search(r"\bCLAMP\s*\(", code, re.I), "Unsupported built-in CLAMP call"
-    ui_sources = {p: c for p, c in sources.items() if p.name.startswith("ui2_")}
+    ui_sources = {p: c for p, c in sources.items() if p.name.startswith("ui2_") or p.name == "hud_gui.ks"}
     for p, code in ui_sources.items():
         stack = []
         for ch in code:
@@ -81,6 +81,13 @@ def main():
             assert functions[call.lower()] == 1, f"{p.name}: undefined/duplicate helper {call}"
     boot = (ROOT / "AOSO/main.ks").read_text()
     assert boot.index('"AOSO/ux/ui2_instruments"') < boot.index('"AOSO/ux/ui2_hud"') < boot.index('"AOSO/ux/ui2_mfd"')
+    gui_code = sources[ROOT / "AOSO/ux/hud_gui.ks"]
+    assert len(re.findall(r"\baoso_ui2_detail_register\s*\(", gui_code, re.I)) == 6
+    assert "OPS PANEL r3" in (ROOT / "AOSO/ux/hud_gui.ks").read_text()
+    gui_source = (ROOT / "AOSO/ux/hud_gui.ks").read_text()
+    for asset in re.findall(r'"([a-z_]+\.png)"', gui_source[gui_source.index("LOCAL image_files IS LIST("):gui_source.index("FOR image_file IN image_files")]):
+        assert (ASSETS / asset).is_file(), f"missing startup art {asset}"
+    assert 'AOSO_UI2_SURF_MAIN:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "landing_frame.png"' in (ROOT / "AOSO/ux/ui2_instruments.ks").read_text()
     print(f"PASS: {len(pngs)} PNG streams; {len(ui_sources)} UI2 modules; all AOSO scripts free of bare CLAMP calls; helper load order")
 
 

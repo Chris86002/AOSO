@@ -96,6 +96,21 @@ FUNCTION aoso_ui2_clamp01 {
     RETURN aoso_ui2_clamp(x, 0, 1).
 }
 
+// Set every interactive state: Unity otherwise falls back to a white hover
+// texture even when a button's normal background is dark.
+FUNCTION aoso_ui2_button_bg {
+    PARAMETER button_widget.
+    PARAMETER asset_name.
+    LOCAL hover_name IS asset_name.
+    IF asset_name = "button_off" OR asset_name = "button_stby" {
+        SET hover_name TO "button_hover".
+    }
+    SET button_widget:STYLE:BG TO AOSO_UI2_ASSET_ROOT + asset_name + ".png".
+    SET button_widget:STYLE:HOVER:BG TO AOSO_UI2_ASSET_ROOT + hover_name + ".png".
+    SET button_widget:STYLE:FOCUSED:BG TO AOSO_UI2_ASSET_ROOT + asset_name + ".png".
+    SET button_widget:STYLE:ACTIVE:BG TO AOSO_UI2_ASSET_ROOT + asset_name + ".png".
+}
+
 FUNCTION aoso_ui2_bar {
     PARAMETER value.
     PARAMETER width IS 12.
@@ -589,13 +604,13 @@ FUNCTION aoso_ui2_surface_update {
     IF phase = "DEORBIT" OR phase = "DESCEND" { SET descent_mode TO TRUE. }
 
     IF descent_mode {
-        SET AOSO_UI2_SURF_MAIN:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "descent_frame.png".
+        SET AOSO_UI2_SURF_MAIN:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "landing_frame.png".
         SET AOSO_UI2_SURF_TITLE:TEXT TO "<b><size=18>" + SHIP:BODY:NAME + "  DESCENT DIRECTOR</size></b>".
 
         // Site is the center of the local display. Ship position is projected
         // into local east/north error so the pilot can see convergence.
         SET AOSO_UI2_SURF_SITE:STYLE:MARGIN:H TO 210.
-        SET AOSO_UI2_SURF_SITE:STYLE:MARGIN:V TO 60.
+        SET AOSO_UI2_SURF_SITE:STYLE:MARGIN:V TO 125.
         SET AOSO_UI2_SURF_SITE:VISIBLE TO have_site.
 
         LOCAL err_e IS 0.
@@ -616,10 +631,10 @@ FUNCTION aoso_ui2_surface_update {
             LOCAL sx IS aoso_ui2_clamp(err_e / span, -1, 1).
             LOCAL sy IS aoso_ui2_clamp(err_n / span, -1, 1).
             SET AOSO_UI2_SURF_SHIP:STYLE:MARGIN:H TO 210 - sx * 155.
-            SET AOSO_UI2_SURF_SHIP:STYLE:MARGIN:V TO 60 + sy * 72.
+            SET AOSO_UI2_SURF_SHIP:STYLE:MARGIN:V TO 125 + sy * 72.
         } ELSE {
             SET AOSO_UI2_SURF_SHIP:STYLE:MARGIN:H TO 210.
-            SET AOSO_UI2_SURF_SHIP:STYLE:MARGIN:V TO 132.
+            SET AOSO_UI2_SURF_SHIP:STYLE:MARGIN:V TO 125.
         }
 
         // Cheap coast prediction bug. This is intentionally not guidance:
@@ -643,7 +658,7 @@ FUNCTION aoso_ui2_surface_update {
                     LOCAL pn IS VDOT(ph, pnorth).
                     LOCAL pspan IS MAX(1000, MIN(50000, MAX(err_m, ph:MAG) * 1.25)).
                     SET AOSO_UI2_SURF_PRED:STYLE:MARGIN:H TO 210 + aoso_ui2_clamp(pe / pspan, -1, 1) * 155.
-                    SET AOSO_UI2_SURF_PRED:STYLE:MARGIN:V TO 60 - aoso_ui2_clamp(pn / pspan, -1, 1) * 72.
+                    SET AOSO_UI2_SURF_PRED:STYLE:MARGIN:V TO 125 - aoso_ui2_clamp(pn / pspan, -1, 1) * 72.
                     SET AOSO_UI2_SURF_PRED:VISIBLE TO TRUE.
                 }
             }

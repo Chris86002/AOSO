@@ -32,6 +32,9 @@ GLOBAL AOSO_UI2_MAX_RENDER_MS IS 0.
 GLOBAL AOSO_UI2_LAST_RENDER_OP IS 0.
 GLOBAL AOSO_UI2_MAX_RENDER_OP IS 0.
 GLOBAL AOSO_UI2_LAST_RENDER_PAGE IS "".
+GLOBAL AOSO_UI2_DETAIL_VISIBLE IS FALSE.
+GLOBAL AOSO_UI2_DETAIL_BOXES IS LIST().
+GLOBAL AOSO_UI2_DETAIL_BUTTON IS 0.
 
 FUNCTION aoso_ui2_selftest {
     SET AOSO_UI2_READY TO FALSE.
@@ -49,6 +52,24 @@ FUNCTION aoso_ui2_selftest {
     IF NOT AOSO_UI2_MSN_MAIN:ISTYPE("BOX") { missing_widgets:ADD("TOUR"). }
     IF NOT AOSO_UI2_SYS_MAIN:ISTYPE("BOX") { missing_widgets:ADD("SYS"). }
     IF NOT AOSO_UI2_VEH_MAIN:ISTYPE("BOX") { missing_widgets:ADD("VEH"). }
+
+    // Widget existence alone reported READY even when archive PNGs were
+    // missing. Check the installed art that every primary view can request.
+    LOCAL image_files IS LIST(
+        "pfd_frame.png", "nav_frame.png", "survey_frame.png",
+        "landing_frame.png", "descent_frame.png", "mission_frame.png",
+        "systems_frame.png", "twin_frame.png", "window_bg.png",
+        "hud_clear.png", "hud_overlay.png", "button_off.png",
+        "button_hover.png", "button_on.png", "button_stby.png",
+        "button_warn.png", "button_fail.png", "diamond.png",
+        "ship_bug.png", "site_bug.png", "target_bug.png",
+        "pred_bug.png", "trail_bug.png", "hscale.png", "vscale.png"
+    ).
+    FOR image_file IN image_files {
+        IF NOT EXISTS("0:/" + AOSO_UI2_ASSET_ROOT + image_file) {
+            missing_widgets:ADD("art " + image_file).
+        }
+    }
 
     IF missing_widgets:LENGTH > 0 {
         LOCAL miss_txt IS "".
@@ -106,6 +127,23 @@ FUNCTION aoso_hud_hint {
     RETURN w.
 }
 
+FUNCTION aoso_ui2_detail_register {
+    PARAMETER detail_box.
+    SET detail_box:VISIBLE TO AOSO_UI2_DETAIL_VISIBLE.
+    AOSO_UI2_DETAIL_BOXES:ADD(detail_box).
+}
+
+FUNCTION aoso_ui2_detail_toggle {
+    SET AOSO_UI2_DETAIL_VISIBLE TO NOT AOSO_UI2_DETAIL_VISIBLE.
+    FOR detail_box IN AOSO_UI2_DETAIL_BOXES {
+        SET detail_box:VISIBLE TO AOSO_UI2_DETAIL_VISIBLE.
+    }
+    IF AOSO_UI2_DETAIL_BUTTON:ISTYPE("BUTTON") {
+        IF AOSO_UI2_DETAIL_VISIBLE { SET AOSO_UI2_DETAIL_BUTTON:TEXT TO "DATA -". }
+        ELSE { SET AOSO_UI2_DETAIL_BUTTON:TEXT TO "DATA +". }
+    }
+}
+
 FUNCTION aoso_hud_gui_dispose {
     aoso_twin_clear_hl().
     IF AOSO_HUD_GUI:ISTYPE("GUI") {
@@ -127,6 +165,8 @@ FUNCTION aoso_hud_gui_dispose {
     SET AOSO_HUD_PAGE TO "".
     SET AOSO_HUD_W TO LEXICON().
     SET AOSO_HUD_LAST TO LEXICON().
+    SET AOSO_UI2_DETAIL_BOXES TO LIST().
+    SET AOSO_UI2_DETAIL_BUTTON TO 0.
 }
 
 FUNCTION aoso_hud_add_page {
@@ -159,10 +199,10 @@ FUNCTION aoso_hud_show_page {
         IF AOSO_HUD_TABLABEL:HASKEY(k) { SET lab TO AOSO_HUD_TABLABEL[k]. }
         IF k = name {
             SET AOSO_HUD_TABS[k]:TEXT TO "[" + lab + "]".
-            SET AOSO_HUD_TABS[k]:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "button_on.png".
+            aoso_ui2_button_bg(AOSO_HUD_TABS[k], "button_on").
         } ELSE {
             SET AOSO_HUD_TABS[k]:TEXT TO lab.
-            SET AOSO_HUD_TABS[k]:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "button_off.png".
+            aoso_ui2_button_bg(AOSO_HUD_TABS[k], "button_off").
         }
     }
     SET AOSO_HUD_TAB_LOCK TO FALSE.
@@ -250,10 +290,14 @@ FUNCTION aoso_hud_scale_pct {
 FUNCTION aoso_hud_skin_apply {
     PARAMETER g.
     LOCAL fs IS aoso_hud_scale_fs().
+    SET g:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "window_bg.png".
     SET g:SKIN:LABEL:FONTSIZE TO fs.
-    SET g:SKIN:LABEL:TEXTCOLOR TO RGB(0.30, 1.0, 0.60).
+    SET g:SKIN:LABEL:TEXTCOLOR TO RGB(0.26, 1.0, 0.38).
     SET g:SKIN:BUTTON:FONTSIZE TO fs.
     SET g:SKIN:BUTTON:BG TO AOSO_UI2_ASSET_ROOT + "button_off.png".
+    SET g:SKIN:BUTTON:HOVER:BG TO AOSO_UI2_ASSET_ROOT + "button_hover.png".
+    SET g:SKIN:BUTTON:FOCUSED:BG TO AOSO_UI2_ASSET_ROOT + "button_hover.png".
+    SET g:SKIN:BUTTON:ACTIVE:BG TO AOSO_UI2_ASSET_ROOT + "button_on.png".
     SET g:SKIN:HORIZONTALSLIDER:BG TO AOSO_UI2_ASSET_ROOT + "hscale.png".
     SET g:SKIN:HORIZONTALSLIDERTHUMB:BG TO AOSO_UI2_ASSET_ROOT + "diamond.png".
     SET g:SKIN:HORIZONTALSLIDERTHUMB:WIDTH TO 16.
@@ -290,7 +334,7 @@ FUNCTION aoso_hud_apply_scale {
     SET g:STYLE:WIDTH TO wid.
     aoso_hud_scale_walk(g, fs).
     IF AOSO_HUD_HDR_TITLE:ISTYPE("LABEL") {
-        SET AOSO_HUD_HDR_TITLE:TEXT TO "<b><size=" + (fs + 4) + "><color=#50FF96>AOSO</color></size>  AUTONOMOUS FLIGHT COMPUTER · UI v2</b>".
+        SET AOSO_HUD_HDR_TITLE:TEXT TO "<b><size=" + (fs + 4) + "><color=#1AF034>AOSO</color></size>  FLIGHT DECK · OPS PANEL r3</b>".
     }
     aoso_hud_set("chrome_pct", "" + aoso_hud_scale_pct() + "%").
 }
@@ -360,6 +404,7 @@ FUNCTION aoso_hud_gui_build_flight {
     LOCAL data IS p:ADDVBOX().
     SET data:STYLE:WIDTH TO 420.
     SET data:STYLE:ALIGN TO "center".
+    aoso_ui2_detail_register(data).
     aoso_hud_lab(data, "flt_body", "BODY  -").
     aoso_hud_lab(data, "flt_alt", "ALT  -").
     aoso_hud_lab(data, "flt_spd", "SPEED  -").
@@ -380,6 +425,7 @@ FUNCTION aoso_hud_gui_build_nav {
     LOCAL data IS p:ADDVBOX().
     SET data:STYLE:WIDTH TO 420.
     SET data:STYLE:ALIGN TO "center".
+    aoso_ui2_detail_register(data).
     aoso_hud_lab(data, "nav_soi", "SPHERE OF INFLUENCE  -").
     aoso_hud_lab(data, "nav_orb", "ORBIT  -").
     aoso_hud_lab(data, "nav_tgt", "TARGET  NO TARGET").
@@ -397,6 +443,7 @@ FUNCTION aoso_hud_gui_build_mission {
     LOCAL data IS p:ADDVBOX().
     SET data:STYLE:WIDTH TO 420.
     SET data:STYLE:ALIGN TO "center".
+    aoso_ui2_detail_register(data).
     aoso_hud_lab(data, "msn_name", "MISSION  -").
     aoso_hud_lab(data, "msn_prog", "PROGRESS  -").
     aoso_hud_lab(data, "msn_cur", "CURRENT  -").
@@ -415,15 +462,19 @@ FUNCTION aoso_hud_gui_build_mission {
 FUNCTION aoso_hud_gui_build_vehicle {
     PARAMETER p.
     aoso_ui2_vehicle_build(p).
-    aoso_hud_hint(p, "Live clickable digital twin. Selecting a node only highlights the matching vessel part; it never stages or commands the ship.").
-    aoso_hud_lab(p, "veh_id", "SHIP  -").
-    aoso_hud_lab(p, "veh_cls", "CLASS  -").
-    aoso_hud_lab(p, "veh_crew", "CREW  -").
-    aoso_hud_lab(p, "veh_hw", "HARDWARE  -").
-    aoso_hud_lab(p, "veh_mob", "MOBILITY  -").
-    aoso_hud_lab(p, "veh_cap", "CAPABILITIES  -").
-    aoso_hud_lab(p, "veh_pwr", "POWER  -").
-    aoso_hud_lab(p, "veh_twin", "TWIN  -").
+    LOCAL data IS p:ADDVBOX().
+    SET data:STYLE:WIDTH TO 420.
+    SET data:STYLE:ALIGN TO "center".
+    aoso_ui2_detail_register(data).
+    aoso_hud_hint(data, "Selecting a Digital Twin node highlights its vessel part.").
+    aoso_hud_lab(data, "veh_id", "SHIP  -").
+    aoso_hud_lab(data, "veh_cls", "CLASS  -").
+    aoso_hud_lab(data, "veh_crew", "CREW  -").
+    aoso_hud_lab(data, "veh_hw", "HARDWARE  -").
+    aoso_hud_lab(data, "veh_mob", "MOBILITY  -").
+    aoso_hud_lab(data, "veh_cap", "CAPABILITIES  -").
+    aoso_hud_lab(data, "veh_pwr", "POWER  -").
+    aoso_hud_lab(data, "veh_twin", "TWIN  -").
 }
 
 FUNCTION aoso_hud_gui_build_prop {
@@ -448,6 +499,7 @@ FUNCTION aoso_hud_gui_build_land {
     LOCAL data IS p:ADDVBOX().
     SET data:STYLE:WIDTH TO 420.
     SET data:STYLE:ALIGN TO "center".
+    aoso_ui2_detail_register(data).
     aoso_hud_lab(data, "lnd_st", "LANDING SYSTEM  STANDBY").
     aoso_hud_lab(data, "lnd_site", "SITE  -").
     aoso_hud_lab(data, "lnd_alt", "RADAR  -").
@@ -480,6 +532,7 @@ FUNCTION aoso_hud_gui_build_sys {
     LOCAL data IS p:ADDVBOX().
     SET data:STYLE:WIDTH TO 420.
     SET data:STYLE:ALIGN TO "center".
+    aoso_ui2_detail_register(data).
     aoso_hud_lab(data, "sys_roll", "AOSO  -").
     aoso_hud_lab(data, "sys_why", "").
     aoso_hud_lab(data, "sys_cpu_note", "").
@@ -539,6 +592,7 @@ FUNCTION aoso_hud_gui_build_dbg {
 FUNCTION aoso_hud_gui_build_help {
     PARAMETER p.
     aoso_hud_title(p, "AOSO UI v2 QUICK GUIDE").
+    aoso_hud_hint(p, "OPS PANEL r3: the dark instrument stays central. DATA + expands full numeric readouts on PFD, NAV, TOUR, VEH, SURF and SYS; DATA - collapses them. Reload AOSO after an updater run to rebuild the GUI.").
     aoso_hud_hint(p, "DISPLAY ONLY. AOSO flight controllers own steering, throttle, staging, mission state and warp. UI buttons only change presentation or highlight a twin node.").
     aoso_hud_hint(p, "PFD  Primary flight display. The moving diamond is commanded-attitude error, with speed/altitude, TWR/throttle, propellant and warning annunciation.").
     aoso_hud_hint(p, "NAV  Real current-SOI conic samples + recent trail + ship, maneuver-node and next-SOI bugs. ROUGH/SAFE means AOSO intentionally accepted a coarse encounter for later mid-course refinement.").
@@ -563,6 +617,7 @@ FUNCTION aoso_hud_fd_cb_land { PARAMETER on. aoso_hud_fd_set("LAND", on). aoso_h
 
 FUNCTION aoso_hud_gui_init {
     aoso_hud_gui_dispose().
+    SET AOSO_UI2_DETAIL_VISIBLE TO FALSE.
     LOCAL g IS GUI(aoso_hud_scale_width()).
     SET g:X TO 20.
     SET g:Y TO 60.
@@ -570,12 +625,13 @@ FUNCTION aoso_hud_gui_init {
     aoso_hud_skin_apply(g).
     SET AOSO_HUD_GUI TO g.
 
-    LOCAL hdr IS g:ADDLABEL("<b><size=16><color=#50FF96>AOSO</color></size>  AUTONOMOUS FLIGHT COMPUTER · UI v2</b>").
+    LOCAL hdr IS g:ADDLABEL("<b><size=16><color=#1AF034>AOSO</color></size>  FLIGHT DECK · OPS PANEL r3</b>").
     SET hdr:STYLE:HSTRETCH TO TRUE.
     SET AOSO_HUD_HDR_TITLE TO hdr.
     aoso_hud_lab(g, "hdr_sys", "SYS  NOMINAL").
-    aoso_hud_lab(g, "hdr_ui2", "UI2  STARTING").
-    aoso_hud_lab(g, "hdr_twin", "TWIN  -").
+    LOCAL status_row IS g:ADDHLAYOUT().
+    aoso_hud_lab(status_row, "hdr_ui2", "OPS PANEL r3  STARTING").
+    aoso_hud_lab(status_row, "hdr_twin", "TWIN  -").
     aoso_hud_lab(g, "hdr_do", "DOING  -").
     aoso_hud_lab(g, "hdr_dt", "").
 
@@ -601,11 +657,17 @@ FUNCTION aoso_hud_gui_init {
 
     LOCAL modes IS vbox:ADDHLAYOUT().
     LOCAL b_tac IS modes:ADDBUTTON("HUD").
+    SET b_tac:STYLE:WIDTH TO 67.
     SET b_tac:ONCLICK TO aoso_hud_mode_tactical@.
     LOCAL b_gui IS modes:ADDBUTTON("MFD").
+    SET b_gui:STYLE:WIDTH TO 67.
     SET b_gui:ONCLICK TO aoso_hud_mode_computer@.
     LOCAL b_eng IS modes:ADDBUTTON("ENG").
+    SET b_eng:STYLE:WIDTH TO 67.
     SET b_eng:ONCLICK TO aoso_hud_mode_eng@.
+    SET AOSO_UI2_DETAIL_BUTTON TO modes:ADDBUTTON("DATA +").
+    SET AOSO_UI2_DETAIL_BUTTON:STYLE:WIDTH TO 72.
+    SET AOSO_UI2_DETAIL_BUTTON:ONCLICK TO aoso_ui2_detail_toggle@.
     LOCAL b_fd IS modes:ADDCHECKBOX("FD", TRUE).
     SET b_fd:ONTOGGLE TO aoso_hud_fd_cb_master@.
     LOCAL b_auto IS modes:ADDCHECKBOX("AUTO", TRUE).
@@ -626,7 +688,7 @@ FUNCTION aoso_hud_gui_init {
     SET c3:ONTOGGLE TO aoso_hud_fd_cb_burn@.
     LOCAL c4 IS fdrow:ADDCHECKBOX("LAND", FALSE).
     SET c4:ONTOGGLE TO aoso_hud_fd_cb_land@.
-    aoso_hud_hint(vbox, "FD lights draw 3D arrows on the ship. They do not fly it. PRO=prograde  RET=retrograde  NML=orbit-normal  TGT=target  REL=relative vel  BURN=node  LAND=surface-retro. HELP tab explains all of this.").
+    // The legend lives on HELP; the front panel stays focused on the display.
 
     // Flight-deck row: phase-aware primary displays.
     LOCAL row1 IS vbox:ADDHLAYOUT().
@@ -668,7 +730,7 @@ FUNCTION aoso_hud_gui_init {
     g:SHOW().
 
     IF aoso_ui2_selftest() {
-        aoso_hud_set("hdr_ui2", "UI2  <color=#50FF96>READY</color>").
+        aoso_hud_set("hdr_ui2", "OPS PANEL r3  <color=#1AF034>READY</color>").
     } ELSE {
         aoso_hud_set("hdr_ui2", "UI2  <color=#FF5A46>FAULT</color>  " + AOSO_UI2_SELFTEST_REASON).
     }

@@ -215,33 +215,38 @@ scan and the control-authority scan.
 ## Startup verification
 
 aoso_ui2_selftest() runs after the MFD is built. It verifies the six primary
-graphical surfaces:
+graphical surfaces and required artwork files in the archive:
 
 PFD NAV TOUR VEH SURF SYS
 
 A successful boot logs UI2 Startup self-test READY and the header displays
-UI2 READY.
+OPS PANEL r3 READY. The revision label confirms the updated GUI was built.
 
 A failure logs the exact missing display and marks the header UI2 FAULT.
 
 ## Asset and compatibility validation
 
 Run `python tools/check-ui2.py` before publishing UI2 changes. It validates all
-21 PNGs (chunk lengths/CRCs, complete zlib stream, scanline sizes/filters and
+25 PNGs (chunk lengths/CRCs, complete zlib stream, scanline sizes/filters and
 frame dimensions), UI2 delimiters, helper ownership/load order, reserved names,
 unsupported bare CLAMP calls, and direct flight-control writes.
 
 The red/white backgrounds seen on PFD/TOUR/SYS/VEH were malformed PNG files,
 not telemetry colors. The original descent and unused legacy vehicle frames
-were malformed too. Rebuild those six original dark-green frames with
-`node tools/build-ui2-frames.cjs`; it needs no external packages. Keep binary
-assets binary during upload. NAV, survey, marker and button artwork is unchanged.
+were malformed too. `node tools/build-ui2-frames.cjs` recreates the complete
+dark cockpit frame and button set, including NAV/SURF plotting grounds and a
+separate translucent HUD. The artwork is original; OPS3 informs its layout and
+color language. The main display is compact by default. DATA + expands the
+older detailed telemetry on the six primary pages; DATA - collapses it again.
+The live labels, markers, route indicators and Digital Twin buttons remain in
+the graphical panel. Keep binary assets binary during upload.
 
 kOS provides MIN/MAX, not CLAMP. All UI2 modules share `aoso_ui2_clamp` from
 ui2_instruments.ks, which main.ks loads before ui2_hud.ks and ui2_mfd.ks.
 
 Offline checks do not validate Unity rendering or live KerboScript execution.
-After updating the archive, restart AOSO and inspect PFD, NAV, TOUR, VEH, SYS,
+After updating the archive, restart AOSO (or KSP) and inspect PFD, NAV, TOUR, VEH, SYS,
 SURF (survey and descent), and the separate HUD. Verify dark backgrounds,
 legible labels and moving markers, with no Undefined Variable Name 'clamp'.
-UI2 READY checks widget construction; it does not prove that textures decoded.
+OPS PANEL r3 READY checks widget construction and artwork presence; it does not
+prove that textures decoded. The offline PNG validator covers decoding.
