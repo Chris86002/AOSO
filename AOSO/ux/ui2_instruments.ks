@@ -45,6 +45,7 @@ GLOBAL AOSO_UI2_NAV_SCALE IS 1.
 GLOBAL AOSO_UI2_SURF_MAIN IS 0.
 GLOBAL AOSO_UI2_SURF_SHIP IS 0.
 GLOBAL AOSO_UI2_SURF_SITE IS 0.
+GLOBAL AOSO_UI2_SURF_PRED IS 0.
 GLOBAL AOSO_UI2_SURF_TITLE IS 0.
 GLOBAL AOSO_UI2_SURF_LEFT IS 0.
 GLOBAL AOSO_UI2_SURF_RIGHT IS 0.
@@ -504,6 +505,8 @@ FUNCTION aoso_ui2_build_surface_display {
 
     SET AOSO_UI2_SURF_SHIP TO aoso_ui2_marker(AOSO_UI2_SURF_MAIN, AOSO_UI2_ASSET_ROOT + "ship_bug.png", 18).
     SET AOSO_UI2_SURF_SITE TO aoso_ui2_marker(AOSO_UI2_SURF_MAIN, AOSO_UI2_ASSET_ROOT + "site_bug.png", 20).
+    SET AOSO_UI2_SURF_PRED TO aoso_ui2_marker(AOSO_UI2_SURF_MAIN, AOSO_UI2_ASSET_ROOT + "pred_bug.png", 10).
+    SET AOSO_UI2_SURF_PRED:VISIBLE TO FALSE.
 
     SET AOSO_UI2_SURF_LEFT TO aoso_ui2_overlay_label(AOSO_UI2_SURF_MAIN, "", 12, 24).
     SET AOSO_UI2_SURF_RIGHT TO aoso_ui2_overlay_label(AOSO_UI2_SURF_MAIN, "", 290, 24).
@@ -538,10 +541,11 @@ FUNCTION aoso_ui2_surface_update {
     LOCAL o IS AOSO_HUD_DATA["orbit"].
     LOCAL res IS AOSO_HUD_DATA["res"].
 
-    LOCAL ship_geo IS SHIP:GEOPOSITION.
-    LOCAL spos IS aoso_ui2_geo_xy(ship_geo:LAT, ship_geo:LNG).
-    SET AOSO_UI2_SURF_SHIP:STYLE:MARGIN:H TO spos[0].
-    SET AOSO_UI2_SURF_SHIP:STYLE:MARGIN:V TO spos[1].
+    LOCAL phase IS "SURVEY".
+    IF DEFINED AOSO_TOUR {
+        IF AOSO_TOUR["current"] <> "" { SET phase TO AOSO_TOUR["current"]. }
+    }
+    IF l["active"] { SET phase TO l["state"]. }
 
     LOCAL have_site IS FALSE.
     LOCAL slat IS 0.
@@ -561,6 +565,96 @@ FUNCTION aoso_ui2_surface_update {
         }
     }
 
+    LOCAL descent_mode IS FALSE.
+    IF l["active"] { SET descent_mode TO TRUE. }
+    IF phase = "DEORBIT" OR phase = "DESCEND" { SET descent_mode TO TRUE. }
+
+    IF descent_mode {
+        SET AOSO_UI2_SURF_MAIN:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "descent_frame.png".
+        SET AOSO_UI2_SURF_TITLE:TEXT TO "<b><size=18>" + SHIP:BODY:NAME + "  DESCENT DIRECTOR</size></b>".
+
+        // Site is the center of the local display. Ship position is projected
+        // into local east/north error so the pilot can see convergence.
+        SET AOSO_UI2_SURF_SITE:STYLE:MARGIN:H TO 210.
+        SET AOSO_UI2_SURF_SITE:STYLE:MARGIN:V TO 60.
+        SET AOSO_UI2_SURF_SITE:VISIBLE TO have_site.
+
+        LOCAL err_e IS 0.
+        LOCAL err_n IS 0.
+        LOCAL err_m IS 0.
+        IF have_site {
+            LOCAL site_geo IS LATLNG(slat, slng).
+            LOCAL delta IS site_geo:POSITION - SHIP:POSITION.
+            LOCAL upv IS SHIP:UP:VECTOR.
+            LOCAL northv IS SHIP:NORTH:VECTOR.
+            LOCAL eastv IS VCRS(upv, northv).
+            LOCAL horiz IS VXCL(upv, delta).
+            SET err_e TO VDOT(horiz, eastv).
+            SET err_n TO VDOT(horiz, northv).
+            SET err_m TO horiz:MAG.
+
+            LOCAL span IS MAX(1000, MIN(50000, err_m * 1.25)).
+            LOCAL sx IS CLAMP(err_e / span, -1, 1).
+            LOCAL sy IS CLAMP(err_n / span, -1, 1).
+            SET AOSO_UI2_SURF_SHIP:STYLE:MARGIN:H TO 210 - sx * 155.
+            SET AOSO_UI2_SURF_SHIP:STYLE:MARGIN:V TO 60 + sy * 72.
+        } ELSE {
+            SET AOSO_UI2_SURF_SHIP:STYLE:MARGIN:H TO 210.
+            SET AOSO_UI2_SURF_SHIP:STYLE:MARGIN:V TO 132.
+        }
+
+        // Cheap coast prediction bug. This is intentionally not guidance:
+        // it shows where the current ballistic trend points if thrust stopped.
+        SET AOSO_UI2_SURF_PRED:VISIBLE TO FALSE.
+        IF have_site {
+            IF f["vs"] < -0.5 AND l["radar"] > 1 {
+                LOCAL tti IS l["radar"] / MAX(1, -f["vs"]).
+                IF tti > 0 { 
+                    IF tti > 180 { SET tti TO 180. }
+                    LOCAL pred_geo IS SHIP:BODY:GEOPOSITIONOF(POSITIONAT(SHIP, TIME:SECONDS + tti)).
+                    LOCAL pdelta IS pred_geo:POSITION - LATLNG(slat, slng):POSITION.
+                    LOCAL pup IS SHIP:UP:VECTOR.
+                    LOCAL pnorth IS SHIP:NORTH:VECTOR.
+                    LOCAL peast IS VCRS(pup, pnorth).
+                    LOCAL ph IS VXCL(pup, pdelta).
+                    LOCAL pe IS VDOT(ph, peast).
+                    LOCAL pn IS VDOT(ph, pnorth).
+                    LOCAL pspan IS MAX(1000, MIN(50000, MAX(err_m, ph:MAG) * 1.25)).
+                    SET AOSO_UI2_SURF_PRED:STYLE:MARGIN:H TO 210 + CLAMP(pe / pspan, -1, 1) * 155.
+                    SET AOSO_UI2_SURF_PRED:STYLE:MARGIN:V TO 60 - CLAMP(pn / pspan, -1, 1) * 72.
+                    SET AOSO_UI2_SURF_PRED:VISIBLE TO TRUE.
+                }
+            }
+        }
+
+        SET AOSO_UI2_SURF_LEFT:TEXT TO "RAD " + ROUND(l["radar"], 0) + "m" + CHAR(10) +
+            "VS " + ROUND(f["vs"], 1) + "m/s" + CHAR(10) +
+            "H " + ROUND(f["gs"], 1) + "m/s".
+        SET AOSO_UI2_SURF_RIGHT:TEXT TO "SITE ERR" + CHAR(10) +
+            ROUND(err_m, 0) + "m" + CHAR(10) +
+            "E " + ROUND(err_e, 0) + " N " + ROUND(err_n, 0).
+
+        LOCAL margin IS l["radar"] - l["trig"].
+        SET AOSO_UI2_SURF_BOTTOM:TEXT TO "SUICIDE " + ROUND(l["trig"], 0) +
+            "m   MARGIN " + ROUND(margin, 0) + "m".
+        aoso_hud_set("ui2_surf_detail", "SITE score " + ROUND(site_score, 2) +
+            "   rough " + ROUND(rough, 0) + "m   coast bug = small square").
+        aoso_hud_set("ui2_surf_energy", "TWR " + ROUND(f["twr"], 2) +
+            "   THR " + ROUND(f["throttle"] * 100, 0) + "%   LAND dV " +
+            ROUND(res["land_dv"], 0) + " / HAVE " + ROUND(res["mission_dv"], 0) + " m/s").
+        RETURN.
+    }
+
+    // Polar survey mode: global latitude/longitude situation display.
+    SET AOSO_UI2_SURF_MAIN:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "survey_frame.png".
+    SET AOSO_UI2_SURF_TITLE:TEXT TO "<b><size=18>" + SHIP:BODY:NAME + "  POLAR SURVEY</size></b>".
+    SET AOSO_UI2_SURF_PRED:VISIBLE TO FALSE.
+
+    LOCAL ship_geo IS SHIP:GEOPOSITION.
+    LOCAL spos IS aoso_ui2_geo_xy(ship_geo:LAT, ship_geo:LNG).
+    SET AOSO_UI2_SURF_SHIP:STYLE:MARGIN:H TO spos[0].
+    SET AOSO_UI2_SURF_SHIP:STYLE:MARGIN:V TO spos[1].
+
     IF have_site {
         LOCAL p IS aoso_ui2_geo_xy(slat, slng).
         SET AOSO_UI2_SURF_SITE:STYLE:MARGIN:H TO p[0].
@@ -570,28 +664,16 @@ FUNCTION aoso_ui2_surface_update {
         SET AOSO_UI2_SURF_SITE:VISIBLE TO FALSE.
     }
 
-    LOCAL phase IS "SURVEY".
-    IF DEFINED AOSO_TOUR {
-        IF AOSO_TOUR["current"] <> "" { SET phase TO AOSO_TOUR["current"]. }
-    }
-    IF l["active"] { SET phase TO l["state"]. }
-    SET AOSO_UI2_SURF_TITLE:TEXT TO "<b><size=18>" + SHIP:BODY:NAME + "  " + phase + "</size></b>".
-
-    SET AOSO_UI2_SURF_LEFT:TEXT TO "LAT " + ROUND(ship_geo:LAT, 1) + "°" + CHAR(10) + "LON " +
-        ROUND(ship_geo:LNG, 1) + "°" + CHAR(10) + "INC " + ROUND(o["inc"], 1) + "°".
+    SET AOSO_UI2_SURF_LEFT:TEXT TO "LAT " + ROUND(ship_geo:LAT, 1) + "°" + CHAR(10) +
+        "LON " + ROUND(ship_geo:LNG, 1) + "°" + CHAR(10) +
+        "INC " + ROUND(o["inc"], 1) + "°".
     IF have_site {
         SET AOSO_UI2_SURF_RIGHT:TEXT TO "SITE " + ROUND(slat, 1) + "°" + CHAR(10) +
             ROUND(slng, 1) + "°" + CHAR(10) + "SCORE " + ROUND(site_score, 1).
     } ELSE {
         SET AOSO_UI2_SURF_RIGHT:TEXT TO "SITE" + CHAR(10) + "SEARCHING" + CHAR(10) + "---".
     }
-
-    LOCAL bottom IS "POLAR SURVEY / GROUND TRACK".
-    IF l["active"] {
-        SET bottom TO "RAD " + ROUND(l["radar"], 0) + "m   VS " +
-            ROUND(f["vs"], 1) + "m/s".
-    }
-    SET AOSO_UI2_SURF_BOTTOM:TEXT TO bottom.
+    SET AOSO_UI2_SURF_BOTTOM:TEXT TO "GROUND TRACK  ·  BEST CANDIDATE ★".
 
     LOCAL site_txt IS "NO CANDIDATE".
     IF have_site {
@@ -599,51 +681,9 @@ FUNCTION aoso_ui2_surface_update {
             "   rough " + ROUND(rough, 0) + "m".
     }
     aoso_hud_set("ui2_surf_detail", site_txt).
-
-    LOCAL margin IS l["radar"] - l["trig"].
-    LOCAL energy_txt IS "LAND dV " + ROUND(res["land_dv"], 0) +
-        " / HAVE " + ROUND(res["mission_dv"], 0) + " m/s".
-    IF l["active"] {
-        SET energy_txt TO energy_txt + "   BURN MARGIN " + ROUND(margin, 0) + "m".
-    }
-    aoso_hud_set("ui2_surf_energy", energy_txt).
-
-    // OPS3-style vertical situation concept adapted to powered landing:
-    // horizontal = radar altitude remaining, vertical = descent rate.
-    // The yellow site marker is the suicide-burn trigger. The ship bug moves
-    // continuously toward touchdown as the descent progresses.
-    IF l["active"] {
-        SET AOSO_UI2_SURF_VSIT:VISIBLE TO TRUE.
-        LOCAL max_alt IS MAX(100, l["trig"] * 2.5).
-        IF l["radar"] > max_alt { SET max_alt TO l["radar"] * 1.05. }
-        LOCAL alt_frac IS CLAMP(l["radar"] / max_alt, 0, 1).
-        LOCAL trig_frac IS CLAMP(l["trig"] / max_alt, 0, 1).
-        LOCAL sx IS 55 + alt_frac * 335.
-        LOCAL tx IS 55 + trig_frac * 335.
-        LOCAL down IS MAX(0, -f["vs"]).
-        LOCAL sy IS 20 + CLAMP(down / 120, 0, 1) * 68.
-        SET AOSO_UI2_SURF_ALTBUG:STYLE:MARGIN:H TO sx.
-        SET AOSO_UI2_SURF_ALTBUG:STYLE:MARGIN:V TO sy.
-        SET AOSO_UI2_SURF_TRIGBUG:STYLE:MARGIN:H TO tx.
-        SET AOSO_UI2_SURF_TRIGBUG:STYLE:MARGIN:V TO 92.
-        SET AOSO_UI2_SURF_VSINFO:TEXT TO l["state"] +
-            "   RAD " + ROUND(l["radar"], 0) + "m   TRIG " +
-            ROUND(l["trig"], 0) + "m   VS " + ROUND(f["vs"], 1) +
-            "m/s   HSPD " + ROUND(f["gs"], 1) + "m/s".
-    } ELSE {
-        SET AOSO_UI2_SURF_VSIT:VISIBLE TO FALSE.
-    }
+    aoso_hud_set("ui2_surf_energy", "POLAR " + ROUND(o["inc"], 1) +
+        "°   AP " + aoso_hud_km(o["ap"]) + "   PE " + aoso_hud_km(o["pe"])).
 }
-
-FUNCTION aoso_ui2_build_vehicle_frame {
-    PARAMETER page.
-    SET AOSO_UI2_VEH_MAIN TO page:ADDVLAYOUT().
-    SET AOSO_UI2_VEH_MAIN:STYLE:WIDTH TO 420.
-    SET AOSO_UI2_VEH_MAIN:STYLE:HEIGHT TO 250.
-    SET AOSO_UI2_VEH_MAIN:STYLE:ALIGN TO "center".
-    SET AOSO_UI2_VEH_MAIN:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "vehicle_frame.png".
-}
-
 
 // -------------------------------------------------------------------------
 // Mission computer / route ribbon
