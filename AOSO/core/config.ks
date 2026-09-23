@@ -170,6 +170,7 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "TICK_DEBUG_EVERY", 2,              // sample every N physics ticks in critical flight phases
     "HUD_FAST_EVERY", 2,                // paint fast HUD at most every N physics ticks; flight control goes first
     "UI2_ENABLED", TRUE,                 // new image-backed AOSO avionics / MFD presentation layer
+    "LAUNCH_HOLD", TRUE,                 // PRELAUNCH only: wait for a green LAUNCH press after systems and calcs
     "UI2_AUTO_PAGE", FALSE,              // keep the selected instrument stable; AUTO is operator opt-in
     "UI2_HUD_X", 990,                   // centered HUD default for this 2560x1440 KSP install; HUD remains draggable
     "UI2_HUD_Y", 525,                   // REC restores these coordinates

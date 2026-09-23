@@ -50,7 +50,7 @@ def check_png(p):
             assert (width, height) == (420, expected_height), f"{p.name}: changed widget dimensions"
     if p.stem == "hud_overlay":
         assert (width, height) == (360, 240), f"{p.name}: changed HUD dimensions"
-    if p.stem in ("crt_asc", "crt_vs", "crt_rte", "crt_bdg", "crt_rnd", "crt_glass"):
+    if p.stem in ("crt_go", "crt_asc", "crt_vs", "crt_rte", "crt_bdg", "crt_rnd", "crt_glass"):
         assert (width, height) == (740, 400), f"{p.name}: CRT plate must stay 740x400"
 
 
@@ -64,7 +64,7 @@ def main():
     assert len(pngs) >= 27
     for p in pngs:
         check_png(p)
-    for plate_name in ("crt_asc.png", "crt_vs.png", "crt_rte.png", "crt_bdg.png", "crt_rnd.png", "crt_glass.png"):
+    for plate_name in ("crt_go.png", "crt_asc.png", "crt_vs.png", "crt_rte.png", "crt_bdg.png", "crt_rnd.png", "crt_glass.png"):
         # Size is asserted inside check_png via a side table below.
         assert (ASSETS / plate_name).is_file(), plate_name
     sources = {p: code_only(p.read_text(encoding="utf-8-sig")) for p in (ROOT / "AOSO").rglob("*.ks")}
@@ -91,6 +91,8 @@ def main():
             assert functions[call.lower()] == 1, f"{p.name}: undefined/duplicate helper {call}"
     boot = (ROOT / "AOSO/main.ks").read_text()
     assert boot.index('"AOSO/ux/ui2_instruments"') < boot.index('"AOSO/ux/ui2_hud"') < boot.index('"AOSO/ux/ui2_mfd"')
+    assert boot.index('"AOSO/ux/ui2_plots"') < boot.index('"AOSO/ux/ui2_go"') < boot.index('"AOSO/ux/hud_gui"')
+    assert boot.index('"AOSO/mission/launch_hold"') < boot.index('"AOSO/ux/ui2_go"')
     gui_code = sources[ROOT / "AOSO/ux/hud_gui.ks"]
     assert len(re.findall(r"\baoso_ops_readout\s*\(", gui_code, re.I)) >= 6
     assert "crt_asc.png" in (ROOT / "AOSO/ux/hud_gui.ks").read_text()

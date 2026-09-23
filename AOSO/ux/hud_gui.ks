@@ -48,6 +48,7 @@ FUNCTION aoso_ui2_selftest {
     }
 
     LOCAL missing_widgets IS LIST().
+    IF NOT AOSO_UI2_GO_MAIN:ISTYPE("WIDGET") { missing_widgets:ADD("GO"). }
     IF NOT AOSO_UI2_ASC_MAIN:ISTYPE("WIDGET") { missing_widgets:ADD("ASC"). }
     IF NOT AOSO_UI2_VS_MAIN:ISTYPE("WIDGET") { missing_widgets:ADD("VSIT"). }
     IF NOT AOSO_UI2_RTE_MAIN:ISTYPE("WIDGET") { missing_widgets:ADD("RTE"). }
@@ -55,9 +56,10 @@ FUNCTION aoso_ui2_selftest {
     IF NOT AOSO_UI2_RND_MAIN:ISTYPE("WIDGET") { missing_widgets:ADD("RNDZ"). }
 
     LOCAL image_files IS LIST(
-        "crt_asc.png", "crt_vs.png", "crt_rte.png", "crt_bdg.png", "crt_rnd.png",
+        "crt_go.png", "crt_asc.png", "crt_vs.png", "crt_rte.png", "crt_bdg.png", "crt_rnd.png",
         "crt_glass.png", "crt_black.png", "hud_overlay.png", "phase_mark.png",
-        "key_asc_off.png", "key_asc_on.png", "key_hud_off.png", "key_mfd_off.png",
+        "key_go_off.png", "key_asc_off.png", "key_asc_on.png", "key_hud_off.png", "key_mfd_off.png",
+        "launch_go.png", "launch_hold.png", "launch_nogo.png", "launch_commit.png",
         "diamond.png", "ship_bug.png", "trail_bug.png", "pred_bug.png"
     ).
     FOR image_file IN image_files {
@@ -78,7 +80,7 @@ FUNCTION aoso_ui2_selftest {
     }
 
     SET AOSO_UI2_READY TO TRUE.
-    SET AOSO_UI2_SELFTEST_REASON TO "CRT ASC VSIT RTE BDG RNDZ ready".
+    SET AOSO_UI2_SELFTEST_REASON TO "CRT GO ASC VSIT RTE BDG RNDZ ready".
     aoso_log_info("UI2", "Startup self-test READY: " + AOSO_UI2_SELFTEST_REASON + ".").
     RETURN TRUE.
 }
@@ -165,6 +167,7 @@ FUNCTION aoso_hud_gui_dispose {
     SET AOSO_HUD_TAB_LOCK TO FALSE.
     SET AOSO_HUD_PAGE TO "".
     aoso_ui2_plots_clear().
+    aoso_ui2_go_clear().
     SET AOSO_HUD_W TO LEXICON().
     SET AOSO_HUD_LAST TO LEXICON().
 }
@@ -218,6 +221,13 @@ FUNCTION aoso_ui2_auto_page_tick {
     IF AOSO_HUD_MODE = "ENGINEERING" { RETURN. }
     IF TIME:SECONDS < AOSO_UI2_MANUAL_UNTIL { RETURN. }
     IF AOSO_HUD_PAGE = "HELP" OR AOSO_HUD_PAGE = "DBG" OR AOSO_HUD_PAGE = "LOG" { RETURN. }
+
+    IF aoso_launch_blocked() {
+        // Stay where the operator put the page. The hold is the point:
+        // they get to look through the other MFDs before pressing LAUNCH.
+        IF AOSO_HUD_PAGE = "" { aoso_hud_show_page("GO", FALSE). }
+        RETURN.
+    }
 
     LOCAL want IS "ASC".
     LOCAL sys IS AOSO_HUD_DATA["systems"].
@@ -672,7 +682,7 @@ FUNCTION aoso_crt_auto_click {
 
 FUNCTION aoso_hud_gui_init {
     aoso_hud_gui_dispose().
-    LOCAL g IS GUI(800).
+    LOCAL g IS GUI(920).
     SET g:X TO 24.
     SET g:Y TO 36.
     SET g:DRAGGABLE TO TRUE.
@@ -690,6 +700,7 @@ FUNCTION aoso_hud_gui_init {
     SET AOSO_HUD_STACK TO vbox:ADDVLAYOUT().
     aoso_crt_zero(AOSO_HUD_STACK).
 
+    aoso_ui2_go_build(aoso_hud_add_page("GO")).
     aoso_ui2_asc_build(aoso_hud_add_page("ASC")).
     aoso_ui2_vs_build(aoso_hud_add_page("VSIT")).
     aoso_ui2_rte_build(aoso_hud_add_page("RTE")).
@@ -699,6 +710,7 @@ FUNCTION aoso_hud_gui_init {
     LOCAL keys IS vbox:ADDHLAYOUT().
     SET keys:STYLE:MARGIN:TOP TO 4.
     SET keys:STYLE:MARGIN:LEFT TO 4.
+    aoso_crt_add_key(keys, "GO", "go").
     aoso_crt_add_key(keys, "ASC", "asc").
     aoso_crt_add_key(keys, "VSIT", "vsit").
     aoso_crt_add_key(keys, "RTE", "route").
@@ -715,7 +727,11 @@ FUNCTION aoso_hud_gui_init {
     SET AOSO_UI2_AUTO_PAGE TO TRUE.
     aoso_hud_fd_enable(TRUE).
     aoso_crt_keys_refresh().
-    aoso_hud_show_page("ASC", FALSE).
+    IF aoso_launch_blocked() {
+        aoso_hud_show_page("GO", FALSE).
+    } ELSE {
+        aoso_hud_show_page("ASC", FALSE).
+    }
     SET AOSO_HUD_GUI_ON TO TRUE.
     g:SHOW().
 
@@ -1306,6 +1322,7 @@ FUNCTION aoso_hud_gui_paint_page {
     IF page_key = "TWIN" { aoso_twin_view_tick(). RETURN. }
     IF page_key = "LOG" { aoso_hud_gui_upd_log(). RETURN. }
     IF page_key = "DBG" { aoso_hud_gui_upd_dbg(). RETURN. }
+    IF page_key = "GO" { aoso_ui2_go_update(). RETURN. }
     IF page_key = "ASC" { aoso_ui2_asc_update(). RETURN. }
     IF page_key = "VSIT" { aoso_ui2_vs_update(). RETURN. }
     IF page_key = "RTE" { aoso_ui2_rte_update(). RETURN. }

@@ -42,6 +42,7 @@ AOSO is a full autopilot. On boot it raises `CONFIG:IPU` to **`IPU_TARGET` (defa
 
 The HUD is a **green CRT**, not a tabbed flight deck:
 
+- **GO** prelaunch systems check. On the pad every light has to turn green — systems and the plan, budget, and projection — before the LAUNCH button lights. The ship will not lift off until you press that green button, so you can look through the other pages first. Later takeoffs from a landed ship are not held. Set `LAUNCH_HOLD` false in `0:/aoso_config.json` to skip the button.
 - **ASC** altitude versus downrange from the pad. Amber triangles are the flown arc. The yellow bug is the ship.
 - **VSIT** altitude versus range to the landing site, or time to periapsis if no site is picked.
 - **ROUTE** the planned bodies and the next transfer window.
@@ -54,7 +55,7 @@ Buttons are the row under the screen. Words on those keys are part of the art, s
 - **Flight-director VECDRAW** arrows (PRO / TGT / BURN / LAND) — `SET VEC`, not `VECUPDATER`
 - **HUDTEXT alerts** with cooldowns
 
-Buttons under the CRT: **ASC / VSIT / ROUTE / DV / RNDZ** change page, **HUD** opens the glass director, **FD** toggles the 3D arrows, **AUTO** follows the phase. On the glass, **MFD** comes back to the CRT. Data is cached (flight fast, orbit and fuel slower). The HUD never `LIST PARTS`. When the CPU is busy the plots wait; speed, altitude, and the ship bug keep moving.
+Buttons under the CRT: **GO / ASC / VSIT / ROUTE / DV / RNDZ** change page, **HUD** opens the glass director, **FD** toggles the 3D arrows, **AUTO** follows the phase. On the glass, **MFD** comes back to the CRT. Data is cached (flight fast, orbit and fuel slower). The HUD never `LIST PARTS`. When the CPU is busy the plots wait; speed, altitude, and the ship bug keep moving.
 
 GOTO and descent run as their own scheduler tasks instead of nested inside the tour FSM. That was the `aoso_goto_update` stack overflow on Acacius (kOS 3000-slot argument cap).
 

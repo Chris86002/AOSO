@@ -162,13 +162,43 @@ FUNCTION aoso_tour_replan_remaining {
 FUNCTION aoso_tour_boot_entry {
     PARAMETER data.
     IF SHIP:STATUS = "PRELAUNCH" OR SHIP:STATUS = "LANDED" {
+        // Pad only: sit in BOOT until the systems board is green and the
+        // operator commits. Do the plan once, then wait. Later LANDED
+        // hops are not blocked (aoso_launch_blocked is PRELAUNCH-only).
+        IF aoso_launch_blocked() {
+            IF NOT data:HASKEY("hold_planned") { SET data["hold_planned"] TO FALSE. }
+            aoso_launch_depart_refresh(2).
+            IF NOT data["hold_planned"] {
+                IF AOSO_LAUNCH_DEPART:HASKEY("status") {
+                    IF AOSO_LAUNCH_DEPART["status"] = "NOT_READY" {
+                        aoso_ui_set("HOLD", AOSO_LAUNCH_DEPART["reason"]).
+                        RETURN.
+                    }
+                }
+                aoso_tour_replan_remaining(data).
+                aoso_cert_eval("grand_tour").
+                aoso_assure_eval().
+                aoso_launch_depart_refresh(0).
+                SET data["hold_planned"] TO TRUE.
+                SET AOSO_LAUNCH_PREP_DONE TO TRUE.
+            }
+            aoso_ui_set("HOLD", "awaiting launch commit").
+            RETURN.
+        }
         LOCAL dep IS aoso_depart_certify().
         IF dep["status"] = "NOT_READY" {
             aoso_log_warn("TOUR", "Pad/surface not ready: " + dep["reason"] + " - holding.").
             aoso_ui_set("HOLD", dep["reason"]).
             RETURN.
         }
-        aoso_tour_replan_remaining(data).
+        IF NOT data:HASKEY("hold_planned") { SET data["hold_planned"] TO FALSE. }
+        LOCAL skip_replan IS data["hold_planned"].
+        IF AOSO_LAUNCH_PREP_DONE {
+            IF AOSO_PLAN_LAST:HASKEY("built_at") { SET skip_replan TO TRUE. }
+        }
+        IF NOT skip_replan {
+            aoso_tour_replan_remaining(data).
+        }
         LOCAL park IS aoso_goto_parking_alt(SHIP:BODY).
         aoso_log_info("TOUR", "Launching from " + SHIP:BODY:NAME + " to begin the grand tour.").
         aoso_ascent_start(90, park).

@@ -64,6 +64,12 @@ Owns:
 This is the **only** owner of those page functions/globals. Do not duplicate
 them in ui2_instruments.ks.
 
+### ux/ui2_go.ks
+Owns the PRELAUNCH systems check:
+- twelve annunciators (watch, engines, fuel, power, control, stage, vessel, class, budget, plan, project, depart)
+- LAUNCH lamp, dark until every annunciator is GO
+- the click handler, which may only call `aoso_launch_request()`
+
 ### ux/ui2_plots.ks
 Owns the vessel-agnostic phase plots:
 - ASC — altitude vs downrange from the pad lock, flown trail, target-Ap sketch
@@ -96,7 +102,7 @@ UI2 deliberately reuses:
 
 Do not move flight-control logic into the UI just to make a display easier.
 
-The booted face is the CRT, not the old flight-deck tabs. `aoso_hud_gui_init` builds only ASC, VSIT, RTE, BDG and RNDZ on the plate art in `ux/ui2_assets/crt_*.png`, plus the glass director. Keys under the plate are ASC / VSIT / ROUTE / DV / RNDZ / HUD / FD / AUTO. AUTO starts on and follows the phase. The pages below (PFD, NAV, SURF, SYS, twin) remain in the source as unused builders. Do not put them back on the face.
+The booted face is the CRT, not the old flight-deck tabs. `aoso_hud_gui_init` builds GO, ASC, VSIT, RTE, BDG and RNDZ on the plate art in `ux/ui2_assets/crt_*.png`, plus the glass director. Keys under the plate are GO / ASC / VSIT / ROUTE / DV / RNDZ / HUD / FD / AUTO. On the pad, GO is the systems check: each launch light turns green when that system or calculation is finished, and the LAUNCH button stays dark until every light is green. Pressing it only sets `AOSO_LAUNCH_COMMIT`. `mission/launch_hold.ks` is what actually starts the mission. The button does not steer, throttle, or stage. AUTO starts on and follows the phase, but it will not pull you off a page you picked while the pad hold is up. The pages below (PFD, NAV, SURF, SYS, twin) remain in the source as unused builders. Do not put them back on the face.
 
 ## Flight-deck displays
 

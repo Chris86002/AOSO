@@ -25,6 +25,7 @@ FUNCTION aoso_sched_prio_of {
     IF name = "descent" { RETURN 0. }
     IF name = "auto_staging" { RETURN 0. }
     IF name = "mission" { RETURN 0. }
+    IF name = "launch_hold" { RETURN 0. }
     IF name = "watchdog" { RETURN 0. }
     IF name = "hud" { RETURN 2. }
     IF name = "auto_power" { RETURN 1. }
@@ -42,6 +43,7 @@ FUNCTION aoso_sched_floor_of {
     IF name = "auto_staging" { RETURN 40. }
     IF name = "watchdog" { RETURN 40. }
     IF name = "mission" { RETURN 80. }
+    IF name = "launch_hold" { RETURN 80. }
     IF name = "hud" { RETURN 80. }
     IF name = "brain" { RETURN 200. }
     IF name = "auto_power" {
@@ -60,6 +62,7 @@ FUNCTION aoso_sched_phase_of {
     PARAMETER name.
     IF name = "auto_staging" { RETURN 0. }
     IF name = "mission" { RETURN 0.04. }
+    IF name = "launch_hold" { RETURN 0.16. }
     IF name = "hud" { RETURN 0.07. }
     IF name = "brain" { RETURN 0.22. }
     IF name = "telemetry" { RETURN 0.12. }
@@ -78,6 +81,7 @@ FUNCTION aoso_sched_rebuild_snap {
         "mission",
         "watchdog",
         "hud",
+        "launch_hold",
         "auto_power",
         "brain",
         "telemetry",
@@ -150,6 +154,7 @@ FUNCTION aoso_sched_keep {
     IF name = "auto_staging" { RETURN TRUE. }
     IF name = "watchdog" { RETURN TRUE. }
     IF name = "mission" { RETURN TRUE. }
+    IF name = "launch_hold" { RETURN TRUE. }
     IF name = "goto" { RETURN TRUE. }
     IF name = "descent" { RETURN TRUE. }
     IF name = "auto_power" {

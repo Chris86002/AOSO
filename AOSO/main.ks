@@ -16,7 +16,9 @@
 // one, AOSO still boots and arms hardening/UX/vehicle automation, then
 // starts the default grand tour (every stock planet and moon, ISRU refuel
 // where the ship can and needs to, then KSC return) from wherever the
-// vessel currently is -- pad, orbit, or another body.
+// vessel currently is -- pad, orbit, or another body. On the pad the
+// tour does not ignite until the GO page's LAUNCH button is green and
+// pressed. That hold is PRELAUNCH only.
 
 // --- Core (order matters; see core/boot.ks) --------------------------------
 RUN ONCE "AOSO/core/constants".
@@ -109,6 +111,7 @@ RUN ONCE "AOSO/mission/assurance".
 RUN ONCE "AOSO/mission/goto".
 RUN ONCE "AOSO/mission/tour".
 RUN ONCE "AOSO/mission/mission".
+RUN ONCE "AOSO/mission/launch_hold".
 
 RUN ONCE "AOSO/core/brain".
 
@@ -127,6 +130,7 @@ RUN ONCE "AOSO/ux/ui2_instruments".
 RUN ONCE "AOSO/ux/ui2_hud".
 RUN ONCE "AOSO/ux/ui2_mfd".
 RUN ONCE "AOSO/ux/ui2_plots".
+RUN ONCE "AOSO/ux/ui2_go".
 RUN ONCE "AOSO/ux/hud_gui".
 RUN ONCE "AOSO/ux/hud".
 RUN ONCE "AOSO/ux/telemetry".
@@ -166,7 +170,17 @@ FUNCTION aoso_main {
         aoso_log_info("MAIN", "No AOSO/mission_plan.ks found - defaulting to a grand tour of every stock body, ISRU refuel where needed, then KSC return.").
         aoso_mission_plan_add(aoso_mission_step_grand_tour()).
         aoso_mission_register_task().
-        aoso_mission_start().
+        // On the pad, leave the mission unstarted until the systems board
+        // is green and the operator presses LAUNCH. Off the pad, fly now.
+        IF aoso_launch_blocked() {
+            aoso_log_info("MAIN", "Prelaunch hold. Launch stays dark until every systems light is green.").
+        } ELSE {
+            aoso_mission_start().
+        }
+    }
+
+    IF aoso_launch_blocked() {
+        aoso_launch_prep_register().
     }
 
     aoso_log_info("MAIN", "Entering main loop.").

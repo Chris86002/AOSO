@@ -969,6 +969,13 @@ FUNCTION aoso_ascent_resolve_target {
 FUNCTION aoso_ascent_start {
     PARAMETER launch_heading IS 90.
     PARAMETER target_apo IS 0.
+    IF aoso_launch_blocked() {
+        IF NOT AOSO_LAUNCH_INHIBIT_LOG {
+            SET AOSO_LAUNCH_INHIBIT_LOG TO TRUE.
+            aoso_log_warn("ASCENT", "Launch inhibited. The pad button is not armed.").
+        }
+        RETURN.
+    }
     SET target_apo TO aoso_ascent_resolve_target(target_apo).
 
     SET AOSO_ASCENT_MAX_Q_SEEN TO 0.

@@ -279,6 +279,11 @@ FUNCTION aoso_goto_plan_entry {
     }
 
     IF SHIP:STATUS = "LANDED" OR SHIP:STATUS = "PRELAUNCH" {
+        IF aoso_launch_blocked() {
+            SET AOSO_GOTO["need_entry"] TO TRUE.
+            aoso_ui_set("HOLD", "awaiting launch commit").
+            RETURN.
+        }
         aoso_log_info("GOTO", "Landed on " + SHIP:BODY:NAME + " - launching before the next hop.").
         aoso_ascent_start(90, aoso_goto_parking_alt(SHIP:BODY)).
         SET data["burn_kind"] TO "launch".

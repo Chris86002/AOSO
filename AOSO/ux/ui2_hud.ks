@@ -89,7 +89,7 @@ FUNCTION aoso_ui2_hud_phase_at {
     PARAMETER code.
     IF NOT AOSO_UI2_HUD_PHASE:ISTYPE("LABEL") { RETURN. }
     LOCAL px IS 268.
-    IF code = "ASC" { SET px TO 210. }
+    IF code = "ASC" OR code = "HLD" { SET px TO 210. }
     IF code = "ORB" { SET px TO 268. }
     IF code = "XFR" { SET px TO 326. }
     IF code = "RNDZ" { SET px TO 390. }
@@ -163,6 +163,7 @@ FUNCTION aoso_ui2_hud_build {
 }
 
 FUNCTION aoso_ui2_hud_phase_code {
+    IF aoso_launch_blocked() { RETURN "HLD". }
     LOCAL ctx IS AOSO_HUD_CTX.
     IF ctx = "LAUNCH" { RETURN "ASC". }
     IF ctx = "TRANSFER" { RETURN "XFR". }
