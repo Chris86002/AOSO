@@ -51,6 +51,37 @@ FUNCTION aoso_landing_site_slope_deg {
     RETURN ARCTAN(MAX(grade_ns, grade_ew)).
 }
 
+// Local relief around the touchdown point. Slope alone can rate the center
+// of a small crater/ridge as flat even when the surrounding footprint is
+// rough. This measures max-min terrain across center + four cardinal samples.
+FUNCTION aoso_landing_site_roughness_m {
+    PARAMETER geo.
+    PARAMETER sample_dist_m IS 0.
+    IF sample_dist_m <= 0 {
+        SET sample_dist_m TO aoso_config_get("LANDING_ROUGHNESS_SAMPLE_M", 200).
+    }
+    LOCAL d IS aoso_landing_site_sample_delta_deg(geo, sample_dist_m).
+    IF d <= 0 { RETURN 0. }
+
+    LOCAL h0 IS geo:TERRAINHEIGHT.
+    LOCAL hn IS aoso_landing_site_offset_geo(geo, d, 0):TERRAINHEIGHT.
+    LOCAL hs IS aoso_landing_site_offset_geo(geo, -d, 0):TERRAINHEIGHT.
+    LOCAL he IS aoso_landing_site_offset_geo(geo, 0, d):TERRAINHEIGHT.
+    LOCAL hw IS aoso_landing_site_offset_geo(geo, 0, -d):TERRAINHEIGHT.
+
+    LOCAL lo IS h0.
+    LOCAL hi IS h0.
+    IF hn < lo { SET lo TO hn. }
+    IF hs < lo { SET lo TO hs. }
+    IF he < lo { SET lo TO he. }
+    IF hw < lo { SET lo TO hw. }
+    IF hn > hi { SET hi TO hn. }
+    IF hs > hi { SET hi TO hs. }
+    IF he > hi { SET hi TO he. }
+    IF hw > hi { SET hi TO hw. }
+    RETURN hi - lo.
+}
+
 // TRUE if geo sits on/under this body's ocean (never a valid touchdown
 // site for a lander). Bodies with no ocean always report FALSE here
 // regardless of TERRAINHEIGHT sign.
@@ -76,7 +107,11 @@ FUNCTION aoso_landing_site_score {
     LOCAL max_slope IS aoso_config_get("MAX_SLOPE_DEG", 15).
     IF slope > max_slope { RETURN -1. }
 
-    LOCAL score IS slope * 2.5.
+    LOCAL roughness IS aoso_landing_site_roughness_m(geo).
+    LOCAL rough_w IS aoso_config_get("LANDING_ROUGHNESS_WEIGHT", 0.08).
+    IF rough_w < 0 { SET rough_w TO 0. }
+
+    LOCAL score IS slope * 2.5 + roughness * rough_w.
     LOCAL alt_m IS geo:TERRAINHEIGHT.
     LOCAL lat_abs IS ABS(geo:LAT).
 
@@ -114,12 +149,14 @@ FUNCTION aoso_landing_site_quality {
     PARAMETER target_geo IS 0.
     LOCAL sc IS aoso_landing_site_score(geo, target_geo).
     LOCAL slope IS 0.
+    LOCAL roughness IS 0.
     LOCAL alt_m IS 0.
     LOCAL water IS FALSE.
     LOCAL lat_n IS 0.
     LOCAL lng_n IS 0.
     IF geo:ISTYPE("GeoCoordinates") {
         SET slope TO aoso_landing_site_slope_deg(geo).
+        SET roughness TO aoso_landing_site_roughness_m(geo).
         SET alt_m TO geo:TERRAINHEIGHT.
         SET water TO aoso_landing_site_is_water(geo).
         SET lat_n TO geo:LAT.
@@ -141,7 +178,10 @@ FUNCTION aoso_landing_site_quality {
         IF alt_m > 5000 { SET takeoff_score TO 0.4. }
         ELSE { SET takeoff_score TO 0.7. }
     }
-    LOCAL safety_score IS slope_score.
+    LOCAL roughness_score IS 1 - (roughness / 150).
+    IF roughness_score < 0 { SET roughness_score TO 0. }
+    IF roughness_score > 1 { SET roughness_score TO 1. }
+    LOCAL safety_score IS slope_score * 0.7 + roughness_score * 0.3.
     IF water { SET safety_score TO 0. }
     LOCAL resource_score IS 0.5.
     IF DEFINED AOSO_PROFILE {
@@ -155,6 +195,8 @@ FUNCTION aoso_landing_site_quality {
         "lat", lat_n,
         "lng", lng_n,
         "slope_score", ROUND(slope_score, 3),
+        "roughness_score", ROUND(roughness_score, 3),
+        "roughness_m", ROUND(roughness, 1),
         "elevation_score", ROUND(takeoff_score, 3),
         "resource_score", ROUND(resource_score, 3),
         "sun_score", ROUND(sun_score, 3),
@@ -217,17 +259,20 @@ FUNCTION aoso_landing_site_scan_orbit {
     }
 
     LOCAL slope IS aoso_landing_site_slope_deg(best_geo).
+    LOCAL roughness IS aoso_landing_site_roughness_m(best_geo).
     LOCAL quality IS aoso_landing_site_quality(best_geo).
     aoso_log_info("SITE", "Best landing site lat=" + ROUND(best_geo:LAT, 2) + " lng=" + ROUND(best_geo:LNG, 2) +
         " alt=" + ROUND(best_geo:TERRAINHEIGHT, 0) + "m slope=" + ROUND(slope, 1) +
-        " deg score=" + ROUND(best_score, 2) + " quality=" + quality["overall_score"] +
-        " sun=" + quality["sun_score"] + " takeoff=" + quality["takeoff_score"] +
-        " (" + samples + " samples / " + orbits + " orbits).").
+        "deg rough=" + ROUND(roughness, 0) + "m score=" + ROUND(best_score, 2) +
+        " quality=" + quality["overall_score"] + " sun=" + quality["sun_score"] +
+        " takeoff=" + quality["takeoff_score"] +
+        " (" + samples + " samples / " + orbits + " orbit horizon).").
     RETURN LEXICON(
         "lat", best_geo:LAT,
         "lng", best_geo:LNG,
         "score", best_score,
         "slope", slope,
+        "roughness", roughness,
         "alt", best_geo:TERRAINHEIGHT,
         "quality", quality["overall_score"],
         "sun", quality["sun_score"],
