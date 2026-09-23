@@ -145,6 +145,24 @@ FUNCTION aoso_goto_patch_is_ours {
     RETURN FALSE.
 }
 
+// A repeated unrelated moon patch is preferable as a controlled flyby to an
+// infinite PLAN/COAST loop, but only when its patched periapsis is safely above
+// atmosphere/terrain. This does not mark the body visited or captured.
+FUNCTION aoso_goto_unexpected_patch_safe {
+    PARAMETER patch_name.
+    LOCAL fly_body IS BODY(patch_name).
+    IF NOT fly_body:ISTYPE("Body") { RETURN FALSE. }
+
+    LOCAL fly_pe IS aoso_rendezvous_orbit_pe(SHIP:ORBIT, fly_body).
+    IF fly_pe < 0 { RETURN FALSE. }
+
+    LOCAL fly_floor IS MAX(5000, fly_body:RADIUS * 0.01).
+    IF fly_body:ATM:EXISTS {
+        SET fly_floor TO fly_body:ATM:HEIGHT + 5000.
+    }
+    RETURN fly_pe >= fly_floor.
+}
+
 FUNCTION aoso_goto_remember_patch {
     PARAMETER data.
     PARAMETER np.
@@ -198,6 +216,9 @@ FUNCTION aoso_goto_on_abort {
 
 FUNCTION aoso_goto_plan_entry {
     PARAMETER data.
+    IF data:HASKEY("unexpected_patch_active") {
+        SET data["unexpected_patch_active"] TO FALSE.
+    }
     aoso_warp_hard_stop().
     aoso_throttle_set(0).
     aoso_maneuver_clear_all().
@@ -606,6 +627,9 @@ FUNCTION aoso_goto_coast_execute {
         SET data["patch_lost_ut"] TO 0.
         SET data["capture_fails"] TO 0.
         SET data["skip_capture"] TO FALSE.
+        IF data:HASKEY("unexpected_patch_count") { SET data["unexpected_patch_count"] TO 0. }
+        IF data:HASKEY("unexpected_patch_body") { SET data["unexpected_patch_body"] TO "". }
+        IF data:HASKEY("unexpected_patch_active") { SET data["unexpected_patch_active"] TO FALSE. }
         LOCAL hop_name IS "".
         IF data:HASKEY("hop") { SET hop_name TO data["hop"]. }
         LOCAL expected_soi IS FALSE.
@@ -651,25 +675,40 @@ FUNCTION aoso_goto_coast_execute {
         // trajectory changed to Mun; the old coast controller simply followed
         // the new NEXTPATCH and only noticed after entering Mun.
         IF NOT aoso_goto_patch_is_ours(data, np) {
-            aoso_warp_hard_stop().
             aoso_steer_release().
             SET data["expect_body"] TO "".
             SET data["expect_ut"] TO 0.
             SET data["patch_lost_ut"] TO 0.
             SET data["corrected"] TO FALSE.
-            SET data["correct_count"] TO 0.
-            aoso_log_warn("GOTO", "Unexpected next SOI " + np +
-                " while targeting " + data["hop"] + " / goal " + goal_name +
-                " - stopping warp before entry.").
-            aoso_observe_anomaly("UNEXPECTED_PATCH", "HIGH", 0, SHIP:ORBIT:NEXTPATCHETA).
-            IF DEFINED AOSO_EVENTS {
-                aoso_event_publish("UNEXPECTED_PATCH", "goto", np).
+
+            // Count one obstruction per recovery cycle, not one per scheduler
+            // tick while KSP is unpacking.
+            LOCAL first_observe IS TRUE.
+            IF data:HASKEY("unexpected_patch_active") {
+                IF data["unexpected_patch_active"] { SET first_observe TO FALSE. }
             }
+            IF first_observe {
+                SET data["unexpected_patch_active"] TO TRUE.
+                SET data["unexpected_patch_body"] TO np.
+                SET data["unexpected_patch_count"] TO data["unexpected_patch_count"] + 1.
+                aoso_log_warn("GOTO", "Unexpected next SOI " + np +
+                    " while targeting " + data["hop"] + " / goal " + goal_name +
+                    " - stopping warp before entry (attempt " +
+                    data["unexpected_patch_count"] + ").").
+                aoso_observe_anomaly("UNEXPECTED_PATCH", "HIGH", 0, SHIP:ORBIT:NEXTPATCHETA).
+                IF DEFINED AOSO_EVENTS {
+                    aoso_event_publish("UNEXPECTED_PATCH", "goto", np).
+                }
+            }
+
+            // Do not block here. At high rails, WAIT 0 can advance UT by
+            // hours. Keep COAST alive until KSP is fully unpacked at physics
+            // 1x, then run the correction solver.
+            IF NOT aoso_warp_ensure_physics_idle() { RETURN. }
 
             // First try to repair the existing transfer directly. For a
             // parent->moon hop this asks the correction solver to make the
-            // intended moon the FIRST patch, not merely appear later in the
-            // conic chain.
+            // intended moon the FIRST patch, not merely appear later.
             IF data["hop"] <> "" {
                 LOCAL intended IS BODY(data["hop"]).
                 IF intended:ISTYPE("Body") {
@@ -678,7 +717,8 @@ FUNCTION aoso_goto_coast_execute {
                             LOCAL nd_avoid IS aoso_rendezvous_add_correction_node(intended).
                             IF nd_avoid <> 0 {
                                 SET data["corrected"] TO TRUE.
-                                SET data["correct_count"] TO 1.
+                                SET data["correct_count"] TO data["correct_count"] + 1.
+                                SET data["unexpected_patch_active"] TO FALSE.
                                 SET data["burn_kind"] TO "correct".
                                 aoso_log_info("GOTO", "Avoiding unintended " + np +
                                     " SOI with a correction back onto direct " + intended:NAME + " intercept.").
@@ -690,8 +730,37 @@ FUNCTION aoso_goto_coast_execute {
                 }
             }
 
+            // If the same obstruction survives a fresh correction/replan,
+            // stop thrashing. A safe moon flyby is a valid recovery route;
+            // re-plan toward the original goal after its SOI. Unsafe flybys
+            // are never accepted.
+            IF data["unexpected_patch_count"] >= 2 {
+                IF aoso_goto_unexpected_patch_safe(np) {
+                    SET data["via"] TO np.
+                    SET data["unexpected_patch_active"] TO FALSE.
+                    aoso_goto_remember_patch(data, np, SHIP:ORBIT:NEXTPATCHETA).
+                    aoso_log_warn("GOTO", "Direct " + data["hop"] +
+                        " repair failed twice; accepting safe " + np +
+                        " flyby as a recovery leg instead of repeating PLAN/COAST.").
+                    RETURN.
+                }
+            }
+
+            IF data["unexpected_patch_count"] >= 3 {
+                aoso_warp_stop().
+                aoso_log_error("GOTO", "Repeated unsafe/unrepairable " + np +
+                    " obstruction while targeting " + data["hop"] +
+                    " - entering safe hold instead of looping indefinitely.").
+                IF DEFINED AOSO_EVENTS {
+                    aoso_event_publish("HOLD", "goto", "unrepairable patch " + np).
+                }
+                aoso_state_abort(AOSO_GOTO).
+                RETURN.
+            }
+
+            SET data["unexpected_patch_active"] TO FALSE.
             aoso_log_warn("GOTO", "Could not repair the unexpected " + np +
-                " patch directly - rebuilding the intended route at 1x.").
+                " patch directly - rebuilding the intended route once at settled 1x.").
             aoso_state_transition(AOSO_GOTO, "PLAN").
             RETURN.
         }
@@ -885,12 +954,26 @@ FUNCTION aoso_goto_capture_entry {
         SET data["capture_fails"] TO fails + 1.
         aoso_log_warn("GOTO", "No capture node (try " + data["capture_fails"] + "/3); continuing from current orbit.").
         IF data["capture_fails"] >= 3 {
-            SET data["skip_capture"] TO TRUE.
             IF SHIP:BODY:NAME = data["goal"] {
-                aoso_log_warn("GOTO", "Capture failed 3x at goal " + data["goal"] + " - marking arrived.").
-                aoso_state_transition(AOSO_GOTO, "DONE").
+                IF aoso_goto_orbit_is_parked() {
+                    aoso_log_warn("GOTO", "Capture node failed 3x but orbit is already parked at goal " +
+                        data["goal"] + " - accepting verified orbit.").
+                    aoso_state_transition(AOSO_GOTO, "DONE").
+                } ELSE {
+                    aoso_warp_stop().
+                    aoso_log_error("GOTO", "Capture failed 3x at goal " + data["goal"] +
+                        " and orbit is still unbound/unparked (e=" +
+                        ROUND(SHIP:ORBIT:ECCENTRICITY, 3) + ", PE=" +
+                        ROUND(PERIAPSIS, 0) + "m) - SAFE HOLD, never fake arrival.").
+                    IF DEFINED AOSO_EVENTS {
+                        aoso_event_publish("HOLD", "goto", "capture unbound at " + data["goal"]).
+                    }
+                    aoso_state_abort(AOSO_GOTO).
+                }
             } ELSE {
-                aoso_log_warn("GOTO", "Capture failed 3x at " + SHIP:BODY:NAME + " - skipping capture and re-planning the hop.").
+                SET data["skip_capture"] TO TRUE.
+                aoso_log_warn("GOTO", "Capture failed 3x at " + SHIP:BODY:NAME +
+                    " - skipping capture and re-planning the hop.").
                 aoso_state_transition(AOSO_GOTO, "PLAN").
             }
             RETURN.
@@ -1016,6 +1099,18 @@ FUNCTION aoso_goto_done_entry {
     SET WARP TO 0.
     aoso_throttle_set(0).
     aoso_steer_release().
+
+    IF SHIP:BODY:NAME = data["goal"] {
+        IF SHIP:STATUS <> "LANDED" AND SHIP:STATUS <> "SPLASHED" {
+            IF NOT aoso_goto_orbit_is_parked() {
+                aoso_log_error("GOTO", "DONE rejected at " + data["goal"] +
+                    ": capture is not parked (e=" + ROUND(SHIP:ORBIT:ECCENTRICITY, 3) +
+                    " PE=" + ROUND(PERIAPSIS, 0) + "m).").
+                aoso_state_transition(AOSO_GOTO, "ABORTED").
+                RETURN.
+            }
+        }
+    }
     IF AOSO_ACTION_CUR:ISTYPE("Lexicon") {
         IF AOSO_ACTION_CUR["type"] = "CAPTURE" {
             aoso_goto_close_capture_action("SUCCESS", "arrived").
@@ -1061,7 +1156,7 @@ FUNCTION aoso_goto_define_states {
 FUNCTION aoso_goto_start {
     PARAMETER body_name.
     aoso_goto_define_states().
-    SET AOSO_GOTO["data"] TO LEXICON("goal", body_name, "hop", "", "burn_kind", "", "depart_body", SHIP:BODY:NAME, "window_ut", 0, "coast_since", 0, "retry_ut", 0, "corrected", FALSE, "correct_count", 0, "last_patch_ut", 0, "expect_body", "", "expect_ut", 0, "patch_lost_ut", 0, "capture_fails", 0, "skip_capture", FALSE).
+    SET AOSO_GOTO["data"] TO LEXICON("goal", body_name, "hop", "", "burn_kind", "", "depart_body", SHIP:BODY:NAME, "window_ut", 0, "coast_since", 0, "retry_ut", 0, "corrected", FALSE, "correct_count", 0, "last_patch_ut", 0, "expect_body", "", "expect_ut", 0, "patch_lost_ut", 0, "capture_fails", 0, "skip_capture", FALSE, "unexpected_patch_body", "", "unexpected_patch_count", 0, "unexpected_patch_active", FALSE).
     aoso_log_info("GOTO", "Navigating to " + body_name + ".").
     // TRANSFER begins in PLAN once the vessel is actually in flight and
     // the next hop is known. This avoids ASCENT overwriting it on launch
