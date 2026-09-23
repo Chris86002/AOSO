@@ -288,36 +288,42 @@ FUNCTION aoso_hud_gui_build_nav {
 
 FUNCTION aoso_hud_gui_build_mission {
     PARAMETER p.
-    aoso_hud_title(p, "MISSION CONTROL").
-    aoso_hud_hint(p, "Grand-tour plan AOSO is flying. This page does not pick destinations.").
-    aoso_hud_lab(p, "msn_name", "MISSION  -").
-    aoso_hud_lab(p, "msn_prog", "PROGRESS  -").
-    aoso_hud_lab(p, "msn_cur", "CURRENT  -").
-    aoso_hud_lab(p, "msn_phase", "PHASE  -").
-    aoso_hud_lab(p, "msn_next", "NEXT  -").
-    aoso_hud_lab(p, "msn_obj", "OBJECTIVE  -").
-    aoso_hud_lab(p, "msn_ret", "RETURN  KERBIN -> KSC").
-    aoso_hud_lab(p, "msn_stat", "STATUS  -").
-    aoso_hud_lab(p, "msn_feas", "FEASIBLE  -").
-    aoso_hud_lab(p, "msn_class", "CLASS  -").
-    aoso_hud_lab(p, "msn_time", "ROUTE  -").
-    aoso_hud_lab(p, "msn_legend", "now = current hop.  done = already visited.  unmarked = still ahead.").
-    aoso_hud_lab(p, "msn_skip", "").
+    aoso_ui2_mission_build(p).
+
+    LOCAL data IS p:ADDVBOX().
+    SET data:STYLE:WIDTH TO 420.
+    SET data:STYLE:ALIGN TO "center".
+    aoso_hud_lab(data, "msn_name", "MISSION  -").
+    aoso_hud_lab(data, "msn_prog", "PROGRESS  -").
+    aoso_hud_lab(data, "msn_cur", "CURRENT  -").
+    aoso_hud_lab(data, "msn_phase", "PHASE  -").
+    aoso_hud_lab(data, "msn_next", "NEXT  -").
+    aoso_hud_lab(data, "msn_obj", "OBJECTIVE  -").
+    aoso_hud_lab(data, "msn_ret", "RETURN  KERBIN -> KSC").
+    aoso_hud_lab(data, "msn_stat", "STATUS  -").
+    aoso_hud_lab(data, "msn_feas", "FEASIBLE  -").
+    aoso_hud_lab(data, "msn_class", "CLASS  -").
+    aoso_hud_lab(data, "msn_time", "ROUTE  -").
+    aoso_hud_lab(data, "msn_legend", "green=done  amber=current  dark=ahead").
+    aoso_hud_lab(data, "msn_skip", "").
 }
 
 FUNCTION aoso_hud_gui_build_vehicle {
     PARAMETER p.
     aoso_hud_title(p, "VEHICLE / DIGITAL TWIN").
-    aoso_ui2_build_vehicle_frame(p).
-    aoso_hud_hint(p, "Vehicle schematic and capability state. The graphical twin remains display-only.").
-    aoso_hud_lab(p, "veh_id", "SHIP  -").
-    aoso_hud_lab(p, "veh_cls", "CLASS  -").
-    aoso_hud_lab(p, "veh_crew", "CREW  -").
-    aoso_hud_lab(p, "veh_hw", "HARDWARE  -").
-    aoso_hud_lab(p, "veh_mob", "MOBILITY  -").
-    aoso_hud_lab(p, "veh_cap", "CAPABILITIES  -").
-    aoso_hud_lab(p, "veh_pwr", "POWER  -").
-    aoso_hud_lab(p, "veh_twin", "TWIN  -").
+    aoso_ui2_vehicle_build(p).
+
+    LOCAL data IS p:ADDVBOX().
+    SET data:STYLE:WIDTH TO 420.
+    SET data:STYLE:ALIGN TO "center".
+    aoso_hud_lab(data, "veh_id", "SHIP  -").
+    aoso_hud_lab(data, "veh_cls", "CLASS  -").
+    aoso_hud_lab(data, "veh_crew", "CREW  -").
+    aoso_hud_lab(data, "veh_hw", "HARDWARE  -").
+    aoso_hud_lab(data, "veh_mob", "MOBILITY  -").
+    aoso_hud_lab(data, "veh_cap", "CAPABILITIES  -").
+    aoso_hud_lab(data, "veh_pwr", "POWER  -").
+    aoso_hud_lab(data, "veh_twin", "TWIN  -").
 }
 
 FUNCTION aoso_hud_gui_build_prop {
@@ -369,22 +375,25 @@ FUNCTION aoso_hud_gui_build_stg {
 
 FUNCTION aoso_hud_gui_build_sys {
     PARAMETER p.
-    aoso_hud_title(p, "SYSTEMS").
-    aoso_hud_hint(p, "Health board. NOMINAL=ok  DEGRADED=weak  FAIL=broken. WHY is the reason. CPU busy is not a ship failure.").
-    aoso_hud_lab(p, "sys_roll", "AOSO  -").
-    aoso_hud_lab(p, "sys_why", "").
-    aoso_hud_lab(p, "sys_cpu_note", "").
-    aoso_hud_lab(p, "sys_guid", "GUIDANCE     -").
-    aoso_hud_lab(p, "sys_nav", "NAVIGATION   -").
-    aoso_hud_lab(p, "sys_steer", "STEERING     -").
-    aoso_hud_lab(p, "sys_thr", "THROTTLE     -").
-    aoso_hud_lab(p, "sys_stg", "STAGING      -").
-    aoso_hud_lab(p, "sys_msn", "MISSION      -").
-    aoso_hud_lab(p, "sys_lnd", "LANDING      -").
-    aoso_hud_lab(p, "sys_pwr", "POWER        -").
-    aoso_hud_lab(p, "sys_com", "COMMS        -").
-    aoso_hud_lab(p, "sys_wd", "WATCHDOG     -").
-    aoso_hud_lab(p, "sys_cpu", "CPU          -").
+    aoso_ui2_systems_build(p).
+
+    LOCAL data IS p:ADDVBOX().
+    SET data:STYLE:WIDTH TO 420.
+    SET data:STYLE:ALIGN TO "center".
+    aoso_hud_lab(data, "sys_roll", "AOSO  -").
+    aoso_hud_lab(data, "sys_why", "").
+    aoso_hud_lab(data, "sys_cpu_note", "").
+    aoso_hud_lab(data, "sys_guid", "GUIDANCE     -").
+    aoso_hud_lab(data, "sys_nav", "NAVIGATION   -").
+    aoso_hud_lab(data, "sys_steer", "STEERING     -").
+    aoso_hud_lab(data, "sys_thr", "THROTTLE     -").
+    aoso_hud_lab(data, "sys_stg", "STAGING      -").
+    aoso_hud_lab(data, "sys_msn", "MISSION      -").
+    aoso_hud_lab(data, "sys_lnd", "LANDING      -").
+    aoso_hud_lab(data, "sys_pwr", "POWER        -").
+    aoso_hud_lab(data, "sys_com", "COMMS        -").
+    aoso_hud_lab(data, "sys_wd", "WATCHDOG     -").
+    aoso_hud_lab(data, "sys_cpu", "CPU          -").
 }
 
 FUNCTION aoso_hud_gui_build_log {
@@ -867,6 +876,7 @@ FUNCTION aoso_hud_gui_upd_nav {
 }
 
 FUNCTION aoso_hud_gui_upd_mission {
+    aoso_ui2_mission_update().
     LOCAL m IS AOSO_HUD_DATA["mission"].
     LOCAL sys IS AOSO_HUD_DATA["systems"].
     aoso_hud_set("msn_name", "MISSION  " + m["mission"] + " / " + m["step"]).
@@ -902,6 +912,7 @@ FUNCTION aoso_hud_gui_upd_mission {
 }
 
 FUNCTION aoso_hud_gui_upd_vehicle {
+    aoso_ui2_vehicle_update().
     LOCAL veh IS AOSO_HUD_DATA["vehicle"].
     aoso_hud_set("veh_id", "SHIP  " + veh["name"] + "   TYPE " + veh["type"] + "   PARTS " + veh["parts"]).
     aoso_hud_set("veh_cls", "CLASS  " + veh["class"]).
@@ -1035,6 +1046,7 @@ FUNCTION aoso_hud_gui_upd_stg {
 }
 
 FUNCTION aoso_hud_gui_upd_sys {
+    aoso_ui2_systems_update().
     LOCAL s IS AOSO_HUD_DATA["systems"].
     aoso_hud_set("sys_roll", "AOSO  " + s["rollup"]).
     LOCAL why IS "".
