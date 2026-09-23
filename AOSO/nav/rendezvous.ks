@@ -1010,6 +1010,15 @@ FUNCTION aoso_rendezvous_search_intercept {
         SET nd:ETA TO best_ut - TIME:SECONDS.
         IF nd:ETA < 25 { SET nd:ETA TO 25. }
         aoso_yield_hud().
+
+        LOCAL coarse_pe IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
+        IF aoso_rendezvous_pe_rough_ok_value(coarse_pe, hop) {
+            RETURN TRUE.
+        }
+
+        // Only spend the fine search when the coarse encounter is not yet
+        // safe enough to commit. Fine-tuning a 50-100 km Minmus encounter
+        // toward 15 km before departure was wasted work; mid-course is better.
         aoso_rendezvous_refine_intercept(nd, hop, dv_use).
         RETURN TRUE.
     }
