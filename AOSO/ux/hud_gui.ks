@@ -572,11 +572,17 @@ FUNCTION aoso_hud_tac_chip_hide {
 FUNCTION aoso_hud_gui_hide {
     IF AOSO_HUD_GUI:ISTYPE("GUI") { AOSO_HUD_GUI:HIDE(). }
     SET AOSO_HUD_GUI_ON TO FALSE.
-    aoso_hud_tac_chip_show().
+    IF aoso_config_get("UI2_ENABLED", TRUE) {
+        aoso_hud_tac_chip_hide().
+        aoso_ui2_hud_show().
+    } ELSE {
+        aoso_hud_tac_chip_show().
+    }
 }
 
 FUNCTION aoso_hud_gui_show {
     aoso_hud_tac_chip_hide().
+    aoso_ui2_hud_hide().
     IF AOSO_HUD_GUI:ISTYPE("GUI") { AOSO_HUD_GUI:SHOW(). }
     SET AOSO_HUD_GUI_ON TO TRUE.
 }
@@ -609,6 +615,7 @@ FUNCTION aoso_hud_doing_fast {
 }
 
 FUNCTION aoso_hud_gui_fast {
+    IF AOSO_UI2_HUD_VISIBLE { aoso_ui2_hud_fast(). }
     IF NOT AOSO_HUD_GUI_ON { RETURN. }
     IF NOT AOSO_HUD_GUI:ISTYPE("GUI") { RETURN. }
     LOCAL f IS AOSO_HUD_DATA["flight"].
@@ -1129,6 +1136,7 @@ FUNCTION aoso_hud_gui_tick {
     }
     IF AOSO_HUD_MODE = "TACTICAL" {
         IF AOSO_HUD_GUI_ON { aoso_hud_gui_hide(). }
+        aoso_ui2_hud_update().
         RETURN.
     }
     IF NOT AOSO_HUD_GUI_ON { aoso_hud_gui_show(). }
