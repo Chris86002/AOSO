@@ -131,7 +131,8 @@ FUNCTION aoso_hud_show_page {
 FUNCTION aoso_hud_tab_click {
     PARAMETER name.
     IF AOSO_HUD_COMPACT { aoso_hud_set_compact(FALSE). }
-    SET AOSO_UI2_MANUAL_UNTIL TO TIME:SECONDS + 30.
+    SET AOSO_UI2_MANUAL_UNTIL TO TIME:SECONDS +
+        aoso_config_get("UI2_MANUAL_PAGE_HOLD_S", 30).
     aoso_hud_show_page(name).
 }
 
@@ -163,9 +164,17 @@ FUNCTION aoso_ui2_auto_page_tick {
             IF o["node"] OR o["burning"] {
                 SET want TO "NAV".
             } ELSE {
+                LOCAL nav_active IS FALSE.
                 IF DEFINED AOSO_GOTO {
                     LOCAL gs IS AOSO_GOTO["current"].
-                    IF gs <> "" AND gs <> "DONE" AND gs <> "ABORTED" { SET want TO "NAV". }
+                    IF gs <> "" AND gs <> "DONE" AND gs <> "ABORTED" { SET nav_active TO TRUE. }
+                }
+                IF nav_active {
+                    SET want TO "NAV".
+                } ELSE {
+                    IF tour_st = "PLAN" OR tour_st = "REFUEL" OR tour_st = "TAKEOFF" {
+                        SET want TO "MSN".
+                    }
                 }
             }
         }
@@ -204,6 +213,14 @@ FUNCTION aoso_hud_skin_apply {
     SET g:SKIN:LABEL:TEXTCOLOR TO RGB(0.30, 1.0, 0.60).
     SET g:SKIN:BUTTON:FONTSIZE TO fs.
     SET g:SKIN:BUTTON:BG TO AOSO_UI2_ASSET_ROOT + "button_off.png".
+    SET g:SKIN:HORIZONTALSLIDER:BG TO AOSO_UI2_ASSET_ROOT + "hscale.png".
+    SET g:SKIN:HORIZONTALSLIDERTHUMB:BG TO AOSO_UI2_ASSET_ROOT + "diamond.png".
+    SET g:SKIN:HORIZONTALSLIDERTHUMB:WIDTH TO 16.
+    SET g:SKIN:HORIZONTALSLIDERTHUMB:HEIGHT TO 16.
+    SET g:SKIN:VERTICALSLIDER:BG TO AOSO_UI2_ASSET_ROOT + "vscale.png".
+    SET g:SKIN:VERTICALSLIDERTHUMB:BG TO AOSO_UI2_ASSET_ROOT + "diamond.png".
+    SET g:SKIN:VERTICALSLIDERTHUMB:WIDTH TO 16.
+    SET g:SKIN:VERTICALSLIDERTHUMB:HEIGHT TO 16.
     SET g:SKIN:TOGGLE:FONTSIZE TO fs.
     SET g:SKIN:WINDOW:FONTSIZE TO fs.
 }
@@ -601,6 +618,7 @@ FUNCTION aoso_hud_gui_init {
     aoso_hud_gui_build_dbg(aoso_hud_add_page("DBG")).
     aoso_hud_gui_build_help(aoso_hud_add_page("HELP")).
 
+    SET AOSO_UI2_AUTO_PAGE TO aoso_config_get("UI2_AUTO_PAGE", TRUE).
     aoso_hud_apply_scale().
     aoso_hud_set_compact(AOSO_HUD_COMPACT).
     aoso_hud_show_page("FLT", FALSE).
