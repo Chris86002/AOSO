@@ -24,7 +24,7 @@ namespace kOS.AddOns.AOSO
 
         private void InitializeAosoSuffixes()
         {
-            AddSuffix("VERSION", new Suffix<StringValue>(() => new StringValue("0.4.0")));
+            AddSuffix("VERSION", new Suffix<StringValue>(() => new StringValue("0.4.1")));
             AddSuffix("LAMBERT", new OneArgsSuffix<Lexicon, Lexicon>(Lambert));
             AddSuffix("PORKCHOP", new OneArgsSuffix<Lexicon, Lexicon>(Porkchop));
             AddSuffix("PORKCHOPSTART", new OneArgsSuffix<Lexicon, Lexicon>(PorkchopStart));
