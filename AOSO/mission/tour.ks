@@ -454,8 +454,7 @@ FUNCTION aoso_tour_scan_execute {
             RETURN.
         }
     }
-    IF WARP > 0 OR WARPMODE <> "PHYSICS" OR NOT KUNIVERSE:TIMEWARP:ISSETTLED {
-        aoso_warp_hard_stop().
+    IF NOT aoso_warp_ensure_physics_idle() {
         RETURN.
     }
     SET data["deorbit_wait_since"] TO TIME:SECONDS.
