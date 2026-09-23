@@ -18,6 +18,8 @@ under plugin/ and is built against the user's real KSP/kOS assemblies.
 ## Read the task-specific docs, not every doc
 
 Start with docs/AI_CONTEXT.md for KerboScript hazards and repo-wide rules.
+For the active Minmus/UI2 debugging cycle, docs/CODEX_HANDOFF.md contains the
+current diagnosis, fixes already applied, and next-run acceptance signatures.
 
 Use:
 - docs/AOSO_ARCHITECTURE.md for subsystem boundaries and scheduler/state design.
