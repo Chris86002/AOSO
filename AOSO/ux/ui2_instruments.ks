@@ -43,6 +43,10 @@ GLOBAL AOSO_UI2_SURF_TITLE IS 0.
 GLOBAL AOSO_UI2_SURF_LEFT IS 0.
 GLOBAL AOSO_UI2_SURF_RIGHT IS 0.
 GLOBAL AOSO_UI2_SURF_BOTTOM IS 0.
+GLOBAL AOSO_UI2_SURF_VSIT IS 0.
+GLOBAL AOSO_UI2_SURF_ALTBUG IS 0.
+GLOBAL AOSO_UI2_SURF_TRIGBUG IS 0.
+GLOBAL AOSO_UI2_SURF_VSINFO IS 0.
 
 GLOBAL AOSO_UI2_VEH_MAIN IS 0.
 
@@ -411,6 +415,25 @@ FUNCTION aoso_ui2_build_surface_display {
 
     aoso_hud_lab(page, "ui2_surf_detail", "").
     aoso_hud_lab(page, "ui2_surf_energy", "").
+
+    LOCAL vt IS page:ADDLABEL("<b>VERTICAL SITUATION / DESCENT ENERGY</b>").
+    SET vt:STYLE:HSTRETCH TO TRUE.
+    SET vt:STYLE:ALIGN TO "center".
+    SET AOSO_UI2_SURF_VSIT TO page:ADDVLAYOUT().
+    SET AOSO_UI2_SURF_VSIT:STYLE:WIDTH TO 420.
+    SET AOSO_UI2_SURF_VSIT:STYLE:HEIGHT TO 120.
+    SET AOSO_UI2_SURF_VSIT:STYLE:ALIGN TO "center".
+    SET AOSO_UI2_SURF_VSIT:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "descent_frame.png".
+    SET AOSO_UI2_SURF_ALTBUG TO aoso_ui2_marker(
+        AOSO_UI2_SURF_VSIT,
+        AOSO_UI2_ASSET_ROOT + "ship_bug.png",
+        18).
+    SET AOSO_UI2_SURF_TRIGBUG TO aoso_ui2_marker(
+        AOSO_UI2_SURF_VSIT,
+        AOSO_UI2_ASSET_ROOT + "site_bug.png",
+        16).
+    SET AOSO_UI2_SURF_VSINFO TO aoso_ui2_overlay_label(AOSO_UI2_SURF_VSIT, "", 78, 12).
+    SET AOSO_UI2_SURF_VSIT:VISIBLE TO FALSE.
 }
 
 FUNCTION aoso_ui2_surface_update {
@@ -488,6 +511,32 @@ FUNCTION aoso_ui2_surface_update {
         SET energy_txt TO energy_txt + "   BURN MARGIN " + ROUND(margin, 0) + "m".
     }
     aoso_hud_set("ui2_surf_energy", energy_txt).
+
+    // OPS3-style vertical situation concept adapted to powered landing:
+    // horizontal = radar altitude remaining, vertical = descent rate.
+    // The yellow site marker is the suicide-burn trigger. The ship bug moves
+    // continuously toward touchdown as the descent progresses.
+    IF l["active"] {
+        SET AOSO_UI2_SURF_VSIT:VISIBLE TO TRUE.
+        LOCAL max_alt IS MAX(100, l["trig"] * 2.5).
+        IF l["radar"] > max_alt { SET max_alt TO l["radar"] * 1.05. }
+        LOCAL alt_frac IS CLAMP(l["radar"] / max_alt, 0, 1).
+        LOCAL trig_frac IS CLAMP(l["trig"] / max_alt, 0, 1).
+        LOCAL sx IS 55 + alt_frac * 335.
+        LOCAL tx IS 55 + trig_frac * 335.
+        LOCAL down IS MAX(0, -f["vs"]).
+        LOCAL sy IS 20 + CLAMP(down / 120, 0, 1) * 68.
+        SET AOSO_UI2_SURF_ALTBUG:STYLE:MARGIN:H TO sx.
+        SET AOSO_UI2_SURF_ALTBUG:STYLE:MARGIN:V TO sy.
+        SET AOSO_UI2_SURF_TRIGBUG:STYLE:MARGIN:H TO tx.
+        SET AOSO_UI2_SURF_TRIGBUG:STYLE:MARGIN:V TO 92.
+        SET AOSO_UI2_SURF_VSINFO:TEXT TO l["state"] +
+            "   RAD " + ROUND(l["radar"], 0) + "m   TRIG " +
+            ROUND(l["trig"], 0) + "m   VS " + ROUND(f["vs"], 1) +
+            "m/s   HSPD " + ROUND(f["gs"], 1) + "m/s".
+    } ELSE {
+        SET AOSO_UI2_SURF_VSIT:VISIBLE TO FALSE.
+    }
 }
 
 FUNCTION aoso_ui2_build_vehicle_frame {
