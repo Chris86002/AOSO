@@ -145,22 +145,30 @@ image('descent_frame', 420, 120, ({line, rect}) => {
 image('window_bg', 64, 64, ({line}) => {
   line(9, 10, 54, 10, C.gridHi);
 });
+image('readout_frame', 430, 480, ({line, rect}) => {
+  // Permanent OPS-style telemetry bank; the labels and values are live widgets.
+  rect(8, 8, 421, 471, C.gridHi);
+  line(12, 39, 417, 39, C.green);
+  for (let y = 77; y < 460; y += 28) line(16, y, 414, y, C.grid);
+  line(17, 452, 37, 452, C.green);
+  line(393, 452, 413, 452, C.green);
+});
 image('hud_clear', 64, 64, ({fill, line}) => {
   fill(0, 0, 63, 63, [3, 8, 9, 158]);
   line(0, 0, 63, 0, [26, 240, 52, 180]);
 }, 'glass');
-image('hud_overlay', 420, 250, ({line, rect}) => {
+image('hud_overlay', 360, 240, ({line, rect}) => {
   // Transparent HUD geometry: kOS labels and the guidance bug remain live.
-  for (const x of [28, 389]) {
-    line(x, 25, x, 226, [26, 240, 52, 220]);
-    for (let y = 25; y <= 226; y += 25) line(x, y, x + (x < 210 ? 9 : -9), y, [26, 240, 52, 180]);
+  for (const x of [18, 341]) {
+    line(x, 22, x, 216, [26, 240, 52, 220]);
+    for (let y = 22; y <= 216; y += 24) line(x, y, x + (x < 180 ? 9 : -9), y, [26, 240, 52, 180]);
   }
-  rect(197, 112, 223, 138, [26, 240, 52, 210]);
-  line(179, 125, 197, 125, [26, 240, 52, 210]);
-  line(223, 125, 241, 125, [26, 240, 52, 210]);
-  line(210, 95, 210, 112, [26, 240, 52, 210]);
-  line(210, 138, 210, 155, [26, 240, 52, 210]);
-  line(48, 204, 371, 204, [31, 102, 60, 165]);
+  rect(167, 107, 193, 133, [26, 240, 52, 210]);
+  line(149, 120, 167, 120, [26, 240, 52, 210]);
+  line(193, 120, 211, 120, [26, 240, 52, 210]);
+  line(180, 90, 180, 107, [26, 240, 52, 210]);
+  line(180, 133, 180, 150, [26, 240, 52, 210]);
+  line(36, 202, 324, 202, [31, 102, 60, 165]);
 }, 'glass');
 function button(name, accent, base) {
   image(name, 96, 28, ({fill, line}) => {

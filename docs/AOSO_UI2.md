@@ -220,14 +220,14 @@ graphical surfaces and required artwork files in the archive:
 PFD NAV TOUR VEH SURF SYS
 
 A successful boot logs UI2 Startup self-test READY and the header displays
-OPS PANEL r3 READY. The revision label confirms the updated GUI was built.
+OPS DISPLAY r4 READY. The revision label confirms the updated GUI was built.
 
 A failure logs the exact missing display and marks the header UI2 FAULT.
 
 ## Asset and compatibility validation
 
 Run `python tools/check-ui2.py` before publishing UI2 changes. It validates all
-25 PNGs (chunk lengths/CRCs, complete zlib stream, scanline sizes/filters and
+27 PNGs (chunk lengths/CRCs, complete zlib stream, scanline sizes/filters and
 frame dimensions), UI2 delimiters, helper ownership/load order, reserved names,
 unsupported bare CLAMP calls, and direct flight-control writes.
 
@@ -236,10 +236,11 @@ not telemetry colors. The original descent and unused legacy vehicle frames
 were malformed too. `node tools/build-ui2-frames.cjs` recreates the complete
 dark cockpit frame and button set, including NAV/SURF plotting grounds and a
 separate translucent HUD. The artwork is original; OPS3 informs its layout and
-color language. The main display is compact by default. DATA + expands the
-older detailed telemetry on the six primary pages; DATA - collapses it again.
-The live labels, markers, route indicators and Digital Twin buttons remain in
-the graphical panel. Keep binary assets binary during upload.
+color language. Each primary MFD page now has a fixed-width display beside a
+permanent labelled telemetry bank; no data toggle hides the readings. All tabs
+stay selectable, including standby landing and propulsion pages. AUTO page
+switching is opt-in. The live markers, route indicators and Digital Twin
+buttons remain in the graphical panel. Keep binary assets binary during upload.
 
 kOS provides MIN/MAX, not CLAMP. All UI2 modules share `aoso_ui2_clamp` from
 ui2_instruments.ks, which main.ks loads before ui2_hud.ks and ui2_mfd.ks.
@@ -248,5 +249,25 @@ Offline checks do not validate Unity rendering or live KerboScript execution.
 After updating the archive, restart AOSO (or KSP) and inspect PFD, NAV, TOUR, VEH, SYS,
 SURF (survey and descent), and the separate HUD. Verify dark backgrounds,
 legible labels and moving markers, with no Undefined Variable Name 'clamp'.
-OPS PANEL r3 READY checks widget construction and artwork presence; it does not
+OPS DISPLAY r4 READY checks widget construction and artwork presence; it does not
 prove that textures decoded. The offline PNG validator covers decoding.
+
+## HUD diagnosis and layout iteration
+
+The separate HUD is a 580 x 390 OPS-style instrument with 360 x 240 glass.
+Its speed and altitude banks, vertical-speed tape, guidance bug, annunciator,
+and dV/propellant bar are visible together. The HUD is draggable. `REC`
+restores `UI2_HUD_X` / `UI2_HUD_Y` from `AOSO/core/config.ks` (defaults tuned
+for this 2560 x 1440 KSP install).
+
+`TEST` cycles LIVE, CENTER, EDGE, then LIVE. CENTER and EDGE replace displayed
+telemetry with known values and put the bug at known glass coordinates. They
+only modify UI widgets and never steer, stage, throttle, or warp. If the test
+pattern is misplaced, the issue is layout/art. If the pattern is correct but
+LIVE is wrong, inspect telemetry or projection. `DUMP` writes
+`0:/aoso_hud.json`; the same button is available on the MFD DBG page. The dump
+contains readiness, geometry mode, bug coordinates, telemetry age, CPU load,
+and last errors. Run `python tools/inspect-hud-dump.py <path-to-aoso_hud.json>`
+to get a quick diagnosis. `python tools/render-hud-preview.py out.png` generates
+an offline visual sample of the expected geometry (requires Pillow); it does
+not replace the in-game TEST check.

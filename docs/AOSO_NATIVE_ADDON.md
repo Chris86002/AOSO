@@ -19,6 +19,16 @@ DLL to:
 
 Restart KSP after changing the DLL.
 
+The updater does not rebuild an unchanged native add-on for script-only
+updates. It tracks the add-on source hash beside the installed scripts. If the
+source changes while KSP has the DLL loaded, scripts can update but the DLL is
+marked pending; close KSP and run the updater once more. Windows otherwise
+reports "a file with a user-mapped section open" when replacing the DLL.
+Native v0.4.2 also rejects non-finite and near-parabolic porkchop candidates
+before calling KSP's patched-conic solver. Until that DLL is installed and KSP
+has restarted, AOSO avoids the affected v0.4.1 porkchop path and uses its
+KerboScript fallback.
+
 kOS registration can be checked with:
 
 ```kos

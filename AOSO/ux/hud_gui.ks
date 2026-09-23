@@ -32,9 +32,6 @@ GLOBAL AOSO_UI2_MAX_RENDER_MS IS 0.
 GLOBAL AOSO_UI2_LAST_RENDER_OP IS 0.
 GLOBAL AOSO_UI2_MAX_RENDER_OP IS 0.
 GLOBAL AOSO_UI2_LAST_RENDER_PAGE IS "".
-GLOBAL AOSO_UI2_DETAIL_VISIBLE IS FALSE.
-GLOBAL AOSO_UI2_DETAIL_BOXES IS LIST().
-GLOBAL AOSO_UI2_DETAIL_BUTTON IS 0.
 
 FUNCTION aoso_ui2_selftest {
     SET AOSO_UI2_READY TO FALSE.
@@ -59,7 +56,7 @@ FUNCTION aoso_ui2_selftest {
         "pfd_frame.png", "nav_frame.png", "survey_frame.png",
         "landing_frame.png", "descent_frame.png", "mission_frame.png",
         "systems_frame.png", "twin_frame.png", "window_bg.png",
-        "hud_clear.png", "hud_overlay.png", "button_off.png",
+        "readout_frame.png", "hud_clear.png", "hud_overlay.png", "button_off.png",
         "button_hover.png", "button_on.png", "button_stby.png",
         "button_warn.png", "button_fail.png", "diamond.png",
         "ship_bug.png", "site_bug.png", "target_bug.png",
@@ -127,21 +124,27 @@ FUNCTION aoso_hud_hint {
     RETURN w.
 }
 
-FUNCTION aoso_ui2_detail_register {
-    PARAMETER detail_box.
-    SET detail_box:VISIBLE TO AOSO_UI2_DETAIL_VISIBLE.
-    AOSO_UI2_DETAIL_BOXES:ADD(detail_box).
+// Each display is a real instrument with a permanent, labelled data bank.
+// Telemetry must never be hidden behind a global toggle.
+FUNCTION aoso_ops_readout {
+    PARAMETER row.
+    PARAMETER title.
+    LOCAL bank IS row:ADDVBOX().
+    SET bank:STYLE:WIDTH TO 430.
+    SET bank:STYLE:HEIGHT TO 480.
+    SET bank:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "readout_frame.png".
+    LOCAL heading IS bank:ADDLABEL("<b>" + title + "</b>").
+    SET heading:STYLE:HSTRETCH TO TRUE.
+    SET heading:STYLE:ALIGN TO "center".
+    RETURN bank.
 }
 
-FUNCTION aoso_ui2_detail_toggle {
-    SET AOSO_UI2_DETAIL_VISIBLE TO NOT AOSO_UI2_DETAIL_VISIBLE.
-    FOR detail_box IN AOSO_UI2_DETAIL_BOXES {
-        SET detail_box:VISIBLE TO AOSO_UI2_DETAIL_VISIBLE.
-    }
-    IF AOSO_UI2_DETAIL_BUTTON:ISTYPE("BUTTON") {
-        IF AOSO_UI2_DETAIL_VISIBLE { SET AOSO_UI2_DETAIL_BUTTON:TEXT TO "DATA -". }
-        ELSE { SET AOSO_UI2_DETAIL_BUTTON:TEXT TO "DATA +". }
-    }
+FUNCTION aoso_ops_display {
+    PARAMETER row.
+    LOCAL display IS row:ADDVLAYOUT().
+    SET display:STYLE:WIDTH TO 430.
+    SET display:STYLE:HEIGHT TO 480.
+    RETURN display.
 }
 
 FUNCTION aoso_hud_gui_dispose {
@@ -165,8 +168,6 @@ FUNCTION aoso_hud_gui_dispose {
     SET AOSO_HUD_PAGE TO "".
     SET AOSO_HUD_W TO LEXICON().
     SET AOSO_HUD_LAST TO LEXICON().
-    SET AOSO_UI2_DETAIL_BOXES TO LIST().
-    SET AOSO_UI2_DETAIL_BUTTON TO 0.
 }
 
 FUNCTION aoso_hud_add_page {
@@ -280,7 +281,7 @@ FUNCTION aoso_hud_scale_fs {
 }
 
 FUNCTION aoso_hud_scale_width {
-    RETURN 380 + (50 * AOSO_HUD_SCALE).
+    RETURN 830 + (45 * AOSO_HUD_SCALE).
 }
 
 FUNCTION aoso_hud_scale_pct {
@@ -334,7 +335,7 @@ FUNCTION aoso_hud_apply_scale {
     SET g:STYLE:WIDTH TO wid.
     aoso_hud_scale_walk(g, fs).
     IF AOSO_HUD_HDR_TITLE:ISTYPE("LABEL") {
-        SET AOSO_HUD_HDR_TITLE:TEXT TO "<b><size=" + (fs + 4) + "><color=#1AF034>AOSO</color></size>  FLIGHT DECK · OPS PANEL r3</b>".
+        SET AOSO_HUD_HDR_TITLE:TEXT TO "<b><size=" + (fs + 4) + "><color=#1AF034>AOSO</color></size>  FLIGHT DECK · OPS DISPLAY r4</b>".
     }
     aoso_hud_set("chrome_pct", "" + aoso_hud_scale_pct() + "%").
 }
@@ -399,12 +400,9 @@ FUNCTION aoso_hud_toggle_compact {
 
 FUNCTION aoso_hud_gui_build_flight {
     PARAMETER p.
-    aoso_ui2_build_pfd(p).
-
-    LOCAL data IS p:ADDVBOX().
-    SET data:STYLE:WIDTH TO 420.
-    SET data:STYLE:ALIGN TO "center".
-    aoso_ui2_detail_register(data).
+    LOCAL row IS p:ADDHLAYOUT().
+    aoso_ui2_build_pfd(aoso_ops_display(row)).
+    LOCAL data IS aoso_ops_readout(row, "FLIGHT / LIVE TELEMETRY").
     aoso_hud_lab(data, "flt_body", "BODY  -").
     aoso_hud_lab(data, "flt_alt", "ALT  -").
     aoso_hud_lab(data, "flt_spd", "SPEED  -").
@@ -420,12 +418,9 @@ FUNCTION aoso_hud_gui_build_flight {
 
 FUNCTION aoso_hud_gui_build_nav {
     PARAMETER p.
-    aoso_ui2_build_nav_display(p).
-
-    LOCAL data IS p:ADDVBOX().
-    SET data:STYLE:WIDTH TO 420.
-    SET data:STYLE:ALIGN TO "center".
-    aoso_ui2_detail_register(data).
+    LOCAL row IS p:ADDHLAYOUT().
+    aoso_ui2_build_nav_display(aoso_ops_display(row)).
+    LOCAL data IS aoso_ops_readout(row, "NAVIGATION / ORBIT DATA").
     aoso_hud_lab(data, "nav_soi", "SPHERE OF INFLUENCE  -").
     aoso_hud_lab(data, "nav_orb", "ORBIT  -").
     aoso_hud_lab(data, "nav_tgt", "TARGET  NO TARGET").
@@ -438,12 +433,9 @@ FUNCTION aoso_hud_gui_build_nav {
 
 FUNCTION aoso_hud_gui_build_mission {
     PARAMETER p.
-    aoso_ui2_mission_build(p).
-
-    LOCAL data IS p:ADDVBOX().
-    SET data:STYLE:WIDTH TO 420.
-    SET data:STYLE:ALIGN TO "center".
-    aoso_ui2_detail_register(data).
+    LOCAL row IS p:ADDHLAYOUT().
+    aoso_ui2_mission_build(aoso_ops_display(row)).
+    LOCAL data IS aoso_ops_readout(row, "TOUR / MISSION DATA").
     aoso_hud_lab(data, "msn_name", "MISSION  -").
     aoso_hud_lab(data, "msn_prog", "PROGRESS  -").
     aoso_hud_lab(data, "msn_cur", "CURRENT  -").
@@ -461,11 +453,9 @@ FUNCTION aoso_hud_gui_build_mission {
 
 FUNCTION aoso_hud_gui_build_vehicle {
     PARAMETER p.
-    aoso_ui2_vehicle_build(p).
-    LOCAL data IS p:ADDVBOX().
-    SET data:STYLE:WIDTH TO 420.
-    SET data:STYLE:ALIGN TO "center".
-    aoso_ui2_detail_register(data).
+    LOCAL row IS p:ADDHLAYOUT().
+    aoso_ui2_vehicle_build(aoso_ops_display(row)).
+    LOCAL data IS aoso_ops_readout(row, "VESSEL / CAPABILITIES").
     aoso_hud_hint(data, "Selecting a Digital Twin node highlights its vessel part.").
     aoso_hud_lab(data, "veh_id", "SHIP  -").
     aoso_hud_lab(data, "veh_cls", "CLASS  -").
@@ -494,12 +484,9 @@ FUNCTION aoso_hud_gui_build_prop {
 
 FUNCTION aoso_hud_gui_build_land {
     PARAMETER p.
-    aoso_ui2_build_surface_display(p).
-
-    LOCAL data IS p:ADDVBOX().
-    SET data:STYLE:WIDTH TO 420.
-    SET data:STYLE:ALIGN TO "center".
-    aoso_ui2_detail_register(data).
+    LOCAL row IS p:ADDHLAYOUT().
+    aoso_ui2_build_surface_display(aoso_ops_display(row)).
+    LOCAL data IS aoso_ops_readout(row, "SURFACE / LANDING DATA").
     aoso_hud_lab(data, "lnd_st", "LANDING SYSTEM  STANDBY").
     aoso_hud_lab(data, "lnd_site", "SITE  -").
     aoso_hud_lab(data, "lnd_alt", "RADAR  -").
@@ -527,12 +514,9 @@ FUNCTION aoso_hud_gui_build_stg {
 
 FUNCTION aoso_hud_gui_build_sys {
     PARAMETER p.
-    aoso_ui2_systems_build(p).
-
-    LOCAL data IS p:ADDVBOX().
-    SET data:STYLE:WIDTH TO 420.
-    SET data:STYLE:ALIGN TO "center".
-    aoso_ui2_detail_register(data).
+    LOCAL row IS p:ADDHLAYOUT().
+    aoso_ui2_systems_build(aoso_ops_display(row)).
+    LOCAL data IS aoso_ops_readout(row, "SYSTEMS / HEALTH DATA").
     aoso_hud_lab(data, "sys_roll", "AOSO  -").
     aoso_hud_lab(data, "sys_why", "").
     aoso_hud_lab(data, "sys_cpu_note", "").
@@ -591,8 +575,8 @@ FUNCTION aoso_hud_gui_build_dbg {
 
 FUNCTION aoso_hud_gui_build_help {
     PARAMETER p.
-    aoso_hud_title(p, "AOSO UI v2 QUICK GUIDE").
-    aoso_hud_hint(p, "OPS PANEL r3: the dark instrument stays central. DATA + expands full numeric readouts on PFD, NAV, TOUR, VEH, SURF and SYS; DATA - collapses them. Reload AOSO after an updater run to rebuild the GUI.").
+    aoso_hud_title(p, "OPS DISPLAY r4 / QUICK GUIDE").
+    aoso_hud_hint(p, "All six primary displays keep live telemetry visible beside the graphical instrument. Reload AOSO after an updater run to rebuild the GUI.").
     aoso_hud_hint(p, "DISPLAY ONLY. AOSO flight controllers own steering, throttle, staging, mission state and warp. UI buttons only change presentation or highlight a twin node.").
     aoso_hud_hint(p, "PFD  Primary flight display. The moving diamond is commanded-attitude error, with speed/altitude, TWR/throttle, propellant and warning annunciation.").
     aoso_hud_hint(p, "NAV  Real current-SOI conic samples + recent trail + ship, maneuver-node and next-SOI bugs. ROUGH/SAFE means AOSO intentionally accepted a coarse encounter for later mid-course refinement.").
@@ -600,8 +584,8 @@ FUNCTION aoso_hud_gui_build_help {
     aoso_hud_hint(p, "VEH  Compact live Digital Twin. Tank/engine states update in place. Clicking a part only highlights it on the vessel. ENG/TWIN exposes the full topology/filter view.").
     aoso_hud_hint(p, "SURF  In POLAR/SCAN it is a latitude/longitude survey map with the best graded site. In DEORBIT/DESCEND it becomes a landing director with site error, coast-prediction bug, suicide-burn trigger and vertical-situation margin.").
     aoso_hud_hint(p, "SYS  Shuttle-style caution/warning board. NOM=healthy  DEG=degraded  FAIL=fault. Master caution/warning and WHY summarize what needs attention.").
-    aoso_hud_hint(p, "HUD  Separate draggable glass flight director. DCL toggles declutter, REC restores its default position, MFD returns here. Brightness adapts between day/night conditions.").
-    aoso_hud_hint(p, "AUTO  Automatically selects NAV/SURF/SYS/TOUR as flight phase changes. Manual tab selection temporarily holds your page before AUTO resumes. Turn AUTO off for fully manual pages.").
+    aoso_hud_hint(p, "HUD  Separate OPS-style director. SPEED and ALT are permanent side banks; the vertical tape is VS. DCL declutters, REC restores position, MFD returns here. TEST cycles live/center/edge geometry without commanding flight. DUMP writes a diagnostic JSON file.").
+    aoso_hud_hint(p, "AUTO  Optional phase-based page selection. It starts off so every MFD tab stays where you choose it. Turning AUTO on lets AOSO select NAV/SURF/SYS/TOUR; a manual selection temporarily holds the page.").
     aoso_hud_hint(p, "FD  3D reference arrows only: PRO=prograde, RET=retrograde, NML=orbit-normal, TGT=target, REL=relative velocity, BURN=node, LAND=surface-retrograde. They never steer.").
     aoso_hud_hint(p, "CPU protection: flight/safety work remains first. UI prediction/twin work is throttled or deferred as CPU pressure rises; UI load must never become a guidance problem.").
 }
@@ -617,7 +601,6 @@ FUNCTION aoso_hud_fd_cb_land { PARAMETER on. aoso_hud_fd_set("LAND", on). aoso_h
 
 FUNCTION aoso_hud_gui_init {
     aoso_hud_gui_dispose().
-    SET AOSO_UI2_DETAIL_VISIBLE TO FALSE.
     LOCAL g IS GUI(aoso_hud_scale_width()).
     SET g:X TO 20.
     SET g:Y TO 60.
@@ -625,12 +608,12 @@ FUNCTION aoso_hud_gui_init {
     aoso_hud_skin_apply(g).
     SET AOSO_HUD_GUI TO g.
 
-    LOCAL hdr IS g:ADDLABEL("<b><size=16><color=#1AF034>AOSO</color></size>  FLIGHT DECK · OPS PANEL r3</b>").
+    LOCAL hdr IS g:ADDLABEL("<b><size=16><color=#1AF034>AOSO</color></size>  FLIGHT DECK · OPS DISPLAY r4</b>").
     SET hdr:STYLE:HSTRETCH TO TRUE.
     SET AOSO_HUD_HDR_TITLE TO hdr.
     aoso_hud_lab(g, "hdr_sys", "SYS  NOMINAL").
     LOCAL status_row IS g:ADDHLAYOUT().
-    aoso_hud_lab(status_row, "hdr_ui2", "OPS PANEL r3  STARTING").
+    aoso_hud_lab(status_row, "hdr_ui2", "OPS DISPLAY r4  STARTING").
     aoso_hud_lab(status_row, "hdr_twin", "TWIN  -").
     aoso_hud_lab(g, "hdr_do", "DOING  -").
     aoso_hud_lab(g, "hdr_dt", "").
@@ -665,12 +648,9 @@ FUNCTION aoso_hud_gui_init {
     LOCAL b_eng IS modes:ADDBUTTON("ENG").
     SET b_eng:STYLE:WIDTH TO 67.
     SET b_eng:ONCLICK TO aoso_hud_mode_eng@.
-    SET AOSO_UI2_DETAIL_BUTTON TO modes:ADDBUTTON("DATA +").
-    SET AOSO_UI2_DETAIL_BUTTON:STYLE:WIDTH TO 72.
-    SET AOSO_UI2_DETAIL_BUTTON:ONCLICK TO aoso_ui2_detail_toggle@.
     LOCAL b_fd IS modes:ADDCHECKBOX("FD", TRUE).
     SET b_fd:ONTOGGLE TO aoso_hud_fd_cb_master@.
-    LOCAL b_auto IS modes:ADDCHECKBOX("AUTO", TRUE).
+    LOCAL b_auto IS modes:ADDCHECKBOX("AUTO", FALSE).
     SET b_auto:ONTOGGLE TO aoso_ui2_auto_page_toggle@.
 
     LOCAL fdrow IS vbox:ADDHLAYOUT().
@@ -722,7 +702,7 @@ FUNCTION aoso_hud_gui_init {
     aoso_hud_gui_build_dbg(aoso_hud_add_page("DBG")).
     aoso_hud_gui_build_help(aoso_hud_add_page("HELP")).
 
-    SET AOSO_UI2_AUTO_PAGE TO aoso_config_get("UI2_AUTO_PAGE", TRUE).
+    SET AOSO_UI2_AUTO_PAGE TO FALSE.
     aoso_hud_apply_scale().
     aoso_hud_set_compact(AOSO_HUD_COMPACT).
     aoso_hud_show_page("FLT", FALSE).
@@ -730,7 +710,7 @@ FUNCTION aoso_hud_gui_init {
     g:SHOW().
 
     IF aoso_ui2_selftest() {
-        aoso_hud_set("hdr_ui2", "OPS PANEL r3  <color=#1AF034>READY</color>").
+        aoso_hud_set("hdr_ui2", "OPS DISPLAY r4  <color=#1AF034>READY</color>").
     } ELSE {
         aoso_hud_set("hdr_ui2", "UI2  <color=#FF5A46>FAULT</color>  " + AOSO_UI2_SELFTEST_REASON).
     }
@@ -876,44 +856,10 @@ FUNCTION aoso_hud_gui_upd_header {
 }
 
 FUNCTION aoso_hud_tabs_adapt {
-    LOCAL veh IS AOSO_HUD_DATA["vehicle"].
-    LOCAL show_lnd IS FALSE.
-    IF veh:HASKEY("land") {
-        IF veh["land"] { SET show_lnd TO TRUE. }
-        IF veh["gear"] { SET show_lnd TO TRUE. }
-        IF veh["chutes"] { SET show_lnd TO TRUE. }
-    }
-    IF AOSO_HUD_DATA["landing"]:HASKEY("active") {
-        IF AOSO_HUD_DATA["landing"]["active"] { SET show_lnd TO TRUE. }
-    }
-    IF AOSO_HUD_TABS:HASKEY("LND") {
-        IF show_lnd <> AOSO_HUD_SHOW_LND {
-            SET AOSO_HUD_TABS["LND"]:VISIBLE TO show_lnd.
-            SET AOSO_HUD_SHOW_LND TO show_lnd.
-            aoso_hud_trace("tab LND visible=" + show_lnd).
-        }
-        IF NOT show_lnd {
-            IF AOSO_HUD_PAGE = "LND" { aoso_hud_show_page("FLT"). }
-        }
-    }
-    LOCAL show_prp IS TRUE.
-    IF veh:HASKEY("engines") {
-        IF veh["engines"] <= 0 {
-            IF AOSO_HUD_DATA["res"]:HASKEY("lf_has") {
-                IF NOT AOSO_HUD_DATA["res"]["lf_has"] { SET show_prp TO FALSE. }
-            }
-        }
-    }
-    IF AOSO_HUD_TABS:HASKEY("PRP") {
-        IF show_prp <> AOSO_HUD_SHOW_PRP {
-            SET AOSO_HUD_TABS["PRP"]:VISIBLE TO show_prp.
-            SET AOSO_HUD_SHOW_PRP TO show_prp.
-            aoso_hud_trace("tab PRP visible=" + show_prp).
-        }
-        IF NOT show_prp {
-            IF AOSO_HUD_PAGE = "PRP" { aoso_hud_show_page("FLT"). }
-        }
-    }
+    // Keep every display selectable, even when a vessel lacks the associated
+    // hardware. The page itself can then explain a standby or absent state.
+    IF AOSO_HUD_TABS:HASKEY("LND") { SET AOSO_HUD_TABS["LND"]:VISIBLE TO TRUE. }
+    IF AOSO_HUD_TABS:HASKEY("PRP") { SET AOSO_HUD_TABS["PRP"]:VISIBLE TO TRUE. }
 }
 
 FUNCTION aoso_hud_gui_upd_flight {
@@ -1293,9 +1239,13 @@ FUNCTION aoso_hud_gui_upd_dbg {
     IF d:HASKEY("band") { SET band_txt TO "  band " + d["band"]. }
     IF d:HASKEY("deferred") { SET def_txt TO "  def " + d["deferred"] + "  shed " + d["shed"]. }
     aoso_hud_set("dbg_ipu", "IPU  " + snap["ipu"] + "   left " + snap["left"] + band_txt + def_txt).
-    aoso_hud_set("dbg_page", "PAGE  " + snap["page"] + "   MODE " + snap["mode"] + "   ready=" + snap["ready"]).
+    aoso_hud_set("dbg_page", "PAGE  " + snap["page"] + "   MODE " + snap["mode"] +
+        "   OPS UI " + snap["ops_ui_ready"] + " / " + snap["ops_ui_reason"]).
     aoso_hud_set("dbg_ctx", "CTX  " + snap["ctx"] + "   PHASE " + d["phase"] + "   body " + snap["body"] + " " + snap["status"]).
-    aoso_hud_set("dbg_gui", "GUI  on=" + snap["gui_on"] + "  collect hi/md/lo age " + ROUND(snap["hi_age"], 1) + "/" + ROUND(snap["md_age"], 1) + "/" + ROUND(snap["lo_age"], 1) + "s").
+    aoso_hud_set("dbg_gui", "GUI  on=" + snap["gui_on"] + " HUD " + snap["hud_visible"] +
+        " test " + snap["hud_test"] + " bug " + ROUND(snap["hud_bug_x"], 0) + "," +
+        ROUND(snap["hud_bug_y"], 0) + "  collect hi/md/lo age " +
+        ROUND(snap["hi_age"], 1) + "/" + ROUND(snap["md_age"], 1) + "/" + ROUND(snap["lo_age"], 1) + "s").
     LOCAL why IS snap["why"].
     IF why = "" { SET why TO "nominal". }
     aoso_hud_set("dbg_sys", "SYS  " + snap["sys"] + "  " + why).

@@ -43,8 +43,13 @@ def check_png(p):
     assert len(pixels) == stride * height, f"{p.name}: incorrect scanline size"
     assert all(pixels[y * stride] <= 4 for y in range(height)), f"{p.name}: invalid PNG filter"
     if p.stem.endswith("_frame"):
-        expected_height = {"descent_frame": 120, "mission_frame": 180, "systems_frame": 180}.get(p.stem, 250)
-        assert (width, height) == (420, expected_height), f"{p.name}: changed widget dimensions"
+        if p.stem == "readout_frame":
+            assert (width, height) == (430, 480), f"{p.name}: changed readout dimensions"
+        else:
+            expected_height = {"descent_frame": 120, "mission_frame": 180, "systems_frame": 180}.get(p.stem, 250)
+            assert (width, height) == (420, expected_height), f"{p.name}: changed widget dimensions"
+    if p.stem == "hud_overlay":
+        assert (width, height) == (360, 240), f"{p.name}: changed HUD dimensions"
 
 
 def code_only(source):
@@ -54,7 +59,7 @@ def code_only(source):
 
 def main():
     pngs = list(ASSETS.glob("*.png"))
-    assert len(pngs) == 26
+    assert len(pngs) == 27
     for p in pngs:
         check_png(p)
     sources = {p: code_only(p.read_text(encoding="utf-8-sig")) for p in (ROOT / "AOSO").rglob("*.ks")}
@@ -82,8 +87,8 @@ def main():
     boot = (ROOT / "AOSO/main.ks").read_text()
     assert boot.index('"AOSO/ux/ui2_instruments"') < boot.index('"AOSO/ux/ui2_hud"') < boot.index('"AOSO/ux/ui2_mfd"')
     gui_code = sources[ROOT / "AOSO/ux/hud_gui.ks"]
-    assert len(re.findall(r"\baoso_ui2_detail_register\s*\(", gui_code, re.I)) == 6
-    assert "OPS PANEL r3" in (ROOT / "AOSO/ux/hud_gui.ks").read_text()
+    assert len(re.findall(r"\baoso_ops_readout\s*\(", gui_code, re.I)) == 6
+    assert "OPS DISPLAY r4" in (ROOT / "AOSO/ux/hud_gui.ks").read_text()
     gui_source = (ROOT / "AOSO/ux/hud_gui.ks").read_text()
     for asset in re.findall(r'"([a-z_]+\.png)"', gui_source[gui_source.index("LOCAL image_files IS LIST("):gui_source.index("FOR image_file IN image_files")]):
         assert (ASSETS / asset).is_file(), f"missing startup art {asset}"

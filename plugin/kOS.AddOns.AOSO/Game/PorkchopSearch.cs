@@ -629,8 +629,17 @@ namespace kOS.AddOns.AOSO.Game
         {
             pe = -1.0;
 
+            if (!FinitePositive(candidate.Ut) ||
+                !IsFinite(candidate.Prograde) ||
+                !IsFinite(candidate.Radial) ||
+                !IsFinite(candidate.Normal))
+                return false;
+
             Vector3d posRaw = initialOrbit.getRelativePositionAtUT(candidate.Ut);
             Vector3d velRaw = initialOrbit.getOrbitalVelocityAtUT(candidate.Ut);
+            if (!FiniteVector(posRaw) || !FiniteVector(velRaw) ||
+                !FinitePositive(posRaw.magnitude))
+                return false;
             Vector3d deltaInternal;
             if (!NodeToInternalDelta(
                 initialOrbit,
@@ -641,16 +650,31 @@ namespace kOS.AddOns.AOSO.Game
                 out deltaInternal))
                 return false;
 
+            Vector3d transferVelocity = velRaw + deltaInternal;
+            if (!FiniteVector(transferVelocity))
+                return false;
+
             var transfer = new Orbit();
             transfer.UpdateFromStateVectors(
                 posRaw,
-                velRaw + deltaInternal,
+                transferVelocity,
                 parent,
                 candidate.Ut);
             transfer.StartUT = candidate.Ut;
 
+            // KSP's patched-conic solver can log thousands of "dT is NaN"
+            // stacks for singular/near-parabolic candidates without throwing.
+            // Reject those inputs before asking it to calculate a patch.
+            if (!IsFinite(transfer.eccentricity) ||
+                transfer.eccentricity >= 0.9999 ||
+                !FinitePositive(transfer.semiMajorAxis) ||
+                !IsFinite(transfer.meanAnomalyAtEpoch))
+                return false;
+
             double horizon = candidate.Ut +
                 Math.Max(options.PeriodSeconds * 2.5, hohmannTof * 2.0);
+            if (!IsFinite(horizon) || horizon <= candidate.Ut)
+                return false;
             transfer.EndUT = horizon;
 
             // This job is only constructed when target and vessel share the
@@ -847,6 +871,11 @@ namespace kOS.AddOns.AOSO.Game
         private static bool IsFinite(double value)
         {
             return !double.IsNaN(value) && !double.IsInfinity(value);
+        }
+
+        private static bool FiniteVector(Vector3d value)
+        {
+            return IsFinite(value.x) && IsFinite(value.y) && IsFinite(value.z);
         }
     }
 }

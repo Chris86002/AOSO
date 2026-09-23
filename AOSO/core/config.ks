@@ -168,7 +168,9 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "TICK_DEBUG_EVERY", 2,              // sample every N physics ticks in critical flight phases
     "HUD_FAST_EVERY", 2,                // paint fast HUD at most every N physics ticks; flight control goes first
     "UI2_ENABLED", TRUE,                 // new image-backed AOSO avionics / MFD presentation layer
-    "UI2_AUTO_PAGE", TRUE,               // automatically show NAV/SURF/SYS/TOUR when mission phase changes
+    "UI2_AUTO_PAGE", FALSE,              // keep the selected instrument stable; AUTO is operator opt-in
+    "UI2_HUD_X", 990,                   // centered HUD default for this 2560x1440 KSP install; HUD remains draggable
+    "UI2_HUD_Y", 525,                   // REC restores these coordinates
     "UI2_MANUAL_PAGE_HOLD_S", 30,        // after operator selects a page, AUTO waits this long before taking it back
     "UI2_MARKER_SMOOTH", 0.28,           // 0..1 smoothing for pippers/bugs; higher follows commands faster
     "UI2_TRAIL_POINTS", 10,              // recent flown-position trail on the NAV display (0 disables)

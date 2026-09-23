@@ -364,7 +364,14 @@ FUNCTION aoso_hud_debug_snap {
         "md_age", now - AOSO_HUD_LAST_MD,
         "lo_age", now - AOSO_HUD_LAST_LO,
         "scale", aoso_hud_scale_pct(),
-        "compact", AOSO_HUD_COMPACT
+        "compact", AOSO_HUD_COMPACT,
+        "ops_ui_ready", AOSO_UI2_READY,
+        "ops_ui_reason", AOSO_UI2_SELFTEST_REASON,
+        "hud_test", AOSO_UI2_HUD_TEST,
+        "hud_visible", AOSO_UI2_HUD_VISIBLE,
+        "hud_bug_x", AOSO_UI2_HUD_PX,
+        "hud_bug_y", AOSO_UI2_HUD_PY,
+        "hud_light", AOSO_UI2_HUD_LAST_LIGHT
     ).
 }
 

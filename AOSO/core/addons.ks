@@ -140,6 +140,11 @@ FUNCTION aoso_addon_native_mark_lambert_used {
 FUNCTION aoso_addon_native_porkchop_available {
     LOCAL native_obj IS aoso_addon_native().
     IF native_obj:ISTYPE("Scalar") { RETURN FALSE. }
+    // v0.4.1 feeds singular candidates into KSP PatchedConics and floods
+    // KSP.log with NaN orbit stacks. Use the pure-kOS fallback until the
+    // guarded v0.4.2 DLL is installed and KSP has restarted.
+    LOCAL native_ver IS aoso_addon_native_version().
+    IF native_ver = "0.4.1" OR native_ver = "0.4.0" { RETURN FALSE. }
     IF NOT native_obj:HASSUFFIX("PORKCHOPSTART") { RETURN FALSE. }
     IF NOT native_obj:HASSUFFIX("PORKCHOPPOLL") { RETURN FALSE. }
     IF NOT native_obj:HASSUFFIX("PORKCHOPRESULT") { RETURN FALSE. }

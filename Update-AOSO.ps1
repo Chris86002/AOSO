@@ -28,7 +28,7 @@ try {
 $RepoOwner = "Chris86002"
 $RepoName  = "AOSO"
 $Branch    = "main"
-$NativePluginMinVersion = [version]"0.4.1.0"
+$NativePluginMinVersion = [version]"0.4.2.0"
 
 $UserAgent = "AOSO-Updater"
 $GitHubHeaders = @{
@@ -196,6 +196,22 @@ function Get-NativeAddonState {
     }
 }
 
+function Get-NativeSourceHash {
+    param([Parameter(Mandatory = $true)][string]$ProjectRoot)
+    $files = @(Get-ChildItem -LiteralPath $ProjectRoot -Recurse -File |
+        Where-Object { $_.Extension -in @(".cs", ".csproj") -and $_.FullName -notmatch '[\\/](bin|obj)[\\/]' } |
+        Sort-Object FullName)
+    if ($files.Count -eq 0) { throw "Native addon source files are missing from the download." }
+    $lines = foreach ($file in $files) {
+        $relative = $file.FullName.Substring($ProjectRoot.Length + 1).Replace('\', '/')
+        "$relative $((Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash)"
+    }
+    $bytes = [Text.Encoding]::UTF8.GetBytes(($lines -join "`n"))
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant() }
+    finally { $sha.Dispose() }
+}
+
 function Invoke-AosoUpdate {
     param(
         [switch]$Auto
@@ -205,6 +221,8 @@ function Invoke-AosoUpdate {
     $AOSO_ROOT = Join-Path $KOS_ROOT "AOSO"
     $KSP_ROOT = Get-KspRootFromKosScriptFolder -KosScriptFolder $KOS_ROOT
     $VERSION_FILE = Join-Path $AOSO_ROOT ".aoso-version"
+    $nativeHashFile = Join-Path $AOSO_ROOT ".aoso-native-source.sha256"
+    $nativePendingFile = Join-Path $AOSO_ROOT ".aoso-native-pending.sha256"
     $tempRoot = $null
 
     if (-not (Test-Path -LiteralPath $KOS_ROOT)) {
@@ -239,7 +257,8 @@ Steam installs KSP under Program Files, which Windows protects.
     $installedCommit = Get-InstalledCommit -VersionFile $VERSION_FILE
 
     $nativeState = Get-NativeAddonState -KspRoot $KSP_ROOT
-    if ($installedCommit -and ($installedCommit -eq $latestCommit) -and $nativeState.Ready) {
+    if ($installedCommit -and ($installedCommit -eq $latestCommit) -and $nativeState.Ready -and
+        (Test-Path -LiteralPath $nativeHashFile) -and -not (Test-Path -LiteralPath $nativePendingFile)) {
         return @{
             Status  = "Current"
             Message = "AOSO is current ($short); native $($nativeState.Message)."
@@ -383,7 +402,7 @@ Steam installs KSP under Program Files, which Windows protects.
         $latestCommit | Set-Content -LiteralPath $VERSION_FILE -Encoding ASCII
 
         $zipRoot = Get-ChildItem -LiteralPath $extractRoot -Directory | Select-Object -First 1
-        $nativePluginStatus = "not attempted"
+        $nativePluginStatus = "not present in download"
         if ($zipRoot) {
             foreach ($name in $UpdaterFileNames) {
                 $src = Join-Path $zipRoot.FullName $name
@@ -399,25 +418,52 @@ Steam installs KSP under Program Files, which Windows protects.
                         throw "Could not derive KSP root from $KOS_ROOT"
                     }
 
-                    Write-Host "Building/installing native AOSO addon..." -ForegroundColor Cyan
-                    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $nativeInstaller -KspRoot $KSP_ROOT -Configuration Release
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "native addon installer exited with code $LASTEXITCODE"
+                    $nativeProjectRoot = Split-Path -Parent $nativeInstaller
+                    $sourceHash = Get-NativeSourceHash -ProjectRoot $nativeProjectRoot
+                    $assemblyText = Get-Content -LiteralPath (Join-Path $nativeProjectRoot "Properties\AssemblyInfo.cs") -Raw
+                    if ($assemblyText -notmatch 'AssemblyVersion\("([0-9.]+)"\)') {
+                        throw "Native AssemblyVersion is missing from the downloaded source."
                     }
-
-                    $nativeDll = Join-Path $KSP_ROOT "GameData\AOSO\Plugins\kOS.AddOns.AOSO.dll"
-                    $postState = Get-NativeAddonState -KspRoot $KSP_ROOT
-                    if (-not (Test-Path -LiteralPath $nativeDll) -or -not $postState.Ready) {
-                        throw "native addon DLL missing or stale after build"
+                    $sourceVersion = [version]$Matches[1]
+                    $knownHash = ""
+                    if (Test-Path -LiteralPath $nativeHashFile) {
+                        $knownHash = (Get-Content -LiteralPath $nativeHashFile -TotalCount 1).Trim()
                     }
-
-                    $nativePluginStatus = "installed $($postState.Message)"
-                    Write-Host "Native addon      : $nativePluginStatus (restart KSP to load it)" -ForegroundColor Green
+                    $nativeState = Get-NativeAddonState -KspRoot $KSP_ROOT
+                    $needsNative = -not $nativeState.Ready -or $nativeState.Version -lt $sourceVersion -or
+                        ($knownHash -and $knownHash -ne $sourceHash) -or
+                        (Test-Path -LiteralPath $nativePendingFile)
+                    if (-not $needsNative) {
+                        if (-not $knownHash) { $sourceHash | Set-Content -LiteralPath $nativeHashFile -Encoding ASCII }
+                        $nativePluginStatus = "current $($nativeState.Message); no rebuild needed"
+                        Write-Host "Native addon      : $nativePluginStatus" -ForegroundColor Green
+                    } elseif (Get-Process -Name "KSP_x64", "KSP" -ErrorAction SilentlyContinue) {
+                        $sourceHash | Set-Content -LiteralPath $nativePendingFile -Encoding ASCII
+                        $nativePluginStatus = "pending; close KSP and run updater again ($($nativeState.Message))"
+                        Write-Host "Native addon      : $nativePluginStatus" -ForegroundColor Yellow
+                    } else {
+                        $sourceHash | Set-Content -LiteralPath $nativePendingFile -Encoding ASCII
+                        Write-Host "Building/installing changed native AOSO addon..." -ForegroundColor Cyan
+                        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $nativeInstaller -KspRoot $KSP_ROOT -Configuration Release
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "native addon installer exited with code $LASTEXITCODE"
+                        }
+                        $postState = Get-NativeAddonState -KspRoot $KSP_ROOT
+                        if (-not $postState.Ready -or $postState.Version -lt $sourceVersion) {
+                            throw "native addon DLL missing or stale after build"
+                        }
+                        $sourceHash | Set-Content -LiteralPath $nativeHashFile -Encoding ASCII
+                        if (Test-Path -LiteralPath $nativePendingFile) {
+                            Remove-Item -LiteralPath $nativePendingFile -Force
+                        }
+                        $nativePluginStatus = "installed $($postState.Message)"
+                        Write-Host "Native addon      : $nativePluginStatus (restart KSP to load it)" -ForegroundColor Green
+                    }
                 } catch {
                     $nativePluginStatus = "fallback-only: " + $_.Exception.Message
                     Write-Host "Native addon      : NOT updated - $($_.Exception.Message)" -ForegroundColor Yellow
                     Write-Host "AOSO scripts remain valid and will use the KerboScript fallback." -ForegroundColor Yellow
-                    Write-Host "Install .NET build tools and rerun the updater to enable native math." -ForegroundColor DarkYellow
+                    Write-Host "See GameData\AOSO\AOSO-native-build.log for build details." -ForegroundColor DarkYellow
                 }
             }
         }

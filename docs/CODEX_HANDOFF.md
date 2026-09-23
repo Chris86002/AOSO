@@ -135,7 +135,7 @@ docs/AOSO_UI_V2.md is design/history context if it differs.
 
 ## Native addon
 
-The addon is expected to be v0.4.1. The updater requires 0.4.1.0.
+The addon is expected to be v0.4.2. The updater requires 0.4.2.0; an older loaded DLL may be pending until KSP closes.
 After updating/rebuilding, boot should identify the loaded native addon version.
 
 Do not claim the native DLL or UI runtime is validated unless KSP was actually
