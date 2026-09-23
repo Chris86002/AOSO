@@ -200,7 +200,7 @@ FUNCTION aoso_ui2_hud_fast {
     IF AOSO_HUD_CTX = "LANDING" {
         SET alt_txt TO ROUND(AOSO_HUD_DATA["landing"]["radar"], 0) + "m".
     }
-    SET AOSO_UI2_HUD_ALT:TEXT TO "<size=17>" + alt_txt + "</size>\nAP " + aoso_hud_km(o["ap"]).
+    SET AOSO_UI2_HUD_ALT:TEXT TO "<size=17>" + alt_txt + "</size>" + CHAR(10) + "AP " + aoso_hud_km(o["ap"]).
 }
 
 FUNCTION aoso_ui2_hud_update {
