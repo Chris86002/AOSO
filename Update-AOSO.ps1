@@ -28,7 +28,7 @@ try {
 $RepoOwner = "Chris86002"
 $RepoName  = "AOSO"
 $Branch    = "main"
-$NativePluginMinVersion = [version]"0.4.0.0"
+$NativePluginMinVersion = [version]"0.4.1.0"
 
 $UserAgent = "AOSO-Updater"
 $GitHubHeaders = @{
