@@ -529,8 +529,15 @@ FUNCTION aoso_interplanetary_add_capture_node {
         IF min_pe < 5000 { SET min_pe TO 5000. }
     }
 
-    IF PERIAPSIS < min_pe {
-        LOCAL safe_floor IS aoso_capture_safe_pe_floor(min_pe).
+    LOCAL safe_floor IS aoso_capture_safe_pe_floor(min_pe).
+    LOCAL pe_tol IS MAX(1000, min_pe * 0.1).
+    LOCAL pe_meaningfully_low IS PERIAPSIS < min_pe - pe_tol.
+
+    // Do not get trapped endlessly "fixing" a PE that is already within the
+    // accepted capture tolerance. Acacius reached 14.73 km for a 15 km target;
+    // the old strict <15 km test kept asking for a sub-0.5 m/s PE adjustment
+    // and never progressed to the actual binding burn.
+    IF pe_meaningfully_low OR PERIAPSIS < safe_floor {
         aoso_log_info("EJECTION", "Capture at " + SHIP:BODY:NAME + ": raising periapsis to " +
             ROUND(min_pe, 0) + "m (now " + ROUND(PERIAPSIS, 0) +
             "m, safe floor " + ROUND(safe_floor, 0) + "m).").
