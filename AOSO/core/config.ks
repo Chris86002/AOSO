@@ -167,6 +167,9 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "TICK_DEBUG", TRUE,                  // keep a cheap in-memory physics-tick trace for pre/post event dumps
     "TICK_DEBUG_EVERY", 2,              // sample every N physics ticks in critical flight phases
     "HUD_FAST_EVERY", 2,                // paint fast HUD at most every N physics ticks; flight control goes first
+    "UI2_ENABLED", TRUE,                 // new image-backed AOSO avionics / MFD presentation layer
+    "UI2_MARKER_SMOOTH", 0.28,           // 0..1 smoothing for pippers/bugs; higher follows commands faster
+    "UI2_TRAIL_POINTS", 10,              // recent schematic positions on the NAV display (0 disables)
     "TICK_DT_WARN", 0.12,               // s, game-time gap warning; physics-warp expected dt is handled separately
     "MANEUVER_TICK_GUARD", 0.80,        // fraction of remaining dV allowed in the next measured physics tick
     "CPU_PROFILE", FALSE                // extra per-task opcode stats (also honors PROF_ENABLED)
