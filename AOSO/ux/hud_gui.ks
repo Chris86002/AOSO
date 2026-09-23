@@ -486,13 +486,13 @@ FUNCTION aoso_hud_gui_build_help {
     PARAMETER p.
     aoso_hud_title(p, "HOW TO USE THIS HUD").
     aoso_hud_hint(p, "This window is a display. AOSO flies the ship. Nothing here STAGES, ABORTS, or LANDS.").
-    aoso_hud_hint(p, "TABS  FLT=flight  NAV=orbit/target  MSN=mission plan  VEH=this ship  PRP=fuel  LND=landing view  STG=staging  SYS=health  TWIN=tanks/engines  LOG=events  DBG=dump").
+    aoso_hud_hint(p, "FLIGHT DECK  PFD=flight director  NAV=trajectory/target  TOUR=mission route  VEH=graphical twin  SURF=survey/landing  SYS=caution-warning.  ENGINEERING  PROP/STAGE/TWIN/LOG/DBG.").
     aoso_hud_hint(p, "GREEN LIGHTS  3D arrows drawn on the ship. They do not steer. PRO=prograde (where you are going)  RET=retrograde (opposite)  NML=orbit-normal (out of plane)  TGT=toward target  REL=relative velocity  BURN=maneuver node  LAND=surface-retrograde.").
     aoso_hud_hint(p, "FD master switch turns all arrows off. Lights that are on still only draw; AOSO keeps flying.").
     aoso_hud_hint(p, "CPU HIGH means kOS is using most of its instruction budget (usual during a burn). The HUD keeps painting. Twin rebuilds and the vehicle profile pause so steering/staging stay first. Not a hardware failure.").
     aoso_hud_hint(p, "SYS  NOMINAL=all good  DEGRADED=something weak  FAIL=something broken. Open SYS and read WHY.").
     aoso_hud_hint(p, "ROUTE  (now)=current hop  (done)=already visited  unmarked=still ahead.").
-    aoso_hud_hint(p, "CHROME  BACK=previous tab  HOME=flight page  HELP=this page  A-/A+=size  X=collapse to header  OPEN=expand.").
+    aoso_hud_hint(p, "CHROME  HUD=glass flight director  MFD=this computer  ENG=full twin  AUTO=follows mission phase  FD=3D vector overlays  BACK/HOME/HELP/A-/A+/X are display controls only.").
     aoso_hud_hint(p, "MODES  TAC=terminal strip only  GUI=this computer  ENG=engineering + twin. Drag the window by its top.").
 }
 
@@ -543,9 +543,9 @@ FUNCTION aoso_hud_gui_init {
     SET AOSO_HUD_BODY TO vbox.
 
     LOCAL modes IS vbox:ADDHLAYOUT().
-    LOCAL b_tac IS modes:ADDBUTTON("TAC").
+    LOCAL b_tac IS modes:ADDBUTTON("HUD").
     SET b_tac:ONCLICK TO aoso_hud_mode_tactical@.
-    LOCAL b_gui IS modes:ADDBUTTON("GUI").
+    LOCAL b_gui IS modes:ADDBUTTON("MFD").
     SET b_gui:ONCLICK TO aoso_hud_mode_computer@.
     LOCAL b_eng IS modes:ADDBUTTON("ENG").
     SET b_eng:ONCLICK TO aoso_hud_mode_eng@.
@@ -571,16 +571,19 @@ FUNCTION aoso_hud_gui_init {
     SET c4:ONTOGGLE TO aoso_hud_fd_cb_land@.
     aoso_hud_hint(vbox, "FD lights draw 3D arrows on the ship. They do not fly it. PRO=prograde  RET=retrograde  NML=orbit-normal  TGT=target  REL=relative vel  BURN=node  LAND=surface-retro. HELP tab explains all of this.").
 
+    // Flight-deck row: phase-aware primary displays.
     LOCAL row1 IS vbox:ADDHLAYOUT().
-    aoso_hud_add_tab(row1, "FLT", "FLT").
+    aoso_hud_add_tab(row1, "FLT", "PFD").
     aoso_hud_add_tab(row1, "NAV", "NAV").
-    aoso_hud_add_tab(row1, "MSN", "MSN").
+    aoso_hud_add_tab(row1, "MSN", "TOUR").
     aoso_hud_add_tab(row1, "VEH", "VEH").
-    aoso_hud_add_tab(row1, "PRP", "PRP").
+    aoso_hud_add_tab(row1, "LND", "SURF").
+    aoso_hud_add_tab(row1, "SYS", "SYS").
+
+    // Engineering row: detailed subsystems and diagnostics.
     LOCAL row2 IS vbox:ADDHLAYOUT().
-    aoso_hud_add_tab(row2, "LND", "LND").
-    aoso_hud_add_tab(row2, "STG", "STG").
-    aoso_hud_add_tab(row2, "SYS", "SYS").
+    aoso_hud_add_tab(row2, "PRP", "PROP").
+    aoso_hud_add_tab(row2, "STG", "STAGE").
     aoso_hud_add_tab(row2, "TWIN", "TWIN").
     aoso_hud_add_tab(row2, "LOG", "LOG").
     aoso_hud_add_tab(row2, "DBG", "DBG").
