@@ -193,7 +193,14 @@ FUNCTION aoso_rendezvous_finalize_node {
         aoso_log_info("RENDEZVOUS", "Aimed " + hop:NAME + " intercept PE " + ROUND(pe0, 0) + " -> " + ROUND(pe1, 0) + "m (want " + ROUND(want, 0) + "m).").
         RETURN TRUE.
     }
-    aoso_log_warn("RENDEZVOUS", "Still a graze after aiming: PE " + ROUND(pe1, 0) + "m want " + ROUND(want, 0) + "m - will not burn this window.").
+    IF aoso_rendezvous_pe_rough_ok_value(pe1, hop) {
+        aoso_log_info("RENDEZVOUS", "SAFE ROUGH " + hop:NAME + " intercept PE=" +
+            ROUND(pe1, 0) + "m (final want " + ROUND(want, 0) +
+            "m). Committing departure; mid-course will refine the capture PE.").
+        RETURN TRUE.
+    }
+    aoso_log_warn("RENDEZVOUS", "Still outside the safe rough encounter corridor: PE " +
+        ROUND(pe1, 0) + "m want " + ROUND(want, 0) + "m - will not burn this window.").
     RETURN FALSE.
 }
 
@@ -503,6 +510,10 @@ FUNCTION aoso_rendezvous_try_native_porkchop {
     LOCAL done IS FALSE.
     LOCAL failed IS FALSE.
     LOCAL polls IS 0.
+    LOCAL last_progress IS 0.
+    LOCAL last_cells IS 0.
+    LOCAL last_hits IS 0.
+    LOCAL last_capture IS 0.
     UNTIL done OR failed OR polls >= 500 {
         LOCAL poll_status IS aoso_addon_native_porkchop_poll().
         IF poll_status:ISTYPE("Scalar") {
@@ -515,11 +526,13 @@ FUNCTION aoso_rendezvous_try_native_porkchop {
                     SET failed TO TRUE.
                 } ELSE {
                     IF poll_status:HASKEY("done") { SET done TO poll_status["done"]. }
-                    IF poll_status:HASKEY("progress") {
-                        aoso_ui_pulse("Native porkchop " + hop:NAME,
-                            ROUND(poll_status["progress"] * 100, 0) + "%  hits " +
-                            poll_status["n_hit"] + " capture " + poll_status["n_ok"]).
-                    }
+                    IF poll_status:HASKEY("progress") { SET last_progress TO poll_status["progress"]. }
+                    IF poll_status:HASKEY("n_done") { SET last_cells TO poll_status["n_done"]. }
+                    IF poll_status:HASKEY("n_hit") { SET last_hits TO poll_status["n_hit"]. }
+                    IF poll_status:HASKEY("n_ok") { SET last_capture TO poll_status["n_ok"]. }
+                    aoso_ui_pulse("Native porkchop " + hop:NAME,
+                        ROUND(last_progress * 100, 0) + "%  cells " + last_cells +
+                        " hits " + last_hits + " capture " + last_capture).
                 }
             }
         }
@@ -528,8 +541,10 @@ FUNCTION aoso_rendezvous_try_native_porkchop {
     }
 
     IF NOT done {
-        aoso_log_warn("RENDEZVOUS", "Native porkchop did not finish cleanly after " +
-            polls + " polls; returning to fallback navigation.").
+        aoso_log_warn("RENDEZVOUS", "Native porkchop timeout after " + polls +
+            " polls: progress=" + ROUND(last_progress * 100, 1) + "% cells=" +
+            last_cells + " hits=" + last_hits + " capture=" + last_capture +
+            ". Falling back to the rough-transfer planner.").
         RETURN 0.
     }
 
@@ -1283,7 +1298,15 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
             aoso_ui_clear().
             RETURN nd.
         }
-        aoso_log_warn("RENDEZVOUS", "Hohmann window still a graze after aiming " + pe_txt + " - not burning. Will retry next orbit.").
+        IF aoso_rendezvous_pe_rough_ok_value(pe_now, target_orbitable) {
+            aoso_log_info("RENDEZVOUS", "Rough encounter with " + target_orbitable:NAME +
+                " accepted for departure in " + ROUND(nd:ETA, 0) + "s dv=" +
+                ROUND(nd:DELTAV:MAG, 1) + " m/s" + pe_txt +
+                "; mid-course owns final PE targeting.").
+            aoso_ui_clear().
+            RETURN nd.
+        }
+        aoso_log_warn("RENDEZVOUS", "Hohmann window is outside the safe rough encounter corridor " + pe_txt + " - retrying.").
         aoso_ui_clear().
         REMOVE nd.
         RETURN 0.
@@ -1399,6 +1422,34 @@ FUNCTION aoso_rendezvous_pe_ok_value {
     IF max_pe < desired + 8000 { SET max_pe TO desired + 8000. }
     LOCAL soi_cap IS aoso_rendezvous_soi_alt(hop) * 0.06.
     IF max_pe > soi_cap { SET max_pe TO soi_cap. }
+    IF pe > max_pe { RETURN FALSE. }
+    RETURN TRUE.
+}
+
+// Departure does not need to solve the final capture orbit. A direct,
+// non-impacting target-body encounter is enough; the coast controller keeps
+// the strict PE test above and retunes it later when the target geometry is
+// much better conditioned. This is the normal rough-transfer -> mid-course
+// -> capture workflow rather than orbit-after-orbit perfection hunting.
+FUNCTION aoso_rendezvous_pe_rough_ok_value {
+    PARAMETER pe.
+    PARAMETER hop.
+    IF pe < -0.5 { RETURN FALSE. }
+    LOCAL desired IS aoso_rendezvous_desired_pe(hop).
+    LOCAL min_pe IS aoso_rendezvous_pe_min(hop, desired).
+    IF pe < min_pe { RETURN FALSE. }
+
+    LOCAL rough_mult IS aoso_config_get("INTERCEPT_ROUGH_PE_MAX_MULT", 8).
+    IF rough_mult < 2.5 { SET rough_mult TO 2.5. }
+    LOCAL max_pe IS desired * rough_mult.
+    IF max_pe < desired + 40000 { SET max_pe TO desired + 40000. }
+
+    LOCAL soi_frac IS aoso_config_get("INTERCEPT_ROUGH_SOI_FRAC", 0.18).
+    IF soi_frac < 0.08 { SET soi_frac TO 0.08. }
+    IF soi_frac > 0.35 { SET soi_frac TO 0.35. }
+    LOCAL soi_cap IS aoso_rendezvous_soi_alt(hop) * soi_frac.
+    IF max_pe > soi_cap { SET max_pe TO soi_cap. }
+
     IF pe > max_pe { RETURN FALSE. }
     RETURN TRUE.
 }
