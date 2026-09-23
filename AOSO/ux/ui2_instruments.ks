@@ -169,14 +169,14 @@ FUNCTION aoso_ui2_pfd_update {
 
     LOCAL vel IS f["orb"].
     IF f["in_atm"] { SET vel TO f["srf"]. }
-    SET AOSO_UI2_PFD_LEFT:TEXT TO "<size=16>" + ROUND(vel, 0) + "</size>\n" +
+    SET AOSO_UI2_PFD_LEFT:TEXT TO "<size=16>" + ROUND(vel, 0) + "</size>" + CHAR(10) +
         "VS " + ROUND(f["vs"], 1).
 
     LOCAL alt_txt IS aoso_hud_km(f["alt"]).
     IF AOSO_HUD_CTX = "LANDING" {
         SET alt_txt TO ROUND(AOSO_HUD_DATA["landing"]["radar"], 0) + "m RAD".
     }
-    SET AOSO_UI2_PFD_RIGHT:TEXT TO "<size=16>" + alt_txt + "</size>\n" +
+    SET AOSO_UI2_PFD_RIGHT:TEXT TO "<size=16>" + alt_txt + "</size>" + CHAR(10) +
         "AP " + aoso_hud_km(o["ap"]).
 
     LOCAL fuel IS MAX(res["lf"], res["ox"]).
@@ -337,12 +337,12 @@ FUNCTION aoso_ui2_nav_update {
     IF goal = "" { SET goal TO "NO TARGET". }
     SET AOSO_UI2_NAV_TITLE:TEXT TO "<b><size=18>" + o["body"] + " → " + goal + "</size></b>".
 
-    SET AOSO_UI2_NAV_LEFT:TEXT TO "AP " + aoso_hud_km(o["ap"]) + "\nPE " +
-        aoso_hud_km(o["pe"]) + "\nINC " + ROUND(o["inc"], 1) + "°".
+    SET AOSO_UI2_NAV_LEFT:TEXT TO "AP " + aoso_hud_km(o["ap"]) + CHAR(10) + "PE " +
+        aoso_hud_km(o["pe"]) + CHAR(10) + "INC " + ROUND(o["inc"], 1) + "°".
 
     LOCAL patch_txt IS "NO PATCH".
     IF o["patch"] <> "" {
-        SET patch_txt TO o["patch"] + "\nPE " + aoso_hud_km(o["patch_pe"]) +
+        SET patch_txt TO o["patch"] + CHAR(10) + "PE " + aoso_hud_km(o["patch_pe"]) +
             "\nT-" + aoso_hud_eta(o["patch_eta"]).
     }
     SET AOSO_UI2_NAV_RIGHT:TEXT TO patch_txt.
@@ -458,13 +458,13 @@ FUNCTION aoso_ui2_surface_update {
     IF l["active"] { SET phase TO l["state"]. }
     SET AOSO_UI2_SURF_TITLE:TEXT TO "<b><size=18>" + SHIP:BODY:NAME + "  " + phase + "</size></b>".
 
-    SET AOSO_UI2_SURF_LEFT:TEXT TO "LAT " + ROUND(ship_geo:LAT, 1) + "°\nLON " +
-        ROUND(ship_geo:LNG, 1) + "°\nINC " + ROUND(o["inc"], 1) + "°".
+    SET AOSO_UI2_SURF_LEFT:TEXT TO "LAT " + ROUND(ship_geo:LAT, 1) + "°" + CHAR(10) + "LON " +
+        ROUND(ship_geo:LNG, 1) + "°" + CHAR(10) + "INC " + ROUND(o["inc"], 1) + "°".
     IF have_site {
-        SET AOSO_UI2_SURF_RIGHT:TEXT TO "SITE " + ROUND(slat, 1) + "°\n" +
-            ROUND(slng, 1) + "°\nSCORE " + ROUND(site_score, 1).
+        SET AOSO_UI2_SURF_RIGHT:TEXT TO "SITE " + ROUND(slat, 1) + "°" + CHAR(10) +
+            ROUND(slng, 1) + "°" + CHAR(10) + "SCORE " + ROUND(site_score, 1).
     } ELSE {
-        SET AOSO_UI2_SURF_RIGHT:TEXT TO "SITE\nSEARCHING\n---".
+        SET AOSO_UI2_SURF_RIGHT:TEXT TO "SITE" + CHAR(10) + "SEARCHING" + CHAR(10) + "---".
     }
 
     LOCAL bottom IS "POLAR SURVEY / GROUND TRACK".
