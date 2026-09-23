@@ -610,7 +610,9 @@ FUNCTION aoso_ui2_surface_update {
             IF f["vs"] < -0.5 AND l["radar"] > 1 {
                 LOCAL tti IS l["radar"] / MAX(1, -f["vs"]).
                 IF tti > 0 { 
-                    IF tti > 180 { SET tti TO 180. }
+                    LOCAL pred_cap IS aoso_config_get("UI2_DESCENT_PRED_MAX_S", 180).
+                    IF pred_cap < 10 { SET pred_cap TO 10. }
+                    IF tti > pred_cap { SET tti TO pred_cap. }
                     LOCAL pred_geo IS SHIP:BODY:GEOPOSITIONOF(POSITIONAT(SHIP, TIME:SECONDS + tti)).
                     LOCAL pdelta IS pred_geo:POSITION - LATLNG(slat, slng):POSITION.
                     LOCAL pup IS SHIP:UP:VECTOR.
@@ -637,6 +639,24 @@ FUNCTION aoso_ui2_surface_update {
         LOCAL margin IS l["radar"] - l["trig"].
         SET AOSO_UI2_SURF_BOTTOM:TEXT TO "SUICIDE " + ROUND(l["trig"], 0) +
             "m   MARGIN " + ROUND(margin, 0) + "m".
+
+        // Vertical situation inset: altitude and suicide-burn trigger share
+        // one scale so the closing margin is visible at a glance.
+        SET AOSO_UI2_SURF_VSIT:VISIBLE TO TRUE.
+        LOCAL alt_scale IS MAX(100, MAX(l["radar"], l["trig"]) * 1.15).
+        LOCAL alt_frac IS CLAMP(l["radar"] / alt_scale, 0, 1).
+        LOCAL trig_frac IS CLAMP(l["trig"] / alt_scale, 0, 1).
+        SET AOSO_UI2_SURF_ALTBUG:STYLE:MARGIN:H TO 210.
+        SET AOSO_UI2_SURF_ALTBUG:STYLE:MARGIN:V TO 105 - alt_frac * 82.
+        SET AOSO_UI2_SURF_TRIGBUG:STYLE:MARGIN:H TO 236.
+        SET AOSO_UI2_SURF_TRIGBUG:STYLE:MARGIN:V TO 105 - trig_frac * 82.
+        LOCAL margin_state IS "SAFE".
+        IF margin < 150 { SET margin_state TO "WARN". }
+        IF margin < 0 { SET margin_state TO "FAIL". }
+        SET AOSO_UI2_SURF_VSINFO:TEXT TO "RAD " + ROUND(l["radar"], 0) +
+            "m   TRIG " + ROUND(l["trig"], 0) + "m   " +
+            aoso_ui2_color_state(margin_state, "MARGIN " + ROUND(margin, 0) + "m").
+
         aoso_hud_set("ui2_surf_detail", "SITE score " + ROUND(site_score, 2) +
             "   rough " + ROUND(rough, 0) + "m   coast bug = small square").
         aoso_hud_set("ui2_surf_energy", "TWR " + ROUND(f["twr"], 2) +
@@ -646,6 +666,7 @@ FUNCTION aoso_ui2_surface_update {
     }
 
     // Polar survey mode: global latitude/longitude situation display.
+    SET AOSO_UI2_SURF_VSIT:VISIBLE TO FALSE.
     SET AOSO_UI2_SURF_MAIN:STYLE:BG TO AOSO_UI2_ASSET_ROOT + "survey_frame.png".
     SET AOSO_UI2_SURF_TITLE:TEXT TO "<b><size=18>" + SHIP:BODY:NAME + "  POLAR SURVEY</size></b>".
     SET AOSO_UI2_SURF_PRED:VISIBLE TO FALSE.
