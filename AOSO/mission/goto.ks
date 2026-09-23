@@ -660,11 +660,36 @@ FUNCTION aoso_goto_coast_execute {
             SET data["correct_count"] TO 0.
             aoso_log_warn("GOTO", "Unexpected next SOI " + np +
                 " while targeting " + data["hop"] + " / goal " + goal_name +
-                " - stopping warp and replanning before entry.").
+                " - stopping warp before entry.") .
             aoso_observe_anomaly("UNEXPECTED_PATCH", "HIGH", 0, SHIP:ORBIT:NEXTPATCHETA).
             IF DEFINED AOSO_EVENTS {
                 aoso_event_publish("UNEXPECTED_PATCH", "goto", np).
             }
+
+            // First try to repair the existing transfer directly. For a
+            // parent->moon hop this asks the correction solver to make the
+            // intended moon the FIRST patch, not merely appear later in the
+            // conic chain.
+            LOCAL intended IS BODY(data["hop"]).
+            IF intended:ISTYPE("Body") {
+                IF intended:BODY:NAME = SHIP:BODY:NAME {
+                    IF SHIP:ORBIT:NEXTPATCHETA > 150 {
+                        LOCAL nd_avoid IS aoso_rendezvous_add_correction_node(intended).
+                        IF nd_avoid <> 0 {
+                            SET data["corrected"] TO TRUE.
+                            SET data["correct_count"] TO 1.
+                            SET data["burn_kind"] TO "correct".
+                            aoso_log_info("GOTO", "Avoiding unintended " + np +
+                                " SOI with a correction back onto direct " + intended:NAME + " intercept.").
+                            aoso_state_transition(AOSO_GOTO, "BURN").
+                            RETURN.
+                        }
+                    }
+                }
+            }
+
+            aoso_log_warn("GOTO", "Could not repair the unexpected " + np +
+                " patch directly - rebuilding the intended route at 1x.").
             aoso_state_transition(AOSO_GOTO, "PLAN").
             RETURN.
         }
@@ -725,7 +750,7 @@ FUNCTION aoso_goto_coast_execute {
         // seconds to unpack a large vessel; entering rails immediately before
         // an SOI crossing allowed Acacius to cross Minmus->Kerbin while still
         // packed and materialize deep in the atmosphere.
-        LOCAL soi_cutoff IS aoso_config_get("WARP_SOI_RAILS_CUTOFF_S", 300).
+        LOCAL soi_cutoff IS aoso_config_get("WARP_SOI_RAILS_CUTOFF_S", 45).
 
         // A close, clearly unsafe target-body periapsis is a hard safety
         // condition. If correction did not produce a node above, stop here
@@ -785,7 +810,7 @@ FUNCTION aoso_goto_coast_execute {
             }
             IF eta_saved > 30 {
                 aoso_steer_release().
-                LOCAL soi_lead_saved IS MAX(aoso_maneuver_align_s(), aoso_config_get("WARP_SOI_RAILS_CUTOFF_S", 300)).
+                LOCAL soi_lead_saved IS MAX(aoso_maneuver_align_s(), aoso_config_get("WARP_SOI_RAILS_CUTOFF_S", 45)).
                 aoso_warp_approach(eta_saved, soi_lead_saved, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
                 aoso_log_every(60, "GOTO", "No live patch, trusting " + expect_body + " SOI in " + ROUND(eta_saved, 0) + "s " + aoso_warp_diag_txt() + ".").
                 aoso_ui_set("Trusting " + expect_body + " intercept", aoso_hud_eta(eta_saved) + "  " + aoso_warp_diag_txt()).
