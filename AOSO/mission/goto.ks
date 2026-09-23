@@ -632,10 +632,15 @@ FUNCTION aoso_goto_coast_execute {
         IF data:HASKEY("correct_count") { SET ncorr TO data["correct_count"]. }
         LOCAL hop_check IS BODY(np).
         LOCAL eta_p IS SHIP:ORBIT:NEXTPATCHETA.
+        LOCAL patch_pe IS aoso_rendezvous_orbit_pe(SHIP:ORBIT, hop_check).
+        LOCAL patch_safe_floor IS MAX(5000, hop_check:RADIUS * 0.01).
+        IF hop_check:ATM:EXISTS {
+            SET patch_safe_floor TO hop_check:ATM:HEIGHT + 5000.
+        }
         LOCAL want_correct IS FALSE.
         IF aoso_goto_patch_is_ours(data, np) {
             IF aoso_rendezvous_orbit_needs_correct(SHIP:ORBIT, hop_check) {
-                LOCAL pe_now IS aoso_rendezvous_orbit_pe(SHIP:ORBIT, hop_check).
+                LOCAL pe_now IS patch_pe.
                 LOCAL correct_within IS aoso_config_get("GOTO_CORRECT_WITHIN_S", 28800).
                 LOCAL soi_a IS hop_check:SOIRADIUS - hop_check:RADIUS.
                 IF pe_now < 0 {
@@ -674,10 +679,37 @@ FUNCTION aoso_goto_coast_execute {
                 }
             }
         }
+        // Never stay on rails close to an SOI. KSP can take many real
+        // seconds to unpack a large vessel; entering rails immediately before
+        // an SOI crossing allowed Acacius to cross Minmus->Kerbin while still
+        // packed and materialize deep in the atmosphere.
+        LOCAL soi_cutoff IS aoso_config_get("WARP_SOI_RAILS_CUTOFF_S", 300).
+
+        // A close, clearly unsafe target-body periapsis is a hard safety
+        // condition. If correction did not produce a node above, stop here
+        // rather than timewarping an on-rails vessel into atmosphere/terrain.
+        IF eta_p < MAX(900, soi_cutoff) {
+            IF patch_pe < patch_safe_floor {
+                aoso_warp_hard_stop().
+                aoso_throttle_set(0).
+                aoso_steer_release().
+                aoso_log_error("GOTO", "SOI SAFETY HOLD for " + np +
+                    ": patch PE=" + ROUND(patch_pe, 0) + "m below floor=" +
+                    ROUND(patch_safe_floor, 0) + "m at T-" + ROUND(eta_p, 0) + "s.").
+                aoso_observe_anomaly("SOI_IMPACT", "CRITICAL", patch_safe_floor, patch_pe).
+                IF DEFINED AOSO_EVENTS {
+                    aoso_event_publish("HOLD", "goto", "unsafe SOI PE " + ROUND(patch_pe, 0)).
+                }
+                aoso_state_abort(AOSO_GOTO).
+                RETURN.
+            }
+        }
+
         IF eta_p > 30 {
             LOCAL align_s IS aoso_maneuver_align_s().
+            LOCAL coast_lead IS MAX(align_s, soi_cutoff).
             aoso_steer_release().
-            LOCAL wst IS aoso_warp_approach(eta_p, align_s, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
+            LOCAL wst IS aoso_warp_approach(eta_p, coast_lead, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
             aoso_ui_set("Coasting to " + np, "SOI " + aoso_hud_eta(eta_p) + "  " + aoso_warp_diag_txt()).
         } ELSE {
             SET WARP TO 0.
@@ -711,7 +743,8 @@ FUNCTION aoso_goto_coast_execute {
             }
             IF eta_saved > 30 {
                 aoso_steer_release().
-                aoso_warp_approach(eta_saved, aoso_maneuver_align_s(), aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
+                LOCAL soi_lead_saved IS MAX(aoso_maneuver_align_s(), aoso_config_get("WARP_SOI_RAILS_CUTOFF_S", 300)).
+                aoso_warp_approach(eta_saved, soi_lead_saved, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
                 aoso_log_every(60, "GOTO", "No live patch, trusting " + expect_body + " SOI in " + ROUND(eta_saved, 0) + "s " + aoso_warp_diag_txt() + ".").
                 aoso_ui_set("Trusting " + expect_body + " intercept", aoso_hud_eta(eta_saved) + "  " + aoso_warp_diag_txt()).
             } ELSE {
