@@ -20,6 +20,7 @@ GLOBAL AOSO_UI2_HUD_ATT IS 0.
 GLOBAL AOSO_UI2_HUD_EVENT IS 0.
 GLOBAL AOSO_UI2_HUD_BOTTOM IS 0.
 GLOBAL AOSO_UI2_HUD_DIAG IS 0.
+GLOBAL AOSO_UI2_HUD_STRIP IS 0.
 GLOBAL AOSO_UI2_HUD_TEST_BUTTON IS 0.
 GLOBAL AOSO_UI2_HUD_TEST IS 0.
 GLOBAL AOSO_UI2_HUD_VISIBLE IS FALSE.
@@ -71,6 +72,7 @@ FUNCTION aoso_ui2_hud_dispose {
     SET AOSO_UI2_HUD_EVENT TO 0.
     SET AOSO_UI2_HUD_BOTTOM TO 0.
     SET AOSO_UI2_HUD_DIAG TO 0.
+    SET AOSO_UI2_HUD_STRIP TO 0.
     SET AOSO_UI2_HUD_TEST_BUTTON TO 0.
     SET AOSO_UI2_HUD_TEST TO 0.
     SET AOSO_UI2_HUD_PX TO 180.
@@ -123,6 +125,10 @@ FUNCTION aoso_ui2_hud_build {
     LOCAL b_mfd IS top:ADDBUTTON("MFD").
     SET b_mfd:STYLE:WIDTH TO 42.
     SET b_mfd:ONCLICK TO aoso_ui2_hud_mfd@.
+
+    SET AOSO_UI2_HUD_STRIP TO g:ADDLABEL("ASC  ORB  XFR  RNDZ  DSC  LND").
+    SET AOSO_UI2_HUD_STRIP:STYLE:WIDTH TO 560.
+    SET AOSO_UI2_HUD_STRIP:STYLE:ALIGN TO "center".
 
     SET AOSO_UI2_HUD_ATT TO g:ADDLABEL("PITCH ---   ROLL ---   AoA ---").
     SET AOSO_UI2_HUD_ATT:STYLE:WIDTH TO 560.
@@ -192,6 +198,34 @@ FUNCTION aoso_ui2_hud_build {
     SET AOSO_UI2_HUD_DIAG:STYLE:ALIGN TO "center".
 
     g:HIDE().
+}
+
+FUNCTION aoso_ui2_hud_phase_code {
+    LOCAL ctx IS AOSO_HUD_CTX.
+    IF ctx = "LAUNCH" { RETURN "ASC". }
+    IF ctx = "TRANSFER" { RETURN "XFR". }
+    IF ctx = "BURN" { RETURN "XFR". }
+    IF ctx = "DOCK" { RETURN "RNDZ". }
+    IF ctx = "LANDING" { RETURN "LND". }
+    IF ctx = "RETURN" { RETURN "DSC". }
+    RETURN "ORB".
+}
+
+FUNCTION aoso_ui2_hud_strip_txt {
+    LOCAL cur IS aoso_ui2_hud_phase_code().
+    LOCAL names IS LIST("ASC", "ORB", "XFR", "RNDZ", "DSC", "LND").
+    LOCAL out IS "".
+    LOCAL i IS 0.
+    UNTIL i >= names:LENGTH {
+        IF out <> "" { SET out TO out + "  ". }
+        IF names[i] = cur {
+            SET out TO out + "<b><color=#50FF96>" + names[i] + "</color></b>".
+        } ELSE {
+            SET out TO out + "<color=#3d6b4a>" + names[i] + "</color>".
+        }
+        SET i TO i + 1.
+    }
+    RETURN out.
 }
 
 FUNCTION aoso_ui2_hud_show {
@@ -326,6 +360,7 @@ FUNCTION aoso_ui2_hud_update {
         SET AOSO_UI2_HUD_BURN:VALUE TO 0.5.
         SET AOSO_UI2_HUD_BOTTOM:TEXT TO "50% TEST".
         SET AOSO_UI2_HUD_DIAG:TEXT TO "ART 360x240  BUG " + ROUND(AOSO_UI2_HUD_PX, 0) + "," + ROUND(AOSO_UI2_HUD_PY, 0) + "  press TEST to advance".
+        IF AOSO_UI2_HUD_STRIP:ISTYPE("LABEL") { SET AOSO_UI2_HUD_STRIP:TEXT TO aoso_ui2_hud_strip_txt(). }
         RETURN.
     }
 
@@ -336,9 +371,16 @@ FUNCTION aoso_ui2_hud_update {
 
     LOCAL phase IS AOSO_HUD_CTX.
     IF phase = "IDLE" { SET phase TO f["status"]. }
-    SET AOSO_UI2_HUD_MODE:TEXT TO "<b>AOSO  " + phase + "</b>  " + f["doing"].
-    SET AOSO_UI2_HUD_ATT:TEXT TO "P " + ROUND(f["pitch"], 1) + "°   R " +
-        ROUND(f["roll"], 1) + "°   AoA " + ROUND(f["aoa"], 1) + "°".
+    SET AOSO_UI2_HUD_MODE:TEXT TO "<b>AOSO  " + aoso_ui2_hud_phase_code() + "</b>  " + f["doing"].
+    IF AOSO_UI2_HUD_STRIP:ISTYPE("LABEL") { SET AOSO_UI2_HUD_STRIP:TEXT TO aoso_ui2_hud_strip_txt(). }
+    LOCAL att_txt IS "P " + ROUND(f["pitch"], 1) + "°   R " + ROUND(f["roll"], 1) + "°".
+    IF f["in_atm"] { SET att_txt TO att_txt + "   AoA " + ROUND(f["aoa"], 1) + "°". }
+    IF AOSO_HUD_DATA:HASKEY("traj") {
+        IF AOSO_HUD_DATA["traj"]["has_cmd"] {
+            SET att_txt TO att_txt + "   PCMD " + ROUND(AOSO_HUD_DATA["traj"]["pitch_cmd"], 0) + "°".
+        }
+    }
+    SET AOSO_UI2_HUD_ATT:TEXT TO att_txt.
 
     LOCAL event_txt IS "".
     IF o["burning"] {
@@ -373,8 +415,10 @@ FUNCTION aoso_ui2_hud_update {
         SET AOSO_UI2_HUD_BOTTOM:TEXT TO "PROP " + ROUND(pct * 100, 0) + "%".
     }
     SET AOSO_UI2_HUD_BURN:VALUE TO progress.
-    SET AOSO_UI2_HUD_DIAG:TEXT TO "LIVE  BUG " + ROUND(AOSO_UI2_HUD_PX, 0) + "," + ROUND(AOSO_UI2_HUD_PY, 0) +
-        "  DATA AGE " + ROUND(MAX(0, TIME:SECONDS - AOSO_HUD_LAST_HI), 1) + "s  DUMP writes 0:/aoso_hud.json".
+    LOCAL auth_who IS aoso_auth_owner("STEERING").
+    IF auth_who = "" { SET auth_who TO "OPEN". }
+    SET AOSO_UI2_HUD_DIAG:TEXT TO "AUTH " + auth_who + "  STEER " + sys["steer_mode"] +
+        "  GUID " + phase + "  BUG " + ROUND(AOSO_UI2_HUD_PX, 0) + "," + ROUND(AOSO_UI2_HUD_PY, 0).
 
     // Automatic declutter in high-workload terminal phases; the operator can
     // also toggle DCL manually. Primary speed/altitude/pipper always remain.

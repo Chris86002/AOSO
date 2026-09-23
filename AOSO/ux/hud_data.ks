@@ -8,6 +8,13 @@ GLOBAL AOSO_HUD_LAST_HI IS 0.
 GLOBAL AOSO_HUD_LAST_MD IS 0.
 GLOBAL AOSO_HUD_LAST_LO IS 0.
 GLOBAL AOSO_HUD_CTX IS "IDLE".
+GLOBAL AOSO_HUD_ASC_LOCK IS FALSE.
+GLOBAL AOSO_HUD_ASC_SEEN_PRE IS FALSE.
+GLOBAL AOSO_HUD_ASC_LAT IS 0.
+GLOBAL AOSO_HUD_ASC_LNG IS 0.
+GLOBAL AOSO_HUD_ASC_X IS LIST().
+GLOBAL AOSO_HUD_ASC_Y IS LIST().
+GLOBAL AOSO_HUD_ASC_SAMPLE_UT IS -1.
 
 FUNCTION aoso_hud_collect_fast {
     LOCAL f IS AOSO_HUD_DATA["flight"].
@@ -64,12 +71,37 @@ FUNCTION aoso_hud_data_init {
         "staging", LEXICON(),
         "systems", LEXICON(),
         "debug", LEXICON(),
-        "vehicle", LEXICON()
+        "vehicle", LEXICON(),
+        "traj", LEXICON(
+            "locked", FALSE,
+            "has_origin", FALSE,
+            "down_km", 0,
+            "alt_km", 0,
+            "xmax_km", 80,
+            "ymax_km", 80,
+            "atm_km", 0,
+            "ap_km", 0,
+            "pitch_cmd", 0,
+            "has_cmd", FALSE,
+            "lf", 0,
+            "lf_best", -1,
+            "in_atm", FALSE,
+            "site_ok", FALSE,
+            "site_km", 0,
+            "dv_margin", 0
+        )
     ).
     SET AOSO_HUD_LAST_HI TO 0.
     SET AOSO_HUD_LAST_MD TO 0.
     SET AOSO_HUD_LAST_LO TO 0.
     SET AOSO_HUD_CTX TO "IDLE".
+    SET AOSO_HUD_ASC_LOCK TO FALSE.
+    SET AOSO_HUD_ASC_SEEN_PRE TO FALSE.
+    SET AOSO_HUD_ASC_LAT TO 0.
+    SET AOSO_HUD_ASC_LNG TO 0.
+    SET AOSO_HUD_ASC_X TO LIST().
+    SET AOSO_HUD_ASC_Y TO LIST().
+    SET AOSO_HUD_ASC_SAMPLE_UT TO -1.
 }
 
 FUNCTION aoso_hud_rates {
@@ -228,6 +260,16 @@ FUNCTION aoso_hud_collect_res {
     SET rsrc["mission_dv"] TO mission_dv.
     SET rsrc["total_dv"] TO total_dv.
     SET rsrc["land_dv"] TO land_dv.
+    SET rsrc["unusable_dv"] TO 0.
+    SET rsrc["reserve_dv"] TO 0.
+    SET rsrc["return_dv"] TO 0.
+    SET rsrc["abort_dv"] TO 0.
+    IF DEFINED AOSO_BUDGET {
+        IF AOSO_BUDGET:HASKEY("unusable_dv") { SET rsrc["unusable_dv"] TO AOSO_BUDGET["unusable_dv"]. }
+        IF AOSO_BUDGET:HASKEY("reserve_dv") { SET rsrc["reserve_dv"] TO AOSO_BUDGET["reserve_dv"]. }
+        IF AOSO_BUDGET:HASKEY("return_dv") { SET rsrc["return_dv"] TO AOSO_BUDGET["return_dv"]. }
+        IF AOSO_BUDGET:HASKEY("abort_dv") { SET rsrc["abort_dv"] TO AOSO_BUDGET["abort_dv"]. }
+    }
     SET rsrc["twr_now"] TO 0.
     SET rsrc["twr_next"] TO 0.
     SET rsrc["role_next"] TO "".
@@ -354,6 +396,10 @@ FUNCTION aoso_hud_collect_landing {
     SET l["radar"] TO 0.
     SET l["trig"] TO 0.
     SET l["site"] TO "".
+    SET l["has_site"] TO FALSE.
+    SET l["site_lat"] TO 0.
+    SET l["site_lng"] TO 0.
+    SET l["site_alt"] TO 0.
     SET l["drift_e"] TO 0.
     SET l["drift_n"] TO 0.
     IF DEFINED AOSO_DESCENT {
@@ -382,10 +428,156 @@ FUNCTION aoso_hud_collect_landing {
     IF DEFINED AOSO_TOUR {
         IF AOSO_TOUR:HASKEY("data") {
             IF AOSO_TOUR["data"]:HASKEY("site_lat") {
-                SET l["site"] TO ROUND(AOSO_TOUR["data"]["site_lat"], 2) + " / " + ROUND(AOSO_TOUR["data"]["site_lng"], 2).
+                SET l["site_lat"] TO AOSO_TOUR["data"]["site_lat"].
+                SET l["site_lng"] TO AOSO_TOUR["data"]["site_lng"].
+                IF AOSO_TOUR["data"]:HASKEY("site_alt") { SET l["site_alt"] TO AOSO_TOUR["data"]["site_alt"]. }
+                SET l["site"] TO ROUND(l["site_lat"], 2) + " / " + ROUND(l["site_lng"], 2).
+                LOCAL site_picked IS FALSE.
+                IF AOSO_TOUR["data"]:HASKEY("site_score") {
+                    IF AOSO_TOUR["data"]["site_score"] > -1 { SET site_picked TO TRUE. }
+                }
+                IF ABS(l["site_lat"]) + ABS(l["site_lng"]) > 0.02 { SET site_picked TO TRUE. }
+                SET l["has_site"] TO site_picked.
             }
         }
     }
+}
+
+FUNCTION aoso_hud_gc_m {
+    PARAMETER lat1.
+    PARAMETER lng1.
+    PARAMETER lat2.
+    PARAMETER lng2.
+    LOCAL body_r IS SHIP:BODY:RADIUS.
+    LOCAL deg IS CONSTANT:PI / 180.
+    LOCAL la1 IS lat1 * deg.
+    LOCAL la2 IS lat2 * deg.
+    LOCAL dla IS (lat2 - lat1) * deg.
+    LOCAL dlo IS (lng2 - lng1) * deg.
+    LOCAL hav IS SIN(dla / 2) * SIN(dla / 2) + COS(la1) * COS(la2) * SIN(dlo / 2) * SIN(dlo / 2).
+    IF hav < 0 { SET hav TO 0. }
+    IF hav > 1 { SET hav TO 1. }
+    LOCAL ang IS 2 * ARCTAN2(SQRT(hav), SQRT(1 - hav)).
+    RETURN body_r * ang.
+}
+
+FUNCTION aoso_hud_collect_traj {
+    LOCAL tr IS AOSO_HUD_DATA["traj"].
+    LOCAL geo IS SHIP:GEOPOSITION.
+    LOCAL st IS SHIP:STATUS.
+    IF st = "PRELAUNCH" {
+        SET AOSO_HUD_ASC_LAT TO geo:LAT.
+        SET AOSO_HUD_ASC_LNG TO geo:LNG.
+        SET AOSO_HUD_ASC_SEEN_PRE TO TRUE.
+        SET AOSO_HUD_ASC_LOCK TO FALSE.
+        SET AOSO_HUD_ASC_X TO LIST().
+        SET AOSO_HUD_ASC_Y TO LIST().
+        SET AOSO_HUD_ASC_SAMPLE_UT TO -1.
+    } ELSE {
+        IF AOSO_HUD_ASC_SEEN_PRE {
+            IF NOT AOSO_HUD_ASC_LOCK { SET AOSO_HUD_ASC_LOCK TO TRUE. }
+        }
+    }
+    SET tr["locked"] TO AOSO_HUD_ASC_LOCK.
+    SET tr["has_origin"] TO AOSO_HUD_ASC_SEEN_PRE.
+    LOCAL down_m IS 0.
+    IF AOSO_HUD_ASC_SEEN_PRE {
+        SET down_m TO aoso_hud_gc_m(AOSO_HUD_ASC_LAT, AOSO_HUD_ASC_LNG, geo:LAT, geo:LNG).
+    }
+    LOCAL alt_km IS ALTITUDE / 1000.
+    LOCAL down_km IS down_m / 1000.
+    SET tr["down_km"] TO down_km.
+    SET tr["alt_km"] TO alt_km.
+    SET tr["in_atm"] TO FALSE.
+    SET tr["atm_km"] TO 0.
+    IF SHIP:BODY:ATM:EXISTS {
+        SET tr["atm_km"] TO SHIP:BODY:ATM:HEIGHT / 1000.
+        IF ALTITUDE < SHIP:BODY:ATM:HEIGHT { SET tr["in_atm"] TO TRUE. }
+    }
+    LOCAL ap_km IS APOAPSIS / 1000.
+    IF ap_km < 0 { SET ap_km TO 0. }
+    IF DEFINED AOSO_ASCENT {
+        IF AOSO_ASCENT:HASKEY("data") {
+            IF AOSO_ASCENT["data"]:HASKEY("target_apo") {
+                LOCAL want_ap IS AOSO_ASCENT["data"]["target_apo"] / 1000.
+                IF want_ap > ap_km { SET ap_km TO want_ap. }
+            }
+        }
+    }
+    SET tr["ap_km"] TO ap_km.
+    LOCAL x_max IS MAX(down_km * 1.25, 10).
+    LOCAL y_max IS MAX(MAX(alt_km, ap_km), tr["atm_km"]) * 1.08.
+    IF y_max < 5 { SET y_max TO 5. }
+    LOCAL ti IS 0.
+    UNTIL ti >= AOSO_HUD_ASC_X:LENGTH {
+        IF AOSO_HUD_ASC_X[ti] > x_max { SET x_max TO AOSO_HUD_ASC_X[ti] * 1.05. }
+        IF AOSO_HUD_ASC_Y[ti] > y_max { SET y_max TO AOSO_HUD_ASC_Y[ti] * 1.05. }
+        SET ti TO ti + 1.
+    }
+    SET tr["xmax_km"] TO x_max.
+    SET tr["ymax_km"] TO y_max.
+
+    SET tr["has_cmd"] TO FALSE.
+    SET tr["pitch_cmd"] TO 0.
+    IF DEFINED AOSO_ASCENT {
+        IF AOSO_ASCENT["current"] <> "" {
+            IF AOSO_ASCENT["current"] <> "DONE" {
+                IF AOSO_ASCENT["current"] <> "ABORTED" {
+                    IF AOSO_ASCENT:HASKEY("data") {
+                        SET tr["pitch_cmd"] TO aoso_ascent_program_pitch(AOSO_ASCENT["data"]).
+                        SET tr["has_cmd"] TO TRUE.
+                    }
+                }
+            }
+        }
+    }
+    SET tr["lf"] TO aoso_resource_amount("LiquidFuel").
+    SET tr["lf_best"] TO -1.
+    IF DEFINED AOSO_LEARN_LAST {
+        IF AOSO_LEARN_LAST:HASKEY("best_orbit_lf") {
+            SET tr["lf_best"] TO AOSO_LEARN_LAST["best_orbit_lf"].
+        }
+    }
+
+    LOCAL sample_ok IS AOSO_HUD_ASC_LOCK.
+    IF st = "PRELAUNCH" { SET sample_ok TO FALSE. }
+    IF st = "LANDED" { SET sample_ok TO FALSE. }
+    IF st = "SPLASHED" { SET sample_ok TO FALSE. }
+    IF st = "ORBITING" { SET sample_ok TO FALSE. }
+    IF st = "DOCKED" { SET sample_ok TO FALSE. }
+    IF sample_ok {
+        LOCAL gap IS 1.5.
+        IF DEFINED AOSO_CPU_LEVEL {
+            IF AOSO_CPU_LEVEL >= 2 { SET gap TO 3. }
+            IF AOSO_CPU_LEVEL >= 3 { SET sample_ok TO FALSE. }
+        }
+        IF sample_ok {
+            IF AOSO_HUD_ASC_SAMPLE_UT < 0 OR TIME:SECONDS - AOSO_HUD_ASC_SAMPLE_UT >= gap {
+                SET AOSO_HUD_ASC_SAMPLE_UT TO TIME:SECONDS.
+                AOSO_HUD_ASC_X:ADD(down_km).
+                AOSO_HUD_ASC_Y:ADD(alt_km).
+                IF AOSO_HUD_ASC_X:LENGTH > 16 {
+                    AOSO_HUD_ASC_X:REMOVE(0).
+                    AOSO_HUD_ASC_Y:REMOVE(0).
+                }
+            }
+        }
+    }
+
+    SET tr["site_ok"] TO FALSE.
+    SET tr["site_km"] TO 0.
+    LOCAL lnd IS AOSO_HUD_DATA["landing"].
+    IF lnd:HASKEY("has_site") {
+        IF lnd["has_site"] {
+            SET tr["site_km"] TO aoso_hud_gc_m(geo:LAT, geo:LNG, lnd["site_lat"], lnd["site_lng"]) / 1000.
+            SET tr["site_ok"] TO TRUE.
+        }
+    }
+    LOCAL have_dv IS 0.
+    LOCAL need_dv IS 0.
+    IF AOSO_HUD_DATA["res"]:HASKEY("mission_dv") { SET have_dv TO AOSO_HUD_DATA["res"]["mission_dv"]. }
+    IF AOSO_HUD_DATA["res"]:HASKEY("land_dv") { SET need_dv TO AOSO_HUD_DATA["res"]["land_dv"]. }
+    SET tr["dv_margin"] TO have_dv - need_dv.
 }
 
 FUNCTION aoso_hud_collect_systems {
@@ -659,6 +851,7 @@ FUNCTION aoso_hud_collect {
         aoso_hud_collect_res().
         aoso_hud_collect_mission().
         aoso_hud_collect_landing().
+        aoso_hud_collect_traj().
         aoso_hud_collect_systems().
         aoso_hud_collect_vehicle().
         aoso_hud_collect_debug().
@@ -683,10 +876,11 @@ FUNCTION aoso_hud_collect {
     }
     IF pg = "DBG" OR pg = "SYS" { aoso_hud_collect_debug(). }
     IF pg = "SYS" OR pg = "DBG" { aoso_hud_collect_systems(). }
-    IF pg = "NAV" { aoso_hud_collect_target(). }
-    IF pg = "MSN" { aoso_hud_collect_mission(). }
-    IF pg = "LND" { aoso_hud_collect_landing(). }
-    IF pg = "PRP" OR pg = "STG" { aoso_hud_collect_res(). }
+    IF pg = "NAV" OR pg = "RNDZ" { aoso_hud_collect_target(). }
+    IF pg = "MSN" OR pg = "RTE" OR pg = "BDG" { aoso_hud_collect_mission(). }
+    IF pg = "PRP" OR pg = "STG" OR pg = "BDG" OR pg = "RTE" OR pg = "VSIT" { aoso_hud_collect_res(). }
+    IF pg = "LND" OR pg = "VSIT" { aoso_hud_collect_landing(). }
+    IF pg = "ASC" OR pg = "VSIT" OR pg = "RNDZ" { aoso_hud_collect_traj(). }
     IF pg = "VEH" { aoso_hud_collect_vehicle(). }
     IF (now - AOSO_HUD_LAST_MD) >= rates["md"] {
         aoso_hud_collect_orbit().
@@ -694,6 +888,7 @@ FUNCTION aoso_hud_collect {
         aoso_hud_collect_res().
         aoso_hud_collect_mission().
         aoso_hud_collect_landing().
+        aoso_hud_collect_traj().
         aoso_hud_collect_systems().
         aoso_hud_collect_debug().
         aoso_hud_refresh_context().

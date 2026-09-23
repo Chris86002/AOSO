@@ -64,6 +64,18 @@ Owns:
 This is the **only** owner of those page functions/globals. Do not duplicate
 them in ui2_instruments.ks.
 
+### ux/ui2_plots.ks
+Owns the vessel-agnostic phase plots:
+- ASC — altitude vs downrange from the pad lock, flown trail, target-Ap sketch
+- VSIT — altitude vs range-to-site, or periapsis-relative if no site exists
+- RTE — planner route pills and the next transfer window
+- BDG — mission-usable dV and projected leftover per hop
+- RNDZ — range, relative speed, bearing
+
+Plots read `hud_data` / budget / `AOSO_PROJECT_LAST`. They never call
+`aoso_project_route` and never command the vessel. Curves are marker pools,
+not a canvas.
+
 ### ux/hud_gui.ks
 Owns:
 - MFD window/chrome

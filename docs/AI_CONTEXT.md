@@ -143,6 +143,7 @@ Manual KSP flights: `docs/AOSO_SCENARIOS.md`.
 - ui2_instruments.ks owns PFD/NAV/SURF only.
 - ui2_hud.ks owns the separate tactical glass HUD.
 - ui2_mfd.ks exclusively owns Mission/Systems/Vehicle graphical pages.
+- ui2_plots.ks owns ASC / VSIT / RTE / BDG / RNDZ. Display only.
 - hud_gui.ks owns routing/chrome/AUTO-page behavior and the UI2 startup self-test.
 - UI2 is display-only. It may visualize and highlight, but must never steer,
   throttle, stage, warp, write SHIP:CONTROL, or change mission state.

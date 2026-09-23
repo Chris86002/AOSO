@@ -42,7 +42,7 @@ AOSO is a full autopilot. On boot it raises `CONFIG:IPU` to **`IPU_TARGET` (defa
 
 The HUD is a **mission computer**, not a PRINT dump:
 
-- **GUI window** (draggable) with FLT / NAV / MSN / VEH / PRP / LND / STG / SYS / **TWIN** / LOG / DBG pages
+- **GUI window** (draggable) with FLT / NAV / MSN / VEH / PRP / LND / STG / SYS / **TWIN** / LOG / DBG pages, plus phase plots **ASC** (altitude vs downrange from the pad), **VSIT** (altitude vs range-to-site), **ROUTE**, **DV** (projected leftover), and **RNDZ**
 - **Digital Twin** schematic of the vessel AOSO is actually flying: tanks, engines, command, power. Geometry rebuilds on stage/dock/part-count; **fills update live** on the tanks that are feeding. Views: NORM / EXP / STG / SYS / STAT / FUEL / PWR / ENG / CTL. Click a node for UID, mass, resources, modules, and a world HIGHLIGHT.
 - **Tactical terminal strip** at the top of the kOS window (always on)
 - **Flight-director VECDRAW** arrows (PRO / TGT / BURN / LAND) — `SET VEC`, not `VECUPDATER`

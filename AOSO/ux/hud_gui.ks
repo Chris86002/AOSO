@@ -49,6 +49,11 @@ FUNCTION aoso_ui2_selftest {
     IF NOT AOSO_UI2_MSN_MAIN:ISTYPE("BOX") { missing_widgets:ADD("TOUR"). }
     IF NOT AOSO_UI2_SYS_MAIN:ISTYPE("BOX") { missing_widgets:ADD("SYS"). }
     IF NOT AOSO_UI2_VEH_MAIN:ISTYPE("BOX") { missing_widgets:ADD("VEH"). }
+    IF NOT AOSO_UI2_ASC_MAIN:ISTYPE("BOX") { missing_widgets:ADD("ASC"). }
+    IF NOT AOSO_UI2_VS_MAIN:ISTYPE("BOX") { missing_widgets:ADD("VSIT"). }
+    IF NOT AOSO_UI2_RTE_MAIN:ISTYPE("BOX") { missing_widgets:ADD("RTE"). }
+    IF NOT AOSO_UI2_BDG_MAIN:ISTYPE("BOX") { missing_widgets:ADD("BDG"). }
+    IF NOT AOSO_UI2_RND_MAIN:ISTYPE("BOX") { missing_widgets:ADD("RNDZ"). }
 
     // Widget existence alone reported READY even when archive PNGs were
     // missing. Check the installed art that every primary view can request.
@@ -80,7 +85,7 @@ FUNCTION aoso_ui2_selftest {
     }
 
     SET AOSO_UI2_READY TO TRUE.
-    SET AOSO_UI2_SELFTEST_REASON TO "PFD NAV TOUR VEH SURF SYS ready".
+    SET AOSO_UI2_SELFTEST_REASON TO "PFD NAV TOUR VEH SURF SYS ASC VSIT RTE BDG RNDZ ready".
     aoso_log_info("UI2", "Startup self-test READY: " + AOSO_UI2_SELFTEST_REASON + ".").
     RETURN TRUE.
 }
@@ -166,6 +171,7 @@ FUNCTION aoso_hud_gui_dispose {
     SET AOSO_HUD_TABLABEL TO LEXICON().
     SET AOSO_HUD_TAB_LOCK TO FALSE.
     SET AOSO_HUD_PAGE TO "".
+    aoso_ui2_plots_clear().
     SET AOSO_HUD_W TO LEXICON().
     SET AOSO_HUD_LAST TO LEXICON().
 }
@@ -238,24 +244,35 @@ FUNCTION aoso_ui2_auto_page_tick {
     IF sys["rollup"] = "FAIL" {
         SET want TO "SYS".
     } ELSE {
-        LOCAL tour_st IS "".
-        IF DEFINED AOSO_TOUR { SET tour_st TO AOSO_TOUR["current"]. }
-        IF l["active"] OR tour_st = "POLAR" OR tour_st = "SCAN" OR tour_st = "DEORBIT" OR tour_st = "DESCEND" {
-            SET want TO "LND".
+        IF AOSO_HUD_CTX = "DOCK" {
+            SET want TO "RNDZ".
         } ELSE {
-            IF o["node"] OR o["burning"] {
-                SET want TO "NAV".
+            IF AOSO_HUD_CTX = "LAUNCH" {
+                SET want TO "ASC".
             } ELSE {
-                LOCAL nav_active IS FALSE.
-                IF DEFINED AOSO_GOTO {
-                    LOCAL gs IS AOSO_GOTO["current"].
-                    IF gs <> "" AND gs <> "DONE" AND gs <> "ABORTED" { SET nav_active TO TRUE. }
-                }
-                IF nav_active {
-                    SET want TO "NAV".
+                IF l["active"] OR AOSO_HUD_CTX = "LANDING" {
+                    SET want TO "VSIT".
                 } ELSE {
-                    IF tour_st = "PLAN" OR tour_st = "REFUEL" OR tour_st = "TAKEOFF" {
-                        SET want TO "MSN".
+                    LOCAL tour_st IS "".
+                    IF DEFINED AOSO_TOUR { SET tour_st TO AOSO_TOUR["current"]. }
+                    IF tour_st = "POLAR" OR tour_st = "SCAN" {
+                        SET want TO "LND".
+                    } ELSE {
+                        IF AOSO_HUD_CTX = "TRANSFER" OR AOSO_HUD_CTX = "RETURN" {
+                            SET want TO "RTE".
+                        } ELSE {
+                            IF o["node"] OR o["burning"] {
+                                SET want TO "NAV".
+                            } ELSE {
+                                IF SHIP:STATUS = "PRELAUNCH" OR SHIP:STATUS = "LANDED" {
+                                    SET want TO "BDG".
+                                } ELSE {
+                                    IF tour_st = "PLAN" OR tour_st = "REFUEL" OR tour_st = "TAKEOFF" {
+                                        SET want TO "MSN".
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -335,7 +352,7 @@ FUNCTION aoso_hud_apply_scale {
     SET g:STYLE:WIDTH TO wid.
     aoso_hud_scale_walk(g, fs).
     IF AOSO_HUD_HDR_TITLE:ISTYPE("LABEL") {
-        SET AOSO_HUD_HDR_TITLE:TEXT TO "<b><size=" + (fs + 4) + "><color=#1AF034>AOSO</color></size>  FLIGHT DECK · OPS DISPLAY r4</b>".
+        SET AOSO_HUD_HDR_TITLE:TEXT TO "<b><size=" + (fs + 4) + "><color=#1AF034>AOSO</color></size>  FLIGHT DECK · OPS DISPLAY r5</b>".
     }
     aoso_hud_set("chrome_pct", "" + aoso_hud_scale_pct() + "%").
 }
@@ -594,6 +611,11 @@ FUNCTION aoso_hud_gui_build_help {
     aoso_hud_hint(displays, "VEH  Vessel and Digital Twin. Select a part to highlight it.").
     aoso_hud_hint(displays, "SURF  Survey map or landing director, depending on mission phase.").
     aoso_hud_hint(displays, "SYS  Caution/warning board. NOM healthy, DEG degraded, FAIL fault.").
+    aoso_hud_hint(displays, "ASC  Altitude vs downrange from the pad. Amber marks are the flown arc.").
+    aoso_hud_hint(displays, "VSIT  Altitude vs range-to-site, or periapsis time if no site is picked.").
+    aoso_hud_hint(displays, "ROUTE  Planned bodies and the next transfer window. Display only.").
+    aoso_hud_hint(displays, "DV  Mission-usable dV now and projected leftover after each hop.").
+    aoso_hud_hint(displays, "RNDZ  Range, closing speed and bearing. Hidden content until a target exists.").
     LOCAL controls IS aoso_ops_readout(row, "QUICK GUIDE / CONTROLS").
     aoso_hud_hint(controls, "DISPLAY ONLY. Flight controllers own steering, throttle, staging and warp.").
     aoso_hud_hint(controls, "HUD  Separate flight director; DCL declutters, REC recenters, TEST checks geometry, DUMP saves diagnostics.").
@@ -621,12 +643,12 @@ FUNCTION aoso_hud_gui_init {
     aoso_hud_skin_apply(g).
     SET AOSO_HUD_GUI TO g.
 
-    LOCAL hdr IS g:ADDLABEL("<b><size=16><color=#1AF034>AOSO</color></size>  FLIGHT DECK · OPS DISPLAY r4</b>").
+    LOCAL hdr IS g:ADDLABEL("<b><size=16><color=#1AF034>AOSO</color></size>  FLIGHT DECK · OPS DISPLAY r5</b>").
     SET hdr:STYLE:HSTRETCH TO TRUE.
     SET AOSO_HUD_HDR_TITLE TO hdr.
     aoso_hud_lab(g, "hdr_sys", "SYS  NOMINAL").
     LOCAL status_row IS g:ADDHLAYOUT().
-    aoso_hud_lab(status_row, "hdr_ui2", "OPS DISPLAY r4  STARTING").
+    aoso_hud_lab(status_row, "hdr_ui2", "OPS DISPLAY r5  STARTING").
     aoso_hud_lab(status_row, "hdr_twin", "TWIN  -").
     aoso_hud_lab(g, "hdr_do", "DOING  -").
     aoso_hud_lab(g, "hdr_dt", "").
@@ -701,6 +723,13 @@ FUNCTION aoso_hud_gui_init {
     aoso_hud_add_tab(row2, "DBG", "DBG").
     aoso_hud_add_tab(row2, "HELP", "HELP").
 
+    LOCAL row3 IS vbox:ADDHLAYOUT().
+    aoso_hud_add_tab(row3, "ASC", "ASC").
+    aoso_hud_add_tab(row3, "VSIT", "VSIT").
+    aoso_hud_add_tab(row3, "RTE", "ROUTE").
+    aoso_hud_add_tab(row3, "BDG", "DV").
+    aoso_hud_add_tab(row3, "RNDZ", "RNDZ").
+
     SET AOSO_HUD_STACK TO vbox:ADDVLAYOUT().
     aoso_hud_gui_build_flight(aoso_hud_add_page("FLT")).
     aoso_hud_gui_build_nav(aoso_hud_add_page("NAV")).
@@ -714,6 +743,11 @@ FUNCTION aoso_hud_gui_init {
     aoso_hud_gui_build_log(aoso_hud_add_page("LOG")).
     aoso_hud_gui_build_dbg(aoso_hud_add_page("DBG")).
     aoso_hud_gui_build_help(aoso_hud_add_page("HELP")).
+    aoso_ui2_asc_build(aoso_hud_add_page("ASC")).
+    aoso_ui2_vs_build(aoso_hud_add_page("VSIT")).
+    aoso_ui2_rte_build(aoso_hud_add_page("RTE")).
+    aoso_ui2_bdg_build(aoso_hud_add_page("BDG")).
+    aoso_ui2_rnd_build(aoso_hud_add_page("RNDZ")).
 
     SET AOSO_UI2_AUTO_PAGE TO FALSE.
     aoso_hud_apply_scale().
@@ -723,7 +757,7 @@ FUNCTION aoso_hud_gui_init {
     g:SHOW().
 
     IF aoso_ui2_selftest() {
-        aoso_hud_set("hdr_ui2", "OPS DISPLAY r4  <color=#1AF034>READY</color>").
+        aoso_hud_set("hdr_ui2", "OPS DISPLAY r5  <color=#1AF034>READY</color>").
     } ELSE {
         aoso_hud_set("hdr_ui2", "UI2  <color=#FF5A46>FAULT</color>  " + AOSO_UI2_SELFTEST_REASON).
     }
@@ -1293,6 +1327,11 @@ FUNCTION aoso_hud_gui_paint_page {
     IF page_key = "TWIN" { aoso_twin_view_tick(). RETURN. }
     IF page_key = "LOG" { aoso_hud_gui_upd_log(). RETURN. }
     IF page_key = "DBG" { aoso_hud_gui_upd_dbg(). RETURN. }
+    IF page_key = "ASC" { aoso_ui2_asc_update(). RETURN. }
+    IF page_key = "VSIT" { aoso_ui2_vs_update(). RETURN. }
+    IF page_key = "RTE" { aoso_ui2_rte_update(). RETURN. }
+    IF page_key = "BDG" { aoso_ui2_bdg_update(). RETURN. }
+    IF page_key = "RNDZ" { aoso_ui2_rnd_update(). RETURN. }
 }
 
 FUNCTION aoso_hud_gui_tick {
