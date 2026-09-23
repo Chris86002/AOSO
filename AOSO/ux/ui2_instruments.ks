@@ -627,7 +627,8 @@ FUNCTION aoso_ui2_surface_update {
                     IF pred_cap < 10 { SET pred_cap TO 10. }
                     IF tti > pred_cap { SET tti TO pred_cap. }
                     LOCAL pred_geo IS SHIP:BODY:GEOPOSITIONOF(POSITIONAT(SHIP, TIME:SECONDS + tti)).
-                    LOCAL pdelta IS pred_geo:POSITION - LATLNG(slat, slng):POSITION.
+                    LOCAL pred_site_geo IS LATLNG(slat, slng).
+                    LOCAL pdelta IS pred_geo:POSITION - pred_site_geo:POSITION.
                     LOCAL pup IS SHIP:UP:VECTOR.
                     LOCAL pnorth IS SHIP:NORTH:VECTOR.
                     LOCAL peast IS VCRS(pup, pnorth).
