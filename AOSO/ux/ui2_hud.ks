@@ -23,6 +23,8 @@ GLOBAL AOSO_UI2_HUD_DECLUTTER IS FALSE.
 GLOBAL AOSO_UI2_HUD_PX IS 210.
 GLOBAL AOSO_UI2_HUD_PY IS 125.
 GLOBAL AOSO_UI2_HUD_LAST_LIGHT IS "".
+GLOBAL AOSO_UI2_HUD_LAST_FAST_RT IS -1.
+GLOBAL AOSO_UI2_HUD_LAST_FULL_RT IS -1.
 
 FUNCTION aoso_ui2_hud_mfd {
     aoso_hud_mode_computer().
@@ -197,6 +199,19 @@ FUNCTION aoso_ui2_hud_pipper_fast {
 
 FUNCTION aoso_ui2_hud_fast {
     IF NOT AOSO_UI2_HUD_VISIBLE { RETURN. }
+
+    LOCAL fast_rt IS KUNIVERSE:REALTIME.
+    LOCAL fast_gap IS 0.05.
+    IF WARP > 0 { SET fast_gap TO 0.20. }
+    IF DEFINED AOSO_CPU_LEVEL {
+        IF AOSO_CPU_LEVEL >= 2 { SET fast_gap TO MAX(fast_gap, 0.10). }
+        IF AOSO_CPU_LEVEL >= 3 { SET fast_gap TO MAX(fast_gap, 0.25). }
+    }
+    IF AOSO_UI2_HUD_LAST_FAST_RT >= 0 {
+        IF fast_rt - AOSO_UI2_HUD_LAST_FAST_RT < fast_gap { RETURN. }
+    }
+    SET AOSO_UI2_HUD_LAST_FAST_RT TO fast_rt.
+
     LOCAL f IS AOSO_HUD_DATA["flight"].
     LOCAL o IS AOSO_HUD_DATA["orbit"].
 
@@ -218,6 +233,18 @@ FUNCTION aoso_ui2_hud_fast {
 FUNCTION aoso_ui2_hud_update {
     IF NOT AOSO_UI2_HUD_VISIBLE { RETURN. }
     IF NOT AOSO_UI2_HUD_GUI:ISTYPE("GUI") { RETURN. }
+
+    LOCAL full_rt IS KUNIVERSE:REALTIME.
+    LOCAL full_gap IS 0.10.
+    IF WARP > 0 { SET full_gap TO 0.25. }
+    IF DEFINED AOSO_CPU_LEVEL {
+        IF AOSO_CPU_LEVEL >= 2 { SET full_gap TO MAX(full_gap, 0.20). }
+        IF AOSO_CPU_LEVEL >= 3 { SET full_gap TO MAX(full_gap, 0.35). }
+    }
+    IF AOSO_UI2_HUD_LAST_FULL_RT >= 0 {
+        IF full_rt - AOSO_UI2_HUD_LAST_FULL_RT < full_gap { RETURN. }
+    }
+    SET AOSO_UI2_HUD_LAST_FULL_RT TO full_rt.
 
     aoso_ui2_hud_brightness().
     aoso_ui2_hud_fast().
