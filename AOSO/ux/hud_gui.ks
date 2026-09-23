@@ -27,6 +27,11 @@ GLOBAL AOSO_UI2_AUTO_PAGE IS TRUE.
 GLOBAL AOSO_UI2_MANUAL_UNTIL IS 0.
 GLOBAL AOSO_UI2_READY IS FALSE.
 GLOBAL AOSO_UI2_SELFTEST_REASON IS "not run".
+GLOBAL AOSO_UI2_LAST_RENDER_MS IS 0.
+GLOBAL AOSO_UI2_MAX_RENDER_MS IS 0.
+GLOBAL AOSO_UI2_LAST_RENDER_OP IS 0.
+GLOBAL AOSO_UI2_MAX_RENDER_OP IS 0.
+GLOBAL AOSO_UI2_LAST_RENDER_PAGE IS "".
 
 FUNCTION aoso_ui2_selftest {
     SET AOSO_UI2_READY TO FALSE.
@@ -1250,6 +1255,21 @@ FUNCTION aoso_hud_gui_upd_dbg {
     aoso_hud_set("dbg_file", "FILE  0:/aoso_hud.json  last dump " + ROUND(age, 0) + "s ago  (DUMP HUD writes now)").
 }
 
+FUNCTION aoso_hud_gui_paint_page {
+    PARAMETER page_key.
+    IF page_key = "FLT" { aoso_hud_gui_upd_flight(). RETURN. }
+    IF page_key = "NAV" { aoso_hud_gui_upd_nav(). RETURN. }
+    IF page_key = "MSN" { aoso_hud_gui_upd_mission(). RETURN. }
+    IF page_key = "VEH" { aoso_hud_gui_upd_vehicle(). RETURN. }
+    IF page_key = "PRP" { aoso_hud_gui_upd_prop(). RETURN. }
+    IF page_key = "LND" { aoso_hud_gui_upd_land(). RETURN. }
+    IF page_key = "STG" { aoso_hud_gui_upd_stg(). RETURN. }
+    IF page_key = "SYS" { aoso_hud_gui_upd_sys(). RETURN. }
+    IF page_key = "TWIN" { aoso_twin_view_tick(). RETURN. }
+    IF page_key = "LOG" { aoso_hud_gui_upd_log(). RETURN. }
+    IF page_key = "DBG" { aoso_hud_gui_upd_dbg(). RETURN. }
+}
+
 FUNCTION aoso_hud_gui_tick {
     PARAMETER allow.
     IF NOT AOSO_HUD_GUI:ISTYPE("GUI") { RETURN. }
@@ -1263,31 +1283,38 @@ FUNCTION aoso_hud_gui_tick {
         RETURN.
     }
     IF NOT AOSO_HUD_GUI_ON { aoso_hud_gui_show(). }
-    LOCAL now IS TIME:SECONDS.
-    LOCAL pg IS AOSO_HUD_PAGE.
-    LOCAL force IS FALSE.
-    IF pg <> AOSO_HUD_GUI_PAINTED { SET force TO TRUE. }
-    LOCAL gmin IS 0.10.
+
+    // Rendering cadence is wall-clock based. Rails warp may advance UT by
+    // minutes per rendered frame and must not turn the MFD into a hot loop.
+    LOCAL paint_now_rt IS KUNIVERSE:REALTIME.
+    LOCAL page_key IS AOSO_HUD_PAGE.
+    LOCAL force_paint IS FALSE.
+    IF page_key <> AOSO_HUD_GUI_PAINTED { SET force_paint TO TRUE. }
+
+    LOCAL paint_min_s IS 0.10.
+    IF WARP > 0 { SET paint_min_s TO MAX(paint_min_s, 0.20). }
     IF DEFINED AOSO_CPU_LEVEL {
-        IF AOSO_CPU_LEVEL >= 2 { SET gmin TO 0.20. }
-        IF AOSO_CPU_LEVEL >= 3 { SET gmin TO 0.35. }
+        IF AOSO_CPU_LEVEL >= 2 { SET paint_min_s TO MAX(paint_min_s, 0.20). }
+        IF AOSO_CPU_LEVEL >= 3 { SET paint_min_s TO MAX(paint_min_s, 0.35). }
     }
-    IF now - AOSO_HUD_LAST_GUI < gmin {
-        IF NOT force { RETURN. }
+    IF paint_now_rt - AOSO_HUD_LAST_GUI < paint_min_s {
+        IF NOT force_paint { RETURN. }
     }
-    SET AOSO_HUD_LAST_GUI TO now.
-    SET AOSO_HUD_GUI_PAINTED TO pg.
+
+    SET AOSO_HUD_LAST_GUI TO paint_now_rt.
+    SET AOSO_HUD_GUI_PAINTED TO page_key.
+
+    LOCAL paint_rt0 IS KUNIVERSE:REALTIME.
+    LOCAL paint_op0 IS OPCODESLEFT.
     aoso_hud_gui_upd_header().
-    IF pg = "FLT" { aoso_hud_gui_upd_flight(). RETURN. }
-    IF pg = "NAV" { aoso_hud_gui_upd_nav(). RETURN. }
-    IF pg = "MSN" { aoso_hud_gui_upd_mission(). RETURN. }
-    IF pg = "VEH" { aoso_hud_gui_upd_vehicle(). RETURN. }
-    IF pg = "PRP" { aoso_hud_gui_upd_prop(). RETURN. }
-    IF pg = "LND" { aoso_hud_gui_upd_land(). RETURN. }
-    IF pg = "STG" { aoso_hud_gui_upd_stg(). RETURN. }
-    IF pg = "SYS" { aoso_hud_gui_upd_sys(). RETURN. }
-    IF pg = "TWIN" { aoso_twin_view_tick(). RETURN. }
-    IF pg = "LOG" { aoso_hud_gui_upd_log(). RETURN. }
-    IF pg = "DBG" { aoso_hud_gui_upd_dbg(). RETURN. }
-    IF pg = "HELP" { RETURN. }
+    IF page_key <> "HELP" { aoso_hud_gui_paint_page(page_key). }
+
+    LOCAL paint_ms IS (KUNIVERSE:REALTIME - paint_rt0) * 1000.
+    LOCAL paint_ops IS paint_op0 - OPCODESLEFT.
+    IF paint_ops < 0 { SET paint_ops TO 0. }
+    SET AOSO_UI2_LAST_RENDER_MS TO paint_ms.
+    SET AOSO_UI2_LAST_RENDER_OP TO paint_ops.
+    SET AOSO_UI2_LAST_RENDER_PAGE TO page_key.
+    IF paint_ms > AOSO_UI2_MAX_RENDER_MS { SET AOSO_UI2_MAX_RENDER_MS TO paint_ms. }
+    IF paint_ops > AOSO_UI2_MAX_RENDER_OP { SET AOSO_UI2_MAX_RENDER_OP TO paint_ops. }
 }
