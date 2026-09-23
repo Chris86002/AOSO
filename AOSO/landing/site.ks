@@ -224,7 +224,7 @@ FUNCTION aoso_landing_site_scan_orbit {
 
     LOCAL period IS aoso_orbit_period_s().
     IF period <= 0 { SET period TO 600. }
-    LOCAL orbits IS aoso_config_get("LANDING_SCAN_ORBITS", 2).
+    LOCAL orbits IS aoso_config_get("LANDING_SCAN_ORBITS", 1).
     IF orbits < 1 { SET orbits TO 1. }
     IF orbits > 4 { SET orbits TO 4. }
     LOCAL span IS period * orbits.
