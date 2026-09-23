@@ -584,8 +584,10 @@ FUNCTION aoso_rendezvous_porkchop_search {
     IF hop:BODY:NAME <> SHIP:BODY:NAME { RETURN 0. }
     IF NOT aoso_config_get("PORKCHOP_ENABLED", TRUE) { RETURN 0. }
 
-    aoso_warp_hard_stop().
     aoso_steer_release().
+    IF NOT aoso_warp_ensure_physics_idle() {
+        RETURN 0.
+    }
     aoso_maneuver_clear_all().
     LOCAL native_ready IS aoso_addon_native_porkchop_available().
     IF DEFINED AOSO_BRAIN {
