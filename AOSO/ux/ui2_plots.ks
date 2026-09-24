@@ -422,14 +422,12 @@ FUNCTION aoso_ui2_rte_window {
         SET AOSO_UI2_WIN_SHORT TO "---".
         RETURN "NO NEXT BODY".
     }
-    IF DEFINED aoso_feas_planet_of {
-        IF aoso_feas_planet_of(here_name) = aoso_feas_planet_of(dest_name) {
-            SET AOSO_UI2_WIN_SHORT TO "LOCAL".
-            RETURN "LOCAL HOP  " + here_name + " -> " + dest_name.
-        }
-    } ELSE {
-        SET AOSO_UI2_WIN_SHORT TO "---".
-        RETURN "PLANNER NOT LOADED".
+    // Never write DEFINED on a function name. kOS calls the bare name with
+    // zero arguments (KOS#2159). aoso_feas_planet_of needs a body, so that
+    // check aborted the script the moment the route page painted.
+    IF aoso_feas_planet_of(here_name) = aoso_feas_planet_of(dest_name) {
+        SET AOSO_UI2_WIN_SHORT TO "LOCAL".
+        RETURN "LOCAL HOP  " + here_name + " -> " + dest_name.
     }
     LOCAL key IS here_name + ">" + dest_name.
     LOCAL now_ut IS TIME:SECONDS.
@@ -438,23 +436,19 @@ FUNCTION aoso_ui2_rte_window {
         IF AOSO_CPU_LEVEL >= 2 { SET cpu_hot TO TRUE. }
     }
     IF cpu_hot { RETURN AOSO_UI2_WIN_TXT. }
-    IF DEFINED aoso_window_evaluate {
-        IF key = AOSO_UI2_WIN_KEY {
-            IF AOSO_UI2_WIN_UT >= 0 {
-                IF now_ut - AOSO_UI2_WIN_UT < 8 { RETURN AOSO_UI2_WIN_TXT. }
-            }
+    IF key = AOSO_UI2_WIN_KEY {
+        IF AOSO_UI2_WIN_UT >= 0 {
+            IF now_ut - AOSO_UI2_WIN_UT < 8 { RETURN AOSO_UI2_WIN_TXT. }
         }
-        LOCAL ev IS aoso_window_evaluate(here_name, dest_name).
-        SET AOSO_UI2_WIN_KEY TO key.
-        SET AOSO_UI2_WIN_UT TO now_ut.
-        SET AOSO_UI2_WIN_SHORT TO ev["wait_days"] + " d".
-        SET AOSO_UI2_WIN_TXT TO here_name + " -> " + dest_name +
-            "   T+" + ev["wait_days"] + " d   err " + ev["phase_err"] +
-            " deg   dV " + ROUND(ev["now_dv"], 0).
-        RETURN AOSO_UI2_WIN_TXT.
     }
-    SET AOSO_UI2_WIN_SHORT TO "---".
-    RETURN "WINDOW NOT LOADED".
+    LOCAL ev IS aoso_window_evaluate(here_name, dest_name).
+    SET AOSO_UI2_WIN_KEY TO key.
+    SET AOSO_UI2_WIN_UT TO now_ut.
+    SET AOSO_UI2_WIN_SHORT TO ev["wait_days"] + " d".
+    SET AOSO_UI2_WIN_TXT TO here_name + " -> " + dest_name +
+        "   T+" + ev["wait_days"] + " d   err " + ev["phase_err"] +
+        " deg   dV " + ROUND(ev["now_dv"], 0).
+    RETURN AOSO_UI2_WIN_TXT.
 }
 
 FUNCTION aoso_ui2_rte_update {
