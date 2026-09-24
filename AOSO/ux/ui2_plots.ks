@@ -983,13 +983,13 @@ FUNCTION aoso_ui2_bdg_update {
     SET i TO 0.
     UNTIL i >= 6 {
         LOCAL tone IS tones[i].
-        LOCAL rgb IS aoso_ui2_kind_rgb("CAP").
-        IF tone = "WARN" { SET rgb TO aoso_ui2_kind_rgb("MARGIN"). }
-        IF tone = "FAIL" { SET rgb TO aoso_ui2_kind_rgb("FAIL"). }
-        SET AOSO_UI2_BDG_NAMES[i]:STYLE:TEXTCOLOR TO rgb.
-        SET AOSO_UI2_BDG_NUMS[i]:STYLE:TEXTCOLOR TO rgb.
-        SET AOSO_UI2_BDG_STEP[i]:STYLE:TEXTCOLOR TO rgb.
-        SET AOSO_UI2_BDG_WHY[i]:STYLE:TEXTCOLOR TO rgb.
+        LOCAL tone_color IS aoso_ui2_kind_rgb("CAP").
+        IF tone = "WARN" { SET tone_color TO aoso_ui2_kind_rgb("MARGIN"). }
+        IF tone = "FAIL" { SET tone_color TO aoso_ui2_kind_rgb("FAIL"). }
+        SET AOSO_UI2_BDG_NAMES[i]:STYLE:TEXTCOLOR TO tone_color.
+        SET AOSO_UI2_BDG_NUMS[i]:STYLE:TEXTCOLOR TO tone_color.
+        SET AOSO_UI2_BDG_STEP[i]:STYLE:TEXTCOLOR TO tone_color.
+        SET AOSO_UI2_BDG_WHY[i]:STYLE:TEXTCOLOR TO tone_color.
         IF names[i] = "" {
             aoso_ui2_set_text(AOSO_UI2_BDG_NAMES[i], "bdg_n" + i, "").
             aoso_ui2_set_text(AOSO_UI2_BDG_NUMS[i], "bdg_v" + i, "").
@@ -1004,7 +1004,7 @@ FUNCTION aoso_ui2_bdg_update {
             aoso_ui2_set_text(AOSO_UI2_BDG_STEP[i], "bdg_s" + i, names[i]).
             aoso_ui2_set_text(AOSO_UI2_BDG_WHY[i], "bdg_w" + i, aoso_crt_fit(notes[i], 18)).
             SET AOSO_UI2_BDG_STATE[i]:VISIBLE TO TRUE.
-            SET AOSO_UI2_BDG_STATE[i]:STYLE:TEXTCOLOR TO rgb.
+            SET AOSO_UI2_BDG_STATE[i]:STYLE:TEXTCOLOR TO tone_color.
             aoso_ui2_set_text(AOSO_UI2_BDG_STATE[i], "bdg_t" + i, words[i]).
             LOCAL face_key IS "st" + i.
             LOCAL changed IS TRUE.
