@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Pixel-aligned AOSO CRT plates. Plot rectangle must match ui2_plots.ks."""
+from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-OUT = "/tmp/AOSO/AOSO/ux/ui2_assets"
+OUT = str(Path(__file__).resolve().parents[1] / "AOSO" / "ux" / "ui2_assets")
 W, H = 740, 400
 OX, OY, PW, PH = 36, 52, 460, 280
 FONT = "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf"
@@ -10,7 +11,11 @@ GREEN = (118, 255, 150, 255)
 DIM = (36, 110, 64, 255)
 AMBER = (255, 176, 46, 255)
 YELLOW = (255, 214, 70, 255)
+BLUE = (80, 190, 255, 255)
+GRAY = (150, 155, 150, 255)
+RED = (255, 90, 70, 255)
 BLACK = (3, 6, 4, 255)
+GRID = (28, 72, 44, 255)
 
 def font(size):
     return ImageFont.truetype(FONT, size)
@@ -80,23 +85,160 @@ def vs_extra(d, im):
     d.line((OX + PW, OY, OX + PW, OY + PH), fill=AMBER)
     d.text((OX + PW - 36, OY + PH + 6), "SITE", font=font(12), fill=AMBER)
 
-def rte_extra(d, im):
-    d.rectangle((OX + 8, OY + 18, OX + PW - 8, OY + 92), outline=DIM)
-    d.text((OX + 12, OY + 4), "ROUTE RIBBON", font=font(12), fill=DIM)
-    d.rectangle((OX + 8, OY + 110, OX + PW - 8, OY + PH - 12), outline=DIM)
-    d.text((OX + 12, OY + 116), "WINDOW", font=font(12), fill=DIM)
+def rte_curves(d, x0, y0, pw, ph):
+    def ms_y(ms):
+        ms = max(0, min(8000, ms))
+        return y0 + ph - (ms / 8000.0) * ph
 
-def bdg_extra(d, im):
-    d.text((OX + 8, OY + 6), "LEFTOVER MISSION dV", font=font(12), fill=DIM)
+    def u_curve(bottom, col, label):
+        pts = []
+        for i in range(81):
+            t = i / 80.0
+            u = abs(t - 0.5) * 2.0
+            u = u ** 1.55
+            ms = bottom + (8000 - bottom) * u
+            pts.append((x0 + t * pw, ms_y(ms)))
+        d.line(pts, fill=col, width=1)
+        d.text((x0 + int(0.66 * pw), ms_y(bottom + (8000 - bottom) * 0.28) - 10), label, font=font(10), fill=col)
+
+    u_curve(500, (40, 125, 72, 255), "500")
+    u_curve(1000, (52, 155, 88, 255), "1000")
+    u_curve(1800, (70, 185, 108, 255), "1800")
+    u_curve(2800, (92, 215, 128, 255), "2800")
+    u_curve(4200, (120, 235, 150, 255), "4200")
+
+
+def route_plate():
+    """Concept ribbon + transfer-cost plot. Live text is pinned in ui2_plots.ks.
+
+    Header values: hop (20,58), window (300,58), dV (560,54).
+    Pills: (16+i*90, 88, 74, 26). Tags under them at y=116.
+    Plot: origin (70, 186), size 400 x 158, x 0..70 days, y 0..8000 m/s.
+    Right card values start at x=526.
+    """
+    im = Image.new("RGBA", (W, H), BLACK)
+    d = ImageDraw.Draw(im)
+    bezel(d)
+    glow_text(im, (18, 8), "MSN ROUTE / WINDOWS", GREEN, 18)
+    d = ImageDraw.Draw(im)
+    d.line((16, 40, 724, 40), fill=DIM)
+    d.text((20, 46), "CURRENT HOP", font=font(11), fill=DIM)
+    d.text((300, 46), "WINDOW", font=font(11), fill=DIM)
+    d.text((548, 46), "dV", font=font(11), fill=DIM)
+
+    for i in range(7):
+        ax = 16 + i * 90 + 78
+        d.line((ax, 100, ax + 8, 100), fill=GREEN)
+        d.polygon([(ax + 8, 96), (ax + 12, 100), (ax + 8, 104)], fill=GREEN)
+
+    d.text((18, 134), "LEGEND", font=font(11), fill=DIM)
+    legend = (
+        (88, GREEN, "CAPABLE"),
+        (196, AMBER, "MARGIN"),
+        (310, BLUE, "ORBIT ONLY"),
+        (440, GRAY, "SKIP"),
+        (530, YELLOW, "CURRENT"),
+    )
+    for x, col, word in legend:
+        d.ellipse((x, 136, x + 8, 144), fill=col)
+        d.text((x + 12, 134), word, font=font(11), fill=col)
+
+    d.rounded_rectangle((14, 156, 500, 386), radius=8, outline=GREEN)
+    d.text((26, 162), "TRANSFER COST", font=font(13), fill=GREEN)
+    d.text((168, 164), "m/s", font=font(11), fill=DIM)
+    x0, y0, pw, ph = 70, 186, 400, 158
+    for frac, lab in ((0, "0"), (0.25, "2k"), (0.5, "4k"), (0.75, "6k"), (1, "8k")):
+        y = int(y0 + ph - frac * ph)
+        d.line((x0, y, x0 + pw, y), fill=GRID)
+        d.text((x0 - 28, y - 6), lab, font=font(10), fill=DIM)
+    for day in range(0, 71, 10):
+        x = int(x0 + day / 70.0 * pw)
+        d.line((x, y0, x, y0 + ph), fill=GRID)
+        d.text((x - 8, y0 + ph + 2), str(day), font=font(10), fill=DIM)
+    rte_curves(d, x0, y0, pw, ph)
+    d.text((x0 + 78, y0 + ph + 16), "DAYS FROM WINDOW OPEN", font=font(11), fill=GREEN)
+
+    d.rounded_rectangle((512, 156, 724, 386), radius=8, outline=GREEN)
+    d.text((526, 176), "LEFTOVER AFTER HOP", font=font(11), fill=DIM)
+    d.line((526, 230, 708, 230), fill=DIM)
+    d.text((526, 236), "RETURN", font=font(11), fill=DIM)
+    d.line((526, 278, 708, 278), fill=DIM)
+    d.text((526, 284), "ABORT", font=font(11), fill=DIM)
+    d.line((526, 324, 708, 324), fill=DIM)
+    d.text((526, 330), "CLASS", font=font(11), fill=DIM)
+    d.text((526, 358), "CONF", font=font(11), fill=DIM)
+    scanlines(im)
+    im.save(f"{OUT}/crt_rte.png")
+    print("crt_rte", x0, y0, pw, ph)
+
+
+def vdash(d, x, y0, y1):
+    y = y0
+    while y < y1:
+        d.line((x, y, x, min(y + 4, y1)), fill=DIM)
+        y += 8
+
+
+def budget_plate():
+    """Concept waterfall + ledger. Live pins are in ui2_plots.ks.
+
+    Waterfall columns x = 22 + i*76, names y=66, values y=172.
+    Bar field y=88..168 (0 m/s on the bottom).
+    Table rows y = 232 + i*24.
+    """
+    im = Image.new("RGBA", (W, H), BLACK)
+    d = ImageDraw.Draw(im)
+    bezel(d)
+    glow_text(im, (18, 8), "BUDGET / PROJECTED STATE", GREEN, 18)
+    d = ImageDraw.Draw(im)
+
+    d.rounded_rectangle((14, 42, 500, 210), radius=8, outline=GREEN)
+    d.text((24, 48), "DELTA-V WATERFALL", font=font(12), fill=GREEN)
+    d.text((200, 50), "m/s", font=font(11), fill=DIM)
+    d.line((28, 182, 486, 182), fill=DIM)
+    for i in range(1, 6):
+        vdash(d, 22 + i * 76 - 4, 64, 182)
+
+    d.rounded_rectangle((14, 218, 500, 386), radius=8, outline=GREEN)
+    d.text((24, 224), "MISSION STEP", font=font(11), fill=DIM)
+    d.text((156, 224), "STATUS", font=font(11), fill=DIM)
+    d.text((260, 224), "NOTES", font=font(11), fill=DIM)
+    d.line((24, 240, 486, 240), fill=DIM)
+    for i in range(1, 6):
+        y = 242 + i * 22
+        d.line((24, y, 486, y), fill=GRID)
+
+    d.rounded_rectangle((512, 42, 726, 188), radius=8, outline=GREEN)
+    d.text((524, 48), "MISSION-USABLE dV", font=font(12), fill=GREEN)
+    d.rounded_rectangle((524, 100, 710, 112), radius=3, outline=DIM)
+    d.text((524, 118), "UNUSABLE", font=font(11), fill=DIM)
+    d.text((524, 140), "RESERVE", font=font(11), fill=DIM)
+    d.text((524, 162), "LANDING", font=font(11), fill=DIM)
+    for y in (122, 144, 166):
+        d.rounded_rectangle((648, y, 710, y + 8), radius=2, outline=DIM)
+
+    d.rounded_rectangle((512, 196, 726, 308), radius=8, outline=GREEN)
+    d.text((524, 202), "RETURN ALLOCATION", font=font(12), fill=AMBER)
+    d.rounded_rectangle((524, 246, 710, 258), radius=2, outline=DIM)
+    d.text((524, 266), "ABORT ALLOCATION", font=font(11), fill=GREEN)
+    d.rounded_rectangle((524, 286, 710, 296), radius=2, outline=DIM)
+
+    d.rounded_rectangle((512, 316, 726, 386), radius=8, outline=GREEN)
+    d.text((524, 326), "CRT TIME", font=font(11), fill=DIM)
+    d.text((524, 356), "SYS STATUS", font=font(11), fill=DIM)
+    d.ellipse((696, 358, 706, 368), outline=GREEN)
+
+    scanlines(im)
+    im.save(f"{OUT}/crt_bdg.png")
+    print("crt_bdg")
+
 
 plate("crt_asc.png", "ASC TRAJ", "ALTITUDE  /  DOWNRANGE", "DOWNRANGE km", "ALT km",
       ["Q", "AOA", "TWR", "PITCH", "STAGE", "LF VS BEST"], asc_extra)
 plate("crt_vs.png", "VSIT", "ALTITUDE  /  RANGE TO SITE", "RANGE km   0 AT SITE", "ALT km",
       ["HDOT", "TWR", "MARGIN", "SITE", "RADAR", "LAND dV"], vs_extra)
-plate("crt_rte.png", "ROUTE", "FEASIBILITY  /  WINDOW", "BODIES", "",
-      ["HOP", "WINDOW", "CLASS", "END dV", "RETURN", "ABORT"], rte_extra)
-plate("crt_bdg.png", "BUDGET", "PROJECTED STATE", "NOW  ->  EACH HOP", "",
-      ["NOW", "UNUSABLE", "RESERVE", "LAND", "RETURN", "ABORT"], bdg_extra)
+route_plate()
+budget_plate()
 plate("crt_rnd.png", "RNDZ", "RANGE  /  CLOSING", "CLOSING", "LATERAL",
       ["TARGET", "RANGE", "RATE", "BEARING", "PORT", "REL"], None)
 
@@ -131,6 +273,40 @@ pred.save(f"{OUT}/pred_bug.png")
 dia = Image.new("RGBA", (22, 22), (0, 0, 0, 0))
 ImageDraw.Draw(dia).polygon([(11, 1), (21, 11), (11, 21), (1, 11)], outline=YELLOW)
 dia.save(f"{OUT}/diamond.png")
+
+
+def capsule(name, outline):
+    im = Image.new("RGBA", (74, 26), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.rounded_rectangle((1, 1, 72, 24), radius=11, outline=outline, width=2)
+    im.save(f"{OUT}/{name}")
+
+
+capsule("pill_now.png", YELLOW)
+capsule("pill_next.png", GREEN)
+capsule("pill_cap.png", GREEN)
+capsule("pill_mar.png", AMBER)
+capsule("pill_orb.png", BLUE)
+capsule("pill_skip.png", GRAY)
+capsule("pill_done.png", DIM)
+capsule("pill_bad.png", RED)
+
+
+def flat_bar(name, fill):
+    im = Image.new("RGBA", (32, 10), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.rounded_rectangle((0, 0, 31, 9), radius=2, fill=fill)
+    im.save(f"{OUT}/{name}")
+
+
+flat_bar("bar_go.png", GREEN)
+flat_bar("bar_warn.png", AMBER)
+flat_bar("bar_bad.png", RED)
+
+tri = Image.new("RGBA", (14, 14), (0, 0, 0, 0))
+ImageDraw.Draw(tri).polygon([(7, 1), (13, 13), (1, 13)], outline=AMBER)
+ImageDraw.Draw(tri).text((5, 3), "!", font=font(8), fill=AMBER)
+tri.save(f"{OUT}/warn_tri.png")
 
 def plain_key(name, fill):
     im = Image.new("RGBA", (88, 28), (0, 0, 0, 0))
@@ -211,13 +387,70 @@ sample("crt_vs.png", "/tmp/crt_preview_vs.png", [
     (524, 74, "-42", GREEN), (524, 126, "2.10", GREEN), (524, 178, "NOM 340", GREEN),
     (524, 230, "8.2 km", GREEN), (524, 282, "120 m", GREEN), (524, 334, "860", GREEN),
 ])
-sample("crt_rte.png", "/tmp/crt_preview_rte.png", [
-    (524, 74, "MUN", GREEN), (524, 126, "2.4 d", GREEN), (524, 178, "LANDER", GREEN),
-    (524, 230, "1840", GREEN), (524, 282, "900", GREEN), (524, 334, "600", GREEN),
+def mock(src, dest, draws):
+    im = Image.open(f"{OUT}/{src}").convert("RGBA")
+    d = ImageDraw.Draw(im)
+    for item in draws:
+        x, y, text, fill, size = item
+        d.text((x, y), text, font=font(size), fill=fill)
+    im.save(dest)
+
+
+mock("crt_rte.png", "/tmp/crt_preview_rte.png", [
+    (500, 12, "HOPPER", AMBER, 13),
+    (20, 58, "KERBIN > MINMUS", GREEN, 14),
+    (300, 58, "LOCAL HOP", GREEN, 14),
+    (560, 54, "860", YELLOW, 16),
+    (24, 94, "MINMUS", YELLOW, 12),
+    (114, 94, "DRES", GREEN, 12),
+    (204, 94, "DUNA", GREEN, 12),
+    (294, 94, "IKE", GREEN, 12),
+    (384, 94, "EVE", BLUE, 12),
+    (474, 94, "GILLY", GREEN, 12),
+    (564, 94, "JOOL", BLUE, 12),
+    (654, 94, "LAYTHE", GRAY, 12),
+    (526, 160, "FEASIBLE", GREEN, 12),
+    (526, 192, "5153 m/s", GREEN, 22),
+    (526, 250, "0 m/s", GREEN, 16),
+    (526, 298, "200 m/s", GREEN, 16),
+    (526, 340, "hopper", GREEN, 13),
+    (600, 354, "1.00", GREEN, 16),
 ])
-sample("crt_bdg.png", "/tmp/crt_preview_bdg.png", [
-    (524, 74, "2400", GREEN), (524, 126, "80", GREEN), (524, 178, "150", GREEN),
-    (524, 230, "860", GREEN), (524, 282, "900", GREEN), (524, 334, "600", GREEN),
+# diamond sample at day 0, 80 m/s -> bottom-left of plot
+dpreview = Image.open("/tmp/crt_preview_rte.png").convert("RGBA")
+ImageDraw.Draw(dpreview).polygon([(78, 336), (88, 346), (78, 356), (68, 346)], outline=YELLOW)
+dpreview.save("/tmp/crt_preview_rte.png")
+
+mock("crt_bdg.png", "/tmp/crt_preview_bdg.png", [
+    (24, 66, "NOW", GREEN, 11),
+    (100, 66, "MINMUS", GREEN, 11),
+    (176, 66, "MUN", GREEN, 11),
+    (252, 66, "DRES", AMBER, 11),
+    (328, 66, "DUNA", GREEN, 11),
+    (404, 66, "END", RED, 11),
+    (24, 186, "5160", GREEN, 11),
+    (100, 186, "5153", GREEN, 11),
+    (176, 186, "4693", GREEN, 11),
+    (252, 186, "4866", AMBER, 11),
+    (328, 186, "3693", GREEN, 11),
+    (404, 186, "-3840", RED, 11),
+    (24, 246, "NOW", GREEN, 12),
+    (156, 246, "FEASIBLE", GREEN, 11),
+    (260, 246, "---", GREEN, 12),
+    (24, 268, "MINMUS+", GREEN, 12),
+    (156, 268, "FEASIBLE", GREEN, 11),
+    (260, 268, "MARGIN 5153", GREEN, 12),
+    (24, 356, "END", RED, 12),
+    (156, 356, "FAIL", RED, 11),
+    (260, 356, "EVE", RED, 12),
+    (524, 66, "5160 m/s", GREEN, 22),
+    (590, 116, "0", GREEN, 12),
+    (590, 138, "596", GREEN, 12),
+    (590, 160, "0", GREEN, 12),
+    (620, 214, "0 m/s", AMBER, 16),
+    (640, 264, "200 m/s", GREEN, 14),
+    (620, 328, "0:12:04", GREEN, 13),
+    (620, 354, "PRELAUNCH", GREEN, 13),
 ])
 sample("crt_glass.png", "/tmp/crt_preview_glass.png", [
     (32, 150, "245", GREEN), (578, 150, "12.4km", GREEN),

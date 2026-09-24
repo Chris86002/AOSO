@@ -60,7 +60,10 @@ FUNCTION aoso_ui2_selftest {
         "crt_glass.png", "crt_black.png", "crt_bezel.png", "hud_overlay.png", "phase_mark.png",
         "key_go_off.png", "key_asc_off.png", "key_asc_on.png", "key_hud_off.png", "key_mfd_off.png",
         "launch_go.png", "launch_hold.png", "launch_nogo.png", "launch_commit.png",
-        "diamond.png", "ship_bug.png", "trail_bug.png", "pred_bug.png"
+        "diamond.png", "ship_bug.png", "trail_bug.png", "pred_bug.png",
+        "pill_now.png", "pill_next.png", "pill_cap.png", "pill_mar.png", "pill_orb.png",
+        "pill_skip.png", "pill_done.png", "pill_bad.png",
+        "bar_go.png", "bar_warn.png", "bar_bad.png", "warn_tri.png"
     ).
     FOR image_file IN image_files {
         IF NOT EXISTS("0:/" + AOSO_UI2_ASSET_ROOT + image_file) {
