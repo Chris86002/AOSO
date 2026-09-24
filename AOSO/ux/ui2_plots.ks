@@ -20,6 +20,8 @@ GLOBAL AOSO_UI2_ASC_AP IS 0.
 GLOBAL AOSO_UI2_ASC_TRAIL IS LIST().
 GLOBAL AOSO_UI2_ASC_SKETCH IS LIST().
 GLOBAL AOSO_UI2_ASC_ATMLINE IS LIST().
+GLOBAL AOSO_UI2_ASC_XLAB IS LIST().
+GLOBAL AOSO_UI2_ASC_XSPAN IS -1.
 
 GLOBAL AOSO_UI2_VS_MAIN IS 0.
 GLOBAL AOSO_UI2_VS_INFO IS 0.
@@ -101,6 +103,8 @@ FUNCTION aoso_ui2_plots_clear {
     SET AOSO_UI2_ASC_TRAIL TO LIST().
     SET AOSO_UI2_ASC_SKETCH TO LIST().
     SET AOSO_UI2_ASC_ATMLINE TO LIST().
+    SET AOSO_UI2_ASC_XLAB TO LIST().
+    SET AOSO_UI2_ASC_XSPAN TO -1.
     SET AOSO_UI2_VS_HIGH TO LIST().
     SET AOSO_UI2_VS_NOM TO LIST().
     SET AOSO_UI2_VS_LOW TO LIST().
@@ -190,6 +194,39 @@ FUNCTION aoso_ui2_list_has {
     RETURN FALSE.
 }
 
+FUNCTION aoso_ui2_asc_span {
+    PARAMETER km.
+    LOCAL span IS 10.
+    IF km > 10 {
+        LOCAL steps IS km / 5.
+        LOCAL whole IS FLOOR(steps).
+        IF steps - whole > 0.001 { SET whole TO whole + 1. }
+        SET span TO whole * 5.
+    }
+    IF span < 10 { SET span TO 10. }
+    IF span > 100 { SET span TO 100. }
+    RETURN span.
+}
+
+FUNCTION aoso_ui2_asc_xaxis {
+    PARAMETER x_span.
+    IF x_span = AOSO_UI2_ASC_XSPAN { RETURN. }
+    SET AOSO_UI2_ASC_XSPAN TO x_span.
+    LOCAL n IS 0.
+    UNTIL n >= AOSO_UI2_ASC_XLAB:LENGTH {
+        LOCAL lab IS AOSO_UI2_ASC_XLAB[n].
+        LOCAL km IS n * 5.
+        IF km <= x_span + 0.01 {
+            LOCAL px IS 36 + (km / x_span) * 460.
+            aoso_crt_move(lab, px - 16, 318, 32, 12).
+            SET lab:VISIBLE TO TRUE.
+        } ELSE {
+            SET lab:VISIBLE TO FALSE.
+        }
+        SET n TO n + 1.
+    }
+}
+
 FUNCTION aoso_ui2_asc_build {
     PARAMETER page.
     aoso_crt_page(page, "crt_asc.png").
@@ -207,6 +244,18 @@ FUNCTION aoso_ui2_asc_build {
     SET AOSO_CRT_ASC_STG TO aoso_crt_side(page, 4).
     SET AOSO_CRT_ASC_LF TO aoso_crt_side(page, 5).
     SET AOSO_UI2_ASC_INFO TO aoso_crt_label(page, 40, 358, 460).
+    SET AOSO_UI2_ASC_XLAB TO LIST().
+    SET AOSO_UI2_ASC_XSPAN TO -1.
+    LOCAL n IS 0.
+    UNTIL n >= 21 {
+        LOCAL lab IS aoso_crt_label(page, 36, 318, 32, 8).
+        SET lab:STYLE:ALIGN TO "center".
+        SET lab:STYLE:TEXTCOLOR TO RGB(0.55, 0.9, 0.6).
+        SET lab:VISIBLE TO FALSE.
+        aoso_ui2_set_text(lab, "asc_x" + n, (n * 5000) + "").
+        AOSO_UI2_ASC_XLAB:ADD(lab).
+        SET n TO n + 1.
+    }
 }
 
 FUNCTION aoso_ui2_asc_update {
@@ -214,10 +263,9 @@ FUNCTION aoso_ui2_asc_update {
     IF NOT AOSO_HUD_DATA:HASKEY("traj") { RETURN. }
     LOCAL tr IS AOSO_HUD_DATA["traj"].
     LOCAL f IS AOSO_HUD_DATA["flight"].
-    LOCAL x_max IS aoso_lex_num(tr, "xmax_km", 80).
-    LOCAL y_max IS aoso_lex_num(tr, "ymax_km", 80).
-    IF x_max < 5 { SET x_max TO 5. }
-    IF y_max < 1 { SET y_max TO 1. }
+    LOCAL x_max IS aoso_ui2_asc_span(aoso_lex_num(tr, "xmax_km", 10)).
+    LOCAL y_max IS 70.
+    aoso_ui2_asc_xaxis(x_max).
     LOCAL ap_km IS aoso_lex_num(tr, "ap_km", 0).
     LOCAL atm_km IS aoso_lex_num(tr, "atm_km", 0).
     LOCAL down_km IS aoso_lex_num(tr, "down_km", 0).
@@ -300,6 +348,7 @@ FUNCTION aoso_ui2_asc_update {
     LOCAL origin_txt IS "PAD LOCK".
     LOCAL has_pad IS aoso_lex_bool(tr, "has_origin").
     IF NOT has_pad { SET origin_txt TO "NO LOCK". }
+    IF aoso_lex_bool(tr, "held") { SET origin_txt TO "SPACE". }
     aoso_ui2_set_text(AOSO_UI2_ASC_INFO, "asc_info", origin_txt + "  " + ROUND(down_km, 1) + " km  " + ROUND(alt_km, 1) + " km").
 }
 
@@ -307,10 +356,8 @@ FUNCTION aoso_ui2_asc_ship_fast {
     IF NOT AOSO_UI2_ASC_SHIP:ISTYPE("LABEL") { RETURN. }
     IF NOT AOSO_HUD_DATA:HASKEY("traj") { RETURN. }
     LOCAL tr IS AOSO_HUD_DATA["traj"].
-    LOCAL x_max IS aoso_lex_num(tr, "xmax_km", 80).
-    LOCAL y_max IS aoso_lex_num(tr, "ymax_km", 80).
-    IF x_max < 5 { SET x_max TO 5. }
-    IF y_max < 1 { SET y_max TO 1. }
+    LOCAL x_max IS aoso_ui2_asc_span(aoso_lex_num(tr, "xmax_km", 10)).
+    LOCAL y_max IS 70.
     LOCAL bug_pt IS aoso_ui2_plot_px(aoso_lex_num(tr, "down_km", 0), aoso_lex_num(tr, "alt_km", 0), 0, x_max, 0, y_max).
     aoso_ui2_plot_put(AOSO_UI2_ASC_SHIP, bug_pt[0], bug_pt[1], TRUE).
 }

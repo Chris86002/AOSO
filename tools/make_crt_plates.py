@@ -78,8 +78,13 @@ def plate(name, title, subtitle, axis_x, axis_y, sides, extra=None):
     print(name, OX, OY, PW, PH)
 
 def asc_extra(d, im):
-    d.text((OX + 8, OY + 8), "0", font=font(11), fill=DIM)
-    d.text((OX + 8, OY + PH - 16), "PAD", font=font(11), fill=DIM)
+    # Y ticks are every 5 km from 0 to 70 km, drawn as meters.
+    # The plot rectangle is (36, 52, 460, 280). Live X labels use the same box.
+    for i in range(15):
+        km = i * 5
+        y = OY + PH - (km / 70.0) * PH
+        d.line((OX - 5, y, OX + 4, y), fill=DIM)
+        d.text((OX - 7, y), str(i * 5000), font=font(9), fill=GREEN, anchor="rm")
 
 def vs_extra(d, im):
     d.line((OX + PW, OY, OX + PW, OY + PH), fill=AMBER)
@@ -233,7 +238,7 @@ def budget_plate():
     print("crt_bdg")
 
 
-plate("crt_asc.png", "ASC TRAJ", "ALTITUDE  /  DOWNRANGE", "DOWNRANGE km", "ALT km",
+plate("crt_asc.png", "ASC TRAJ", "ALTITUDE  /  DOWNRANGE", "DOWNRANGE m", "ALT m",
       ["Q", "AOA", "TWR", "PITCH", "STAGE", "LF VS BEST"], asc_extra)
 plate("crt_vs.png", "VSIT", "ALTITUDE  /  RANGE TO SITE", "RANGE km   0 AT SITE", "ALT km",
       ["HDOT", "TWR", "MARGIN", "SITE", "RADAR", "LAND dV"], vs_extra)

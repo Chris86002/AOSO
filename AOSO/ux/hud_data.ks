@@ -108,6 +108,7 @@ FUNCTION aoso_hud_data_init {
             "lf", 0,
             "lf_best", -1,
             "in_atm", FALSE,
+            "held", FALSE,
             "site_ok", FALSE,
             "site_km", 0,
             "dv_margin", 0
@@ -495,11 +496,15 @@ FUNCTION aoso_hud_collect_traj {
         SET AOSO_HUD_ASC_X TO LIST().
         SET AOSO_HUD_ASC_Y TO LIST().
         SET AOSO_HUD_ASC_SAMPLE_UT TO -1.
+        SET tr["held"] TO FALSE.
     } ELSE {
         IF AOSO_HUD_ASC_SEEN_PRE {
             IF NOT AOSO_HUD_ASC_LOCK { SET AOSO_HUD_ASC_LOCK TO TRUE. }
         }
     }
+    LOCAL asc_held IS FALSE.
+    IF tr:HASKEY("held") { SET asc_held TO tr["held"]. }
+    IF NOT asc_held {
     SET tr["locked"] TO AOSO_HUD_ASC_LOCK.
     SET tr["has_origin"] TO AOSO_HUD_ASC_SEEN_PRE.
     LOCAL down_m IS 0.
@@ -584,6 +589,14 @@ FUNCTION aoso_hud_collect_traj {
                 }
             }
         }
+    }
+    IF ALTITUDE >= 70000 {
+        LOCAL in_space IS TRUE.
+        IF SHIP:BODY:ATM:EXISTS {
+            IF ALTITUDE < SHIP:BODY:ATM:HEIGHT { SET in_space TO FALSE. }
+        }
+        IF in_space { SET tr["held"] TO TRUE. }
+    }
     }
 
     SET tr["site_ok"] TO FALSE.

@@ -291,6 +291,12 @@ FUNCTION aoso_ui2_auto_page_tick {
         }
     }
 
+    IF want = "ASC" {
+        IF AOSO_HUD_DATA:HASKEY("traj") {
+            IF aoso_lex_bool(AOSO_HUD_DATA["traj"], "held") { SET want TO "RTE". }
+        }
+    }
+
     IF want <> AOSO_HUD_PAGE { aoso_hud_show_page(want, FALSE). }
 }
 
