@@ -657,15 +657,24 @@ FUNCTION aoso_ui2_vs_ship_fast {
     IF NOT AOSO_HUD_DATA:HASKEY("traj") { RETURN. }
     LOCAL tr IS AOSO_HUD_DATA["traj"].
     LOCAL alt_km IS aoso_lex_num(tr, "alt_km", 0).
+    LOCAL x_max IS AOSO_UI2_VS_XMAX.
+    LOCAL y_max IS AOSO_UI2_VS_YMAX.
     IF aoso_lex_bool(tr, "site_ok") {
         LOCAL site_km IS aoso_lex_num(tr, "site_km", 0).
-        LOCAL ship_pt IS aoso_ui2_vs_px(AOSO_UI2_VS_XMAX - site_km, alt_km,
-            AOSO_UI2_VS_XMAX, AOSO_UI2_VS_YMAX).
+        IF x_max <= 1 {
+            SET x_max TO MAX(site_km * 1.15, 5).
+            SET y_max TO MAX(MAX(alt_km * 1.6, x_max * 0.20), 1).
+        }
+        LOCAL ship_pt IS aoso_ui2_vs_px(x_max - site_km, alt_km, x_max, y_max).
         aoso_ui2_plot_put(AOSO_UI2_VS_SHIP, ship_pt[0], ship_pt[1], TRUE).
     } ELSE {
         LOCAL eta_pe IS aoso_lex_num(AOSO_HUD_DATA["orbit"], "pe_eta", 0).
-        LOCAL ship_pt IS aoso_ui2_vs_px(AOSO_UI2_VS_XMAX - MIN(eta_pe, AOSO_UI2_VS_XMAX),
-            alt_km, AOSO_UI2_VS_XMAX, AOSO_UI2_VS_YMAX).
+        IF x_max <= 1 {
+            SET x_max TO MAX(eta_pe * 1.15, 30).
+            SET y_max TO MAX(alt_km * 1.1, 1).
+        }
+        LOCAL ship_pt IS aoso_ui2_vs_px(x_max - MIN(eta_pe, x_max),
+            alt_km, x_max, y_max).
         aoso_ui2_plot_put(AOSO_UI2_VS_SHIP, ship_pt[0], ship_pt[1], TRUE).
     }
 }
