@@ -583,7 +583,7 @@ FUNCTION aoso_hud_collect_traj {
                 SET AOSO_HUD_ASC_SAMPLE_UT TO TIME:SECONDS.
                 AOSO_HUD_ASC_X:ADD(down_km).
                 AOSO_HUD_ASC_Y:ADD(alt_km).
-                IF AOSO_HUD_ASC_X:LENGTH > 12 {
+                IF AOSO_HUD_ASC_X:LENGTH > 24 {
                     AOSO_HUD_ASC_X:REMOVE(0).
                     AOSO_HUD_ASC_Y:REMOVE(0).
                 }

@@ -50,7 +50,9 @@ def check_png(p):
             assert (width, height) == (420, expected_height), f"{p.name}: changed widget dimensions"
     if p.stem == "hud_overlay":
         assert (width, height) == (360, 240), f"{p.name}: changed HUD dimensions"
-    if p.stem in ("crt_go", "crt_asc", "crt_vs", "crt_rte", "crt_bdg", "crt_rnd", "crt_glass"):
+    if p.stem in ("crt_asc", "crt_vs"):
+        assert (width, height) == (840, 560), f"{p.name}: wide plot plate must stay 840x560"
+    if p.stem in ("crt_go", "crt_rte", "crt_bdg", "crt_rnd", "crt_glass"):
         assert (width, height) == (740, 400), f"{p.name}: CRT plate must stay 740x400"
 
 

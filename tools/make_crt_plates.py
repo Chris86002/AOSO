@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """Pixel-aligned AOSO CRT plates. Plot rectangle must match ui2_plots.ks."""
 from pathlib import Path
+from tempfile import gettempdir
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 OUT = str(Path(__file__).resolve().parents[1] / "AOSO" / "ux" / "ui2_assets")
 W, H = 740, 400
 OX, OY, PW, PH = 36, 52, 460, 280
-FONT = "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf"
+FONT = next(p for p in (
+    "C:/Windows/Fonts/consolab.ttf",
+    "C:/Windows/Fonts/lucon.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf",
+) if Path(p).is_file())
+PREVIEW = Path(gettempdir())
 GREEN = (118, 255, 150, 255)
 DIM = (36, 110, 64, 255)
 AMBER = (255, 176, 46, 255)
@@ -77,18 +83,114 @@ def plate(name, title, subtitle, axis_x, axis_y, sides, extra=None):
     im.save(f"{OUT}/{name}")
     print(name, OX, OY, PW, PH)
 
-def asc_extra(d, im):
-    # Y ticks are every 5 km from 0 to 70 km, drawn as meters.
-    # The plot rectangle is (36, 52, 460, 280). Live X labels use the same box.
-    for i in range(15):
-        km = i * 5
-        y = OY + PH - (km / 70.0) * PH
-        d.line((OX - 5, y, OX + 4, y), fill=DIM)
-        d.text((OX - 7, y), str(i * 5000), font=font(9), fill=GREEN, anchor="rm")
+def instrument_base(title, center):
+    """840x560 instrument face; the GUI window supplies the key row below."""
+    im = Image.new("RGBA", (840, 560), BLACK)
+    d = ImageDraw.Draw(im)
+    for inset, shade in ((0, (29, 31, 30, 255)), (3, (82, 85, 82, 255)),
+                         (8, (36, 39, 37, 255)), (14, (14, 18, 16, 255)),
+                         (22, (53, 58, 54, 255)), (27, (4, 9, 7, 255))):
+        d.rounded_rectangle((inset, inset, 839-inset, 559-inset),
+                            radius=max(8, 27-inset//2), fill=shade)
+    d.rounded_rectangle((31, 31, 808, 528), radius=13, fill=(2, 8, 6, 255),
+                        outline=(37, 75, 48, 255), width=2)
+    for sx in (13, 826):
+        for sy in (13, 546):
+            d.ellipse((sx-4, sy-4, sx+4, sy+4), fill=(10, 12, 11, 255),
+                      outline=(118, 120, 116, 255))
+            d.line((sx-2, sy+1, sx+2, sy-1), fill=(110, 112, 108, 255))
+    glow_text(im, (63, 47), title, GREEN, 22)
+    d = ImageDraw.Draw(im)
+    d.text((420, 50), center, font=font(19), fill=GREEN, anchor="mt")
+    d.text((656, 48), "MET", font=font(16), fill=DIM)
+    d.line((62, 93, 778, 93), fill=GREEN, width=1)
+    return im, d
 
-def vs_extra(d, im):
-    d.line((OX + PW, OY, OX + PW, OY + PH), fill=AMBER)
-    d.text((OX + PW - 36, OY + PH + 6), "SITE", font=font(12), fill=AMBER)
+
+def instrument_plot(d, rect, divisions_x=4, divisions_y=4):
+    x0, y0, x1, y1 = rect
+    d.line((x0, y0, x0, y1, x1, y1), fill=GRAY, width=2)
+    d.line((x0, y0, x1, y0, x1, y1), fill=DIM)
+    for i in range(1, divisions_x):
+        x = x0 + (x1-x0)*i/divisions_x
+        d.line((x, y0, x, y1), fill=GRID)
+    for i in range(1, divisions_y):
+        y = y0 + (y1-y0)*i/divisions_y
+        d.line((x0, y, x1, y), fill=GRID)
+    for i in range(divisions_x+1):
+        x = x0 + (x1-x0)*i/divisions_x
+        d.line((x, y1-5, x, y1+5), fill=GRAY)
+    for i in range(divisions_y+1):
+        y = y0 + (y1-y0)*i/divisions_y
+        d.line((x0-5, y, x0+5, y), fill=GRAY)
+
+
+def vertical_title(im, word, x, y):
+    txt = Image.new("RGBA", (200, 20), (0, 0, 0, 0))
+    ImageDraw.Draw(txt).text((0, 0), word, font=font(14), fill=GREEN)
+    rotated = txt.rotate(90, expand=True)
+    im.alpha_composite(rotated, (x, y))
+
+
+def asc_plate():
+    im, d = instrument_base("ASC TRAJ", "AOSO")
+    instrument_plot(d, (145, 145, 595, 445), 4, 4)
+    vertical_title(im, "ALTITUDE km", 50, 211)
+    d = ImageDraw.Draw(im)
+    d.text((345, 484), "DOWNRANGE km", font=font(17), fill=GREEN)
+    d.text((80, 145), "Q", font=font(14), fill=GREEN)
+    d.text((76, 161), "kPa", font=font(12), fill=DIM)
+    d.rectangle((82, 182, 104, 412), outline=DIM)
+    for q in range(0, 41, 10):
+        y = 409 - q/40*224
+        d.line((104, y, 113, y), fill=DIM)
+        d.text((74, y-5), str(q), font=font(10), fill=DIM, anchor="rm")
+    rows = ((151, "Q  kPa"), (196, "AoA  deg"), (241, "TWR"),
+            (286, "PITCH CMD"), (331, "STAGE"),
+            (386, "LF LEFT"), (431, "BEST"))
+    for y, word in rows:
+        d.text((624, y), word, font=font(14), fill=GREEN)
+    for y in (369, 414, 460):
+        d.line((624, y, 794, y), fill=DIM)
+    scanlines(im)
+    im.save(f"{OUT}/crt_asc.png")
+
+
+def vs_plate():
+    im, d = instrument_base("VSIT / ENERGY", "BODY")
+    instrument_plot(d, (112, 127, 620, 348), 4, 4)
+    vertical_title(im, "ALTITUDE km", 48, 177)
+    d = ImageDraw.Draw(im)
+    d.text((335, 372), "RANGE TO SITE km", font=font(16), fill=GREEN)
+    d.text((665, 125), "dV MARGIN", font=font(14), fill=GREEN)
+    d.rectangle((681, 161, 694, 350), outline=DIM)
+    d.rectangle((682, 162, 693, 223), fill=(31, 95, 46, 255))
+    d.rectangle((682, 224, 693, 285), fill=(136, 93, 28, 255))
+    d.rectangle((682, 286, 693, 349), fill=(100, 34, 30, 255))
+    for y, word, col in ((171, "NOM", GREEN), (248, "MARGIN", AMBER),
+                         (323, "ABORT", RED)):
+        d.line((696, y, 705, y), fill=col)
+        d.text((711, y-8), word, font=font(12), fill=col)
+    d.rectangle((91, 387, 299, 480), outline=DIM)
+    d.text((107, 390), "SITE POLAR MAP", font=font(12), fill=GREEN)
+    cx, cy = 196, 445
+    for radius in (17, 34):
+        d.ellipse((cx-radius, cy-radius, cx+radius, cy+radius), outline=DIM)
+    d.line((cx-38, cy, cx+38, cy), fill=DIM)
+    d.line((cx, cy-38, cx, cy+38), fill=DIM)
+    d.line((cx-24, cy-24, cx+24, cy+24), fill=GRID)
+    d.line((cx-24, cy+24, cx+24, cy-24), fill=GRID)
+    d.text((191, 405), "N", font=font(10), fill=GREEN)
+    d.text((306, 390), "SITE / PE", font=font(12), fill=DIM)
+    d.line((62, 487, 778, 487), fill=DIM)
+    metrics = ("HDOT", "TGT HDOT", "TWR", "SITE", "ELEV", "FUEL LAND", "RESERVE")
+    for i, word in enumerate(metrics):
+        x = 66 + i*103
+        d.text((x, 493), word, font=font(11), fill=GREEN)
+        if i:
+            d.line((x-7, 493, x-7, 524), fill=DIM)
+    scanlines(im)
+    im.save(f"{OUT}/crt_vs.png")
 
 def rte_curves(d, x0, y0, pw, ph):
     def ms_y(ms):
@@ -238,10 +340,8 @@ def budget_plate():
     print("crt_bdg")
 
 
-plate("crt_asc.png", "ASC TRAJ", "ALTITUDE  /  DOWNRANGE", "DOWNRANGE m", "ALT m",
-      ["Q", "AOA", "TWR", "PITCH", "STAGE", "LF VS BEST"], asc_extra)
-plate("crt_vs.png", "VSIT", "ALTITUDE  /  RANGE TO SITE", "RANGE km   0 AT SITE", "ALT km",
-      ["HDOT", "TWR", "MARGIN", "SITE", "RADAR", "LAND dV"], vs_extra)
+asc_plate()
+vs_plate()
 route_plate()
 budget_plate()
 plate("crt_rnd.png", "RNDZ", "RANGE  /  CLOSING", "CLOSING", "LATERAL",
@@ -379,18 +479,22 @@ def sample(src_name, out_name, draws):
         d.text((x, y), text, font=font(16), fill=fill)
     im.save(out_name)
 
-sample("crt_asc.png", "/tmp/crt_preview_asc.png", [
-    (524, 74, "0.21", GREEN),
-    (524, 126, "1.4", GREEN),
-    (524, 178, "1.62", GREEN),
-    (524, 230, "62 / 65", GREEN),
-    (524, 282, "2", GREEN),
-    (524, 334, "840 / 910", GREEN),
-    (48, 356, "PAD LOCK   12.4 km   18.0 km", GREEN),
+sample("crt_asc.png", str(PREVIEW / "crt_preview_asc.png"), [
+    (696, 47, "00:02:41", GREEN),
+    (710, 148, "18.4", GREEN), (710, 193, "2.1", GREEN),
+    (710, 238, "1.42", GREEN), (710, 283, "62/65", GREEN),
+    (710, 328, "2", GREEN), (710, 383, "1840", GREEN),
+    (710, 428, "1760", GREEN),
+    (146, 509, "PAD LOCK  DR 12.4 km  ALT 18.0 km", GREEN),
 ])
-sample("crt_vs.png", "/tmp/crt_preview_vs.png", [
-    (524, 74, "-42", GREEN), (524, 126, "2.10", GREEN), (524, 178, "NOM 340", GREEN),
-    (524, 230, "8.2 km", GREEN), (524, 282, "120 m", GREEN), (524, 334, "860", GREEN),
+sample("crt_vs.png", str(PREVIEW / "crt_preview_vs.png"), [
+    (476, 47, "MUN", GREEN), (696, 47, "01:14:08", GREEN),
+    (660, 365, "+340 m/s", GREEN), (308, 413, "RADAR 210 m", GREEN),
+    (308, 441, "BURN  SITE 12.4 km", GREEN),
+    (66, 507, "-42 m/s", GREEN), (169, 507, "---", GREEN),
+    (272, 507, "1.8", GREEN), (375, 507, "12.4 km", GREEN),
+    (478, 507, "+210 m", GREEN), (581, 507, "620 m/s", GREEN),
+    (684, 507, "180 m/s", GREEN),
 ])
 def mock(src, dest, draws):
     im = Image.open(f"{OUT}/{src}").convert("RGBA")
@@ -401,7 +505,7 @@ def mock(src, dest, draws):
     im.save(dest)
 
 
-mock("crt_rte.png", "/tmp/crt_preview_rte.png", [
+mock("crt_rte.png", str(PREVIEW / "crt_preview_rte.png"), [
     (500, 12, "HOPPER", AMBER, 13),
     (20, 58, "KERBIN > MINMUS", GREEN, 14),
     (300, 58, "LOCAL HOP", GREEN, 14),
@@ -422,11 +526,11 @@ mock("crt_rte.png", "/tmp/crt_preview_rte.png", [
     (600, 354, "1.00", GREEN, 16),
 ])
 # diamond sample at day 0, 80 m/s -> bottom-left of plot
-dpreview = Image.open("/tmp/crt_preview_rte.png").convert("RGBA")
+dpreview = Image.open(PREVIEW / "crt_preview_rte.png").convert("RGBA")
 ImageDraw.Draw(dpreview).polygon([(78, 336), (88, 346), (78, 356), (68, 346)], outline=YELLOW)
-dpreview.save("/tmp/crt_preview_rte.png")
+dpreview.save(PREVIEW / "crt_preview_rte.png")
 
-mock("crt_bdg.png", "/tmp/crt_preview_bdg.png", [
+mock("crt_bdg.png", str(PREVIEW / "crt_preview_bdg.png"), [
     (24, 66, "NOW", GREEN, 11),
     (100, 66, "MINMUS", GREEN, 11),
     (176, 66, "MUN", GREEN, 11),
@@ -457,7 +561,7 @@ mock("crt_bdg.png", "/tmp/crt_preview_bdg.png", [
     (620, 328, "0:12:04", GREEN, 13),
     (620, 354, "PRELAUNCH", GREEN, 13),
 ])
-sample("crt_glass.png", "/tmp/crt_preview_glass.png", [
+sample("crt_glass.png", str(PREVIEW / "crt_preview_glass.png"), [
     (32, 150, "245", GREEN), (578, 150, "12.4km", GREEN),
     (28, 348, "-12", GREEN), (190, 348, "ASCENT", GREEN),
     (350, 348, "LAUNCH", GREEN), (530, 348, "NOMINAL", GREEN),

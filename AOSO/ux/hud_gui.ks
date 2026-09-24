@@ -1363,6 +1363,9 @@ FUNCTION aoso_hud_gui_tick {
     IF page_key <> AOSO_HUD_GUI_PAINTED { SET force_paint TO TRUE. }
 
     LOCAL paint_min_s IS 0.10.
+    IF page_key = "ASC" OR page_key = "VSIT" {
+        SET paint_min_s TO 0.35.
+    }
     IF WARP > 0 { SET paint_min_s TO MAX(paint_min_s, 0.20). }
     IF DEFINED AOSO_CPU_LEVEL {
         IF AOSO_CPU_LEVEL >= 2 { SET paint_min_s TO MAX(paint_min_s, 0.20). }
