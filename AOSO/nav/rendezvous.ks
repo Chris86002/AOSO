@@ -1392,6 +1392,28 @@ FUNCTION aoso_rendezvous_orbit_inc {
     RETURN -1.
 }
 
+// A landing tour wants the arrival patch near polar before capture. The
+// parent-body orbit's inclination is not the inclination at the moon.
+FUNCTION aoso_rendezvous_polar_approach_error {
+    PARAMETER orb.
+    PARAMETER hop.
+    IF DEFINED AOSO_WANT_POLAR {
+        IF AOSO_WANT_POLAR {
+            IF DEFINED AOSO_WANT_POLAR_BODY {
+                IF AOSO_WANT_POLAR_BODY = hop:NAME {
+                    IF SHIP:BODY:NAME <> hop:NAME {
+                        LOCAL inc_p IS aoso_rendezvous_orbit_inc(orb, hop).
+                        IF inc_p >= 0 {
+                            RETURN ABS(inc_p - aoso_config_get("TOUR_POLAR_INCLINATION", 90)).
+                        }
+                    }
+                }
+            }
+        }
+    }
+    RETURN -1.
+}
+
 FUNCTION aoso_rendezvous_pe_min {
     PARAMETER hop.
     PARAMETER desired_pe.
@@ -1417,17 +1439,8 @@ FUNCTION aoso_rendezvous_pe_score {
     LOCAL graze IS aoso_rendezvous_soi_alt(hop) * 0.35.
     IF pe > graze { RETURN 100000000 + (pe - desired_pe). }
     LOCAL sc IS ABS(pe - desired_pe).
-    IF DEFINED AOSO_WANT_POLAR {
-        IF AOSO_WANT_POLAR {
-            IF SHIP:BODY:NAME = hop:NAME {
-                LOCAL inc_p IS aoso_rendezvous_orbit_inc(nd:ORBIT, hop).
-                IF inc_p >= 0 {
-                    LOCAL tgt_i IS aoso_config_get("TOUR_POLAR_INCLINATION", 90).
-                    SET sc TO sc + ABS(inc_p - tgt_i) * 400.
-                }
-            }
-        }
-    }
+    LOCAL polar_err IS aoso_rendezvous_polar_approach_error(nd:ORBIT, hop).
+    IF polar_err >= 0 { SET sc TO sc + polar_err * 400. }
     RETURN sc.
 }
 
@@ -1479,8 +1492,10 @@ FUNCTION aoso_rendezvous_pe_rough_ok_value {
 FUNCTION aoso_rendezvous_orbit_needs_correct {
     PARAMETER orb.
     PARAMETER hop.
-    IF aoso_rendezvous_pe_ok_value(aoso_rendezvous_orbit_pe(orb, hop), hop) { RETURN FALSE. }
-    RETURN TRUE.
+    IF NOT aoso_rendezvous_pe_ok_value(aoso_rendezvous_orbit_pe(orb, hop), hop) { RETURN TRUE. }
+    LOCAL polar_err IS aoso_rendezvous_polar_approach_error(orb, hop).
+    IF polar_err < 0 { RETURN FALSE. }
+    RETURN polar_err > aoso_config_get("TOUR_POLAR_TOLERANCE_DEG", 5).
 }
 
 FUNCTION aoso_rendezvous_clamp_prograde {
@@ -1627,16 +1642,17 @@ FUNCTION aoso_rendezvous_add_correction_node {
     // it while packed/rails/unpacking. The 17.6-day Minmus run spent most of
     // its bad recovery loop here because WAIT 0 was executed before 1x physics
     // had actually settled.
-    IF WARP > 0 OR WARPMODE <> "PHYSICS" OR NOT KUNIVERSE:TIMEWARP:ISSETTLED {
-        aoso_warp_ensure_physics_idle().
-        RETURN 0.
-    }
+    IF NOT aoso_warp_ensure_physics_idle() { RETURN 0. }
 
     LOCAL pe_now IS aoso_rendezvous_orbit_pe(SHIP:ORBIT, hop).
+    LOCAL polar_before IS aoso_rendezvous_polar_approach_error(SHIP:ORBIT, hop).
     // A good PE several patches later is not enough for a direct moon hop:
     // if another moon is the first SOI, this correction still has work to do.
     IF aoso_rendezvous_pe_ok_value(pe_now, hop) {
-        IF aoso_rendezvous_ship_hits_body(hop) { RETURN 0. }
+        IF aoso_rendezvous_ship_hits_body(hop) {
+            IF polar_before < 0 { RETURN 0. }
+            IF polar_before <= aoso_config_get("TOUR_POLAR_TOLERANCE_DEG", 5) { RETURN 0. }
+        }
     }
 
     LOCAL eta_p IS SHIP:ORBIT:NEXTPATCHETA.
@@ -1665,17 +1681,52 @@ FUNCTION aoso_rendezvous_add_correction_node {
         REMOVE nd.
         RETURN 0.
     }
+    LOCAL dv_cap IS aoso_config_get("MIDCOURSE_MAX_DV", 40).
+    IF nd:DELTAV:MAG > dv_cap {
+        // A polar approach can need more than one correction. Keep a safe
+        // partial step within the existing burn cap if it still hits the
+        // target with a capture PE; a later coast pass can refine again.
+        LOCAL shrink IS dv_cap / nd:DELTAV:MAG.
+        SET nd:PROGRADE TO nd:PROGRADE * shrink.
+        SET nd:RADIALOUT TO nd:RADIALOUT * shrink.
+        SET nd:NORMAL TO nd:NORMAL * shrink.
+        aoso_rendezvous_settle().
+        IF NOT aoso_rendezvous_node_hits_body(nd, hop) {
+            aoso_log_warn("RENDEZVOUS", "Capped correction lost the " + hop:NAME + " patch - leaving coast as-is.").
+            REMOVE nd.
+            RETURN 0.
+        }
+        IF NOT aoso_rendezvous_pe_ok_value(aoso_rendezvous_orbit_pe(nd:ORBIT, hop), hop) {
+            aoso_log_warn("RENDEZVOUS", "Capped correction lost the safe capture PE - leaving coast as-is.").
+            REMOVE nd.
+            RETURN 0.
+        }
+    }
+    LOCAL polar_after IS aoso_rendezvous_polar_approach_error(nd:ORBIT, hop).
+    IF aoso_rendezvous_pe_ok_value(pe_now, hop) {
+        IF polar_before >= 0 {
+            IF polar_after < 0 OR polar_after > polar_before - 1 {
+                aoso_log_warn("RENDEZVOUS", "Polar approach did not improve enough - leaving the safe encounter intact.").
+                REMOVE nd.
+                RETURN 0.
+            }
+        }
+    }
     IF nd:DELTAV:MAG < 0.8 {
         REMOVE nd.
         RETURN 0.
     }
-    IF nd:DELTAV:MAG > aoso_config_get("MIDCOURSE_MAX_DV", 40) {
+    IF nd:DELTAV:MAG > dv_cap + 0.01 {
         aoso_log_warn("RENDEZVOUS", "Mid-course dv=" + ROUND(nd:DELTAV:MAG, 1) + " exceeds cap - leaving coast, replan later.").
         REMOVE nd.
         RETURN 0.
     }
-    aoso_log_info("RENDEZVOUS", "Mid-course correction dv=" + ROUND(nd:DELTAV:MAG, 1) + " m/s, PE " + ROUND(pe_now, 0) + " -> " + ROUND(aoso_rendezvous_orbit_pe(nd:ORBIT, hop), 0) + "m.").
+    LOCAL polar_msg IS "".
+    IF polar_before >= 0 {
+        IF polar_after >= 0 {
+            SET polar_msg TO " inc " + ROUND(polar_before, 1) + " -> " + ROUND(polar_after, 1) + " deg off polar".
+        }
+    }
+    aoso_log_info("RENDEZVOUS", "Mid-course correction dv=" + ROUND(nd:DELTAV:MAG, 1) + " m/s, PE " + ROUND(pe_now, 0) + " -> " + ROUND(aoso_rendezvous_orbit_pe(nd:ORBIT, hop), 0) + "m" + polar_msg + ".").
     RETURN nd.
 }
-
-
