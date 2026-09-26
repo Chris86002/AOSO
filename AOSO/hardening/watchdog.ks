@@ -110,8 +110,13 @@ FUNCTION aoso_watchdog_deliberate_wait {
                 // A maneuver node may wait thousands of game seconds before
                 // ignition. The maneuver controller owns its countdown and
                 // missed-node recovery; deleting that node here turns every
-                // long transfer burn into a false watchdog replan.
+                // long transfer burn into a false watchdog replan. Capture
+                // is the same coast: the node is already the plan (Minmus
+                // PE was 15013 m while this kept deleting it and replanning).
                 IF AOSO_GOTO["current"] = "BURN" {
+                    IF HASNODE { RETURN TRUE. }
+                }
+                IF AOSO_GOTO["current"] = "CAPTURE" {
                     IF HASNODE { RETURN TRUE. }
                 }
             }

@@ -285,13 +285,33 @@ FUNCTION aoso_descent_freefall_execute {
     aoso_parachute_auto_check().
 
     // Fly a PE-lowering node if we already decided this ellipse cannot land.
+    // Descent holds STEERING and THROTTLE at prio 4, and maneuver acquires
+    // them at prio 3, so equal-or-lower cannot preempt. Without a yield the
+    // node sits forever (Minmus -1.2 m/s, auth denied, throttle 0).
     IF HASNODE {
-
+        IF NOT data:HASKEY("descent_yielded") {
+            aoso_auth_release("descent", "STEERING").
+            aoso_auth_release("descent", "THROTTLE").
+            SET data["descent_yielded"] TO TRUE.
+            aoso_log_info("DESCENT", "Yielding steering and throttle so the PE-lowering node can burn.").
+        }
         IF aoso_maneuver_execute_next() {
+            aoso_auth_acquire("descent", "STEERING", 4).
+            aoso_auth_acquire("descent", "THROTTLE", 4).
+            aoso_auth_use("descent").
+            SET data["descent_yielded"] TO FALSE.
             aoso_log_info("DESCENT", "PE-lowering burn complete. AP=" + ROUND(APOAPSIS, 0) +
                 " PE=" + ROUND(PERIAPSIS, 0) + " alt=" + ROUND(ALTITUDE, 0) + ".").
         }
         RETURN.
+    }
+    IF data:HASKEY("descent_yielded") {
+        IF data["descent_yielded"] {
+            aoso_auth_acquire("descent", "STEERING", 4).
+            aoso_auth_acquire("descent", "THROTTLE", 4).
+            aoso_auth_use("descent").
+            SET data["descent_yielded"] TO FALSE.
+        }
     }
 
     IF NOT aoso_descent_pe_reaches_suicide() {

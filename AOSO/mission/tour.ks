@@ -637,13 +637,17 @@ FUNCTION aoso_tour_deorbit_execute {
         SET site_ang TO aoso_tour_site_vang(data["site_lat"], data["site_lng"]).
         IF NOT data:HASKEY("deorbit_ang_peak") { SET data["deorbit_ang_peak"] TO site_ang. }
         IF site_ang > data["deorbit_ang_peak"] { SET data["deorbit_ang_peak"] TO site_ang. }
+        // A polar track can crest short of 180 (this Minmus site peaked at
+        // 174 while the target was 179). Comparing a 1.5 deg drop to the
+        // previous sample never fired, so the wait ran a full period and
+        // burned at 119 deg. Commit once the pass has cleared the opposite
+        // floor and fallen 2 deg off that crest. Reaching the 179 target
+        // still wins on the YES path.
         LOCAL falling IS FALSE.
-        IF data:HASKEY("deorbit_ang_last") {
-            IF site_ang < data["deorbit_ang_last"] - 1.5 {
-                IF data["deorbit_ang_peak"] >= target_ang - 1 { SET falling TO TRUE. }
-            }
+        LOCAL floor_ang IS aoso_config_get("DEORBIT_OPPOSITE_MIN_DEG", 150).
+        IF data["deorbit_ang_peak"] >= floor_ang {
+            IF site_ang < data["deorbit_ang_peak"] - 2 { SET falling TO TRUE. }
         }
-        SET data["deorbit_ang_last"] TO site_ang.
         IF site_ang >= target_ang {
             SET opposite TO TRUE.
             SET opp_txt TO "YES".
@@ -682,13 +686,26 @@ FUNCTION aoso_tour_deorbit_execute {
         }
     }
 
-    // Dropping out of 100000x rails onto a 120 s node overshoots by
-    // minutes (Acacius missed the first Minmus deorbit by 360 s). Stay
-    // here until warp is actually idle, then place the node.
+    // Dropping out of rails onto a short node overshoots. A 1000x drop
+    // still advanced 78s after WARP already read 0, so a 50s node was
+    // missed by 54s. Remember the UT of the drop and only place once a
+    // later tick moves a few seconds — one rails flush cannot put ETA
+    // negative.
     IF WARP > 0 {
         aoso_log_every(8, "TOUR", "Deorbit settling " + aoso_warp_diag_txt() + " opposite=" + opp_txt + " ang=" + ROUND(site_ang, 0) + " deg before placing node.").
+        SET data["deorbit_settle_ut"] TO TIME:SECONDS.
         SET WARP TO 0.
         RETURN.
+    }
+    IF data:HASKEY("deorbit_settle_ut") {
+        LOCAL jumped IS TIME:SECONDS - data["deorbit_settle_ut"].
+        SET data["deorbit_settle_ut"] TO TIME:SECONDS.
+        IF jumped > 3 {
+            aoso_log_every(8, "TOUR", "Deorbit waiting out rails flush (" + ROUND(jumped, 0) + "s) before placing node. opposite=" + opp_txt + " ang=" + ROUND(site_ang, 0) + " " + aoso_warp_diag_txt() + ".").
+            SET WARP TO 0.
+            RETURN.
+        }
+        data:REMOVE("deorbit_settle_ut").
     }
 
     LOCAL eta_s IS -1.
