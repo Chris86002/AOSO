@@ -662,13 +662,17 @@ namespace kOS.AddOns.AOSO.Game
                 candidate.Ut);
             transfer.StartUT = candidate.Ut;
 
-            // KSP's patched-conic solver can log thousands of "dT is NaN"
-            // stacks for singular/near-parabolic candidates without throwing.
-            // Reject those inputs before asking it to calculate a patch.
+            if (!IsFinite(transfer.argumentOfPeriapsis))
+                transfer.argumentOfPeriapsis = 0.0;
+            if (!IsFinite(transfer.LAN))
+                transfer.LAN = 0.0;
+
+            // Near-parabolic candidates make CalculatePatch log "dT is NaN"
+            // forever. A healthy ellipse (Kerbin->Minmus Hohmann is e~0.97)
+            // must not be thrown away just because meanAnomalyAtEpoch is NaN.
             if (!IsFinite(transfer.eccentricity) ||
                 transfer.eccentricity >= 0.9999 ||
-                !FinitePositive(transfer.semiMajorAxis) ||
-                !IsFinite(transfer.meanAnomalyAtEpoch))
+                !FinitePositive(transfer.semiMajorAxis))
                 return false;
 
             double horizon = candidate.Ut +
@@ -693,7 +697,7 @@ namespace kOS.AddOns.AOSO.Game
                 return false;
             if (next.StartUT > horizon)
                 return false;
-            if (next.referenceBody != target)
+            if (!SameBody(next.referenceBody, target))
                 return false;
 
             pe = next.PeA;
@@ -779,6 +783,21 @@ namespace kOS.AddOns.AOSO.Game
         {
             deltaInternal = Vector3d.zero;
 
+            // Pure prograde is the internal velocity direction. Do not require
+            // a normal/radial basis: a zero or NaN orbit normal used to reject
+            // every Hohmann cell, including radial = normal = 0.
+            if (Math.Abs(radial) <= 1.0e-4 && Math.Abs(normal) <= 1.0e-4)
+            {
+                Vector3d progradeInternal = orbit.getOrbitalVelocityAtUT(ut);
+                double speed = progradeInternal.magnitude;
+                if (speed < 1.0e-3 || !FiniteVector(progradeInternal))
+                    return false;
+                deltaInternal = progradeInternal * (prograde / speed);
+                return IsFinite(deltaInternal.x) &&
+                    IsFinite(deltaInternal.y) &&
+                    IsFinite(deltaInternal.z);
+            }
+
             Vector3d velInternal = orbit.getOrbitalVelocityAtUT(ut);
             Vector3d progradeWorld = SwapYZ(velInternal).normalized;
             Vector3d normalWorld = SwapYZ(orbit.GetOrbitNormal()).normalized;
@@ -825,6 +844,15 @@ namespace kOS.AddOns.AOSO.Game
             normal = Vector3d.Dot(deltaWorld, normalWorld);
             prograde = Vector3d.Dot(deltaWorld, progradeWorld);
             return IsFinite(radial) && IsFinite(normal) && IsFinite(prograde);
+        }
+
+        private static bool SameBody(CelestialBody a, CelestialBody b)
+        {
+            if (a == null || b == null)
+                return false;
+            if (ReferenceEquals(a, b))
+                return true;
+            return string.Equals(a.bodyName, b.bodyName, StringComparison.Ordinal);
         }
 
         private static Vector3d SwapYZ(Vector3d value)

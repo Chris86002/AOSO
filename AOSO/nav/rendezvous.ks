@@ -162,6 +162,59 @@ FUNCTION aoso_rendezvous_search_step_s {
     RETURN step.
 }
 
+// Burn duration the maneuver executor will actually center on the node.
+// aoso_perf_burn_time_for_dv is zero while engines are shut down, which is
+// the usual state when a transfer node is being planned.
+FUNCTION aoso_rendezvous_burn_seconds {
+    PARAMETER dv.
+
+    LOCAL dv_abs IS ABS(dv).
+    LOCAL t_lit IS aoso_perf_burn_time_for_dv(dv_abs).
+    IF t_lit > 1 { RETURN t_lit. }
+
+    LOCAL elist IS aoso_parts_engines().
+    LOCAL best_d IS -999.
+    FOR e IN elist {
+        IF NOT e:FLAMEOUT {
+            IF e:DECOUPLEDIN > best_d { SET best_d TO e:DECOUPLEDIN. }
+        }
+    }
+    LOCAL pressure_atm IS 0.
+    IF SHIP:BODY:ATM:EXISTS { SET pressure_atm TO SHIP:BODY:ATM:ALTITUDEPRESSURE(ALTITUDE). }
+    LOCAL thrust_sum IS 0.
+    LOCAL isp_weighted IS 0.
+    FOR e IN elist {
+        IF NOT e:FLAMEOUT {
+            IF e:DECOUPLEDIN = best_d {
+                LOCAL th IS aoso_capabilities_engine_thrust(e, pressure_atm).
+                IF th > 0 {
+                    SET thrust_sum TO thrust_sum + th.
+                    LOCAL isp_e IS e:VACUUMISP.
+                    IF pressure_atm > 0.01 { SET isp_e TO e:ISP. }
+                    SET isp_weighted TO isp_weighted + (isp_e * th).
+                }
+            }
+        }
+    }
+    IF thrust_sum <= 0 { RETURN 0. }
+    IF SHIP:MASS <= 0 { RETURN 0. }
+    LOCAL ve IS (isp_weighted / thrust_sum) * AOSO_CONST["G0"].
+    IF ve <= 1 { RETURN 0. }
+    LOCAL analytical IS (SHIP:MASS * ve / thrust_sum) * (1 - CONSTANT:E ^ (-dv_abs / ve)).
+    IF DEFINED AOSO_XP {
+        RETURN aoso_xp_metric_apply("MANEUVER", SHIP:BODY:NAME, "BURN_TIME", analytical).
+    }
+    RETURN analytical.
+}
+
+// A ~2 min Kerbin->Minmus burn is not the impulsive node the conic scored.
+// Acacius accepted a 102 km Minmus shoulder, burned 117 s, and the patch
+// was gone. Short burns can still commit a rough encounter immediately.
+FUNCTION aoso_rendezvous_burn_is_long {
+    PARAMETER dv.
+    RETURN aoso_rendezvous_burn_seconds(dv) > 35.
+}
+
 // Extra physics ticks after a node edit so KSP rebuilt NEXTPATCH before we
 // score PE. Rushing this is how a 503 km Minmus graze got burned.
 FUNCTION aoso_rendezvous_settle {
@@ -186,11 +239,13 @@ FUNCTION aoso_rendezvous_finalize_node {
         aoso_log_info("RENDEZVOUS", hop:NAME + " intercept PE " + ROUND(pe0, 0) + "m already a capture (want " + ROUND(want, 0) + "m).").
         RETURN TRUE.
     }
-    IF aoso_rendezvous_pe_rough_ok_value(pe0, hop) {
-        aoso_log_info("RENDEZVOUS", "SAFE ROUGH " + hop:NAME + " intercept PE=" +
-            ROUND(pe0, 0) + "m (final want " + ROUND(want, 0) +
-            "m). No departure-side polishing; mid-course owns final PE.").
-        RETURN TRUE.
+    IF NOT aoso_rendezvous_burn_is_long(nd:DELTAV:MAG) {
+        IF aoso_rendezvous_pe_rough_ok_value(pe0, hop) {
+            aoso_log_info("RENDEZVOUS", "SAFE ROUGH " + hop:NAME + " intercept PE=" +
+                ROUND(pe0, 0) + "m (final want " + ROUND(want, 0) +
+                "m). No departure-side polishing; mid-course owns final PE.").
+            RETURN TRUE.
+        }
     }
     aoso_log_info("RENDEZVOUS", hop:NAME + " intercept PE " + ROUND(pe0, 0) +
         "m is outside the safe rough corridor (want " + ROUND(want, 0) +
@@ -929,6 +984,9 @@ FUNCTION aoso_rendezvous_search_intercept {
     LOCAL best_pg IS dv_use.
     LOCAL found IS FALSE.
     LOCAL n_chk IS 0.
+    // A long finite burn smears a shoulder encounter off the SOI. Keep
+    // walking the rest of the parking orbit until the PE is actually tight.
+    LOCAL long_burn IS aoso_rendezvous_burn_is_long(dv_use).
 
     LOCAL scales IS LIST(1).
     IF ABS(dv_use) >= 8 {
@@ -950,7 +1008,12 @@ FUNCTION aoso_rendezvous_search_intercept {
                 IF pass = 1 {
                     SET span TO period.
                     SET use_step TO step_s * 2.
-                    IF found { SET pass TO 2. }
+                    IF found {
+                        IF NOT long_burn { SET pass TO 2. }
+                        ELSE {
+                            IF best_sc < desired * 1.5 { SET pass TO 2. }
+                        }
+                    }
                 }
                 IF pass < 2 {
                     LOCAL delta IS 0.
@@ -999,13 +1062,18 @@ FUNCTION aoso_rendezvous_search_intercept {
         aoso_yield().
 
         LOCAL coarse_pe IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
-        IF aoso_rendezvous_pe_rough_ok_value(coarse_pe, hop) {
+        IF aoso_rendezvous_pe_ok_value(coarse_pe, hop) {
             RETURN TRUE.
         }
+        // Short burns may commit a rough encounter and let mid-course
+        // finish PE. A multi-minute burn has to be centered first; the
+        // 102 km Minmus shoulder did not survive 117 s of finite burn.
+        IF NOT long_burn {
+            IF aoso_rendezvous_pe_rough_ok_value(coarse_pe, hop) {
+                RETURN TRUE.
+            }
+        }
 
-        // Only spend the fine search when the coarse encounter is not yet
-        // safe enough to commit. Fine-tuning a 50-100 km Minmus encounter
-        // toward 15 km before departure was wasted work; mid-course is better.
         aoso_rendezvous_refine_intercept(nd, hop, dv_use).
         RETURN TRUE.
     }
@@ -1092,6 +1160,102 @@ FUNCTION aoso_rendezvous_refine_intercept {
     SET nd:ETA TO best_ut - TIME:SECONDS.
     IF nd:ETA < 25 { SET nd:ETA TO 25. }
     aoso_yield().
+}
+
+// The ship is still down low, but apoapsis is already out near the moon, so
+// the "already near altitude" path used to wait until apoapsis and poke
+// ±40 m/s. That is the wrong place: near escape, a few m/s of prograde at
+// periapsis moves apo by tens of Mm, and the apoapsis burn is hours later.
+// Search a small near-term node first. Mostly normal/radial; prograde stays
+// inside the few m/s that still reach the moon without escaping.
+FUNCTION aoso_rendezvous_search_low_repair {
+    PARAMETER nd.
+    PARAMETER hop.
+
+    LOCAL desired IS aoso_rendezvous_desired_pe(hop).
+    LOCAL period IS aoso_orbit_period_s().
+    IF period < 80 { SET period TO 600. }
+    LOCAL horizon IS period * 0.15.
+    IF horizon > 900 { SET horizon TO 900. }
+    IF horizon < 180 { SET horizon TO 180. }
+
+    LOCAL raw_t IS LIST(90, 180, 400, 800).
+    LOCAL times IS LIST().
+    LOCAL ri IS 0.
+    UNTIL ri >= raw_t:LENGTH {
+        IF raw_t[ri] <= horizon + 20 { times:ADD(raw_t[ri]). }
+        SET ri TO ri + 1.
+    }
+    IF times:LENGTH = 0 { times:ADD(90). }
+
+    LOCAL dvs IS LIST(0, -3, -6, -10, -16, 3).
+    LOCAL normals IS LIST(0, 30, -30, 70, -70).
+    LOCAL radials IS LIST(0, 25, -25).
+
+    LOCAL best_sc IS 1000000000000.
+    LOCAL best_ut IS TIME:SECONDS + times[0].
+    LOCAL best_pg IS 0.
+    LOCAL best_nml IS 0.
+    LOCAL best_rad IS 0.
+    LOCAL found IS FALSE.
+    LOCAL n_chk IS 0.
+    LOCAL stop IS FALSE.
+
+    LOCAL ti IS 0.
+    UNTIL stop OR ti >= times:LENGTH {
+        LOCAL di IS 0.
+        UNTIL stop OR di >= dvs:LENGTH {
+            LOCAL ni IS 0.
+            UNTIL stop OR ni >= normals:LENGTH {
+                LOCAL ai IS 0.
+                UNTIL stop OR ai >= radials:LENGTH {
+                    IF n_chk >= 180 { SET stop TO TRUE. }
+                    IF NOT stop {
+                        SET nd:PROGRADE TO dvs[di].
+                        SET nd:NORMAL TO normals[ni].
+                        SET nd:RADIALOUT TO radials[ai].
+                        SET nd:ETA TO times[ti].
+                        IF nd:ETA < 25 { SET nd:ETA TO 25. }
+                        aoso_rendezvous_settle().
+                        SET n_chk TO n_chk + 1.
+                        IF nd:ORBIT:ECCENTRICITY < 1 {
+                            IF aoso_rendezvous_node_hits_body(nd, hop) {
+                                LOCAL sc IS aoso_rendezvous_pe_score(nd, hop, desired).
+                                IF sc < best_sc {
+                                    SET best_sc TO sc.
+                                    SET best_ut TO TIME:SECONDS + nd:ETA.
+                                    SET best_pg TO nd:PROGRADE.
+                                    SET best_nml TO nd:NORMAL.
+                                    SET best_rad TO nd:RADIALOUT.
+                                    SET found TO TRUE.
+                                }
+                                LOCAL pe_try IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
+                                IF aoso_rendezvous_pe_ok_value(pe_try, hop) { SET stop TO TRUE. }
+                            }
+                        }
+                    }
+                    SET ai TO ai + 1.
+                }
+                SET ni TO ni + 1.
+            }
+            SET di TO di + 1.
+        }
+        SET ti TO ti + 1.
+    }
+
+    IF NOT found {
+        aoso_log_info("RENDEZVOUS", "Low repair found no " + hop:NAME + " patch in " + n_chk + " near-term samples.").
+        RETURN FALSE.
+    }
+
+    SET nd:PROGRADE TO best_pg.
+    SET nd:NORMAL TO best_nml.
+    SET nd:RADIALOUT TO best_rad.
+    SET nd:ETA TO best_ut - TIME:SECONDS.
+    IF nd:ETA < 25 { SET nd:ETA TO 25. }
+    aoso_yield().
+    aoso_log_info("RENDEZVOUS", "Low repair hit " + hop:NAME + " dv=" + ROUND(nd:DELTAV:MAG, 1) + " m/s in " + ROUND(nd:ETA, 0) + "s after " + n_chk + " samples.").
+    RETURN TRUE.
 }
 
 // Already on a transfer-like ellipse (apo near the moon): wait at apoapsis
@@ -1193,6 +1357,25 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
 
     IF already {
         aoso_log_info("RENDEZVOUS", "Already near " + target_orbitable:NAME + " altitude (AP=" + ROUND(APOAPSIS, 0) + " m) - phasing at apoapsis, not another Hohmann.").
+        IF ALTITUDE < target_alt * 0.4 {
+            aoso_log_info("RENDEZVOUS", "Still low (" + ROUND(ALTITUDE, 0) + " m) under " + target_orbitable:NAME + " - searching a near-term repair before apoapsis phasing.").
+            LOCAL nd_low IS NODE(TIME:SECONDS + 120, 0, 0, 0).
+            ADD nd_low.
+            LOCAL hit_low IS aoso_rendezvous_search_low_repair(nd_low, target_orbitable).
+            IF hit_low {
+                aoso_rendezvous_tune_pe(nd_low, target_orbitable).
+                aoso_rendezvous_settle().
+                IF aoso_rendezvous_node_hits_body(nd_low, target_orbitable) {
+                    LOCAL pe_low IS aoso_rendezvous_orbit_pe(nd_low:ORBIT, target_orbitable).
+                    IF aoso_rendezvous_pe_rough_ok_value(pe_low, target_orbitable) {
+                        aoso_log_info("RENDEZVOUS", "Low repair encounter with " + target_orbitable:NAME + " in " + ROUND(nd_low:ETA, 0) + "s dv=" + ROUND(nd_low:DELTAV:MAG, 1) + " m/s patchPE=" + ROUND(pe_low, 0) + " m.").
+                        RETURN nd_low.
+                    }
+                }
+                aoso_log_warn("RENDEZVOUS", "Low repair tune lost the " + target_orbitable:NAME + " patch.").
+            }
+            REMOVE nd_low.
+        }
         LOCAL nd_a IS NODE(TIME:SECONDS + MAX(40, ETA:APOAPSIS), 0, 0, 0).
         ADD nd_a.
         LOCAL hit_a IS aoso_rendezvous_search_apo_passages(nd_a, target_orbitable).
@@ -1272,19 +1455,26 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
     LOCAL hit IS aoso_rendezvous_search_intercept(nd, target_orbitable, dv).
 
     IF hit {
-        // If the coarse window already produces a safe direct encounter,
-        // commit now. Do not burn CPU/time hill-climbing the final PE here;
-        // the coast controller will correct once target geometry improves.
+        // A tight capture PE can be burned as planned. A rough shoulder on a
+        // long burn cannot: mid-course never runs if the finite burn erases
+        // the patch. Fall through and hill-climb that case. After tune, the
+        // rough-ok accept below still commits the only window.
+        LOCAL burn_s IS aoso_rendezvous_burn_seconds(nd:DELTAV:MAG).
         LOCAL rough_pe0 IS aoso_rendezvous_orbit_pe(nd:ORBIT, target_orbitable).
         IF aoso_rendezvous_node_hits_body(nd, target_orbitable) {
             IF aoso_rendezvous_pe_rough_ok_value(rough_pe0, target_orbitable) {
-                LOCAL rough_inc0 IS aoso_rendezvous_orbit_inc(nd:ORBIT, target_orbitable).
-                aoso_log_info("RENDEZVOUS", "Rough " + target_orbitable:NAME +
-                    " departure accepted immediately: PE=" + ROUND(rough_pe0, 0) +
-                    "m inc=" + ROUND(rough_inc0, 1) + "deg dv=" +
-                    ROUND(nd:DELTAV:MAG, 1) + " m/s. Mid-course will refine PE.").
+                IF aoso_rendezvous_pe_ok_value(rough_pe0, target_orbitable) OR burn_s <= 35 {
+                    LOCAL rough_inc0 IS aoso_rendezvous_orbit_inc(nd:ORBIT, target_orbitable).
+                    aoso_log_info("RENDEZVOUS", "Rough " + target_orbitable:NAME +
+                        " departure accepted immediately: PE=" + ROUND(rough_pe0, 0) +
+                        "m inc=" + ROUND(rough_inc0, 1) + "deg dv=" +
+                        ROUND(nd:DELTAV:MAG, 1) + " m/s. Mid-course will refine PE.").
 
-                RETURN nd.
+                    RETURN nd.
+                }
+                aoso_log_info("RENDEZVOUS", "Long burn " + ROUND(burn_s, 0) +
+                    "s would smear rough " + target_orbitable:NAME + " PE=" +
+                    ROUND(rough_pe0, 0) + "m - tuning before commit.").
             }
         }
 
