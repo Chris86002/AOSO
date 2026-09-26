@@ -18,15 +18,23 @@
 
 GLOBAL AOSO_DESCENT IS aoso_state_new_machine().
 GLOBAL AOSO_DESCENT_RADAR_OFFSET IS 8.
+GLOBAL AOSO_DESCENT_BOTTOM_ALT IS -1.
+GLOBAL AOSO_DESCENT_BOTTOM_SRC IS "none".
+GLOBAL AOSO_DESCENT_BOUNDS_AT IS 0.
+GLOBAL AOSO_DESCENT_PARTS_AT IS 0.
+GLOBAL AOSO_DESCENT_BOTTOM_LOG_AT IS 0.
+GLOBAL AOSO_DESCENT_LEGS_ON IS FALSE.
+GLOBAL AOSO_DESCENT_LEGS_AT IS 0.
 
 FUNCTION aoso_descent_local_gravity {
     RETURN SHIP:BODY:MU / (SHIP:BODY:RADIUS + ALTITUDE) ^ 2.
 }
 
-// Distance (m) from CoM to the lowest part along UP, plus a small gear
-// allowance. ALT:RADAR is measured from the CPU/root; Acacius's root is the
-// Mk1 Lander Can at the top of a ~44 m stack, so an uncorrected radar would
-// report the nose-to-ground distance.
+// Fallback when SHIP:BOUNDS is missing: distance (m) from the radar/root
+// reference down to the lowest part origin along UP, plus 2 m of skin.
+// This is not the collider, and it does not see legs until they move.
+// Prefer aoso_descent_refresh_bounds(), which uses the vessel bounding box
+// and is called again while the gear is extending.
 FUNCTION aoso_descent_measure_radar_offset {
     LOCAL configured IS aoso_config_get("DESCENT_RADAR_OFFSET", 0).
     IF configured > 0 { RETURN configured. }
@@ -50,10 +58,114 @@ FUNCTION aoso_descent_measure_radar_offset {
     RETURN offset_m + 2.
 }
 
+// ALT:RADAR is the root part (Mk1 Lander Can on Acacius), not the belly.
+// SHIP:BOUNDS:BOTTOMALTRADAR is the lowest collider, including legs once
+// they finish deploying. A zero reading while the root is still high is a
+// failed raycast, not touchdown.
+FUNCTION aoso_descent_refresh_bounds {
+    LOCAL now IS TIME:SECONDS.
+    IF now - AOSO_DESCENT_BOUNDS_AT < 0.2 { RETURN. }
+    SET AOSO_DESCENT_BOUNDS_AT TO now.
+
+    LOCAL configured IS aoso_config_get("DESCENT_RADAR_OFFSET", 0).
+    IF configured > 0 {
+        SET AOSO_DESCENT_RADAR_OFFSET TO configured.
+        SET AOSO_DESCENT_BOTTOM_ALT TO -1.
+        SET AOSO_DESCENT_BOTTOM_SRC TO "config".
+        RETURN.
+    }
+
+    LOCAL raw IS ALT:RADAR.
+    LOCAL got IS FALSE.
+    IF SHIP:HASSUFFIX("BOUNDS") {
+        LOCAL b IS SHIP:BOUNDS.
+        IF b:HASSUFFIX("BOTTOMALTRADAR") {
+            LOCAL bottom IS b:BOTTOMALTRADAR.
+            LOCAL sane IS FALSE.
+            IF bottom >= 0 AND bottom <= raw + 2 {
+                IF bottom > 1 OR raw < 40 { SET sane TO TRUE. }
+            }
+            IF sane {
+                LOCAL off IS raw - bottom.
+                IF off < 0 { SET off TO 0. }
+                IF off > 120 { SET off TO 120. }
+                LOCAL changed IS ABS(off - AOSO_DESCENT_RADAR_OFFSET) >= 0.4.
+                IF AOSO_DESCENT_BOTTOM_SRC <> "bounds" { SET changed TO TRUE. }
+                IF changed {
+                    IF now - AOSO_DESCENT_BOTTOM_LOG_AT > 1.5 {
+                        SET AOSO_DESCENT_BOTTOM_LOG_AT TO now.
+                        aoso_log_info("DESCENT", "Vessel bottom " + ROUND(off, 1) + " m below radar (bounds). clearance=" +
+                            ROUND(bottom, 1) + " m legs=" + AOSO_DESCENT_LEGS_ON + ".").
+                    }
+                }
+                SET AOSO_DESCENT_RADAR_OFFSET TO off.
+                SET AOSO_DESCENT_BOTTOM_ALT TO bottom.
+                SET AOSO_DESCENT_BOTTOM_SRC TO "bounds".
+                SET got TO TRUE.
+            }
+        }
+    }
+    IF got { RETURN. }
+
+    IF AOSO_DESCENT_BOTTOM_SRC = "parts" {
+        IF now - AOSO_DESCENT_PARTS_AT < 2 { RETURN. }
+    }
+    LOCAL offp IS aoso_descent_measure_radar_offset().
+    IF ABS(offp - AOSO_DESCENT_RADAR_OFFSET) >= 0.4 OR AOSO_DESCENT_BOTTOM_SRC <> "parts" {
+        IF now - AOSO_DESCENT_BOTTOM_LOG_AT > 1.5 {
+            SET AOSO_DESCENT_BOTTOM_LOG_AT TO now.
+            aoso_log_info("DESCENT", "Vessel bottom " + ROUND(offp, 1) + " m below radar (part walk). bounds unavailable.").
+        }
+    }
+    SET AOSO_DESCENT_RADAR_OFFSET TO offp.
+    SET AOSO_DESCENT_BOTTOM_ALT TO -1.
+    SET AOSO_DESCENT_BOTTOM_SRC TO "parts".
+    SET AOSO_DESCENT_PARTS_AT TO now.
+}
+
 FUNCTION aoso_descent_true_radar {
+    aoso_descent_refresh_bounds().
+    IF AOSO_DESCENT_BOTTOM_SRC = "bounds" {
+        IF AOSO_DESCENT_BOTTOM_ALT >= 0 {
+            IF AOSO_DESCENT_BOTTOM_ALT < 1 { RETURN 1. }
+            RETURN AOSO_DESCENT_BOTTOM_ALT.
+        }
+    }
     LOCAL radar_m IS ALT:RADAR - AOSO_DESCENT_RADAR_OFFSET.
     IF radar_m < 1 { RETURN 1. }
     RETURN radar_m.
+}
+
+// Gear changes the bottom of the ship. Deploy before the hoverslam gets
+// low, then keep sampling bounds while the animation extends the feet.
+FUNCTION aoso_descent_maintain_legs {
+    PARAMETER radar.
+    PARAMETER force IS FALSE.
+    LOCAL cur IS "".
+    IF DEFINED AOSO_DESCENT { SET cur TO AOSO_DESCENT["current"]. }
+    LOCAL want IS force.
+    IF cur = "BURN" { SET want TO TRUE. }
+    IF cur = "FINAL_APPROACH" { SET want TO TRUE. }
+    IF radar < 400 { SET want TO TRUE. }
+    IF radar < AOSO_DESCENT_RADAR_OFFSET + 350 { SET want TO TRUE. }
+    IF NOT want { RETURN. }
+
+    IF NOT AOSO_DESCENT_LEGS_ON {
+        LEGS ON.
+        SET AOSO_DESCENT_LEGS_ON TO TRUE.
+        SET AOSO_DESCENT_LEGS_AT TO TIME:SECONDS.
+        aoso_parts_cache_invalidate().
+        SET AOSO_DESCENT_BOUNDS_AT TO 0.
+        aoso_descent_refresh_bounds().
+        aoso_log_info("DESCENT", "Legs commanded on. Remeasuring the bottom as the gear extends. offset=" +
+            ROUND(AOSO_DESCENT_RADAR_OFFSET, 1) + " m (" + AOSO_DESCENT_BOTTOM_SRC + ") radar=" + ROUND(radar, 0) + " m.").
+        RETURN.
+    }
+    IF TIME:SECONDS - AOSO_DESCENT_LEGS_AT < 6 {
+        LEGS ON.
+        SET AOSO_DESCENT_BOUNDS_AT TO 0.
+        aoso_descent_refresh_bounds().
+    }
 }
 
 // Maximum net deceleration (m/s^2) available against gravity at full
@@ -157,8 +269,13 @@ FUNCTION aoso_descent_pe_reaches_suicide {
 FUNCTION aoso_descent_freefall_entry {
     PARAMETER data.
     aoso_throttle_set(0).
-    SET AOSO_DESCENT_RADAR_OFFSET TO aoso_descent_measure_radar_offset().
-    aoso_log_info("DESCENT", "Radar offset=" + ROUND(AOSO_DESCENT_RADAR_OFFSET, 1) + " m. AP=" + ROUND(APOAPSIS, 0) +
+    SET AOSO_DESCENT_LEGS_ON TO FALSE.
+    SET AOSO_DESCENT_LEGS_AT TO 0.
+    SET AOSO_DESCENT_BOUNDS_AT TO 0.
+    SET AOSO_DESCENT_BOTTOM_SRC TO "none".
+    aoso_descent_refresh_bounds().
+    aoso_log_info("DESCENT", "Radar offset=" + ROUND(AOSO_DESCENT_RADAR_OFFSET, 1) + " m via " + AOSO_DESCENT_BOTTOM_SRC +
+        ". AP=" + ROUND(APOAPSIS, 0) +
         " PE=" + ROUND(PERIAPSIS, 0) + " alt=" + ROUND(ALTITUDE, 0) + " vs=" + ROUND(VERTICALSPEED, 1) +
         " " + aoso_warp_diag_txt() + ".").
 }
@@ -223,6 +340,7 @@ FUNCTION aoso_descent_freefall_execute {
     LOCAL trigger IS aoso_descent_burn_trigger_alt().
     LOCAL radar IS aoso_descent_true_radar().
     LOCAL speed_ms IS SHIP:VELOCITY:SURFACE:MAG.
+    aoso_descent_maintain_legs(radar).
 
     IF radar <= trigger {
         SET WARP TO 0.
@@ -284,6 +402,7 @@ FUNCTION aoso_descent_burn_entry {
     PARAMETER data.
     SET WARP TO 0.
     aoso_steer_srf_retrograde().
+    aoso_descent_maintain_legs(aoso_descent_true_radar(), TRUE).
     IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
     aoso_throttle_set(aoso_descent_required_throttle()).
 }
@@ -303,7 +422,7 @@ FUNCTION aoso_descent_burn_execute {
     }
 
     LOCAL radar IS aoso_descent_true_radar().
-    IF radar < 250 { LEGS ON. }
+    aoso_descent_maintain_legs(radar).
 
     IF SHIP:STATUS = "LANDED" {
         aoso_state_transition(AOSO_DESCENT, "TOUCHDOWN").
@@ -320,13 +439,14 @@ FUNCTION aoso_descent_burn_execute {
 FUNCTION aoso_descent_final_approach_entry {
     PARAMETER data.
     aoso_steer_up().
-    LEGS ON.
+    aoso_descent_maintain_legs(aoso_descent_true_radar(), TRUE).
     aoso_throttle_set(aoso_descent_final_approach_throttle()).
 }
 
 FUNCTION aoso_descent_final_approach_execute {
     PARAMETER data.
     aoso_descent_measure_dv(data).
+    aoso_descent_maintain_legs(aoso_descent_true_radar()).
     // If we somehow picked up speed again (bounce, slope), go back to the
     // hoverslam instead of holding a 3 m/s vertical while sliding sideways.
     IF NOT aoso_descent_should_final_approach() {

@@ -100,10 +100,32 @@ FUNCTION aoso_tour_site_vang {
     RETURN VANG(ship_r, site_r).
 }
 
+// Ship-site angle at which the deorbit burn should ignite. Near-circular
+// periapsis is ~180 deg from the burn, and align eats several degrees, so
+// 115 deg (the old threshold) lit the engine tens of degrees early.
+FUNCTION aoso_tour_deorbit_target_ang {
+    PARAMETER period_s.
+    PARAMETER align_s.
+    LOCAL cap IS aoso_config_get("DEORBIT_ALIGN_CAP_DEG", 40).
+    LOCAL floor_ang IS aoso_config_get("DEORBIT_OPPOSITE_MIN_DEG", 150).
+    IF period_s < 1 { SET period_s TO 1. }
+    IF align_s < 0 { SET align_s TO 0. }
+    LOCAL lead_deg IS align_s * 360 / period_s.
+    IF lead_deg > cap { SET lead_deg TO cap. }
+    IF lead_deg < 0 { SET lead_deg TO 0. }
+    LOCAL target IS 180 - lead_deg.
+    IF target < floor_ang { SET target TO floor_ang. }
+    IF target > 179 { SET target TO 179. }
+    RETURN target.
+}
+
 FUNCTION aoso_tour_opposite_site {
     PARAMETER lat.
     PARAMETER lng.
-    RETURN aoso_tour_site_vang(lat, lng) >= 115.
+    LOCAL period IS aoso_orbit_period_s().
+    IF period <= 0 { SET period TO 600. }
+    LOCAL target IS aoso_tour_deorbit_target_ang(period, aoso_maneuver_align_s()).
+    RETURN aoso_tour_site_vang(lat, lng) >= target.
 }
 
 FUNCTION aoso_tour_on_abort {
@@ -427,16 +449,26 @@ FUNCTION aoso_tour_scan_entry {
         LOCAL rough0 IS 0.
         IF result:HASKEY("roughness") { SET rough0 TO result["roughness"]. }
         SET data["site_roughness"] TO rough0.
+        LOCAL verified0 IS FALSE.
+        IF result:HASKEY("verified") { SET verified0 TO result["verified"]. }
+        SET data["site_verified"] TO verified0.
+        LOCAL ver_txt IS "no".
+        IF verified0 { SET ver_txt TO "yes". }
         aoso_log_info("TOUR", "Landing site seed lat=" + ROUND(result["lat"], 2) +
             " lng=" + ROUND(result["lng"], 2) + " alt=" + ROUND(result["alt"], 0) +
             "m slope=" + ROUND(result["slope"], 1) + "deg rough=" +
-            ROUND(rough0, 0) + "m score=" + ROUND(result["score"], 2) + ".").
-        aoso_decide("TOUR", "site", ROUND(result["lat"], 2) + "/" + ROUND(result["lng"], 2), "scan", "score=" + ROUND(result["score"], 2) + " slope=" + ROUND(result["slope"], 1)).
+            ROUND(rough0, 0) + "m score=" + ROUND(result["score"], 2) +
+            " verified=" + ver_txt + ".").
+        IF NOT verified0 {
+            aoso_log_warn("TOUR", "Predicted site is unloaded terrain. A live overflight will replace it.").
+        }
+        aoso_decide("TOUR", "site", ROUND(result["lat"], 2) + "/" + ROUND(result["lng"], 2), "scan", "score=" + ROUND(result["score"], 2) + " slope=" + ROUND(result["slope"], 1) + " verified=" + ver_txt).
     } ELSE {
         SET data["site_lat"] TO SHIP:GEOPOSITION:LAT.
         SET data["site_lng"] TO SHIP:GEOPOSITION:LNG.
         SET data["site_alt"] TO SHIP:GEOPOSITION:TERRAINHEIGHT.
         SET data["site_roughness"] TO aoso_landing_site_roughness_m(SHIP:GEOPOSITION).
+        SET data["site_verified"] TO TRUE.
         aoso_log_warn("TOUR", "Predictive scan found no safe candidate; using the current ground track as the live-survey seed near lat=" +
             ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) + ".").
         SET data["site_score"] TO aoso_landing_site_score(SHIP:GEOPOSITION).
@@ -457,7 +489,7 @@ FUNCTION aoso_tour_scan_entry {
     SET data["scan_orbits"] TO orbits.
     aoso_log_info("TOUR", "Surveying up to " + ROUND(scan_span, 0) +
         "s of the polar ground track (" + orbits +
-        " orbit max). Live overflight samples may replace the predicted seed when they score better.").
+        " orbit max). An unloaded prediction loses to the first safe overflight; verified samples then keep the better score.").
 }
 
 FUNCTION aoso_tour_scan_execute {
@@ -468,26 +500,56 @@ FUNCTION aoso_tour_scan_execute {
             IF now >= data["scan_next_sample"] {
                 LOCAL geo IS SHIP:GEOPOSITION.
                 LOCAL sc IS aoso_landing_site_score(geo).
+                IF NOT data:HASKEY("site_verified") { SET data["site_verified"] TO FALSE. }
+                IF NOT data["site_verified"] {
+                    LOCAL seed_geo IS LATLNG(data["site_lat"], data["site_lng"]).
+                    IF aoso_landing_site_near_ship(seed_geo) {
+                        LOCAL seed_sc IS aoso_landing_site_score(seed_geo).
+                        IF seed_sc >= 0 {
+                            LOCAL old_seed IS data["site_score"].
+                            SET data["site_alt"] TO seed_geo:TERRAINHEIGHT.
+                            SET data["site_score"] TO seed_sc.
+                            SET data["site_roughness"] TO aoso_landing_site_roughness_m(seed_geo).
+                            SET data["site_verified"] TO TRUE.
+                            aoso_log_info("TOUR", "Rescored predicted site under the ship: score " +
+                                ROUND(old_seed, 2) + " -> " + ROUND(seed_sc, 2) +
+                                " lat=" + ROUND(seed_geo:LAT, 2) + " lng=" + ROUND(seed_geo:LNG, 2) +
+                                " alt=" + ROUND(seed_geo:TERRAINHEIGHT, 0) + "m rough=" +
+                                ROUND(data["site_roughness"], 0) + "m verified=yes.").
+                        }
+                    }
+                }
                 IF sc >= 0 {
-                    LOCAL improve IS FALSE.
-                    IF data["site_score"] < 0 { SET improve TO TRUE. }
-                    IF sc < data["site_score"] { SET improve TO TRUE. }
-                    IF improve {
+                    LOCAL was_verified IS data["site_verified"].
+                    LOCAL take IS FALSE.
+                    IF data["site_score"] < 0 { SET take TO TRUE. }
+                    ELSE IF NOT was_verified { SET take TO TRUE. }
+                    ELSE IF sc + 0.05 < data["site_score"] { SET take TO TRUE. }
+                    IF take {
                         LOCAL old_sc IS data["site_score"].
                         SET data["site_lat"] TO geo:LAT.
                         SET data["site_lng"] TO geo:LNG.
                         SET data["site_alt"] TO geo:TERRAINHEIGHT.
                         SET data["site_score"] TO sc.
                         SET data["site_roughness"] TO aoso_landing_site_roughness_m(geo).
-                        aoso_log_info("TOUR", "Live polar overflight improved landing site: score " +
-                            ROUND(old_sc, 2) + " -> " + ROUND(sc, 2) + " lat=" +
-                            ROUND(geo:LAT, 2) + " lng=" + ROUND(geo:LNG, 2) +
-                            " alt=" + ROUND(geo:TERRAINHEIGHT, 0) + "m rough=" +
-                            ROUND(data["site_roughness"], 0) + "m.").
+                        SET data["site_verified"] TO TRUE.
+                        IF was_verified {
+                            aoso_log_info("TOUR", "Live polar overflight improved landing site: score " +
+                                ROUND(old_sc, 2) + " -> " + ROUND(sc, 2) + " lat=" +
+                                ROUND(geo:LAT, 2) + " lng=" + ROUND(geo:LNG, 2) +
+                                " alt=" + ROUND(geo:TERRAINHEIGHT, 0) + "m rough=" +
+                                ROUND(data["site_roughness"], 0) + "m.").
+                        } ELSE {
+                            aoso_log_info("TOUR", "Live overflight replaced unloaded site prediction: score " +
+                                ROUND(old_sc, 2) + " -> " + ROUND(sc, 2) + " lat=" +
+                                ROUND(geo:LAT, 2) + " lng=" + ROUND(geo:LNG, 2) +
+                                " alt=" + ROUND(geo:TERRAINHEIGHT, 0) + "m rough=" +
+                                ROUND(data["site_roughness"], 0) + "m.").
+                        }
                     } ELSE {
                         aoso_log_every(80, "TOUR", "Overflight sample lat=" + ROUND(geo:LAT, 2) +
                             " lng=" + ROUND(geo:LNG, 2) + " score=" + ROUND(sc, 2) +
-                            " best=" + ROUND(data["site_score"], 2) + ".").
+                            " best=" + ROUND(data["site_score"], 2) + " verified=" + data["site_verified"] + ".").
                     }
                 }
                 SET data["scan_next_sample"] TO now + 25.
@@ -505,12 +567,18 @@ FUNCTION aoso_tour_scan_execute {
     SET data["deorbit_wait_since"] TO TIME:SECONDS.
     LOCAL final_rough IS 0.
     IF data:HASKEY("site_roughness") { SET final_rough TO data["site_roughness"]. }
+    IF NOT data:HASKEY("site_verified") { SET data["site_verified"] TO FALSE. }
+    LOCAL ver_txt IS "no".
+    IF data["site_verified"] { SET ver_txt TO "yes". }
     aoso_log_info("TOUR", "Polar survey complete. Selected site lat=" +
         ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) +
         " score=" + ROUND(data["site_score"], 2) + " rough=" +
-        ROUND(final_rough, 0) + "m AP=" + ROUND(APOAPSIS, 0) +
+        ROUND(final_rough, 0) + "m verified=" + ver_txt + " AP=" + ROUND(APOAPSIS, 0) +
         " PE=" + ROUND(PERIAPSIS, 0) + " inc=" +
         ROUND(SHIP:ORBIT:INCLINATION, 1) + " - timing deorbit/descent next.").
+    IF NOT data["site_verified"] {
+        aoso_log_warn("TOUR", "Survey ended on an unverified site. Deorbit will use the prediction anyway.").
+    }
     aoso_state_transition(AOSO_TOUR, "DEORBIT").
 }
 
@@ -556,6 +624,12 @@ FUNCTION aoso_tour_deorbit_execute {
         IF data["site_score"] >= 0 { SET have_site TO TRUE. }
     }
 
+    LOCAL waited IS TIME:SECONDS - data["deorbit_wait_since"].
+    LOCAL period IS aoso_orbit_period_s().
+    IF period <= 0 { SET period TO 600. }
+    LOCAL align_s IS aoso_maneuver_align_s().
+    LOCAL target_ang IS aoso_tour_deorbit_target_ang(period, align_s).
+
     LOCAL opposite IS FALSE.
     LOCAL site_ang IS 0.
     LOCAL opp_txt IS "NO".
@@ -566,11 +640,11 @@ FUNCTION aoso_tour_deorbit_execute {
         LOCAL falling IS FALSE.
         IF data:HASKEY("deorbit_ang_last") {
             IF site_ang < data["deorbit_ang_last"] - 1.5 {
-                IF data["deorbit_ang_peak"] >= 115 { SET falling TO TRUE. }
+                IF data["deorbit_ang_peak"] >= target_ang - 1 { SET falling TO TRUE. }
             }
         }
         SET data["deorbit_ang_last"] TO site_ang.
-        IF site_ang >= 115 {
+        IF site_ang >= target_ang {
             SET opposite TO TRUE.
             SET opp_txt TO "YES".
         }
@@ -580,9 +654,6 @@ FUNCTION aoso_tour_deorbit_execute {
         }
     }
 
-    LOCAL waited IS TIME:SECONDS - data["deorbit_wait_since"].
-    LOCAL period IS aoso_orbit_period_s().
-    IF period <= 0 { SET period TO 600. }
     IF waited >= period * 1.05 {
         SET opposite TO TRUE.
         SET opp_txt TO "TIMEOUT".
@@ -590,18 +661,18 @@ FUNCTION aoso_tour_deorbit_execute {
 
     IF have_site {
         IF NOT opposite {
-            LOCAL guess IS period * 0.2.
-            IF site_ang >= 90 { SET guess TO period * 0.08. }
-            IF site_ang >= 110 { SET guess TO 25. }
+            LOCAL guess IS period * (target_ang - site_ang) / 360.
             IF guess < 20 { SET guess TO 20. }
 
             IF NOT data:HASKEY("deorbit_warp_logged") {
                 aoso_log_info("TOUR", "Rails-warping until the landing site is opposite before deorbit (up to ~" + ROUND(period, 0) + "s). site lat=" +
                     ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) + " ship lat=" +
-                    ROUND(SHIP:GEOPOSITION:LAT, 2) + " lng=" + ROUND(SHIP:GEOPOSITION:LNG, 2) + " ang=" + ROUND(site_ang, 0) + " deg.").
+                    ROUND(SHIP:GEOPOSITION:LAT, 2) + " lng=" + ROUND(SHIP:GEOPOSITION:LNG, 2) + " ang=" + ROUND(site_ang, 0) +
+                    " target=" + ROUND(target_ang, 0) + " align=" + ROUND(align_s, 0) + "s.").
                 SET data["deorbit_warp_logged"] TO TRUE.
             }
-            aoso_log_every(45, "TOUR", "Deorbit wait opposite=NO ang=" + ROUND(site_ang, 0) + " deg peak=" + ROUND(data["deorbit_ang_peak"], 0) + " ship=" +
+            aoso_log_every(45, "TOUR", "Deorbit wait opposite=NO ang=" + ROUND(site_ang, 0) + " deg target=" + ROUND(target_ang, 0) +
+                " peak=" + ROUND(data["deorbit_ang_peak"], 0) + " ship=" +
                 ROUND(SHIP:GEOPOSITION:LAT, 1) + "/" + ROUND(SHIP:GEOPOSITION:LNG, 1) + " site=" +
                 ROUND(data["site_lat"], 1) + "/" + ROUND(data["site_lng"], 1) + " waited=" + ROUND(waited, 0) +
                 "s period=" + ROUND(period, 0) + "s " + aoso_warp_diag_txt() + ".").
@@ -623,7 +694,8 @@ FUNCTION aoso_tour_deorbit_execute {
     LOCAL eta_s IS -1.
     IF opposite { SET eta_s TO aoso_maneuver_align_s(). }
     aoso_log_info("TOUR", "Placing deorbit node opposite=" + opp_txt + " ang=" + ROUND(site_ang, 0) +
-        " deg eta=" + ROUND(eta_s, 0) + "s AP=" + ROUND(APOAPSIS, 0) + " PE=" + ROUND(PERIAPSIS, 0) +
+        " deg target=" + ROUND(target_ang, 0) + " align=" + ROUND(align_s, 0) +
+        "s eta=" + ROUND(eta_s, 0) + "s AP=" + ROUND(APOAPSIS, 0) + " PE=" + ROUND(PERIAPSIS, 0) +
         " " + aoso_warp_diag_txt() + ".").
     LOCAL nd IS aoso_deorbit_add_node(0, FALSE, eta_s).
     IF nd = 0 {
@@ -811,7 +883,7 @@ FUNCTION aoso_tour_start {
     }
 
     aoso_tour_define_states().
-    SET AOSO_TOUR["data"] TO LEXICON("targets", targets, "index", 0, "site_lat", 0, "site_lng", 0, "site_alt", 0, "site_score", -1, "deorbit_wait_since", 0, "polar_warp_logged", FALSE, "scan_until", 0, "scan_next_sample", 0, "scan_orbits", 1, "accomplished", LEXICON(), "depart_ok", FALSE).
+    SET AOSO_TOUR["data"] TO LEXICON("targets", targets, "index", 0, "site_lat", 0, "site_lng", 0, "site_alt", 0, "site_score", -1, "site_verified", FALSE, "deorbit_wait_since", 0, "polar_warp_logged", FALSE, "scan_until", 0, "scan_next_sample", 0, "scan_orbits", 1, "accomplished", LEXICON(), "depart_ok", FALSE).
     aoso_log_info("TOUR", "Grand tour armed: " + targets:LENGTH + " bodies (" + aoso_classify_name() + "), then KSC return.").
     aoso_decide("TOUR", "arm", "" + targets:LENGTH, aoso_classify_name(), "n=" + targets:LENGTH).
     aoso_state_transition(AOSO_TOUR, "BOOT").
@@ -819,6 +891,20 @@ FUNCTION aoso_tour_start {
 
 FUNCTION aoso_tour_update {
     aoso_state_update(AOSO_TOUR).
+    LOCAL st IS AOSO_TOUR["current"].
+    IF st = "SCAN" OR st = "POLAR" OR st = "DEORBIT" {
+        LOCAL prog IS 0.
+        IF st = "SCAN" {
+            SET prog TO ABS(SHIP:GEOPOSITION:LAT) / 90.
+        } ELSE IF st = "POLAR" {
+            SET prog TO SHIP:ORBIT:INCLINATION / 180.
+        } ELSE IF AOSO_TOUR["data"]:HASKEY("site_lat") {
+            SET prog TO aoso_tour_site_vang(AOSO_TOUR["data"]["site_lat"], AOSO_TOUR["data"]["site_lng"]) / 180.
+        }
+        IF prog < 0 { SET prog TO 0. }
+        IF prog > 1 { SET prog TO 1. }
+        aoso_hb_set("tour", st, prog).
+    }
 }
 
 FUNCTION aoso_tour_is_done {

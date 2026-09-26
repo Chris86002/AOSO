@@ -115,11 +115,13 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "LANDING_SCAN_MAX_S", 7200,          // hard cap on survey duration; scan must hand off to deorbit
     "LANDING_ROUGHNESS_SAMPLE_M", 200,   // radius for local relief/roughness scoring around a site
     "LANDING_ROUGHNESS_WEIGHT", 0.08,    // score penalty per metre of local relief (lower total score is better)
+    "DEORBIT_ALIGN_CAP_DEG", 40,         // max orbit angle the align lead may eat before ignition
+    "DEORBIT_OPPOSITE_MIN_DEG", 150,     // never call the site "opposite" before this ship-site angle
     "MAX_Q_LIMIT_MULT", 1.0,            // extra throttle cap near this-flight peak Q (1.0=off; ASCENT_MAX_Q is the real limiter)
     "ASCENT_MAX_Q", 0.30,               // atm (SHIP:Q). Throttle down while Q is still rising above this. 0=off. 0.30≈30 kPa.
     "DESCENT_BURN_MARGIN_S", 4,         // s of surface-speed reaction time added to the suicide-burn trigger altitude
     "DESCENT_STOP_MARGIN", 1.2,         // extra multiplier on kinematic stop distance (elwanderer / MechJeb-style pad)
-    "DESCENT_RADAR_OFFSET", 0,          // m, extra radar offset; 0 = measure from the lowest part at descent start
+    "DESCENT_RADAR_OFFSET", 0,          // m, CoM/radar to belly; 0 = vessel bounds, remeasured after legs deploy
     "DESCENT_FINAL_APPROACH_ALT", 150,  // m, radar altitude where descent *may* switch to a slow vertical hold
     "DESCENT_FINAL_SPEED_MAX", 25,      // m/s surface speed required before leaving suicide burn for final approach
     "DESCENT_FINAL_SPEED", -3,          // m/s, target vertical speed held during final approach

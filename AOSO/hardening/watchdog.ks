@@ -90,10 +90,18 @@ FUNCTION aoso_watchdog_in_critical_flight {
     RETURN FALSE.
 }
 
-// A transfer window or SOI coast can legitimately remain in one state for
-// days. GOTO owns the encounter clock and its own no-patch replan path;
-// absence of a state transition here is not evidence of a stalled CPU.
+// A transfer window, a polar site survey, or a deorbit coast can
+// legitimately remain in one state for a long time. GOTO owns the
+// encounter clock. Tour SCAN/POLAR/DEORBIT own their own warp and do not
+// grow mission history each sample — treating that as a stall safe-held
+// the Minmus overflight and recover() deletes NEXTNODE.
 FUNCTION aoso_watchdog_deliberate_wait {
+    IF DEFINED AOSO_TOUR {
+        LOCAL tst IS AOSO_TOUR["current"].
+        IF tst = "SCAN" { RETURN TRUE. }
+        IF tst = "POLAR" { RETURN TRUE. }
+        IF tst = "DEORBIT" { RETURN TRUE. }
+    }
     IF DEFINED AOSO_GOTO {
         IF DEFINED AOSO_CTX {
             IF aoso_ctx_get("controller", "") = "goto" {

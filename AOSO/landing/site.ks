@@ -212,11 +212,31 @@ FUNCTION aoso_landing_site_quality {
     ).
 }
 
-// Instant orbital scan: samples the ground track over the next N periods
-// (kOS can query TERRAINHEIGHT of any lat/lng from anywhere, so this does
-// not require actually flying over the sites). Tour still warps LANDING_SCAN_ORBITS
-// so a live overflight can beat the prediction. Returns a lexicon with
-// the lowest-score safe site, or 0 if none of the samples were landable.
+// TRUE when geo is close enough that the PQS under it is the terrain the
+// ship is actually flying over. Far LATLNG queries often return a flat
+// sea-level sentinel (alt 0, slope 0, rough 0) until that ground is loaded.
+// That sentinel scored 0.09 on Minmus and beat every real overflight.
+FUNCTION aoso_landing_site_near_ship {
+    PARAMETER geo.
+    IF NOT geo:ISTYPE("GeoCoordinates") { RETURN FALSE. }
+    LOCAL ship_r IS SHIP:POSITION - SHIP:BODY:POSITION.
+    LOCAL site_r IS geo:POSITION - SHIP:BODY:POSITION.
+    IF ship_r:MAG < 1 { RETURN TRUE. }
+    IF site_r:MAG < 1 { RETURN FALSE. }
+    IF VANG(ship_r, site_r) <= 5 { RETURN TRUE. }
+    RETURN FALSE.
+}
+
+// A candidate counts only when its terrain is loaded. Predicted ground-track
+// points are hints until an overflight confirms them.
+FUNCTION aoso_landing_site_trustworthy {
+    PARAMETER geo.
+    RETURN aoso_landing_site_near_ship(geo).
+}
+
+// Orbital hint plus a flag for whether the winning sample was loaded terrain.
+// Tour still flies the ground track and must prefer a live sample over an
+// unverified seed, even when the seed's fake score looks perfect.
 FUNCTION aoso_landing_site_scan_orbit {
     PARAMETER samples IS 0.
     IF samples <= 0 { SET samples TO aoso_config_get("LANDING_SCAN_SAMPLES", 36). }
@@ -231,6 +251,7 @@ FUNCTION aoso_landing_site_scan_orbit {
 
     LOCAL best_geo IS 0.
     LOCAL best_score IS 0.
+    LOCAL best_trust IS FALSE.
     LOCAL found IS FALSE.
     LOCAL i IS 0.
     UNTIL i >= samples {
@@ -239,15 +260,24 @@ FUNCTION aoso_landing_site_scan_orbit {
         LOCAL geo IS SHIP:BODY:GEOPOSITIONOF(POSITIONAT(SHIP, ut)).
         LOCAL sc IS aoso_landing_site_score(geo).
         IF sc >= 0 {
-            IF NOT found {
+            LOCAL trust IS aoso_landing_site_trustworthy(geo).
+            LOCAL take IS FALSE.
+            IF NOT found { SET take TO TRUE. }
+            ELSE {
+                // Loaded terrain always beats an unloaded sentinel, even
+                // when the sentinel's slope/roughness are a perfect zero.
+                IF trust AND NOT best_trust { SET take TO TRUE. }
+                ELSE {
+                    IF trust = best_trust {
+                        IF sc < best_score { SET take TO TRUE. }
+                    }
+                }
+            }
+            IF take {
                 SET best_geo TO geo.
                 SET best_score TO sc.
+                SET best_trust TO trust.
                 SET found TO TRUE.
-            } ELSE {
-                IF sc < best_score {
-                    SET best_geo TO geo.
-                    SET best_score TO sc.
-                }
             }
         }
         SET i TO i + 1.
@@ -261,9 +291,15 @@ FUNCTION aoso_landing_site_scan_orbit {
     LOCAL slope IS aoso_landing_site_slope_deg(best_geo).
     LOCAL roughness IS aoso_landing_site_roughness_m(best_geo).
     LOCAL quality IS aoso_landing_site_quality(best_geo).
+    LOCAL trust_txt IS "no".
+    IF best_trust { SET trust_txt TO "yes". }
+    IF NOT best_trust {
+        aoso_log_warn("SITE", "Best predicted site is unloaded terrain (flat sentinel). Live overflight must replace it.").
+    }
     aoso_log_info("SITE", "Best landing site lat=" + ROUND(best_geo:LAT, 2) + " lng=" + ROUND(best_geo:LNG, 2) +
         " alt=" + ROUND(best_geo:TERRAINHEIGHT, 0) + "m slope=" + ROUND(slope, 1) +
         "deg rough=" + ROUND(roughness, 0) + "m score=" + ROUND(best_score, 2) +
+        " verified=" + trust_txt +
         " quality=" + quality["overall_score"] + " sun=" + quality["sun_score"] +
         " takeoff=" + quality["takeoff_score"] +
         " (" + samples + " samples / " + orbits + " orbit horizon).").
@@ -274,6 +310,7 @@ FUNCTION aoso_landing_site_scan_orbit {
         "slope", slope,
         "roughness", roughness,
         "alt", best_geo:TERRAINHEIGHT,
+        "verified", best_trust,
         "quality", quality["overall_score"],
         "sun", quality["sun_score"],
         "takeoff", quality["takeoff_score"]
