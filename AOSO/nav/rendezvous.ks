@@ -1639,10 +1639,114 @@ FUNCTION aoso_rendezvous_tune_pe {
     RETURN aoso_rendezvous_pe_ok_value(pe_now, hop).
 }
 
-// Mid-course while already on a patch whose PE is a graze / lithobrake.
+// Build a polar SOI-edge aim point from the incoming hyperbolic velocity.
+// The body's angular velocity gives its pole in the same raw frame as the
+// Lambert vectors. Both polar directions are tried against KSP conics.
+FUNCTION aoso_rendezvous_polar_soi_offset {
+    PARAMETER hop.
+    PARAMETER incoming.
+    PARAMETER direction.
+    LOCAL speed2 IS VDOT(incoming, incoming).
+    LOCAL soi_radius IS hop:SOIRADIUS.
+    LOCAL peri_radius IS hop:RADIUS + aoso_rendezvous_desired_pe(hop).
+    LOCAL spin IS hop:ANGULARVEL.
+    IF speed2 < 1 OR soi_radius <= peri_radius OR spin:MAG < 0.000001 { RETURN V(0, 0, 0). }
+    LOCAL outward IS incoming * -1.
+    LOCAL pole_normal IS VCRS(outward, spin).
+    IF pole_normal:MAG < 0.000001 { RETURN V(0, 0, 0). }
+    LOCAL entry_speed IS SQRT(speed2 + 2 * hop:MU * (1 / peri_radius - 1 / soi_radius)).
+    LOCAL angular_momentum IS entry_speed * peri_radius.
+    LOCAL reach2 IS speed2 * soi_radius * soi_radius - angular_momentum * angular_momentum.
+    IF reach2 <= 0 { RETURN V(0, 0, 0). }
+    LOCAL hvec IS pole_normal:NORMALIZED * angular_momentum * direction.
+    RETURN (outward * SQRT(reach2) + VCRS(outward, hvec)) / speed2.
+}
+
+// Seed the mid-course node with a body-pole-aware SOI aim. The Lambert
+// arrival velocity changes as the aim point moves, so refine it three times.
+// Only a candidate with a real, safer KSP patched encounter is retained.
+FUNCTION aoso_rendezvous_seed_polar_correction {
+    PARAMETER nd.
+    PARAMETER hop.
+    PARAMETER arrival_ut.
+    LOCAL departure_ut IS TIME:SECONDS + nd:ETA.
+    LOCAL transit_s IS arrival_ut - departure_ut.
+    IF transit_s < 120 { RETURN FALSE. }
+    LOCAL parent_body IS SHIP:BODY.
+    IF hop:BODY:NAME <> parent_body:NAME { RETURN FALSE. }
+    LOCAL pos1 IS aoso_lambert_rel_pos(SHIP, departure_ut, parent_body).
+    LOCAL body_pos IS aoso_lambert_rel_pos(hop, arrival_ut, parent_body).
+    LOCAL vel_ship IS VELOCITYAT(SHIP, departure_ut):ORBIT.
+    LOCAL vel_hop IS VELOCITYAT(hop, arrival_ut):ORBIT.
+    LOCAL desired IS aoso_rendezvous_desired_pe(hop).
+    LOCAL best_score IS aoso_rendezvous_pe_score(nd, hop, desired).
+    LOCAL best_radial IS nd:RADIALOUT.
+    LOCAL best_normal IS nd:NORMAL.
+    LOCAL best_prograde IS nd:PROGRADE.
+    LOCAL improved IS FALSE.
+    LOCAL variant IS 0.
+    UNTIL variant >= 4 {
+        LOCAL long_way IS variant >= 2.
+        LOCAL direction IS 1.
+        IF variant = 1 OR variant = 3 { SET direction TO -1. }
+        LOCAL aim_pos IS body_pos.
+        LOCAL valid IS TRUE.
+        LOCAL iter IS 0.
+        LOCAL solution IS LEXICON("ok", FALSE).
+        UNTIL iter >= 3 {
+            SET solution TO aoso_lambert_solve(pos1, aim_pos, transit_s, parent_body:MU, long_way).
+            IF NOT solution["ok"] {
+                SET valid TO FALSE.
+                BREAK.
+            }
+            LOCAL incoming IS solution["vel2"] - vel_hop.
+            LOCAL offset IS aoso_rendezvous_polar_soi_offset(hop, incoming, direction).
+            IF offset:MAG < 1 {
+                SET valid TO FALSE.
+                BREAK.
+            }
+            SET aim_pos TO body_pos + offset.
+            SET iter TO iter + 1.
+        }
+        IF valid {
+            SET solution TO aoso_lambert_solve(pos1, aim_pos, transit_s, parent_body:MU, long_way).
+            IF solution["ok"] {
+                LOCAL delta_v IS solution["vel1"] - vel_ship.
+                IF delta_v:MAG <= aoso_config_get("MIDCOURSE_MAX_DV", 40) {
+                    LOCAL xyz IS aoso_lambert_dv_to_node_xyz(delta_v, pos1, vel_ship).
+                    SET nd:RADIALOUT TO xyz["radial"].
+                    SET nd:NORMAL TO xyz["normal"].
+                    SET nd:PROGRADE TO xyz["prograde"].
+                    aoso_rendezvous_settle().
+                    IF aoso_rendezvous_node_hits_body(nd, hop) {
+                        LOCAL candidate_score IS aoso_rendezvous_pe_score(nd, hop, desired).
+                        IF candidate_score < best_score {
+                            SET best_score TO candidate_score.
+                            SET best_radial TO nd:RADIALOUT.
+                            SET best_normal TO nd:NORMAL.
+                            SET best_prograde TO nd:PROGRADE.
+                            SET improved TO TRUE.
+                        }
+                    }
+                }
+            }
+        }
+        SET variant TO variant + 1.
+    }
+    SET nd:RADIALOUT TO best_radial.
+    SET nd:NORMAL TO best_normal.
+    SET nd:PROGRADE TO best_prograde.
+    aoso_rendezvous_settle().
+    RETURN improved.
+}
+
+// Mid-course while on a live patch, or while its saved SOI clock is still
+// available. A missing live patch never authorizes an unverified burn.
 FUNCTION aoso_rendezvous_add_correction_node {
     PARAMETER hop.
-    IF NOT SHIP:ORBIT:HASNEXTPATCH { RETURN 0. }
+    PARAMETER arrival_ut IS 0.
+    LOCAL live_patch IS SHIP:ORBIT:HASNEXTPATCH.
+    IF NOT live_patch AND arrival_ut <= TIME:SECONDS + 150 { RETURN 0. }
 
     // tune_pe() deliberately yields so patched conics can settle. Never enter
     // it while packed/rails/unpacking. The 17.6-day Minmus run spent most of
@@ -1661,7 +1765,11 @@ FUNCTION aoso_rendezvous_add_correction_node {
         }
     }
 
-    LOCAL eta_p IS SHIP:ORBIT:NEXTPATCHETA.
+    LOCAL eta_p IS arrival_ut - TIME:SECONDS.
+    IF live_patch {
+        SET eta_p TO SHIP:ORBIT:NEXTPATCHETA.
+        SET arrival_ut TO TIME:SECONDS + eta_p.
+    }
     IF eta_p < 150 { RETURN 0. }
     // Mid-course correction is time-sensitive local guidance. Once physics is
     // settled, calculate it immediately instead of spending another bounded
@@ -1677,6 +1785,27 @@ FUNCTION aoso_rendezvous_add_correction_node {
     LOCAL nd IS NODE(TIME:SECONDS + t_corr, 0, 0, 0).
     ADD nd.
     SET AOSO_POLAR_MIDCOURSE_TUNING TO TRUE.
+    LOCAL seeded IS FALSE.
+    LOCAL seed_direct IS TRUE.
+    IF live_patch {
+        IF SHIP:ORBIT:NEXTPATCH:BODY:NAME <> hop:NAME { SET seed_direct TO FALSE. }
+    }
+    IF seed_direct {
+        IF DEFINED AOSO_WANT_POLAR {
+            IF AOSO_WANT_POLAR {
+                IF DEFINED AOSO_WANT_POLAR_BODY {
+                    IF AOSO_WANT_POLAR_BODY = hop:NAME {
+                        SET seeded TO aoso_rendezvous_seed_polar_correction(nd, hop, arrival_ut).
+                    }
+                }
+            }
+        }
+    }
+    IF NOT live_patch AND NOT seeded {
+        SET AOSO_POLAR_MIDCOURSE_TUNING TO FALSE.
+        REMOVE nd.
+        RETURN 0.
+    }
     LOCAL tuned IS aoso_rendezvous_tune_pe(nd, hop).
     SET AOSO_POLAR_MIDCOURSE_TUNING TO FALSE.
     IF NOT tuned {
