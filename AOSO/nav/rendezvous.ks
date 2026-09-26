@@ -9,6 +9,8 @@
 // 11) once this has closed the gap; this file only covers the "get into
 // the same orbit, near the target" nav problem.
 
+GLOBAL AOSO_POLAR_MIDCOURSE_TUNING IS FALSE.
+
 // Signed phase angle (deg) from ship to target around the body, positive
 // when the target is ahead of the ship in the direction of the ship's
 // orbital motion.
@@ -1439,8 +1441,10 @@ FUNCTION aoso_rendezvous_pe_score {
     LOCAL graze IS aoso_rendezvous_soi_alt(hop) * 0.35.
     IF pe > graze { RETURN 100000000 + (pe - desired_pe). }
     LOCAL sc IS ABS(pe - desired_pe).
-    LOCAL polar_err IS aoso_rendezvous_polar_approach_error(nd:ORBIT, hop).
-    IF polar_err >= 0 { SET sc TO sc + polar_err * 400. }
+    IF AOSO_POLAR_MIDCOURSE_TUNING {
+        LOCAL polar_err IS aoso_rendezvous_polar_approach_error(nd:ORBIT, hop).
+        IF polar_err >= 0 { SET sc TO sc + polar_err * 400. }
+    }
     RETURN sc.
 }
 
@@ -1595,8 +1599,10 @@ FUNCTION aoso_rendezvous_tune_pe {
         LOCAL rel_left IS aoso_orbit_rel_inc_from_orbit(nd:ORBIT, hop).
         LOCAL walk_n IS FALSE.
         IF rel_left >= 0.4 { SET walk_n TO TRUE. }
-        IF DEFINED AOSO_WANT_POLAR {
-            IF AOSO_WANT_POLAR { SET walk_n TO TRUE. }
+        IF AOSO_POLAR_MIDCOURSE_TUNING {
+            IF DEFINED AOSO_WANT_POLAR {
+                IF AOSO_WANT_POLAR { SET walk_n TO TRUE. }
+            }
         }
         IF walk_n {
             SET nd:NORMAL TO orig_n + step_dv.
@@ -1670,7 +1676,9 @@ FUNCTION aoso_rendezvous_add_correction_node {
 
     LOCAL nd IS NODE(TIME:SECONDS + t_corr, 0, 0, 0).
     ADD nd.
+    SET AOSO_POLAR_MIDCOURSE_TUNING TO TRUE.
     LOCAL tuned IS aoso_rendezvous_tune_pe(nd, hop).
+    SET AOSO_POLAR_MIDCOURSE_TUNING TO FALSE.
     IF NOT tuned {
         aoso_log_warn("RENDEZVOUS", "Mid-course tune did not reach a safe capture PE - leaving the coast as-is.").
         REMOVE nd.
