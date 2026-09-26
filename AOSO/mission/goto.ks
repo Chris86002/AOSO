@@ -827,16 +827,20 @@ FUNCTION aoso_goto_coast_execute {
             IF aoso_rendezvous_orbit_needs_correct(SHIP:ORBIT, hop_check) {
                 LOCAL pe_now IS patch_pe.
                 LOCAL correct_within IS aoso_config_get("GOTO_CORRECT_WITHIN_S", 28800).
-                LOCAL soi_a IS hop_check:SOIRADIUS - hop_check:RADIUS.
                 IF pe_now < 0 {
                     SET want_correct TO TRUE.
                 } ELSE {
-                    IF pe_now > soi_a * 0.12 {
-                        SET want_correct TO TRUE.
-                    } ELSE {
-                        IF eta_p < correct_within { SET want_correct TO TRUE. }
-                    }
+                    // Far-out conics are too poorly conditioned for PE tuning.
+                    // Wait for the existing correction window even on a graze.
+                    IF eta_p < correct_within { SET want_correct TO TRUE. }
                 }
+            }
+        }
+        // A verified-safe recovery flyby is intentional. Correcting its PE
+        // repeatedly cannot improve the original destination intercept.
+        IF data:HASKEY("via") {
+            IF np = data["via"] {
+                IF patch_pe >= patch_safe_floor { SET want_correct TO FALSE. }
             }
         }
         IF want_correct {
@@ -857,7 +861,7 @@ FUNCTION aoso_goto_coast_execute {
                             aoso_state_transition(AOSO_GOTO, "BURN").
                             RETURN.
                         }
-                        SET data["correct_cool_ut"] TO TIME:SECONDS + 45.
+                        SET data["correct_cool_ut"] TO TIME:SECONDS + 3600.
                         aoso_log_warn("GOTO", "Mid-course tune failed for " + np + " - coasting (will not re-plan; that flickered warp).").
                     }
                 }
@@ -1309,3 +1313,4 @@ FUNCTION aoso_goto_is_done {
 FUNCTION aoso_goto_is_aborted {
     RETURN AOSO_GOTO["current"] = "ABORTED".
 }
+
