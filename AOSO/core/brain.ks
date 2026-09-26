@@ -69,12 +69,12 @@ FUNCTION aoso_brain_wait_think {
     // Drive the transition non-blockingly and let the owning FSM call again.
     IF WARP > 0 OR WARPMODE <> "PHYSICS" OR NOT KUNIVERSE:TIMEWARP:ISSETTLED {
         aoso_warp_ensure_physics_idle().
-        aoso_ui_set("Thinking", why + "  settling to physics 1x").
+
         RETURN FALSE.
     }
 
     aoso_log_info("BRAIN", "Planning pause: " + why + " (settled 1x, bounded wait).").
-    aoso_ui_set("Thinking", why + "  settled 1x bounded wait").
+
     LOCAL t0_rt IS KUNIVERSE:REALTIME.
     LOCAL max_s IS aoso_config_get("BRAIN_THINK_WAIT_S", 5).
     IF max_s > 8 { SET max_s TO 8. }
@@ -84,11 +84,7 @@ FUNCTION aoso_brain_wait_think {
             aoso_log_warn("BRAIN", "Quiet wait expired (" + why + ") - calculating now at settled 1x.").
             RETURN FALSE.
         }
-        IF DEFINED AOSO_HUD_READY {
-            IF AOSO_HUD_READY {
-                IF OPCODESLEFT > 200 { aoso_hud_fast_tick(). }
-            }
-        }
+
         WAIT 0.
     }
     aoso_log_info("BRAIN", "Quiet window open - " + why + ".").
@@ -155,7 +151,7 @@ FUNCTION aoso_brain_do_replan {
         }
         IF NOT aoso_brain_think_ok() { RETURN. }
         aoso_log_info("BRAIN", "Replanning (" + reason + ").").
-        aoso_ui_set("Replanning", reason).
+
         // Planner owns dependency synchronization; do not refresh the same
         // profile/budget twice in one replan.
         aoso_plan_build().

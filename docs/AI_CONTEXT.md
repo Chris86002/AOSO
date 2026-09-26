@@ -1,7 +1,7 @@
 # AI context — AOSO / kOS
 
 Read this before changing AOSO. The user cannot run a shell in KSP;
-they watch the kOS terminal and the HUD.
+they watch the kOS terminal and the log files.
 
 ## Non-negotiable kOS rules
 
@@ -68,9 +68,9 @@ they watch the kOS terminal and the HUD.
   utilization. Critical flight always outranks UI and strategy.
 - Background work stops before the protected opcode reserve.
 - Full topology scans are event-driven. Replan may wait for a quiet
-  window. HUD/telemetry must never starve flight control. Do not
+  window. Telemetry must never starve flight control. Do not
   `aoso_project_route` / matrix rebuild / JSON persist in a critical
-  flight tick. The main loop runs the scheduler **before** HUD paint.
+  flight tick.
   Rails warp UT jumps are not IPU spills — do not mark CPU HIGH/CRITICAL
   from `TIME:SECONDS` stepping under RAILS.
 - Ascent AoA is tight nose-up. Extra nose-down applies only when
@@ -137,18 +137,6 @@ revive `aoso-v2-integration`.
 the core it needs). It must not STAGE, LOCK, WARP, or THROTTLE.
 Manual KSP flights: `docs/AOSO_SCENARIOS.md`.
 
-## UI v2 ownership and invariants
-
-- Read docs/AOSO_UI2.md before changing the HUD/MFD.
-- ui2_instruments.ks owns PFD/NAV/SURF only.
-- ui2_hud.ks owns the separate tactical glass HUD.
-- ui2_mfd.ks exclusively owns Mission/Systems/Vehicle graphical pages.
-- ui2_plots.ks owns ASC / VSIT / RTE / BDG / RNDZ. Display only.
-- hud_gui.ks owns routing/chrome/AUTO-page behavior and the UI2 startup self-test.
-- UI2 is display-only. It may visualize and highlight, but must never steer,
-  throttle, stage, warp, write SHIP:CONTROL, or change mission state.
-- Expensive visual prediction must use wall-clock throttling
-  (KUNIVERSE:REALTIME) so rails warp cannot trigger it every rendered frame.
-- Never duplicate a UI2 function/global across modules; kOS identifiers are
-  case-insensitive and duplicate ownership is a compile failure.
+There is no flight HUD. Do not add one back. Display work was removed so
+IPU stays on steering, staging, and the mission.
 

@@ -259,12 +259,11 @@ FUNCTION aoso_goto_plan_entry {
     // instead of WAITing while rails warp is still draining down.
     IF NOT aoso_warp_ensure_physics_idle() {
         SET AOSO_GOTO["need_entry"] TO TRUE.
-        aoso_ui_pulse("Planning hop", "Settling to physics 1x before planning " + data["goal"]).
+
         RETURN.
     }
 
     aoso_maneuver_clear_all().
-    aoso_ui_pulse("Planning hop", "Next body toward " + data["goal"]).
 
     LOCAL goal IS BODY(data["goal"]).
 
@@ -281,7 +280,7 @@ FUNCTION aoso_goto_plan_entry {
     IF SHIP:STATUS = "LANDED" OR SHIP:STATUS = "PRELAUNCH" {
         IF aoso_launch_blocked() {
             SET AOSO_GOTO["need_entry"] TO TRUE.
-            aoso_ui_set("HOLD", "awaiting launch commit").
+
             RETURN.
         }
         aoso_log_info("GOTO", "Landed on " + SHIP:BODY:NAME + " - launching before the next hop.").
@@ -894,7 +893,7 @@ FUNCTION aoso_goto_coast_execute {
             LOCAL coast_lead IS MAX(align_s, soi_cutoff).
             aoso_steer_release().
             LOCAL wst IS aoso_warp_approach(eta_p, coast_lead, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
-            aoso_ui_set("Coasting to " + np, "SOI " + aoso_hud_eta(eta_p) + "  " + aoso_warp_diag_txt()).
+
         } ELSE {
             SET WARP TO 0.
         }
@@ -933,13 +932,13 @@ FUNCTION aoso_goto_coast_execute {
             LOCAL eta_saved IS expect_ut - now.
             IF lost_for < flicker_s {
                 aoso_warp_set_physics_cruise().
-                aoso_ui_set("Re-checking " + expect_body + " patch", "physics so conics can catch up  T-" + aoso_hud_eta(eta_saved)).
+
                 RETURN.
             }
             IF geometry["inside"] {
                 SET WARP TO 0.
                 aoso_log_warn_every(60, "SOI_HANDOFF", expect_body + " is geometrically inside its SOI but KSP still reports " + SHIP:BODY:NAME + "; waiting at 1x for the body handoff.").
-                aoso_ui_set("Waiting for " + expect_body + " SOI", "inside boundary; KSP handoff pending at 1x").
+
                 RETURN.
             }
             LOCAL eta_nav IS eta_saved.
@@ -963,14 +962,10 @@ FUNCTION aoso_goto_coast_execute {
                 } ELSE {
                     aoso_log_every(60, "GOTO", "No live patch, trusting " + expect_body + " SOI in " + ROUND(eta_saved, 0) + "s " + aoso_warp_diag_txt() + ".").
                 }
-                IF clock = "RANGE" {
-                    aoso_ui_set("Tracking " + expect_body + " SOI", "range ETA " + aoso_hud_eta(eta_est) + "  recheck " + aoso_hud_eta(eta_nav) + "  " + aoso_warp_diag_txt()).
-                } ELSE {
-                    aoso_ui_set("Tracking " + expect_body + " SOI", "saved ETA " + aoso_hud_eta(eta_est) + "  " + aoso_warp_diag_txt()).
-                }
+
             } ELSE {
                 SET WARP TO 0.
-                aoso_ui_set("Waiting on " + expect_body + " SOI", clock + " clock near boundary; conics empty").
+
             }
             RETURN.
         }
@@ -1012,7 +1007,7 @@ FUNCTION aoso_goto_capture_entry {
     IF NOT aoso_warp_ensure_physics_idle() {
         SET data["capture_entry_wait"] TO TRUE.
         SET AOSO_GOTO["need_entry"] TO TRUE.
-        aoso_ui_set("Capture setup", "Settling to physics 1x at " + SHIP:BODY:NAME).
+
         RETURN.
     }
     SET data["capture_entry_wait"] TO FALSE.
@@ -1021,9 +1016,7 @@ FUNCTION aoso_goto_capture_entry {
     aoso_log_info("GOTO", "Capturing at " + SHIP:BODY:NAME + " periapsis (Oberth) park=" + ROUND(park, 0) + "m PE=" + ROUND(PERIAPSIS, 0) + "m.").
     IF AOSO_WANT_POLAR {
         aoso_log_info("GOTO", "Landing planned - capture will go polar (inc now " + ROUND(SHIP:ORBIT:INCLINATION, 1) + " deg) instead of a later circular plane-change.").
-        aoso_ui_set("Polar capture at PE", SHIP:BODY:NAME + " inc " + ROUND(SHIP:ORBIT:INCLINATION, 1) + " -> 90").
-    } ELSE {
-        aoso_ui_set("Capture at periapsis", SHIP:BODY:NAME + " park " + ROUND(park, 0) + "m").
+
     }
     LOCAL nd IS aoso_interplanetary_add_capture_node(park).
     IF nd = 0 {
@@ -1187,7 +1180,7 @@ FUNCTION aoso_goto_capture_execute {
     } ELSE {
         IF HASNODE {
             LOCAL ndc IS NEXTNODE.
-            aoso_ui_set("Capture burn T-" + aoso_hud_eta(ndc:ETA), ROUND(ndc:DELTAV:MAG, 1) + " m/s  " + aoso_warp_diag_txt()).
+
         }
     }
 }

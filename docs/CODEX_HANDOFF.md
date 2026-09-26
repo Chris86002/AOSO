@@ -4,11 +4,12 @@ Updated: 2026-09-23
 
 This file is a short handoff for the current AOSO debugging cycle. Read
 AGENTS.md first. Use this file when continuing the current Minmus flight /
-UI2 validation work; it is not a replacement for the subsystem docs.
+navigation work; it is not a replacement for the subsystem docs.
+The flight HUD has been removed. Do not treat a missing display as a bug.
 
 ## Current test priority
 
-Before extending UI2 or adding new navigation features, run one clean flight
+Before adding new navigation features, run one clean flight
 from Kerbin toward Minmus and verify the fixes below in the real KSP/kOS
 runtime.
 
@@ -121,24 +122,17 @@ Bad / regression:
 - FREEFALL starting from a high-altitude hyperbolic flyby;
 - WAIT 0 added to warp-stop or warp-mode-transition code.
 
-## UI2 status
+## Display
 
-UI2 first-pass implementation is on main, but real KSP runtime validation is
-still pending. The first UI test should happen after/with the clean flight.
-
-Expected startup:
-- UI header: UI2 READY
-- log: UI2 Startup self-test READY
-
-Authoritative UI runtime doc: docs/AOSO_UI2.md.
-docs/AOSO_UI_V2.md is design/history context if it differs.
+There is no HUD, MFD, or CRT. Boot should not open a GUI. The log and
+`0:/aoso_telemetry.csv` are the flight record.
 
 ## Native addon
 
 The addon is expected to be v0.4.2. The updater requires 0.4.2.0; an older loaded DLL may be pending until KSP closes.
 After updating/rebuilding, boot should identify the loaded native addon version.
 
-Do not claim the native DLL or UI runtime is validated unless KSP was actually
+Do not claim the native DLL is validated unless KSP was actually
 run.
 
 ## Recommended continuation loop

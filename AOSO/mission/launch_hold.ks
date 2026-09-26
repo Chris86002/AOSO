@@ -1,11 +1,9 @@
 // AOSO/mission/launch_hold.ks
-// Pad commit. On PRELAUNCH the ship does not ignite until every launch
-// light is green and the operator presses LAUNCH.
+// Pad commit. On PRELAUNCH the ship does not ignite until the systems
+// board is green. There is no display and no button: a green board sets
+// AOSO_LAUNCH_COMMIT and this file starts the mission.
 //
-// The CRT button only sets AOSO_LAUNCH_COMMIT. This file owns the
-// calculations and the later call to aoso_mission_start(). Later surface
-// hops (LANDED / SPLASHED) are not held: an unattended tour can still
-// leave the Mun without someone sitting on the button.
+// Later surface hops (LANDED / SPLASHED) are not held.
 
 GLOBAL AOSO_LAUNCH_COMMIT IS FALSE.
 GLOBAL AOSO_LAUNCH_PREP_DONE IS FALSE.
@@ -250,18 +248,18 @@ FUNCTION aoso_launch_board_eval {
 FUNCTION aoso_launch_request {
     aoso_launch_board_eval(TRUE).
     IF NOT aoso_launch_hold_active() {
-        aoso_log_info("LAUNCH", "Launch button ignored. Not on the pad.").
+        aoso_log_info("LAUNCH", "Launch request ignored. Not on the pad.").
         RETURN FALSE.
     }
     IF AOSO_LAUNCH_COMMIT { RETURN TRUE. }
     IF NOT AOSO_LAUNCH_BOARD["arm"] {
-        aoso_log_warn("LAUNCH", "Button dark. " + AOSO_LAUNCH_BOARD["reason"]).
+        aoso_log_warn("LAUNCH", "Not armed. " + AOSO_LAUNCH_BOARD["reason"]).
         RETURN FALSE.
     }
     SET AOSO_LAUNCH_COMMIT TO TRUE.
     SET AOSO_LAUNCH_INHIBIT_LOG TO FALSE.
-    aoso_log_info("LAUNCH", "Launch button green. Operator commit.").
-    aoso_ui_set("LAUNCH", "commit").
+    aoso_log_info("LAUNCH", "Launch request accepted.").
+
     RETURN TRUE.
 }
 
@@ -284,13 +282,13 @@ FUNCTION aoso_launch_prep_tick {
     IF AOSO_LAUNCH_PHASE = 0 {
         SET AOSO_LAUNCH_PHASE TO 1.
         aoso_launch_board_eval(TRUE).
-        aoso_ui_set("HOLD", "systems check").
+
         RETURN.
     }
 
     IF AOSO_LAUNCH_PHASE = 1 {
         IF NOT AOSO_PLAN_LAST:HASKEY("built_at") {
-            aoso_ui_set("HOLD", "building the plan").
+
             aoso_plan_build().
         }
         SET AOSO_LAUNCH_PREP_DONE TO TRUE.
@@ -317,9 +315,9 @@ FUNCTION aoso_launch_prep_tick {
     }
     aoso_launch_board_eval(TRUE).
     IF AOSO_LAUNCH_BOARD["arm"] {
-        aoso_ui_set("HOLD", "launch armed").
-    } ELSE {
-        aoso_ui_set("HOLD", AOSO_LAUNCH_BOARD["reason"]).
+        SET AOSO_LAUNCH_COMMIT TO TRUE.
+        SET AOSO_LAUNCH_INHIBIT_LOG TO FALSE.
+        aoso_log_info("LAUNCH", "Systems green. Committing the pad launch.").
     }
 }
 

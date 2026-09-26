@@ -2,7 +2,7 @@
 
 kOS cannot drive KSP from this repository. These are repeatable flights
 the operator runs in stock KSP + kOS. After each, keep the kOS log,
-`0:/aoso_events.csv`, HUD snapshot, and (if it exists) `aoso_xp.json`.
+`0:/aoso_events.csv`, and (if it exists) `aoso_xp.json`.
 
 Self-test (`run "AOSO/dev/selftest".`) covers the synthetic cases
 without touching the ship. It must not STAGE, LOCK, WARP, or THROTTLE.

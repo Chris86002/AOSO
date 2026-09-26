@@ -226,9 +226,7 @@ FUNCTION aoso_interplanetary_native_search {
         }
         SET polls TO polls + 1.
         IF polls >= pulse_at {
-            aoso_ui_pulse("Searching planetary trajectories",
-                target_body:NAME + "  " + ROUND(st["progress"] * 100, 0) +
-                "%  cells=" + st["n_done"] + " valid=" + st["n_valid"]).
+
             SET pulse_at TO pulse_at + 12.
         }
     }

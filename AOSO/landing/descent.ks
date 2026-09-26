@@ -169,7 +169,7 @@ FUNCTION aoso_descent_freefall_execute {
 
     // Fly a PE-lowering node if we already decided this ellipse cannot land.
     IF HASNODE {
-        aoso_ui_set("Lowering PE to land", aoso_warp_diag_txt()).
+
         IF aoso_maneuver_execute_next() {
             aoso_log_info("DESCENT", "PE-lowering burn complete. AP=" + ROUND(APOAPSIS, 0) +
                 " PE=" + ROUND(PERIAPSIS, 0) + " alt=" + ROUND(ALTITUDE, 0) + ".").
@@ -188,8 +188,6 @@ FUNCTION aoso_descent_freefall_execute {
         LOCAL nd IS aoso_deorbit_add_node(tgt, TRUE, eta_s).
         IF nd = 0 {
             aoso_log_warn("DESCENT", "Could not add PE-lowering node - suicide will try from this PE anyway.").
-        } ELSE {
-            aoso_ui_set("Lowering PE to land", "tgt " + ROUND(tgt, 0) + "m  " + aoso_warp_diag_txt()).
         }
         RETURN.
     }
@@ -250,7 +248,6 @@ FUNCTION aoso_descent_freefall_execute {
         " PE=" + ROUND(PERIAPSIS, 0) + " vs=" + ROUND(VERTICALSPEED, 1) + " radar=" + ROUND(radar, 0) +
         " trig=" + ROUND(trigger, 0) + " peEta=" + ROUND(pe_eta, 0) + "s tti=" + ROUND(tti, 0) +
         "s coastEta=" + ROUND(coast_eta, 0) + "s " + aoso_warp_diag_txt() + ".").
-    aoso_ui_set("Descent coast to PE", "T-" + aoso_hud_eta(coast_eta) + "  radar " + ROUND(radar, 0) + "m  " + aoso_warp_diag_txt()).
 
     IF radar < (trigger * 2) {
         SET WARP TO 0.

@@ -171,7 +171,7 @@ FUNCTION aoso_tour_boot_entry {
             IF NOT data["hold_planned"] {
                 IF AOSO_LAUNCH_DEPART:HASKEY("status") {
                     IF AOSO_LAUNCH_DEPART["status"] = "NOT_READY" {
-                        aoso_ui_set("HOLD", AOSO_LAUNCH_DEPART["reason"]).
+
                         RETURN.
                     }
                 }
@@ -182,13 +182,13 @@ FUNCTION aoso_tour_boot_entry {
                 SET data["hold_planned"] TO TRUE.
                 SET AOSO_LAUNCH_PREP_DONE TO TRUE.
             }
-            aoso_ui_set("HOLD", "awaiting launch commit").
+
             RETURN.
         }
         LOCAL dep IS aoso_depart_certify().
         IF dep["status"] = "NOT_READY" {
             aoso_log_warn("TOUR", "Pad/surface not ready: " + dep["reason"] + " - holding.").
-            aoso_ui_set("HOLD", dep["reason"]).
+
             RETURN.
         }
         IF NOT data:HASKEY("hold_planned") { SET data["hold_planned"] TO FALSE. }
@@ -381,7 +381,7 @@ FUNCTION aoso_tour_polar_execute {
         RETURN.
     }
     LOCAL nd IS NEXTNODE.
-    aoso_ui_set("Polar / stabilize T-" + aoso_hud_eta(nd:ETA), ROUND(nd:DELTAV:MAG, 1) + " m/s  " + aoso_warp_diag_txt()).
+
     IF NOT data["polar_warp_logged"] {
         aoso_log_info("TOUR", "Rails-warping " + ROUND(nd:ETA, 0) + "s to polar/stabilize burn (" + ROUND(nd:DELTAV:MAG, 1) + " m/s). Physics 2x until 10 s, then 1x.").
         SET data["polar_warp_logged"] TO TRUE.
@@ -400,7 +400,7 @@ FUNCTION aoso_tour_scan_entry {
     SET WARP TO 0.
     aoso_throttle_set(0).
     aoso_steer_release().
-    aoso_ui_set("Scanning landing sites", SHIP:BODY:NAME + " polar inc=" + ROUND(SHIP:ORBIT:INCLINATION, 1)).
+
     aoso_log_info("TOUR", "Scanning " + SHIP:BODY:NAME + " ground track for a landing site (inc=" + ROUND(SHIP:ORBIT:INCLINATION, 1) + ").").
 
     LOCAL result IS aoso_landing_site_scan_orbit().
@@ -478,7 +478,7 @@ FUNCTION aoso_tour_scan_execute {
                 SET data["scan_next_sample"] TO now + 25.
             }
             LOCAL left IS data["scan_until"] - now.
-            aoso_ui_set("Scanning landing sites", aoso_hud_eta(left) + "  " + data["scan_orbits"] + " orbit confirm  " + aoso_warp_diag_txt()).
+
             aoso_steer_release().
             aoso_warp_approach(left, 15, 8).
             RETURN.
@@ -520,7 +520,7 @@ FUNCTION aoso_tour_deorbit_execute {
     }
 
     IF HASNODE {
-        aoso_ui_set("Deorbit burn", aoso_warp_diag_txt()).
+
         IF aoso_maneuver_execute_next() {
             LOCAL burn_res IS aoso_maneuver_last_result().
             IF burn_res = "missed" OR burn_res = "incomplete" {
@@ -579,7 +579,7 @@ FUNCTION aoso_tour_deorbit_execute {
             IF site_ang >= 90 { SET guess TO period * 0.08. }
             IF site_ang >= 110 { SET guess TO 25. }
             IF guess < 20 { SET guess TO 20. }
-            aoso_ui_set("Waiting for site over horizon", "ang=" + ROUND(site_ang, 0) + "  " + aoso_warp_diag_txt()).
+
             IF NOT data:HASKEY("deorbit_warp_logged") {
                 aoso_log_info("TOUR", "Rails-warping until the landing site is opposite before deorbit (up to ~" + ROUND(period, 0) + "s). site lat=" +
                     ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) + " ship lat=" +
@@ -642,7 +642,7 @@ FUNCTION aoso_tour_refuel_entry {
     LOCAL surf IS aoso_surface_begin().
     IF surf["phase"] = "HOLD" {
         aoso_log_warn("TOUR", "Surface hold before ISRU: " + surf["reason"] + ".").
-        aoso_ui_set("HOLD", surf["reason"]).
+
         RETURN.
     }
     IF surf["phase"] = "LAUNCH" {
@@ -657,7 +657,7 @@ FUNCTION aoso_tour_refuel_execute {
     PARAMETER data.
     LOCAL surf IS aoso_surface_update().
     IF surf["phase"] = "HOLD" {
-        aoso_ui_set("HOLD", surf["reason"]).
+
         aoso_log_every(20, "TOUR", "Surface hold: " + surf["reason"] + ".").
         RETURN.
     }
@@ -676,13 +676,13 @@ FUNCTION aoso_tour_launch_execute {
     IF NOT data:HASKEY("depart_ok") { SET data["depart_ok"] TO FALSE. }
     IF NOT data["depart_ok"] {
         IF NOT aoso_surface_stable() {
-            aoso_ui_set("HOLD", "waiting for surface stability").
+
             aoso_log_every(20, "TOUR", "Holding launch - surface not stable.").
             RETURN.
         }
         LOCAL dep IS aoso_depart_certify().
         IF dep["status"] = "NOT_READY" {
-            aoso_ui_set("HOLD", dep["reason"]).
+
             aoso_log_every(20, "TOUR", "Departure not ready: " + dep["reason"] + ".").
             RETURN.
         }

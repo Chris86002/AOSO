@@ -1,10 +1,10 @@
 // AOSO/core/observe.ks
 // Structured flight observability. Separate from the human log
-// (core/logger.ks) and from timed telemetry (ux/telemetry.ks):
+// (core/logger.ks) and from timed telemetry (core/telemetry.ks):
 //   events     0:/aoso_events.csv      decisions / stages / anomalies
 //   flightrec  0:/aoso_flightrec.txt   pre-event ring + post samples
 // Hot paths: no JSON, no LIST PARTS, ring capped, CPU load-shed drops
-// HUD/telem/debug first. Staging/ascent/maneuver/descent always run.
+// telemetry and debug first. Staging/ascent/maneuver/descent always run.
 // Do not name locals `path` -- that clobbers kOS's builtin PATH().
 
 GLOBAL AOSO_OBS_PHASE IS "BOOT".
@@ -107,12 +107,7 @@ FUNCTION aoso_observe_init {
     SET AOSO_CPU_TRACE_BAND TO "".
     SET AOSO_CPU_TRACE_PHASE TO "".
     SET AOSO_CPU_TRACE_PREV TO LEXICON().
-    IF DEFINED AOSO_HUD_FAST_N {
-        SET AOSO_HUD_FAST_N TO 0.
-        SET AOSO_HUD_FAST_SUM_OP TO 0.
-        SET AOSO_HUD_FAST_MAX_OP TO 0.
-        SET AOSO_HUD_FAST_LAST_OP TO 0.
-    }
+
     SET AOSO_CPU_HOLD_UT TO 0.
     SET AOSO_CPU_RECOVER TO 0.
     SET AOSO_DUMP_PENDING TO "".
@@ -230,12 +225,6 @@ FUNCTION aoso_observe_event {
         IF etype = "ANOMALY" { SET keep TO TRUE. }
         IF etype = "BURN" { SET keep TO TRUE. }
         IF NOT keep { RETURN. }
-    }
-
-    IF DEFINED AOSO_HUD_READY {
-        IF AOSO_HUD_READY {
-            aoso_hud_on_event(etype, severity, state_or_tag, message).
-        }
     }
 
     LOCAL ut IS TIME:SECONDS.
@@ -565,11 +554,8 @@ FUNCTION aoso_cpu_allow {
     RETURN TRUE.
 }
 
-FUNCTION aoso_yield_hud {
+FUNCTION aoso_yield {
     WAIT 0.
-    IF DEFINED AOSO_HUD_READY {
-        IF AOSO_HUD_READY { aoso_hud_fast_tick(). }
-    }
 }
 
 FUNCTION aoso_cpu_trace_one {
@@ -680,12 +666,7 @@ FUNCTION aoso_cpu_trace_maybe {
             ).
         }
     }
-    IF DEFINED AOSO_HUD_FAST_N {
-        aoso_cpu_trace_one(
-            "hud_fast", AOSO_HUD_FAST_LAST_OP, AOSO_HUD_FAST_MAX_OP, AOSO_HUD_FAST_SUM_OP,
-            AOSO_HUD_FAST_N, 0, 0, phase, band, alt_m, frac, wall, why, keep_idle
-        ).
-    }
+
 }
 
 FUNCTION aoso_cpu_trace_flush {

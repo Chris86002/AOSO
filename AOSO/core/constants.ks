@@ -34,7 +34,6 @@ GLOBAL AOSO_CONST IS LEXICON(
     "CPU_FILE", "0:/aoso_cpu.csv",
     "CPU_PREV_FILE", "0:/aoso_cpu_prev.csv",
     "TICK_FILE", "0:/aoso_ticks.csv",
-    "HUD_FILE", "0:/aoso_hud.json",
     "SCHEMA_VERSION", 2,
     "SOI_RADIUS_INFINITE", 1000000000000000  // sentinel (m) for a body with no SOI boundary (e.g. the Sun), since kOS cannot push a real Infinity value onto its stack
 ).

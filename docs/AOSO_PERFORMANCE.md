@@ -30,7 +30,7 @@ Scheduler tasks stop when `OPCODESLEFT < aoso_cpu_headroom()`.
 |---|---|---|
 | 0 CRITICAL | goto, descent, auto_staging, mission, watchdog | never delayed |
 | 1 HIGH | power (until panels deployed) | runs at RED |
-| 2 NORMAL | HUD, brain, telemetry | skipped at CRITICAL |
+| 2 NORMAL | brain, telemetry | skipped at CRITICAL |
 | 3 BACKGROUND | profile, checkpoint | skipped at RED+ |
 
 ## Load bands
@@ -63,11 +63,8 @@ boot is kept as `0:/aoso_cpu_prev.csv`.
 `win_avg`, `win_runs`, `win_deferred`, and `win_shed` are only the
 time since the previous sample, so ascent and landing do not average
 together. `last_op` is the most recent run. `max_op` is the worst
-single run since boot. `hud_fast` is the instrument path outside the
-scheduler. `why` is `timer`, `band`, `phase`, `band+phase`, or `boot`.
+single run since boot. `why` is `timer`, `band`, `phase`, `band+phase`, or `boot`.
 Rows for tasks that did nothing in a timer window are omitted.
-
-HUD DBG: IPU, used, left, band, deferred, shed.
 
 ## Safe compute windows
 
@@ -78,11 +75,11 @@ stay queued until that window (or until CPU is not HIGH while flying).
 
 ## Flight-control first
 
-Do not put `LIST PARTS`, JSON writes, route searches, HUD redraws,
+Do not put `LIST PARTS`, JSON writes, route searches,
 or `aoso_project_route` inside ascent/descent/maneuver ticks.
 Topology **rebuilds** are event-driven. `aoso_topo_refresh_dynamic`
 is a fuel/mass walk (no HASMODULE census) from capabilities refresh,
-not from steering. HUD rates already drop under HIGH/CRITICAL.
+not from steering.
 
 ## Future modules
 
@@ -106,6 +103,4 @@ Maneuver throttle also has a last-line per-tick guard. Estimated dV delivered
 during the next measured physics tick is capped by `MANEUVER_TICK_GUARD`.
 This is specifically for short burns and coarse/physics-warp ticks.
 
-Fast HUD painting is decimated with `HUD_FAST_EVERY` and only runs when
-there is headroom above the protected reserve. Flight control remains ahead
-of display work.
+Flight control remains ahead of telemetry and background work.

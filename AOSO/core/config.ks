@@ -168,18 +168,7 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "REPLAN_DV_ERROR", 250,             // m/s prediction error that requests a strategic replan
     "TICK_DEBUG", TRUE,                  // keep a cheap in-memory physics-tick trace for pre/post event dumps
     "TICK_DEBUG_EVERY", 2,              // sample every N physics ticks in critical flight phases
-    "HUD_FAST_EVERY", 2,                // paint fast HUD at most every N physics ticks; flight control goes first
-    "UI2_ENABLED", TRUE,                 // new image-backed AOSO avionics / MFD presentation layer
-    "LAUNCH_HOLD", TRUE,                 // PRELAUNCH only: wait for a green LAUNCH press after systems and calcs
-    "UI2_AUTO_PAGE", FALSE,              // keep the selected instrument stable; AUTO is operator opt-in
-    "UI2_HUD_X", 990,                   // centered HUD default for this 2560x1440 KSP install; HUD remains draggable
-    "UI2_HUD_Y", 525,                   // REC restores these coordinates
-    "UI2_MANUAL_PAGE_HOLD_S", 30,        // after operator selects a page, AUTO waits this long before taking it back
-    "UI2_MARKER_SMOOTH", 0.28,           // 0..1 smoothing for pippers/bugs; higher follows commands faster
-    "UI2_TRAIL_POINTS", 8,               // recent flown-position trail on the NAV display (0 disables)
-    "UI2_NAV_PRED_POINTS", 8,             // conic prediction samples on the graphical NAV display
-    "UI2_NAV_PRED_REFRESH_S", 1.0,        // real seconds between trajectory resamples; rails/CPU pressure slows it further
-    "UI2_DESCENT_PRED_MAX_S", 180,        // max look-ahead for the coast-only landing prediction bug
+    "LAUNCH_HOLD", TRUE,                 // PRELAUNCH only: wait until systems, plan, and departure cert are green, then commit
     "TICK_DT_WARN", 0.12,               // s, game-time gap warning; physics-warp expected dt is handled separately
     "MANEUVER_TICK_GUARD", 0.80,        // fraction of remaining dV allowed in the next measured physics tick
     "CPU_PROFILE", FALSE,               // extra per-task wall-time stats (also honors PROF_ENABLED)

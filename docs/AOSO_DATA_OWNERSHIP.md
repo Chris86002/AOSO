@@ -7,24 +7,24 @@ One writer per fact. Readers go through the owning accessor.
 | Part lists / engine list / docks | `parts.ks` cache | topology, staging, capabilities |
 | Structure, hw census, stage groups, prop roles | `topology.ks` | profile, vessel, classify, cert, surface, staging log |
 | Dynamic group fuel / mass | `aoso_topo_refresh_dynamic` | capabilities stage dV |
-| Capability flags / live TWR / dV stack | `capabilities.ks` + `budget.ks` | planner, feas, HUD |
+| Capability flags / live TWR / dV stack | `capabilities.ks` + `budget.ks` | planner, feas |
 | Future LANDER/CORE TWR | `aoso_caps_surface_twr_for_config` | feas, cert, depart |
-| Human/planner summary | `profile.ks` (view over topology) | classify, cert, HUD VEH |
-| Class label | `classify.ks` (`AOSO_CLASS_LAST`) | CTX, HUD, route |
+| Human/planner summary | `profile.ks` (view over topology) | classify, cert |
+| Class label | `classify.ks` (`AOSO_CLASS_LAST`) | CTX, route |
 | World / body numbers | `bodydb.ks` + `world/body.ks` | feas, cert, matrix |
 | Sequential leftover / projected state | `project.ks` `AOSO_PROJECT_LAST` | feas, matrix leftover, score, cert, assure, surface fill |
 | Experience models | `experience.ks` keyed `cfg_id\|body\|OP` | feas / project costs |
 | Ascent leftover-LF diary | `learn.ks` (demoted) | operator stats only |
 | Ascent start-speed search | `ascent_opt.ks` | pad trials |
-| Plan / targets | `planner.ks` `AOSO_PLAN_LAST` | tour, assure, HUD |
+| Plan / targets | `planner.ks` `AOSO_PLAN_LAST` | tour, assure |
 | Events | `events.ks` queue | brain drain only |
-| Open action / result identity | `result.ks` `AOSO_ACTION_CUR` | XP, watchdog, HUD |
+| Open action / result identity | `result.ks` `AOSO_ACTION_CUR` | XP, watchdog |
 | Authority | `authority.ks` | steering wrappers, `aoso_staging_do` |
 | Warp deadlines | `warp.ks` | `aoso_warp_request` |
-| Cert / assure snapshots | `certify.ks` / `assurance.ks` | brain, HUD, tour launch |
+| Cert / assure snapshots | `certify.ks` / `assurance.ks` | brain, tour launch |
 | Surface executive phase | `surface/operations.ks` `AOSO_SURFACE_LAST` | tour REFUEL |
 | Checkpoints | `checkpoints.ks` | boot compare, mission resume |
-| CPU load | `observe.ks` | scheduler, HUD, brain |
+| CPU load | `observe.ks` | scheduler, brain |
 | Current system snapshot | `context.ks` `AOSO_CTX` | everyone (read) |
 | Replan policy | `brain.ks` | — |
 

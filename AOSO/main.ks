@@ -118,25 +118,12 @@ RUN ONCE "AOSO/core/brain".
 // --- Advanced --------------------------------------------------------------
 RUN ONCE "AOSO/advanced/docking".
 
-// --- Hardening & UX (Phase 12) ---------------------------------------------
+// --- Hardening -------------------------------------------------------------
 RUN ONCE "AOSO/hardening/watchdog".
-RUN ONCE "AOSO/ux/hud_fmt".
-RUN ONCE "AOSO/ux/hud_data".
-RUN ONCE "AOSO/ux/hud_alert".
-RUN ONCE "AOSO/ux/hud_fd".
-RUN ONCE "AOSO/ux/hud_twin".
-RUN ONCE "AOSO/ux/hud_twin_view".
-RUN ONCE "AOSO/ux/ui2_instruments".
-RUN ONCE "AOSO/ux/ui2_hud".
-RUN ONCE "AOSO/ux/ui2_mfd".
-RUN ONCE "AOSO/ux/ui2_plots".
-RUN ONCE "AOSO/ux/ui2_go".
-RUN ONCE "AOSO/ux/hud_gui".
-RUN ONCE "AOSO/ux/hud".
-RUN ONCE "AOSO/ux/telemetry".
+RUN ONCE "AOSO/core/telemetry".
 
 // Registers every subsystem's own automation task (auto-staging, power
-// management, checkpoint autosave) plus this phase's hardening/UX tasks.
+// management, checkpoint autosave) plus the hardening tasks.
 // Mission-layer/docking/descent/etc. tasks are step-specific and remain the
 // responsibility of whatever builds AOSO_MISSION_PLAN (or drives that FSM
 // directly), same as every prior phase.
@@ -147,7 +134,7 @@ FUNCTION aoso_main_register_tasks {
     aoso_checkpoints_register_task().
     aoso_watchdog_register_task().
     aoso_brain_register_task().
-    aoso_hud_register_task().
+
     aoso_telemetry_register_task().
 }
 
@@ -171,9 +158,9 @@ FUNCTION aoso_main {
         aoso_mission_plan_add(aoso_mission_step_grand_tour()).
         aoso_mission_register_task().
         // On the pad, leave the mission unstarted until the systems board
-        // is green and the operator presses LAUNCH. Off the pad, fly now.
+        // is green. Off the pad, fly now.
         IF aoso_launch_blocked() {
-            aoso_log_info("MAIN", "Prelaunch hold. Launch stays dark until every systems light is green.").
+            aoso_log_info("MAIN", "Prelaunch hold. Waiting until the systems board is green.").
         } ELSE {
             aoso_mission_start().
         }
@@ -192,14 +179,6 @@ FUNCTION aoso_main {
         SET AOSO_CPU_OP0 TO OPCODESLEFT.
         SET AOSO_CPU_RT0 TO KUNIVERSE:REALTIME.
         aoso_sched_run().
-        LOCAL hud_every IS aoso_config_get("HUD_FAST_EVERY", 2).
-        IF hud_every < 1 { SET hud_every TO 1. }
-        LOCAL hud_rem IS AOSO_TICK_N - FLOOR(AOSO_TICK_N / hud_every) * hud_every.
-        IF hud_rem = 0 {
-            // Leftover opcodes die at WAIT 0. Spend a small remainder on
-            // the instrument path even when the heavy HUD task has yielded.
-            IF OPCODESLEFT >= 100 { aoso_hud_fast_tick(). }
-        }
         aoso_observe_cpu_end().
         aoso_observe_idle().
         WAIT 0.

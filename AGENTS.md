@@ -18,7 +18,7 @@ under plugin/ and is built against the user's real KSP/kOS assemblies.
 ## Read the task-specific docs, not every doc
 
 Start with docs/AI_CONTEXT.md for KerboScript hazards and repo-wide rules.
-For the active Minmus/UI2 debugging cycle, docs/CODEX_HANDOFF.md contains the
+For the active Minmus debugging cycle, docs/CODEX_HANDOFF.md contains the
 current diagnosis, fixes already applied, and next-run acceptance signatures.
 
 Use:
@@ -31,9 +31,6 @@ Use:
 - docs/AOSO_NATIVE_ADDON.md for plugin/, ADDONS:AOSO, Lambert/porkchop/native work.
 - docs/AOSO_PERFORMANCE.md for scheduler/IPU/performance changes.
 - docs/AOSO_SCENARIOS.md for scenario/testing intent.
-- docs/AOSO_UI2.md for current UI v2 runtime ownership and safety invariants.
-- docs/AOSO_UI_V2.md is design/history context; AOSO_UI2.md is authoritative
-  if the two disagree.
 
 ## Non-negotiable KerboScript rules
 
@@ -42,8 +39,8 @@ Use:
 - Do not use locals/parameters named path, obt, note, alt, r, v, q, or status.
 - Do not write IF NOT DEFINED x; nest the DEFINED check.
 - Avoid recursive state transitions. Use queued FSM entry through core/state.ks.
-- UI code is display-only. It must never steer, throttle, stage, warp, retarget,
-  execute maneuvers, or change mission state.
+- There is no flight HUD. Do not add a display that competes with steering,
+  staging, or the mission for IPU.
 - ADDONS:* access belongs in AOSO/core/addons.ks. Other modules use wrappers.
 
 ## Warp / patched-conics invariants
@@ -93,7 +90,6 @@ For touched KerboScript:
 - scan for case-insensitive function/global collisions;
 - scan forbidden local/parameter names;
 - scan IF NOT DEFINED;
-- verify UI files contain no flight-control writes;
 - inspect direct callers when changing helper semantics.
 
 For flight/navigation fixes, identify the log signature that should disappear

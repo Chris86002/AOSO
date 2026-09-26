@@ -46,10 +46,10 @@ FUNCTION aoso_planechange_apply_to_node {
     LOCAL orig IS nd:NORMAL.
 
     SET nd:NORMAL TO orig + dv_mag.
-    aoso_yield_hud().
+    aoso_yield().
     LOCAL rel_p IS aoso_orbit_rel_inc_from_orbit(nd:ORBIT, target_orbitable).
     SET nd:NORMAL TO orig - dv_mag.
-    aoso_yield_hud().
+    aoso_yield().
     LOCAL rel_m IS aoso_orbit_rel_inc_from_orbit(nd:ORBIT, target_orbitable).
 
     LOCAL picked IS orig.
@@ -103,10 +103,10 @@ FUNCTION aoso_planechange_add_node_for_target {
             LOCAL nd_try IS NODE(t_ut, 0, 0, 0).
             ADD nd_try.
             SET nd_try:NORMAL TO dv_mag.
-            aoso_yield_hud().
+            aoso_yield().
             LOCAL rel_p IS aoso_orbit_rel_inc_from_orbit(nd_try:ORBIT, target_orbitable).
             SET nd_try:NORMAL TO -dv_mag.
-            aoso_yield_hud().
+            aoso_yield().
             LOCAL rel_m IS aoso_orbit_rel_inc_from_orbit(nd_try:ORBIT, target_orbitable).
             REMOVE nd_try.
 
@@ -174,10 +174,10 @@ FUNCTION aoso_planechange_add_node_for_inclination {
             LOCAL nd_try IS NODE(t_ut, 0, 0, 0).
             ADD nd_try.
             SET nd_try:NORMAL TO dv_mag.
-            aoso_yield_hud().
+            aoso_yield().
             LOCAL err_p IS ABS(nd_try:ORBIT:INCLINATION - target_inc_deg).
             SET nd_try:NORMAL TO -dv_mag.
-            aoso_yield_hud().
+            aoso_yield().
             LOCAL err_m IS ABS(nd_try:ORBIT:INCLINATION - target_inc_deg).
             REMOVE nd_try.
 
@@ -210,7 +210,7 @@ FUNCTION aoso_planechange_add_node_for_inclination {
 
     LOCAL nd IS NODE(TIME:SECONDS + best_eta, 0, best_normal, 0).
     ADD nd.
-    aoso_yield_hud().
+    aoso_yield().
     aoso_log_info("PLANECHANGE", "Inclination node added: dv=" + ROUND(best_normal, 1) +
         " m/s normal at v=" + ROUND(best_spd, 1) + " m/s, " + ROUND(inc_now, 1) + " -> pred " +
         ROUND(nd:ORBIT:INCLINATION, 1) + " deg (want " + ROUND(target_inc_deg, 0) + ").").

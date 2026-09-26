@@ -1,4 +1,4 @@
-// AOSO/ux/telemetry.ks
+// AOSO/core/telemetry.ks
 // Timed CSV telemetry. Separate from the human log (core/logger.ks) and
 // from structured events / the flight record (core/observe.ks).
 // Scheduler interval is 0.1 s; this module internally skips so AUTO is

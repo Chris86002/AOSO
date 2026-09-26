@@ -5,13 +5,10 @@
 //
 // Opcode budget: kOS gives CONFIG:IPU instructions per physics update.
 // If this function keeps calling tasks after TIME:SECONDS steps, leftover
-// resets to a full IPU and the next task spills again -- that is why the
-// HUD sat on CRITICAL with 2000+ spills. Stop the slice when the physics
-// clock moves or leftover is too low; due work runs on the next WAIT 0.
-// Flight tasks (goto/descent/staging/mission) go first. HUD/power need
-// leftover headroom. The main loop also paints HUD after the scheduler
-// so a slow glass cockpit cannot skip a burn. Telemetry and profile yield
-// first.
+// resets to a full IPU and the next task spills again. Stop the slice when
+// the physics clock moves or leftover is too low; due work runs on the next
+// WAIT 0. Flight tasks (goto/descent/staging/mission) go first. Power,
+// telemetry, and profile yield on leftover headroom.
 //
 // Snapshot rebuilt only when the task list mutates (GOTO PLAN, descent).
 
@@ -27,7 +24,7 @@ FUNCTION aoso_sched_prio_of {
     IF name = "mission" { RETURN 0. }
     IF name = "launch_hold" { RETURN 0. }
     IF name = "watchdog" { RETURN 0. }
-    IF name = "hud" { RETURN 2. }
+
     IF name = "auto_power" { RETURN 1. }
     IF name = "brain" { RETURN 2. }
     IF name = "telemetry" { RETURN 2. }
@@ -44,7 +41,7 @@ FUNCTION aoso_sched_floor_of {
     IF name = "watchdog" { RETURN 40. }
     IF name = "mission" { RETURN 80. }
     IF name = "launch_hold" { RETURN 80. }
-    IF name = "hud" { RETURN 80. }
+
     IF name = "brain" { RETURN 200. }
     IF name = "auto_power" {
         IF DEFINED AOSO_POWER_SPACE_DONE {
@@ -63,7 +60,7 @@ FUNCTION aoso_sched_phase_of {
     IF name = "auto_staging" { RETURN 0. }
     IF name = "mission" { RETURN 0.04. }
     IF name = "launch_hold" { RETURN 0.16. }
-    IF name = "hud" { RETURN 0.07. }
+
     IF name = "brain" { RETURN 0.22. }
     IF name = "telemetry" { RETURN 0.12. }
     IF name = "auto_power" { RETURN 0.35. }
@@ -80,7 +77,6 @@ FUNCTION aoso_sched_rebuild_snap {
         "auto_staging",
         "mission",
         "watchdog",
-        "hud",
         "launch_hold",
         "auto_power",
         "brain",
@@ -163,9 +159,6 @@ FUNCTION aoso_sched_keep {
         }
         RETURN aoso_cpu_allow(1).
     }
-    // Heavy HUD refresh yields when the frame is already critical. The
-    // cheap instrument path in main still runs on leftover opcodes.
-    IF name = "hud" { RETURN aoso_cpu_allow(2). }
     IF name = "brain" { RETURN aoso_cpu_allow(2). }
     IF name = "telemetry" {
         IF DEFINED AOSO_POST_LEFT {

@@ -313,19 +313,16 @@ FUNCTION aoso_interplanetary_add_native_ejection_node {
     LOCAL i IS 0.
     UNTIL i >= n_try {
         LOCAL cand IS cands[i].
-        aoso_ui_pulse("Validating planetary transfer",
-            arr_body:NAME + " " + (i + 1) + "/" + n_try +
-            "  est " + ROUND(cand["total_dv"], 0) + " m/s").
+
         LOCAL nd IS aoso_interplanetary_add_candidate_ejection_node(arr_body, cand).
         IF nd:ISTYPE("Node") {
-            aoso_ui_clear().
+
             RETURN nd.
         }
         SET i TO i + 1.
         WAIT 0.
     }
 
-    aoso_ui_clear().
     aoso_log_warn("EJECTION", "Native planetary porkchop had " + cands:LENGTH +
         " finalists but none survived stock patched-conic validation. Falling back to Hohmann window logic.").
     RETURN 0.

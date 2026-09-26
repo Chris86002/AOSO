@@ -187,31 +187,6 @@ FUNCTION aoso_ascent_opt_pick_next_speed {
     RETURN -1.
 }
 
-FUNCTION aoso_ascent_opt_hud {
-    LOCAL row IS aoso_ascent_opt_row().
-    LOCAL mode IS AOSO_ASCENT_OPT["applied_mode"].
-    LOCAL spd IS AOSO_ASCENT_OPT["applied_speed"].
-    LOCAL n IS row["trials"]:LENGTH.
-    LOCAL max_n IS aoso_config_get("ASCENT_OPT_MAX_TRIALS", 6).
-    LOCAL best_txt IS "none".
-    IF row["best"]:HASKEY("orbit_lf") {
-        IF row["best"]:HASKEY("turn_speed") {
-            SET best_txt TO "s" + ROUND(row["best"]["turn_speed"], 0) + " LF=" + ROUND(row["best"]["orbit_lf"], 0).
-        }
-    }
-    IF spd < 0 { RETURN "Ascent opt " + row["status"] + " n=" + n + "/" + max_n + " best " + best_txt. }
-    LOCAL aero_txt IS "".
-    IF SHIP:BODY:ATM:EXISTS {
-        IF ALTITUDE < SHIP:BODY:ATM:HEIGHT {
-            LOCAL drag_kn IS aoso_aero_drag_kn().
-            LOCAL drag_txt IS "-".
-            IF drag_kn >= 0 { SET drag_txt TO ROUND(drag_kn, 1) + "kN". }
-            SET aero_txt TO "  Q=" + ROUND(SHIP:Q, 3) + " AoA=" + ROUND(aoso_aero_aoa(), 1) + " drag=" + drag_txt.
-        }
-    }
-    RETURN "Ascent " + mode + " s" + ROUND(spd, 0) + "  " + n + "/" + max_n + " best " + best_txt + aero_txt.
-}
-
 // Decide the start speed for this flight. Called from LIFTOFF after the
 // CoM heuristic has filled data["pitchover_speed"].
 FUNCTION aoso_ascent_opt_apply {

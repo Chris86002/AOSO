@@ -97,5 +97,5 @@ FUNCTION aoso_safe_hold {
     SET AOSO_AUTH_WHO TO "".
     aoso_log_warn("HOLD", reason).
     IF DEFINED AOSO_EVENTS { aoso_event_publish("HOLD", "safe", reason). }
-    aoso_ui_set("HOLD", reason).
+
 }

@@ -93,9 +93,9 @@ FUNCTION aoso_maneuver_peri_unsafe {
 FUNCTION aoso_warp_force_rails {
     IF WARPMODE = "RAILS" { RETURN. }
     SET WARP TO 0.
-    aoso_yield_hud().
+    aoso_yield().
     SET WARPMODE TO "RAILS".
-    aoso_yield_hud().
+    aoso_yield().
 }
 
 // Rails -> physics is not instantaneous in KSP. A large vessel can remain
@@ -451,7 +451,7 @@ FUNCTION aoso_maneuver_finish_node {
     }
 
     SET WARP TO 0.
-    aoso_yield_hud().
+    aoso_yield().
     SET WARPMODE TO "RAILS".
     aoso_throttle_set(0).
     RCS OFF.

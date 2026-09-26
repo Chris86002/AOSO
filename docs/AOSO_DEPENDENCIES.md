@@ -18,7 +18,7 @@ constants → json → logger → addons → config
 → return → precision
 → checkpoints → feasibility → project → matrix → windows → score → route → planner
 → certify → assurance → goto → tour → mission → brain
-→ docking → watchdog → HUD → telemetry
+→ docking → watchdog → telemetry
 ```
 
 Function bodies may call later modules. Load-time code must not.
@@ -71,7 +71,7 @@ DIRTY FLAGS / REPLAN
 |---|---|---|
 | goto, descent, auto_staging, mission, watchdog | 0 | flight |
 | auto_power | 1 | until space deploy done |
-| hud, brain, telemetry | 2 | shed at CRITICAL |
+| brain, telemetry | 2 | shed at CRITICAL |
 | vehicle_profile, checkpoint_autosave | 3 | shed at RED |
 
 Brain interval 2 s. It drains at most 4 events per tick.

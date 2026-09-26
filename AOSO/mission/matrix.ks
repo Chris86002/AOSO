@@ -101,13 +101,13 @@ FUNCTION aoso_matrix_build {
     LOCAL n_orbit IS 0.
     LOCAL n_skip IS 0.
     FOR dest_name IN catalog {
-        aoso_ui_pulse("Planning tour", "Scoring " + dest_name).
+
         LOCAL row IS aoso_matrix_row(dest_name).
         SET rows[dest_name] TO row.
         IF row["result"] = "FEASIBLE" { SET n_yes TO n_yes + 1. }
         IF row["result"] = "ORBIT_ONLY" { SET n_orbit TO n_orbit + 1. }
         IF row["result"] = "SKIP" { SET n_skip TO n_skip + 1. }
-        aoso_yield_hud().
+        aoso_yield().
     }
     SET AOSO_MATRIX_LAST TO LEXICON(
         "rows", rows,

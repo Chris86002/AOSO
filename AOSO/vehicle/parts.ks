@@ -116,7 +116,7 @@ FUNCTION aoso_parts_scan {
 
     // Live lit/flameout counts only. Structural roles/order live in
     // topology.ks (AOSO_TOPO layers). This walk is not a second structural
-    // truth — it is a dynamic ignition census for HUD/staging sense.
+    // truth — it is a dynamic ignition census for staging.
     LOCAL groups IS LEXICON().
     FOR e IN elist {
         LOCAL d IS e:DECOUPLEDIN.

@@ -972,7 +972,7 @@ FUNCTION aoso_ascent_start {
     IF aoso_launch_blocked() {
         IF NOT AOSO_LAUNCH_INHIBIT_LOG {
             SET AOSO_LAUNCH_INHIBIT_LOG TO TRUE.
-            aoso_log_warn("ASCENT", "Launch inhibited. The pad button is not armed.").
+            aoso_log_warn("ASCENT", "Launch inhibited. Pad systems are not green.").
         }
         RETURN.
     }
@@ -1046,7 +1046,7 @@ FUNCTION aoso_ascent_update {
     IF st <> "" {
         IF st <> "DONE" {
             IF st <> "ABORTED" {
-                aoso_ui_set("Ascent  " + st, "ap " + ROUND(APOAPSIS, 0) + "  pe " + ROUND(PERIAPSIS, 0)).
+
                 LOCAL p IS 0.1.
                 IF st = "GRAVITY_TURN" { SET p TO 0.35. }
                 IF st = "COAST" { SET p TO 0.65. }
