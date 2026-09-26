@@ -12,6 +12,7 @@
 
 GLOBAL AOSO_GOTO IS aoso_state_new_machine().
 GLOBAL AOSO_WANT_POLAR IS FALSE.
+GLOBAL AOSO_WANT_POLAR_BODY IS "".
 
 FUNCTION aoso_goto_parking_alt {
     PARAMETER b.
@@ -337,7 +338,7 @@ FUNCTION aoso_goto_plan_entry {
                         IF ndc <> 0 {
                             SET data["corrected"] TO TRUE.
                             SET data["correct_count"] TO ncorr + 1.
-                            aoso_log_info("GOTO", "Patch to " + np + " has a poor PE - mid-course correction " + data["correct_count"] + "/" + ROUND(aoso_config_get("GOTO_CORRECT_MAX", 5), 0) + ".").
+                            aoso_log_info("GOTO", "Patch to " + np + " needs PE/polar approach correction " + data["correct_count"] + "/" + ROUND(aoso_config_get("GOTO_CORRECT_MAX", 5), 0) + ".").
                             SET data["burn_kind"] TO "correct".
                             aoso_state_transition(AOSO_GOTO, "BURN").
                             RETURN.
@@ -856,7 +857,7 @@ FUNCTION aoso_goto_coast_execute {
                         LOCAL ndc IS aoso_rendezvous_add_correction_node(hop_check).
                         IF ndc <> 0 {
                             SET data["correct_count"] TO ncorr + 1.
-                            aoso_log_info("GOTO", "Patch PE is not a capture altitude - mid-course correction " + data["correct_count"] + "/" + ROUND(aoso_config_get("GOTO_CORRECT_MAX", 5), 0) + ".").
+                            aoso_log_info("GOTO", "Patch needs PE/polar approach correction " + data["correct_count"] + "/" + ROUND(aoso_config_get("GOTO_CORRECT_MAX", 5), 0) + ".").
                             SET data["burn_kind"] TO "correct".
                             aoso_state_transition(AOSO_GOTO, "BURN").
                             RETURN.
@@ -1252,6 +1253,8 @@ FUNCTION aoso_goto_define_states {
 FUNCTION aoso_goto_start {
     PARAMETER body_name.
     aoso_goto_define_states().
+    SET AOSO_WANT_POLAR_BODY TO "".
+    IF AOSO_WANT_POLAR { SET AOSO_WANT_POLAR_BODY TO body_name. }
     SET AOSO_GOTO["data"] TO LEXICON("goal", body_name, "hop", "", "burn_kind", "", "depart_body", SHIP:BODY:NAME, "window_ut", 0, "coast_since", 0, "retry_ut", 0, "corrected", FALSE, "correct_count", 0, "last_patch_ut", 0, "expect_body", "", "expect_ut", 0, "patch_lost_ut", 0, "capture_fails", 0, "skip_capture", FALSE, "unexpected_patch_body", "", "unexpected_patch_count", 0, "unexpected_patch_active", FALSE).
     aoso_log_info("GOTO", "Navigating to " + body_name + ".").
     // TRANSFER begins in PLAN once the vessel is actually in flight and
@@ -1313,4 +1316,3 @@ FUNCTION aoso_goto_is_done {
 FUNCTION aoso_goto_is_aborted {
     RETURN AOSO_GOTO["current"] = "ABORTED".
 }
-
