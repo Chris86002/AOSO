@@ -84,6 +84,13 @@ FUNCTION aoso_rendezvous_node_hits_body {
     LOCAL cur IS nd:ORBIT.
 
     IF aoso_rendezvous_requires_direct_child_patch(hop) {
+        // A moon patch can hide a later impact with the parent. Never commit
+        // a phasing orbit whose parent periapsis is inside the atmosphere.
+        LOCAL parent_floor IS 5000.
+        IF SHIP:BODY:ATM:EXISTS {
+            SET parent_floor TO SHIP:BODY:ATM:HEIGHT + 10000.
+        }
+        IF cur:PERIAPSIS < parent_floor { RETURN FALSE. }
         IF NOT cur:HASNEXTPATCH { RETURN FALSE. }
         RETURN cur:NEXTPATCH:BODY:NAME = hop:NAME.
     }
@@ -1189,9 +1196,15 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
         LOCAL hit_a IS aoso_rendezvous_search_apo_passages(nd_a, target_orbitable).
         IF hit_a {
             aoso_rendezvous_tune_pe(nd_a, target_orbitable).
-            LOCAL pe_a IS aoso_rendezvous_orbit_pe(nd_a:ORBIT, target_orbitable).
-            aoso_log_info("RENDEZVOUS", "Encounter with " + target_orbitable:NAME + " in " + ROUND(nd_a:ETA, 0) + "s dv=" + ROUND(nd_a:PROGRADE, 1) + " m/s patchPE=" + ROUND(pe_a, 0) + " m.").
-            RETURN nd_a.
+            aoso_rendezvous_settle().
+            IF aoso_rendezvous_node_hits_body(nd_a, target_orbitable) {
+                LOCAL pe_a IS aoso_rendezvous_orbit_pe(nd_a:ORBIT, target_orbitable).
+                IF aoso_rendezvous_pe_rough_ok_value(pe_a, target_orbitable) {
+                    aoso_log_info("RENDEZVOUS", "Encounter with " + target_orbitable:NAME + " in " + ROUND(nd_a:ETA, 0) + "s dv=" + ROUND(nd_a:PROGRADE, 1) + " m/s patchPE=" + ROUND(pe_a, 0) + " m.").
+                    RETURN nd_a.
+                }
+            }
+            aoso_log_warn("RENDEZVOUS", "Phasing tune lost a safe direct encounter - waiting for another window.").
         }
         aoso_log_warn("RENDEZVOUS", "No " + target_orbitable:NAME + " patch on this ellipse this synodic - not burning a second Hohmann. Will wait.").
         REMOVE nd_a.
@@ -1659,3 +1672,4 @@ FUNCTION aoso_rendezvous_add_correction_node {
     aoso_log_info("RENDEZVOUS", "Mid-course correction dv=" + ROUND(nd:DELTAV:MAG, 1) + " m/s, PE " + ROUND(pe_now, 0) + " -> " + ROUND(aoso_rendezvous_orbit_pe(nd:ORBIT, hop), 0) + "m.").
     RETURN nd.
 }
+
