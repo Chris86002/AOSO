@@ -28,6 +28,8 @@ GLOBAL AOSO_MANEUVER_APO_CAP IS -1.
 GLOBAL AOSO_MANEUVER_CUT_BODY IS "".
 GLOBAL AOSO_WARP_LAST_KEY IS "".
 GLOBAL AOSO_WARP_LAST_RT IS -1.
+GLOBAL AOSO_WARP_IDLE_SINCE IS 0.
+GLOBAL AOSO_WARP_IDLE_LOGGED IS FALSE.
 
 FUNCTION aoso_maneuver_reset_exec {
     SET AOSO_MANEUVER_BURNING TO FALSE.
@@ -109,13 +111,32 @@ FUNCTION aoso_warp_force_rails {
 FUNCTION aoso_warp_ensure_physics_idle {
     IF WARP > 0 {
         SET WARP TO 0.
+        SET AOSO_WARP_IDLE_SINCE TO 0.
         RETURN FALSE.
     }
     IF WARPMODE <> "PHYSICS" {
         SET WARPMODE TO "PHYSICS".
+        SET AOSO_WARP_IDLE_SINCE TO 0.
         RETURN FALSE.
     }
-    IF NOT KUNIVERSE:TIMEWARP:ISSETTLED { RETURN FALSE. }
+    IF KUNIVERSE:TIMEWARP:ISSETTLED {
+        SET AOSO_WARP_IDLE_SINCE TO 0.
+        SET AOSO_WARP_IDLE_LOGGED TO FALSE.
+        RETURN TRUE.
+    }
+    // Acacius circularize: rails cancel left ISSETTLED false for 165 s
+    // while the ship was already simulating at 1x. The node was added
+    // after apoapsis. RATE <= 1 means UT is not being warped.
+    IF KUNIVERSE:TIMEWARP:RATE > 1.01 {
+        SET AOSO_WARP_IDLE_SINCE TO 0.
+        RETURN FALSE.
+    }
+    IF AOSO_WARP_IDLE_SINCE <= 0 { SET AOSO_WARP_IDLE_SINCE TO TIME:SECONDS. }
+    IF TIME:SECONDS - AOSO_WARP_IDLE_SINCE < 1.5 { RETURN FALSE. }
+    IF NOT AOSO_WARP_IDLE_LOGGED {
+        SET AOSO_WARP_IDLE_LOGGED TO TRUE.
+        aoso_log_info("WARP", "Physics 1x idle accepted with ISSETTLED still false.").
+    }
     RETURN TRUE.
 }
 
@@ -253,7 +274,8 @@ FUNCTION aoso_warp_approach {
         LOCAL precision_transition IS FALSE.
         IF WARP > 0 { SET precision_transition TO TRUE. }
         IF WARPMODE <> "PHYSICS" { SET precision_transition TO TRUE. }
-        IF NOT KUNIVERSE:TIMEWARP:ISSETTLED { SET precision_transition TO TRUE. }
+        // Stuck ISSETTLED is not unpack. Unlocking on that flag and then
+        // locking again once the 1x idle fallback accepts is a steer storm.
         IF precision_transition {
             IF AOSO_STEER_MODE <> "OFF" { aoso_steer_release(). }
         }
@@ -279,7 +301,9 @@ FUNCTION aoso_warp_approach {
     IF want <= 0 {
         LOCAL align_transition IS FALSE.
         IF WARPMODE <> "PHYSICS" { SET align_transition TO TRUE. }
-        IF NOT KUNIVERSE:TIMEWARP:ISSETTLED { SET align_transition TO TRUE. }
+        IF WARP > 0 { SET align_transition TO TRUE. }
+        // A stuck ISSETTLED flag is not unpack. Unlocking on that flag
+        // left this stack with a constant pitch rate through apoapsis.
         IF align_transition {
             IF AOSO_STEER_MODE <> "OFF" { aoso_steer_release(). }
         }
@@ -354,6 +378,15 @@ FUNCTION aoso_maneuver_add_circularize_at_apoapsis {
         aoso_log_warn("MANEUVER", "No apoapsis on a hyperbola - circularizing at periapsis instead.").
         RETURN aoso_hohmann_add_circularize_at_periapsis().
     }
+    // ETA:APOAPSIS wraps a full period once this apoapsis is behind us.
+    // A node on the next apoapsis then rails-warps through an atmospheric
+    // periapsis (Acacius pe 42 km, T-1702 s). Burn at the current radius.
+    IF ETA:APOAPSIS > ETA:PERIAPSIS {
+        IF aoso_maneuver_peri_unsafe(0) {
+            aoso_log_warn("MANEUVER", "Apoapsis already passed with periapsis in atmosphere - circularizing now.").
+            RETURN aoso_maneuver_add_circularize_here().
+        }
+    }
     LOCAL dv IS aoso_maneuver_circularize_dv_at_apoapsis().
     LOCAL nd IS NODE(TIME:SECONDS + aoso_orbit_eta_apoapsis(), 0, 0, dv).
     ADD nd.
@@ -371,7 +404,7 @@ FUNCTION aoso_maneuver_add_circularize_here {
     LOCAL v_circ IS SQRT(mu / radius).
     LOCAL v_now IS SQRT(MAX(0, mu * (2 / radius - 1 / sma))).
     LOCAL dv IS v_circ - v_now.
-    LOCAL nd IS NODE(TIME:SECONDS + 30, 0, 0, dv).
+    LOCAL nd IS NODE(TIME:SECONDS + 45, 0, 0, dv).
     ADD nd.
     aoso_log_info("MANEUVER", "Circularization node added: dv=" + ROUND(dv, 1) + " m/s now (past apoapsis).").
     RETURN nd.
@@ -524,6 +557,7 @@ FUNCTION aoso_maneuver_finish_node {
 // keep burning until peri is out of the air.
 // Returns TRUE once there is no pending node left, FALSE while in progress.
 FUNCTION aoso_maneuver_execute_next {
+    PARAMETER allow_rails IS TRUE.
     IF NOT HASNODE {
         IF AOSO_MANEUVER_BURNING { aoso_maneuver_reset_exec(). }
         RETURN TRUE.
@@ -615,6 +649,22 @@ FUNCTION aoso_maneuver_execute_next {
         // Equal prio cannot preempt. Ascent circularize must
         // aoso_ascent_yield_burn() before calling us or throttle stays 0.
 
+        // A node on the far side of an atmospheric periapsis must not
+        // rails-warp. Ascent replaces that node; until it does, hold
+        // prograde in physics and do not advance UT.
+        IF aoso_maneuver_peri_unsafe(0) {
+            IF nd:ETA > ETA:PERIAPSIS {
+                SET WARP TO 0.
+                aoso_throttle_set(0).
+                IF WARPMODE = "PHYSICS" {
+                    aoso_steer_prepare_for_burn().
+                    aoso_steer_to_vector(SHIP:VELOCITY:ORBIT).
+                }
+                aoso_log_every(10, "MANEUVER", "Not warping through atmospheric periapsis (node ETA " + ROUND(nd:ETA, 0) + "s).").
+                RETURN FALSE.
+            }
+        }
+
         // Let the warp controller decide the phase BEFORE commanding
         // steering. If rails is still appropriate, aoso_warp_approach()
         // releases steering once and we leave it released. Only after the
@@ -623,7 +673,22 @@ FUNCTION aoso_maneuver_execute_next {
         // The old warp_lead+5 split locked steering while the rails selector
         // could still return 5x. Each scheduler tick then did LOCK -> UNLOCK
         // STEERING and could also force a rails/physics transition.
-        LOCAL wstate IS aoso_warp_request(nd:ETA, warp_lead, physics_until).
+        // Ascent circularize passes allow_rails FALSE so the unpack that
+        // already happened is not repeated inside the align window.
+        LOCAL wstate IS "physics".
+        IF allow_rails {
+            SET wstate TO aoso_warp_request(nd:ETA, warp_lead, physics_until).
+        } ELSE {
+            // Stay in physics. Do not lock steering until idle says the
+            // vessel is unpacked — a lock during the rails exit is rejected
+            // and toggles fly-by-wire every tick.
+            IF NOT aoso_warp_ensure_physics_idle() {
+                aoso_throttle_set(0).
+                RETURN FALSE.
+            }
+            IF nd:ETA <= physics_until { SET wstate TO "now". }
+            ELSE { SET wstate TO "physics". }
+        }
         IF wstate = "rails" OR wstate = "transition" {
             RCS OFF.
             aoso_throttle_set(0).
