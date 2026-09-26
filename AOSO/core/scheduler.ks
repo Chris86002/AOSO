@@ -4,11 +4,9 @@
 // is called once per main-loop tick and dispatches due work.
 //
 // Opcode budget: kOS gives CONFIG:IPU instructions per physics update.
-// If this function keeps calling tasks after TIME:SECONDS steps, leftover
-// resets to a full IPU and the next task spills again. Stop the slice when
-// the physics clock moves or leftover is too low; due work runs on the next
-// WAIT 0. Flight tasks (goto/descent/staging/mission) go first. Power,
-// telemetry, and profile yield on leftover headroom.
+// At rails warp TIME:SECONDS advances between flight tasks on nearly every
+// update. Always dispatch due priority-0 flight tasks before yielding the
+// slice. Power, telemetry, and profile still yield on clock/headroom limits.
 //
 // Snapshot rebuilt only when the task list mutates (GOTO PLAN, descent).
 
@@ -187,10 +185,14 @@ FUNCTION aoso_sched_run {
         }
     }
     FOR t IN snap {
-        IF TIME:SECONDS <> start_ut { RETURN. }
+        IF t["prio"] > 0 {
+            IF TIME:SECONDS <> start_ut { RETURN. }
+        }
         LOCAL left0 IS OPCODESLEFT.
         IF ran > 0 {
-            IF left0 < room { RETURN. }
+            IF t["prio"] > 0 {
+                IF left0 < room { RETURN. }
+            }
         } ELSE {
             IF left0 < 50 { RETURN. }
         }
@@ -243,8 +245,9 @@ FUNCTION aoso_sched_run {
                         SET t["sum_op"] TO t["sum_op"] + used_op.
                         IF used_op > t["max_op"] { SET t["max_op"] TO used_op. }
                     }
-                    IF TIME:SECONDS <> start_ut { RETURN. }
-                    IF OPCODESLEFT < room { RETURN. }
+                    // The next task decides whether the remaining slice is
+                    // enough. A rails clock step must not starve mission
+                    // after auto_staging has run.
                 } ELSE {
                     IF NOT keep_it {
                         SET t["next_run"] TO now + t["interval"].
