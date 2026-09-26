@@ -278,10 +278,18 @@ FUNCTION aoso_tour_goto_execute {
 
 FUNCTION aoso_tour_polar_entry {
     PARAMETER data.
-    SET WARP TO 0.
-    aoso_throttle_set(0).
-    aoso_maneuver_clear_all().
     SET data["polar_warp_logged"] TO FALSE.
+    SET data["polar_ready"] TO FALSE.
+    aoso_throttle_set(0).
+    // Do not SET WARP here. clear_all drops to physics 1x on its own and
+    // returns FALSE on the tick it changes warp, so REMOVE cannot run
+    // against an unsettled patched-conic solver.
+    IF NOT aoso_maneuver_clear_all() {
+        aoso_log_every(10, "POLAR_IDLE", "Polar entry waiting for physics 1x before node changes.").
+        SET AOSO_TOUR["need_entry"] TO TRUE.
+        RETURN.
+    }
+    SET data["polar_ready"] TO TRUE.
 
     IF SHIP:STATUS = "LANDED" {
         aoso_state_transition(AOSO_TOUR, "REFUEL").
@@ -353,7 +361,9 @@ FUNCTION aoso_tour_polar_entry {
                 aoso_log_info("TOUR", "Raising AP to " + ROUND(high_ap, 0) + "m before polar plane-change (cheap at low speed, not 140 m/s at circular PE).").
                 LOCAL nd_ap IS aoso_hohmann_add_apoapsis_change(high_ap).
                 IF nd_ap = 0 {
-                    aoso_state_transition(AOSO_TOUR, "SCAN").
+                    aoso_log_warn_every(15, "POLAR_AP", "Could not raise apoapsis before the polar plane-change at " + SHIP:BODY:NAME + " (inc " + ROUND(SHIP:ORBIT:INCLINATION, 1) + " deg). Not scanning an equatorial orbit.").
+                    SET data["polar_ready"] TO FALSE.
+                    SET AOSO_TOUR["need_entry"] TO TRUE.
                 }
                 RETURN.
             }
@@ -361,7 +371,9 @@ FUNCTION aoso_tour_polar_entry {
         aoso_log_info("TOUR", "Plane-changing to polar (" + ROUND(SHIP:ORBIT:INCLINATION, 1) + " -> " + tgt + " deg) at the slow node.").
         LOCAL nd_p IS aoso_planechange_add_node_for_inclination(tgt, aoso_config_get("TOUR_POLAR_TOLERANCE_DEG", 5)).
         IF nd_p = 0 {
-            aoso_state_transition(AOSO_TOUR, "SCAN").
+            aoso_log_warn_every(15, "POLAR_NODE", "No polar plane-change node yet at " + SHIP:BODY:NAME + " (inc " + ROUND(SHIP:ORBIT:INCLINATION, 1) + " deg). Not scanning until inclination is near " + ROUND(tgt, 0) + " deg.").
+            SET data["polar_ready"] TO FALSE.
+            SET AOSO_TOUR["need_entry"] TO TRUE.
         }
         RETURN.
     }
@@ -372,6 +384,9 @@ FUNCTION aoso_tour_polar_entry {
 
 FUNCTION aoso_tour_polar_execute {
     PARAMETER data.
+    IF data:HASKEY("polar_ready") {
+        IF NOT data["polar_ready"] { RETURN. }
+    }
     IF aoso_fuel_abort_check() {
         aoso_state_abort(AOSO_TOUR).
         RETURN.

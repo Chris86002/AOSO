@@ -954,10 +954,27 @@ FUNCTION aoso_maneuver_execute_next {
 }
 
 FUNCTION aoso_maneuver_clear_all {
-    UNTIL NOT HASNODE {
-        REMOVE NEXTNODE.
+    // Node deletes are illegal on the same tick as a warp or warp-mode
+    // change. polar_entry used to SET WARP TO 0 and then loop REMOVE
+    // NEXTNODE; that threw inside this function (tour.ks caller) and the
+    // Minmus polar raise never started. Idle first, and never spin if
+    // HASNODE stays true after a delete.
+    IF NOT aoso_warp_ensure_physics_idle() {
+        RETURN FALSE.
+    }
+    LOCAL nd_clear IS 0.
+    LOCAL n_clear IS 0.
+    UNTIL (NOT HASNODE) OR (n_clear >= 8) {
+        SET nd_clear TO NEXTNODE.
+        REMOVE nd_clear.
+        SET n_clear TO n_clear + 1.
+    }
+    IF HASNODE {
+        aoso_log_warn_every(5, "NODE_CLEAR", "Node clear stopped after " + n_clear + " removes; HASNODE still true.").
+        RETURN FALSE.
     }
     aoso_warp_deadline_clear("node").
     aoso_maneuver_reset_exec().
     aoso_maneuver_clear_apo_cap().
+    RETURN TRUE.
 }

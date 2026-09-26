@@ -239,10 +239,11 @@ FUNCTION aoso_goto_ensure_transfer_action {
 
 FUNCTION aoso_goto_on_abort {
     PARAMETER data.
-    SET WARP TO 0.
     aoso_throttle_set(0).
     aoso_steer_release().
-    aoso_maneuver_clear_all().
+    IF NOT aoso_maneuver_clear_all() {
+        aoso_log_warn("GOTO", "Abort left maneuver nodes in place - physics was not idle.").
+    }
     aoso_state_transition(AOSO_GOTO, "ABORTED").
 }
 
