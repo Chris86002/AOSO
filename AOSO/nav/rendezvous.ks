@@ -1654,7 +1654,12 @@ FUNCTION aoso_rendezvous_add_correction_node {
 
     LOCAL nd IS NODE(TIME:SECONDS + t_corr, 0, 0, 0).
     ADD nd.
-    aoso_rendezvous_tune_pe(nd, hop).
+    LOCAL tuned IS aoso_rendezvous_tune_pe(nd, hop).
+    IF NOT tuned {
+        aoso_log_warn("RENDEZVOUS", "Mid-course tune did not reach a safe capture PE - leaving the coast as-is.").
+        REMOVE nd.
+        RETURN 0.
+    }
     IF NOT aoso_rendezvous_node_hits_body(nd, hop) {
         aoso_log_warn("RENDEZVOUS", "Mid-course tune lost the " + hop:NAME + " patch - leaving the coast as-is.").
         REMOVE nd.
@@ -1672,4 +1677,5 @@ FUNCTION aoso_rendezvous_add_correction_node {
     aoso_log_info("RENDEZVOUS", "Mid-course correction dv=" + ROUND(nd:DELTAV:MAG, 1) + " m/s, PE " + ROUND(pe_now, 0) + " -> " + ROUND(aoso_rendezvous_orbit_pe(nd:ORBIT, hop), 0) + "m.").
     RETURN nd.
 }
+
 
