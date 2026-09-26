@@ -132,6 +132,9 @@ FUNCTION aoso_steer_release {
     // each tick, so make release idempotent and avoid thousands of redundant
     // fly-by-wire disable operations during long/high-warp coasts.
     IF AOSO_STEER_MODE = "OFF" { RETURN. }
+    SET SHIP:CONTROL:PITCH TO 0.
+    SET SHIP:CONTROL:YAW TO 0.
+    SET SHIP:CONTROL:ROLL TO 0.
     UNLOCK STEERING.
     SET AOSO_STEER_MODE TO "OFF".
 }

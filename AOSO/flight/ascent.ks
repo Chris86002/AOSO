@@ -677,7 +677,7 @@ FUNCTION aoso_ascent_turn_execute {
     // Waiting for 0.92*atm kept the gravity-turn burn alive and lofted
     // apo from ~80 km to hundreds of km on the way out of the air.
     aoso_throttle_set(0).
-    aoso_log_info("ASCENT", "Apo " + ROUND(APOAPSIS, 0) + "m >= target " + ROUND(data["target_apo"], 0) + "m - cutting throttle, coasting (pitch program unchanged).").
+    aoso_log_info("ASCENT", "Apo " + ROUND(APOAPSIS, 0) + "m >= target " + ROUND(data["target_apo"], 0) + "m - cutting throttle, coasting. Circ align is BURNVECTOR at 1x.").
     aoso_state_transition(AOSO_ASCENT, "COAST").
 }
 
@@ -715,21 +715,23 @@ FUNCTION aoso_ascent_coast_execute {
     // for the shedable power task -- CPU HIGH during coast used to skip
     // this until Minmus.
     aoso_power_on_space().
-
-    // Circularization attitude: east and horizontal. Prograde while
-    // still climbing is pitched up; rails warp then freezes the wrong
-    // inertial facing. Point at the burn before we warp.
-    aoso_steer_heading_pitch_noroll(data["heading"], 0).
     aoso_staging_auto_check().
     IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
 
     // Hold the ascent target against drag; never push apo past it.
+    // Steer only while this small burn is active. The old compass lock
+    // (launch heading, pitch 0) ran on the same ticks as rails unpack
+    // and physics 2x, yawed through east, and the node was missed.
     IF APOAPSIS < data["target_apo"] {
         SET WARP TO 0.
         aoso_throttle_set(0.12).
-    } ELSE {
-        aoso_throttle_set(0).
+        aoso_steer_heading_pitch_noroll(data["heading"], 0).
+        IF aoso_fuel_abort_check() {
+            aoso_state_abort(AOSO_ASCENT).
+        }
+        RETURN.
     }
+    aoso_throttle_set(0).
 
     IF aoso_fuel_abort_check() {
         aoso_state_abort(AOSO_ASCENT).
@@ -747,48 +749,58 @@ FUNCTION aoso_ascent_coast_execute {
     LOCAL lead_s IS burn_time / 2.
     LOCAL align_s IS aoso_maneuver_align_s().
 
-    IF ETA:APOAPSIS > (lead_s + align_s + 5) {
-        LOCAL wst IS aoso_warp_approach(ETA:APOAPSIS, lead_s + align_s, lead_s + aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
-        RETURN.
-    }
-    SET WARP TO 0.
-
-    IF ETA:APOAPSIS <= (lead_s + align_s) {
+    // Rails 5x ends min_remain(1)=15s before the align lead (T-66 on a
+    // T-51 lead). Hand off before that gap so maneuver can create the
+    // node and lock BURNVECTOR at 1x. +20 covers the floor plus settle.
+    IF ETA:APOAPSIS <= (lead_s + align_s + 20) {
         SET data["circ_now"] TO FALSE.
         aoso_throttle_set(0).
         aoso_state_transition(AOSO_ASCENT, "CIRCULARIZE").
+        RETURN.
     }
+
+    aoso_warp_approach(ETA:APOAPSIS, lead_s + align_s, lead_s + aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
 }
 
 FUNCTION aoso_ascent_circularize_entry {
     PARAMETER data.
     SET WARP TO 0.
     aoso_throttle_set(0).
+    // Drop the coast compass lock before maneuver takes BURNVECTOR.
+    // Leaving it up yawed through the node (Acacius, heading rate 4.7 deg/s).
+    aoso_steer_release().
     aoso_ascent_restore_steering(data).
     aoso_steer_prepare_for_burn().
     aoso_power_on_space().
-    aoso_staging_auto_check().
-    IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
-    IF data:HASKEY("circ_now") {
-        IF data["circ_now"] {
-            aoso_maneuver_add_circularize_here().
-            SET data["circ_dv"] TO ABS(aoso_maneuver_circularize_dv_at_apoapsis()).
-            aoso_ascent_yield_burn().
-            RETURN.
-        }
-    }
-    aoso_maneuver_add_circularize_at_apoapsis().
-    SET data["circ_dv"] TO ABS(aoso_maneuver_circularize_dv_at_apoapsis()).
-    // Maneuver is prio 3, same as ascent. Equal prio cannot preempt, so
-    // STEERING/THROTTLE stay with ascent and execute_next lights at 0
-    // throttle (Acacius 80x12 km, 60 m/s node, AUTH deny every tick).
-    aoso_ascent_yield_burn().
+    SET data["circ_node_ready"] TO FALSE.
 }
 
 FUNCTION aoso_ascent_circularize_execute {
     PARAMETER data.
     aoso_ascent_yield_burn().
 
+    IF NOT data:HASKEY("circ_node_ready") { SET data["circ_node_ready"] TO FALSE. }
+    IF NOT data["circ_node_ready"] {
+        // ADD NODE is not safe while packed. Wait out the rails unpack.
+        IF NOT aoso_warp_ensure_physics_idle() { RETURN. }
+        aoso_power_on_space().
+        aoso_staging_auto_check().
+        IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
+        IF NOT HASNODE {
+            LOCAL past_apo IS FALSE.
+            IF data:HASKEY("circ_now") {
+                IF data["circ_now"] { SET past_apo TO TRUE. }
+            }
+            IF past_apo {
+                aoso_maneuver_add_circularize_here().
+            } ELSE {
+                aoso_maneuver_add_circularize_at_apoapsis().
+            }
+        }
+        SET data["circ_dv"] TO ABS(aoso_maneuver_circularize_dv_at_apoapsis()).
+        SET data["circ_node_ready"] TO TRUE.
+        RETURN.
+    }
     // Lofted sounding-rocket fallback. Do not abort while a node or live
     // burn can still raise peri — the 80x12 circ failed because we gave
     // up after AUTH starved the burn, not because the math was wrong.

@@ -11,10 +11,10 @@
 // Acacius's 104 s Mun burn locked at ignition, staged, and left the marker;
 // the intercept missed. Feathering used to start at 2 m/s remaining -- at
 // TWR ~1 that is a fraction of a tick -- so the cut always arrived late.
-// After rails warp we physics-2x through the align window, then 1x for
-// the last ~10 s. Physics 4x left Acacius 40 deg off the circ node (no RCS,
-// 44 m, lander-can wheels) and four "missed" retries then an off-axis lock
-// that feather-cut at 28 m/s remaining (82x62 km, peri still in atmosphere).
+// After rails warp the align window is physics 1x, then the last
+// MANEUVER_PHYSICS_UNTIL_S stays at 1x for ignition. Physics 2x and 4x
+// both slewed Acacius through the circularization node (44 m, no useful
+// RCS, lander-can wheels): yaw sat at ~4.7 deg/s and never captured.
 
 GLOBAL AOSO_MANEUVER_LOCK IS V(0, 0, 0).
 GLOBAL AOSO_MANEUVER_BURNING IS FALSE.
@@ -231,12 +231,12 @@ FUNCTION aoso_warp_report {
     }
 }
 
-// Rails when the event is still far. Physics 2x while SAS points.
-// 1x only for the last WARP_CRUCIAL_S (burns, SOI, suicide). Physics 4x
-// (WARP=3) slewed Acacius 40 deg off a circ node; 2x is the cruise floor.
-// LOCK STEERING makes WARPTO a no-op — and WAIT 0 cancels WARPTO anyway,
-// so this is SET WARP only, stepped down early. Warp 7 until lead+180
-// overshot a 11 h Minmus mid-course by 360 s and then sat 1x never-aligned.
+// Rails when the event is still far. Alignment is physics 1x — 2x/4x
+// left this stack yawing through the node. 1x also for the last
+// WARP_CRUCIAL_S (burns, SOI, suicide). LOCK STEERING makes WARPTO a
+// no-op — and WAIT 0 cancels WARPTO anyway, so this is SET WARP only,
+// stepped down early. Warp 7 until lead+180 overshot a 11 h Minmus
+// mid-course by 360 s and then sat 1x never-aligned.
 // Returns "rails" / "physics" / "now" / "hold".
 FUNCTION aoso_warp_approach {
     PARAMETER eta_s.
@@ -283,11 +283,13 @@ FUNCTION aoso_warp_approach {
         IF align_transition {
             IF AOSO_STEER_MODE <> "OFF" { aoso_steer_release(). }
         }
-        IF NOT aoso_warp_set_physics_cruise() {
-            aoso_warp_report("UNPACK", eta_s, "rails -> physics settling before align").
+        // 1x, not physics cruise. Cruise (2x) saturated yaw on Acacius and
+        // the burn vector never became the attitude the PID would hold.
+        IF NOT aoso_warp_ensure_physics_idle() {
+            aoso_warp_report("UNPACK", eta_s, "rails -> physics 1x settling before align").
             RETURN "transition".
         }
-        aoso_warp_report("ALIGN", eta_s, "precision lead T-" + ROUND(rails_lead_s, 0) + "s").
+        aoso_warp_report("ALIGN", eta_s, "1x lead T-" + ROUND(rails_lead_s, 0) + "s").
         RETURN "physics".
     }
     IF AOSO_STEER_MODE <> "OFF" { aoso_steer_release(). }
@@ -631,6 +633,7 @@ FUNCTION aoso_maneuver_execute_next {
         aoso_steer_prepare_for_burn().
         RCS ON.
         aoso_steer_to_vector(remaining_vec).
+        aoso_log_every(5, "NODE_ALIGN", "off burn vector " + ROUND(aoso_steer_error_deg(remaining_vec), 1) + " deg, ETA " + ROUND(nd:ETA, 1) + "s.").
 
         IF wstate = "physics" {
             aoso_throttle_set(0).

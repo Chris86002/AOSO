@@ -82,6 +82,9 @@ they watch the kOS terminal and the log files.
   STEERING/THROTTLE (equal prio cannot preempt). Gravity-turn steering
   is LOOKDIRUP(look, current top) with ROLLCONTROLANGLERANGE=1 (no
   roll-upright hunt). Stock steering is restored before the circ node.
+  Coast must not lock the launch heading inside the unpack window —
+  that yawed through prograde at physics 2x and the node was missed.
+  Align is physics 1x. Maneuver locks `NEXTNODE:BURNVECTOR` only.
   Do not judge THRUST_MISMATCH in the same tick as `STAGE()`.
 - Rails coasts use SET WARP only (WARPTO dies on WAIT 0). Step down
   via `aoso_warp_rails_want` and `MAX_WARP_FACTOR`. Mid-course nodes
