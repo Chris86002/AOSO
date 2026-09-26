@@ -99,6 +99,13 @@ FUNCTION aoso_watchdog_deliberate_wait {
             IF aoso_ctx_get("controller", "") = "goto" {
                 IF AOSO_GOTO["current"] = "COAST" { RETURN TRUE. }
                 IF AOSO_GOTO["current"] = "WAIT" { RETURN TRUE. }
+                // A maneuver node may wait thousands of game seconds before
+                // ignition. The maneuver controller owns its countdown and
+                // missed-node recovery; deleting that node here turns every
+                // long transfer burn into a false watchdog replan.
+                IF AOSO_GOTO["current"] = "BURN" {
+                    IF HASNODE { RETURN TRUE. }
+                }
             }
         }
     }
