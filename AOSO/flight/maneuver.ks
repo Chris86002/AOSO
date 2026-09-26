@@ -106,28 +106,16 @@ FUNCTION aoso_warp_force_rails {
 // creates a True/False fly-by-wire storm and can stall the game.
 //
 // This helper is deliberately non-blocking. Call once per scheduler tick.
-// TRUE means the vessel is fully back in settled physics at 1x and it is safe
-// for a controller to LOCK STEERING or request physics warp.
+// TRUE means the vessel is unpacked at 1x and it is safe to LOCK STEERING.
+// WARPMODE may report RAILS at 1x even after the vessel has unpacked; chasing
+// that label can repeatedly release steering throughout the align window.
 FUNCTION aoso_warp_ensure_physics_idle {
     IF WARP > 0 {
         SET WARP TO 0.
         SET AOSO_WARP_IDLE_SINCE TO 0.
         RETURN FALSE.
     }
-    IF WARPMODE <> "PHYSICS" {
-        SET WARPMODE TO "PHYSICS".
-        SET AOSO_WARP_IDLE_SINCE TO 0.
-        RETURN FALSE.
-    }
-    IF KUNIVERSE:TIMEWARP:ISSETTLED {
-        SET AOSO_WARP_IDLE_SINCE TO 0.
-        SET AOSO_WARP_IDLE_LOGGED TO FALSE.
-        RETURN TRUE.
-    }
-    // Acacius circularize: rails cancel left ISSETTLED false for 165 s
-    // while the ship was already simulating at 1x. The node was added
-    // after apoapsis. RATE <= 1 means UT is not being warped.
-    IF KUNIVERSE:TIMEWARP:RATE > 1.01 {
+    IF KUNIVERSE:TIMEWARP:RATE > 1.01 OR NOT SHIP:UNPACKED {
         SET AOSO_WARP_IDLE_SINCE TO 0.
         RETURN FALSE.
     }
@@ -135,7 +123,7 @@ FUNCTION aoso_warp_ensure_physics_idle {
     IF TIME:SECONDS - AOSO_WARP_IDLE_SINCE < 1.5 { RETURN FALSE. }
     IF NOT AOSO_WARP_IDLE_LOGGED {
         SET AOSO_WARP_IDLE_LOGGED TO TRUE.
-        aoso_log_info("WARP", "Physics 1x idle accepted with ISSETTLED still false.").
+        aoso_log_info("WARP", "Unpacked 1x idle accepted for steering.").
     }
     RETURN TRUE.
 }
@@ -273,7 +261,8 @@ FUNCTION aoso_warp_approach {
     IF eta_s <= physics_until_s {
         LOCAL precision_transition IS FALSE.
         IF WARP > 0 { SET precision_transition TO TRUE. }
-        IF WARPMODE <> "PHYSICS" { SET precision_transition TO TRUE. }
+        IF KUNIVERSE:TIMEWARP:RATE > 1.01 { SET precision_transition TO TRUE. }
+        IF NOT SHIP:UNPACKED { SET precision_transition TO TRUE. }
         // Stuck ISSETTLED is not unpack. Unlocking on that flag and then
         // locking again once the 1x idle fallback accepts is a steer storm.
         IF precision_transition {
@@ -300,8 +289,9 @@ FUNCTION aoso_warp_approach {
     LOCAL want IS aoso_warp_rails_want(eta_s, rails_lead_s).
     IF want <= 0 {
         LOCAL align_transition IS FALSE.
-        IF WARPMODE <> "PHYSICS" { SET align_transition TO TRUE. }
         IF WARP > 0 { SET align_transition TO TRUE. }
+        IF KUNIVERSE:TIMEWARP:RATE > 1.01 { SET align_transition TO TRUE. }
+        IF NOT SHIP:UNPACKED { SET align_transition TO TRUE. }
         // A stuck ISSETTLED flag is not unpack. Unlocking on that flag
         // left this stack with a constant pitch rate through apoapsis.
         IF align_transition {
