@@ -252,7 +252,7 @@ FUNCTION aoso_rendezvous_finalize_node {
         "m) - refining only enough to obtain a usable encounter.").
 
     aoso_rendezvous_refine_intercept(nd, hop, nd:PROGRADE).
-    aoso_rendezvous_tune_pe(nd, hop).
+    aoso_rendezvous_tune_pe_keep(nd, hop).
     aoso_rendezvous_settle().
     LOCAL pe1 IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
     IF aoso_rendezvous_pe_ok_value(pe1, hop) {
@@ -1363,7 +1363,7 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
             ADD nd_low.
             LOCAL hit_low IS aoso_rendezvous_search_low_repair(nd_low, target_orbitable).
             IF hit_low {
-                aoso_rendezvous_tune_pe(nd_low, target_orbitable).
+                aoso_rendezvous_tune_pe_keep(nd_low, target_orbitable).
                 aoso_rendezvous_settle().
                 IF aoso_rendezvous_node_hits_body(nd_low, target_orbitable) {
                     LOCAL pe_low IS aoso_rendezvous_orbit_pe(nd_low:ORBIT, target_orbitable).
@@ -1380,7 +1380,7 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
         ADD nd_a.
         LOCAL hit_a IS aoso_rendezvous_search_apo_passages(nd_a, target_orbitable).
         IF hit_a {
-            aoso_rendezvous_tune_pe(nd_a, target_orbitable).
+            aoso_rendezvous_tune_pe_keep(nd_a, target_orbitable).
             aoso_rendezvous_settle().
             IF aoso_rendezvous_node_hits_body(nd_a, target_orbitable) {
                 LOCAL pe_a IS aoso_rendezvous_orbit_pe(nd_a:ORBIT, target_orbitable).
@@ -1501,7 +1501,7 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
                 }
             }
         }
-        aoso_rendezvous_tune_pe(nd, target_orbitable).
+        aoso_rendezvous_tune_pe_keep(nd, target_orbitable).
         LOCAL pe_now IS aoso_rendezvous_orbit_pe(nd:ORBIT, target_orbitable).
         LOCAL want_pe IS aoso_rendezvous_desired_pe(target_orbitable).
         LOCAL pe_txt IS "".
@@ -1700,6 +1700,37 @@ FUNCTION aoso_rendezvous_clamp_prograde {
     IF nd:PROGRADE > dv_max { SET nd:PROGRADE TO dv_max. }
 }
 
+// tune_pe scores an impact (~5e9) as worse than a 1 Mm graze (~1e8), so a
+// hill climb can walk off a real encounter and the caller then deletes it.
+// Put the node back when the score gets worse. Mid-course still calls
+// tune_pe directly: that path needs the "reached a capture PE" boolean.
+FUNCTION aoso_rendezvous_tune_pe_keep {
+    PARAMETER nd.
+    PARAMETER hop.
+    LOCAL desired IS aoso_rendezvous_desired_pe(hop).
+    LOCAL pre_pg IS nd:PROGRADE.
+    LOCAL pre_nml IS nd:NORMAL.
+    LOCAL pre_rad IS nd:RADIALOUT.
+    LOCAL pre_ut IS TIME:SECONDS + nd:ETA.
+    LOCAL pre_pe IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
+    LOCAL pre_sc IS aoso_rendezvous_pe_score(nd, hop, desired).
+    aoso_rendezvous_tune_pe(nd, hop).
+    aoso_rendezvous_settle().
+    LOCAL post_pe IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
+    LOCAL post_sc IS aoso_rendezvous_pe_score(nd, hop, desired).
+    IF post_sc > pre_sc {
+        SET nd:PROGRADE TO pre_pg.
+        SET nd:NORMAL TO pre_nml.
+        SET nd:RADIALOUT TO pre_rad.
+        SET nd:ETA TO pre_ut - TIME:SECONDS.
+        IF nd:ETA < 25 { SET nd:ETA TO 25. }
+        aoso_rendezvous_settle().
+        aoso_log_warn("RENDEZVOUS", "PE tune worsened " + hop:NAME + " (PE " + ROUND(pre_pe, 0) + "m -> " + ROUND(post_pe, 0) + "m) - restored the pre-tune intercept.").
+        RETURN FALSE.
+    }
+    RETURN TRUE.
+}
+
 // ElWanderer-style hill climb on ETA / prograde / radial / normal so the
 // patched PE is a capture altitude, not a SOI clip. RSVP/MechJeb do this
 // after the Hohmann guess; we stay on stock NODE suffixes.
@@ -1740,7 +1771,7 @@ FUNCTION aoso_rendezvous_tune_pe {
                     SET improved TO TRUE.
                 } ELSE {
                     SET nd:ETA TO orig_eta.
-                    aoso_yield().
+                    aoso_rendezvous_settle().
                 }
             }
         }
@@ -1748,14 +1779,14 @@ FUNCTION aoso_rendezvous_tune_pe {
         LOCAL orig_pg IS nd:PROGRADE.
         SET nd:PROGRADE TO orig_pg + step_dv.
         aoso_rendezvous_clamp_prograde(nd).
-        aoso_yield().
+        aoso_rendezvous_settle().
         SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
         IF s < best {
             SET best TO s.
             SET improved TO TRUE.
         } ELSE {
             SET nd:PROGRADE TO orig_pg - step_dv.
-            aoso_yield().
+            aoso_rendezvous_settle().
             SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
             IF s < best {
                 SET best TO s.
@@ -1768,14 +1799,14 @@ FUNCTION aoso_rendezvous_tune_pe {
 
         LOCAL orig_rad IS nd:RADIALOUT.
         SET nd:RADIALOUT TO orig_rad + step_dv.
-        aoso_yield().
+        aoso_rendezvous_settle().
         SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
         IF s < best {
             SET best TO s.
             SET improved TO TRUE.
         } ELSE {
             SET nd:RADIALOUT TO orig_rad - step_dv.
-            aoso_yield().
+            aoso_rendezvous_settle().
             SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
             IF s < best {
                 SET best TO s.
@@ -1796,7 +1827,7 @@ FUNCTION aoso_rendezvous_tune_pe {
         }
         IF walk_n {
             SET nd:NORMAL TO orig_n + step_dv.
-            aoso_yield().
+            aoso_rendezvous_settle().
             SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
             IF s < best {
                 SET best TO s.

@@ -26,6 +26,7 @@ GLOBAL AOSO_MANEUVER_RESULT IS "ok".
 GLOBAL AOSO_MANEUVER_NO_THRUST_TICKS IS 0.
 GLOBAL AOSO_MANEUVER_APO_CAP IS -1.
 GLOBAL AOSO_MANEUVER_CUT_BODY IS "".
+GLOBAL AOSO_MANEUVER_LEAD_LOGGED IS FALSE.
 GLOBAL AOSO_WARP_LAST_KEY IS "".
 GLOBAL AOSO_WARP_LAST_RT IS -1.
 GLOBAL AOSO_WARP_IDLE_SINCE IS 0.
@@ -39,6 +40,7 @@ FUNCTION aoso_maneuver_reset_exec {
     SET AOSO_MANEUVER_BURN_STARTED_AT TO 0.
     SET AOSO_MANEUVER_PREDICTED_TIME TO 0.
     SET AOSO_MANEUVER_NO_THRUST_TICKS TO 0.
+    SET AOSO_MANEUVER_LEAD_LOGGED TO FALSE.
     aoso_staging_reset_relight().
     IF DEFINED AOSO_STAGING_BURN_RECOVERY {
         aoso_staging_reset_burn_guard().
@@ -625,7 +627,26 @@ FUNCTION aoso_maneuver_execute_next {
         }
 
         LOCAL burn_time IS aoso_perf_burn_time_for_dv(remaining).
-        LOCAL ignite_lead IS burn_time / 2.
+        // BURN_TIME corr is learned on short feathered burns and can sit
+        // near 1.23. Half of that inflated duration lights a long departure
+        // early; the inertial lock then spends the opening of the burn
+        // radial-out and the moon SOI is missed. Keep the XP duration as
+        // the prediction the model learns from, but center ignition on the
+        // rocket-equation time when the factor is high.
+        LOCAL burn_corr IS aoso_xp_metric_corr("MANEUVER", SHIP:BODY:NAME, "BURN_TIME").
+        LOCAL ignite_time IS burn_time.
+        IF burn_corr > 1.02 {
+            SET ignite_time TO burn_time / burn_corr.
+        }
+        LOCAL ignite_lead IS ignite_time / 2.
+        IF burn_corr > 1.02 {
+            IF burn_time > 20 {
+                IF NOT AOSO_MANEUVER_LEAD_LOGGED {
+                    SET AOSO_MANEUVER_LEAD_LOGGED TO TRUE.
+                    aoso_log_info("MANEUVER", "Ignition lead uses rocket-equation " + ROUND(ignite_time, 1) + "s, not XP " + ROUND(burn_time, 1) + "s (BURN_TIME corr " + ROUND(burn_corr, 3) + ").").
+                }
+            }
+        }
         LOCAL align_s IS aoso_maneuver_align_s().
         LOCAL warp_lead IS ignite_lead + align_s.
         LOCAL physics_until IS ignite_lead + aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10).
