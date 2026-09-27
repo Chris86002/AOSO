@@ -249,14 +249,14 @@ FUNCTION aoso_orbit_equatorial_node_etas {
 // the geodetic north pole, then to a fixed axis so a plane-change sign
 // still has a defined target.
 FUNCTION aoso_orbit_north {
-    PARAMETER body IS SHIP:BODY.
-    LOCAL spin IS body:ANGULARVEL.
+    PARAMETER body_ref IS SHIP:BODY.
+    LOCAL spin IS body_ref:ANGULARVEL.
     IF spin:MAG > 0.00000001 {
         RETURN spin:NORMALIZED.
     }
-    IF body:NAME = SHIP:BODY:NAME {
+    IF body_ref:NAME = SHIP:BODY:NAME {
         LOCAL pole_pos IS LATLNG(90, 0):POSITION.
-        LOCAL body_pos IS body:POSITION.
+        LOCAL body_pos IS body_ref:POSITION.
         LOCAL north_v IS pole_pos - body_pos.
         IF north_v:MAG > 1 {
             RETURN north_v:NORMALIZED.
