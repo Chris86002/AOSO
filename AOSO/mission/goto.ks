@@ -338,7 +338,7 @@ FUNCTION aoso_goto_plan_entry {
                         IF ndc <> 0 {
                             SET data["corrected"] TO TRUE.
                             SET data["correct_count"] TO ncorr + 1.
-                            aoso_log_info("GOTO", "Patch to " + np + " needs PE/polar approach correction " + data["correct_count"] + "/" + ROUND(aoso_config_get("GOTO_CORRECT_MAX", 5), 0) + ".").
+                            aoso_log_info("GOTO", "Patch to " + np + " needs PE correction " + data["correct_count"] + "/" + ROUND(aoso_config_get("GOTO_CORRECT_MAX", 5), 0) + ".").
                             SET data["burn_kind"] TO "correct".
                             aoso_state_transition(AOSO_GOTO, "BURN").
                             RETURN.
@@ -828,17 +828,6 @@ FUNCTION aoso_goto_coast_execute {
             IF aoso_rendezvous_orbit_needs_correct(SHIP:ORBIT, hop_check) {
                 LOCAL pe_now IS patch_pe.
                 LOCAL correct_within IS aoso_config_get("GOTO_CORRECT_WITHIN_S", 28800).
-                // Polar arrival geometry is cheaper to change before the
-                // final eight-hour PE window. Departure remains rough.
-                IF DEFINED AOSO_WANT_POLAR {
-                    IF AOSO_WANT_POLAR {
-                        IF DEFINED AOSO_WANT_POLAR_BODY {
-                            IF AOSO_WANT_POLAR_BODY = hop_check:NAME {
-                                SET correct_within TO MAX(correct_within, 86400).
-                            }
-                        }
-                    }
-                }
                 IF pe_now < 0 {
                     SET want_correct TO TRUE.
                 } ELSE {
@@ -868,7 +857,7 @@ FUNCTION aoso_goto_coast_execute {
                         LOCAL ndc IS aoso_rendezvous_add_correction_node(hop_check).
                         IF ndc <> 0 {
                             SET data["correct_count"] TO ncorr + 1.
-                            aoso_log_info("GOTO", "Patch needs PE/polar approach correction " + data["correct_count"] + "/" + ROUND(aoso_config_get("GOTO_CORRECT_MAX", 5), 0) + ".").
+                            aoso_log_info("GOTO", "Patch needs PE correction " + data["correct_count"] + "/" + ROUND(aoso_config_get("GOTO_CORRECT_MAX", 5), 0) + ".").
                             SET data["burn_kind"] TO "correct".
                             aoso_state_transition(AOSO_GOTO, "BURN").
                             RETURN.
@@ -952,41 +941,8 @@ FUNCTION aoso_goto_coast_execute {
 
                 RETURN.
             }
-            // The live conic may remain hidden until the SOI. Try a polar
-            // correction from the saved encounter clock a day beforehand;
-            // rendezvous accepts it only if the maneuver's KSP conic shows
-            // a safe direct patch. Failed attempts keep the existing coast.
-            IF eta_saved > 900 AND eta_saved <= 86400 {
-                IF BODYEXISTS(expect_body) {
-                    LOCAL polar_target IS FALSE.
-                    IF DEFINED AOSO_WANT_POLAR {
-                        IF AOSO_WANT_POLAR {
-                            IF DEFINED AOSO_WANT_POLAR_BODY {
-                                IF AOSO_WANT_POLAR_BODY = expect_body { SET polar_target TO TRUE. }
-                            }
-                        }
-                    }
-                    IF polar_target {
-                        LOCAL early_count IS 0.
-                        IF data:HASKEY("correct_count") { SET early_count TO data["correct_count"]. }
-                        LOCAL early_cool IS 0.
-                        IF data:HASKEY("correct_cool_ut") { SET early_cool TO data["correct_cool_ut"]. }
-                        IF early_count < aoso_config_get("GOTO_CORRECT_MAX", 5) AND now >= early_cool {
-                            IF NOT aoso_warp_ensure_physics_idle() { RETURN. }
-                            LOCAL early_node IS aoso_rendezvous_add_correction_node(BODY(expect_body), expect_ut).
-                            IF early_node <> 0 {
-                                SET data["correct_count"] TO early_count + 1.
-                                aoso_log_info("GOTO", "Polar SOI aim correction " + data["correct_count"] + "/" + ROUND(aoso_config_get("GOTO_CORRECT_MAX", 5), 0) + " from saved encounter clock.").
-                                SET data["burn_kind"] TO "correct".
-                                aoso_state_transition(AOSO_GOTO, "BURN").
-                                RETURN.
-                            }
-                            SET data["correct_cool_ut"] TO TIME:SECONDS + 21600.
-                            aoso_log_warn("GOTO", "Early polar SOI aim could not be verified by a safe " + expect_body + " node patch; continuing coast.").
-                        }
-                    }
-                }
-            }
+            // A hidden conic is not a burn. Polar aiming from the saved
+            // encounter clock was a chain of unverified mid-course nodes.
             IF geometry["inside"] {
                 SET WARP TO 0.
                 aoso_log_warn_every(60, "SOI_HANDOFF", expect_body + " is geometrically inside its SOI but KSP still reports " + SHIP:BODY:NAME + "; waiting at 1x for the body handoff.").

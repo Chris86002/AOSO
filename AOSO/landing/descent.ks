@@ -1,20 +1,17 @@
 // AOSO/landing/descent.ks
 // Suicide-burn (hoverslam) + final-approach descent guidance.
 //
-// The previous trigger used only ABS(VERTICALSPEED). Acacius hit Mun at
-// ~687 m/s surface from a 1166 x -2 km ellipse; vertical speed at 5 km was
-// only ~120 m/s so the burn started at ~5 km instead of the ~30 km
-// kinematics actually required, then FINAL_APPROACH engaged at 150 m while
-// still hypersonic.
-//
-// Community / MechJeb-style hoverslam (elwanderer, HerrCraziDev, Garwel
-// SBLAND, kOS-Hoverslam):
+// Community hoverslam, with the shallow-trajectory correction Acacius
+// needed on Minmus (suicide at radar 3532 m, vVert only -18 m/s, vSrf
+// 211 m/s, then 433 m/s landed vs 180 predicted):
 //   maxDecel = AVAILABLETHRUST/MASS - g
-//   stopDist = VELOCITY:SURFACE:SQRMAGNITUDE / (2 * maxDecel)
-//   burn when (ALT:RADAR - radarOffset) <= stopDist * margin
-//   lock steering to srfretrograde until horizontal AND vertical speed are
-//   small, then a vertical final approach. Do not switch to "up + 3 m/s"
-//   while still going 600 m/s.
+//   tStop = surfaceSpeed / maxDecel
+//   tti = ballistic time to the surface from vertical speed and local g
+//   ignite when tti <= tStop + a short lead (not when radar <= v^2/2a).
+//   No throttle floor. Final approach increases thrust when falling
+//   faster than the target sink rate.
+//   Lock srfretrograde while groundspeed is still large; pitch up only
+//   once the remainder is a slow vertical sink.
 
 GLOBAL AOSO_DESCENT IS aoso_state_new_machine().
 GLOBAL AOSO_DESCENT_RADAR_OFFSET IS 8.
@@ -25,6 +22,9 @@ GLOBAL AOSO_DESCENT_PARTS_AT IS 0.
 GLOBAL AOSO_DESCENT_BOTTOM_LOG_AT IS 0.
 GLOBAL AOSO_DESCENT_LEGS_ON IS FALSE.
 GLOBAL AOSO_DESCENT_LEGS_AT IS 0.
+GLOBAL AOSO_DESCENT_OFFSET_PENDING IS -1.
+GLOBAL AOSO_DESCENT_OFFSET_HITS IS 0.
+GLOBAL AOSO_DESCENT_LOGGED_OFF IS -999.
 
 FUNCTION aoso_descent_local_gravity {
     RETURN SHIP:BODY:MU / (SHIP:BODY:RADIUS + ALTITUDE) ^ 2.
@@ -88,18 +88,42 @@ FUNCTION aoso_descent_refresh_bounds {
             IF sane {
                 LOCAL off IS raw - bottom.
                 IF off < 0 { SET off TO 0. }
-                IF off > 120 { SET off TO 120. }
-                LOCAL changed IS ABS(off - AOSO_DESCENT_RADAR_OFFSET) >= 0.4.
-                IF AOSO_DESCENT_BOTTOM_SRC <> "bounds" { SET changed TO TRUE. }
-                IF changed {
-                    IF now - AOSO_DESCENT_BOTTOM_LOG_AT > 1.5 {
-                        SET AOSO_DESCENT_BOTTOM_LOG_AT TO now.
-                        aoso_log_info("DESCENT", "Vessel bottom " + ROUND(off, 1) + " m below radar (bounds). clearance=" +
-                            ROUND(bottom, 1) + " m legs=" + AOSO_DESCENT_LEGS_ON + ".").
+                IF off > 80 { SET off TO 80. }
+                // SHIP:BOUNDS on Acacius flickered 0-14 m every tick and
+                // both moved the suicide trigger and flooded the log.
+                // Accept a small drift immediately; a jump has to repeat.
+                IF AOSO_DESCENT_BOTTOM_SRC <> "bounds" {
+                    SET AOSO_DESCENT_RADAR_OFFSET TO off.
+                    SET AOSO_DESCENT_OFFSET_HITS TO 0.
+                    SET AOSO_DESCENT_OFFSET_PENDING TO off.
+                } ELSE {
+                    LOCAL delta_off IS off - AOSO_DESCENT_RADAR_OFFSET.
+                    IF ABS(delta_off) <= 2.5 {
+                        SET AOSO_DESCENT_RADAR_OFFSET TO AOSO_DESCENT_RADAR_OFFSET * 0.5 + off * 0.5.
+                        SET AOSO_DESCENT_OFFSET_HITS TO 0.
+                    } ELSE {
+                        IF ABS(off - AOSO_DESCENT_OFFSET_PENDING) <= 1.5 {
+                            SET AOSO_DESCENT_OFFSET_HITS TO AOSO_DESCENT_OFFSET_HITS + 1.
+                        } ELSE {
+                            SET AOSO_DESCENT_OFFSET_PENDING TO off.
+                            SET AOSO_DESCENT_OFFSET_HITS TO 1.
+                        }
+                        IF AOSO_DESCENT_OFFSET_HITS >= 3 {
+                            SET AOSO_DESCENT_RADAR_OFFSET TO off.
+                            SET AOSO_DESCENT_OFFSET_HITS TO 0.
+                        }
                     }
                 }
-                SET AOSO_DESCENT_RADAR_OFFSET TO off.
-                SET AOSO_DESCENT_BOTTOM_ALT TO bottom.
+                IF ABS(AOSO_DESCENT_RADAR_OFFSET - AOSO_DESCENT_LOGGED_OFF) >= 3 {
+                    IF now - AOSO_DESCENT_BOTTOM_LOG_AT > 8 {
+                        SET AOSO_DESCENT_BOTTOM_LOG_AT TO now.
+                        SET AOSO_DESCENT_LOGGED_OFF TO AOSO_DESCENT_RADAR_OFFSET.
+                        aoso_log_info("DESCENT", "Vessel bottom " + ROUND(AOSO_DESCENT_RADAR_OFFSET, 1) +
+                            " m below radar (bounds). legs=" + AOSO_DESCENT_LEGS_ON + ".").
+                    }
+                }
+                SET AOSO_DESCENT_BOTTOM_ALT TO raw - AOSO_DESCENT_RADAR_OFFSET.
+                IF AOSO_DESCENT_BOTTOM_ALT < 0 { SET AOSO_DESCENT_BOTTOM_ALT TO 0. }
                 SET AOSO_DESCENT_BOTTOM_SRC TO "bounds".
                 SET got TO TRUE.
             }
@@ -111,7 +135,7 @@ FUNCTION aoso_descent_refresh_bounds {
         IF now - AOSO_DESCENT_PARTS_AT < 2 { RETURN. }
     }
     LOCAL offp IS aoso_descent_measure_radar_offset().
-    IF ABS(offp - AOSO_DESCENT_RADAR_OFFSET) >= 0.4 OR AOSO_DESCENT_BOTTOM_SRC <> "parts" {
+    IF ABS(offp - AOSO_DESCENT_RADAR_OFFSET) >= 3 OR AOSO_DESCENT_BOTTOM_SRC <> "parts" {
         IF now - AOSO_DESCENT_BOTTOM_LOG_AT > 1.5 {
             SET AOSO_DESCENT_BOTTOM_LOG_AT TO now.
             aoso_log_info("DESCENT", "Vessel bottom " + ROUND(offp, 1) + " m below radar (part walk). bounds unavailable.").
@@ -186,41 +210,80 @@ FUNCTION aoso_descent_stopping_distance {
     RETURN (speed_ms ^ 2) / (2 * decel).
 }
 
-// Radar altitude (m) at which the suicide burn must start.
+// Seconds until a ballistic vertical arc reaches the surface. This is
+// not radar/speed: a shallow pass has a long time-to-impact even when
+// surface speed is high.
+FUNCTION aoso_descent_ballistic_tti {
+    LOCAL y0 IS aoso_descent_true_radar().
+    LOCAL g_loc IS aoso_descent_local_gravity().
+    IF g_loc < 0.05 { SET g_loc TO 0.05. }
+    LOCAL vy IS VERTICALSPEED.
+    LOCAL disc IS vy * vy + 2 * g_loc * y0.
+    IF disc < 0 { RETURN 999999. }
+    LOCAL t_hit IS (vy + SQRT(disc)) / g_loc.
+    IF t_hit < 0.05 { RETURN 0.05. }
+    RETURN t_hit.
+}
+
+FUNCTION aoso_descent_time_to_stop {
+    LOCAL decel IS aoso_descent_max_deceleration().
+    IF decel <= 0.05 { RETURN 999999. }
+    RETURN SHIP:VELOCITY:SURFACE:MAG / decel.
+}
+
+// Radar altitude (m) at which the suicide burn must start: the height
+// where ballistic time-to-impact equals time-to-stop plus a short lead.
+// Recomputed every tick from the current vertical speed, so a shallow
+// pass coasts until those two clocks meet instead of burning at the
+// full-vector stopping distance.
 FUNCTION aoso_descent_burn_trigger_alt {
     LOCAL speed_ms IS SHIP:VELOCITY:SURFACE:MAG.
     LOCAL decel IS aoso_descent_max_deceleration().
-    LOCAL stop_dist IS aoso_descent_stopping_distance(speed_ms, decel).
-    IF stop_dist < 0 { RETURN 9E+9. }
-    LOCAL pad_mult IS aoso_config_get("DESCENT_STOP_MARGIN", 1.2).
-    IF pad_mult < 1 { SET pad_mult TO 1. }
-    LOCAL margin_s IS aoso_config_get("DESCENT_BURN_MARGIN_S", 4).
-    LOCAL vs_abs IS ABS(VERTICALSPEED).
-    // elwanderer: extra -VS/10 worth of reaction height, plus configured
-    // seconds of surface speed so a 0.1 s scheduler tick cannot eat the burn.
-    RETURN (stop_dist * pad_mult) + (speed_ms * margin_s) + (vs_abs / 10).
+    IF decel <= 0.05 { RETURN 999999. }
+    LOCAL vy IS VERTICALSPEED.
+    IF vy >= -0.5 { RETURN 0. }
+    LOCAL v_down IS -vy.
+    LOCAL t_stop IS speed_ms / decel.
+    LOCAL margin_s IS aoso_config_get("DESCENT_BURN_MARGIN_S", 2).
+    IF margin_s < 0.5 { SET margin_s TO 0.5. }
+    IF margin_s > 2.5 { SET margin_s TO 2.5. }
+    LOCAL t_need IS t_stop + margin_s.
+    LOCAL g_loc IS aoso_descent_local_gravity().
+    IF g_loc < 0.05 { SET g_loc TO 0.05. }
+    LOCAL need_h IS t_need * ((t_need * g_loc * 0.5) + v_down).
+    IF need_h < 8 { SET need_h TO 8. }
+    RETURN need_h.
 }
 
-// Throttle (0-1) for the hoverslam: 1.0 whenever remaining radar is at or
-// inside the raw stop distance, otherwise stopDist/radar (the classic
-// kOS-Hoverslam idealThrottle) so we do not over-burn if we started early.
+// Throttle 1 when time-to-impact has caught time-to-stop. No floor:
+// a 0.15 floor on an early trigger is a long partial burn. Above the
+// window, scale by the time ratio and coast if the gap is still large.
 FUNCTION aoso_descent_required_throttle {
-    LOCAL h IS aoso_descent_true_radar().
-    LOCAL speed_ms IS SHIP:VELOCITY:SURFACE:MAG.
     LOCAL decel IS aoso_descent_max_deceleration().
-    LOCAL stop_dist IS aoso_descent_stopping_distance(speed_ms, decel).
-    IF stop_dist < 0 { RETURN 1. }
-    IF h <= stop_dist { RETURN 1. }
-    RETURN MAX(0.15, MIN(1, stop_dist / h)).
+    IF decel <= 0.05 { RETURN 1. }
+    LOCAL speed_ms IS SHIP:VELOCITY:SURFACE:MAG.
+    IF speed_ms < 1 { RETURN 0. }
+    LOCAL t_stop IS speed_ms / decel.
+    LOCAL tti IS aoso_descent_ballistic_tti().
+    LOCAL margin_s IS aoso_config_get("DESCENT_BURN_MARGIN_S", 2).
+    IF margin_s < 0.5 { SET margin_s TO 0.5. }
+    IF margin_s > 2.5 { SET margin_s TO 2.5. }
+    LOCAL t_need IS t_stop + margin_s.
+    IF tti <= t_need { RETURN 1. }
+    LOCAL ratio IS t_need / tti.
+    IF ratio < 0.5 { RETURN 0. }
+    RETURN ratio.
 }
 
 FUNCTION aoso_descent_final_approach_throttle {
     LOCAL target_v IS aoso_config_get("DESCENT_FINAL_SPEED", -3).
-    LOCAL error IS target_v - VERTICALSPEED.
-    LOCAL g IS aoso_descent_local_gravity().
+    // Positive when we are falling faster than the target sink (VS more
+    // negative). The old (target - VS) sign cut throttle to 0 at -14 m/s.
+    LOCAL sink_err IS VERTICALSPEED - target_v.
+    LOCAL g_loc IS aoso_descent_local_gravity().
 
     LOCAL kp IS 0.6.
-    LOCAL accel_cmd IS g - (kp * error).
+    LOCAL accel_cmd IS g_loc - (kp * sink_err).
 
     LOCAL max_accel IS 0.
     IF SHIP:MASS > 0 { SET max_accel TO SHIP:AVAILABLETHRUST / SHIP:MASS. }
@@ -262,8 +325,13 @@ FUNCTION aoso_descent_pe_reaches_suicide {
     LOCAL site_alt IS aoso_deorbit_site_alt().
     LOCAL radar_pe IS PERIAPSIS - site_alt.
     IF radar_pe < 80 { RETURN TRUE. }
-    IF radar_pe > trigger + 500 { RETURN FALSE. }
-    RETURN TRUE.
+    // Trigger is the radar where ballistic time-to-impact meets time-to-stop.
+    // On a shallow pass that is far below the old full-vector stop distance.
+    // A periapsis that still crosses a few kilometres of radar will reach
+    // that burn. Do not drop PE again just because the trigger moved down.
+    IF radar_pe <= trigger + 2000 { RETURN TRUE. }
+    IF radar_pe < 6000 { RETURN TRUE. }
+    RETURN FALSE.
 }
 
 FUNCTION aoso_descent_freefall_entry {
@@ -360,6 +428,8 @@ FUNCTION aoso_descent_freefall_execute {
     LOCAL trigger IS aoso_descent_burn_trigger_alt().
     LOCAL radar IS aoso_descent_true_radar().
     LOCAL speed_ms IS SHIP:VELOCITY:SURFACE:MAG.
+    LOCAL tti IS aoso_descent_ballistic_tti().
+    LOCAL t_stop IS aoso_descent_time_to_stop().
     aoso_descent_maintain_legs(radar).
 
     IF radar <= trigger {
@@ -367,16 +437,15 @@ FUNCTION aoso_descent_freefall_execute {
         aoso_steer_srf_retrograde().
         aoso_log_info("DESCENT", "Suicide burn now: radar=" + ROUND(radar, 0) + " m trigger=" + ROUND(trigger, 0) +
             " m vSrf=" + ROUND(speed_ms, 1) + " m/s vVert=" + ROUND(VERTICALSPEED, 1) +
-            " m/s decel=" + ROUND(aoso_descent_max_deceleration(), 2) + " m/s^2 " + aoso_warp_diag_txt() + ".").
-        aoso_observe_event("LAND", "INFO", "BURN", "suicide radar=" + ROUND(radar, 0) + " vSrf=" + ROUND(speed_ms, 1)).
-        aoso_decide("DESCENT", "suicide", "BURN", "trigger", "radar=" + ROUND(radar, 0) + " trig=" + ROUND(trigger, 0)).
+            " m/s tti=" + ROUND(tti, 1) + "s tStop=" + ROUND(t_stop, 1) +
+            "s decel=" + ROUND(aoso_descent_max_deceleration(), 2) + " m/s^2 " + aoso_warp_diag_txt() + ".").
+        aoso_observe_event("LAND", "INFO", "BURN", "suicide radar=" + ROUND(radar, 0) + " vSrf=" + ROUND(speed_ms, 1) + " tti=" + ROUND(tti, 1) + " tStop=" + ROUND(t_stop, 1)).
+        aoso_decide("DESCENT", "suicide", "BURN", "trigger", "radar=" + ROUND(radar, 0) + " trig=" + ROUND(trigger, 0) + " tti=" + ROUND(tti, 1) + " tStop=" + ROUND(t_stop, 1)).
         aoso_state_transition(AOSO_DESCENT, "BURN").
         RETURN.
     }
 
     LOCAL coast_eta IS pe_eta.
-    LOCAL tti IS 9E9.
-    IF speed_ms > 1 { SET tti TO radar / speed_ms. }
     IF coast_eta > tti { SET coast_eta TO tti. }
     IF PERIAPSIS < ALTITUDE - 400 {
         IF pe_eta > coast_eta { SET coast_eta TO pe_eta. }
@@ -384,20 +453,22 @@ FUNCTION aoso_descent_freefall_execute {
 
     aoso_log_every(30, "DESCENT", "Freefall alt=" + ROUND(ALTITUDE, 0) + " AP=" + ROUND(APOAPSIS, 0) +
         " PE=" + ROUND(PERIAPSIS, 0) + " vs=" + ROUND(VERTICALSPEED, 1) + " radar=" + ROUND(radar, 0) +
-        " trig=" + ROUND(trigger, 0) + " peEta=" + ROUND(pe_eta, 0) + "s tti=" + ROUND(tti, 0) +
-        "s coastEta=" + ROUND(coast_eta, 0) + "s " + aoso_warp_diag_txt() + ".").
+        " trig=" + ROUND(trigger, 0) + " peEta=" + ROUND(pe_eta, 0) + "s tti=" + ROUND(tti, 1) +
+        "s tStop=" + ROUND(t_stop, 1) + "s coastEta=" + ROUND(coast_eta, 0) + "s " + aoso_warp_diag_txt() + ".").
 
-    IF radar < (trigger * 2) {
+    // Point retrograde and leave warp early enough to align, but do not
+    // ignite until ballistic time-to-impact meets time-to-stop. The old
+    // trigger*2 test dropped warp at the same moment it was about to burn.
+    LOCAL align_h IS trigger + 1500.
+    IF align_h < 900 { SET align_h TO 900. }
+    IF align_h > 4500 { SET align_h TO 4500. }
+    LOCAL align_t IS t_stop + 20.
+    IF radar < align_h OR tti < align_t OR coast_eta < 15 {
         SET WARP TO 0.
         aoso_steer_srf_retrograde().
     } ELSE {
-        IF coast_eta < 12 {
-            SET WARP TO 0.
-            aoso_steer_srf_retrograde().
-        } ELSE {
-            aoso_steer_release().
-            aoso_warp_approach(coast_eta, 25, 12).
-        }
+        aoso_steer_release().
+        aoso_warp_approach(coast_eta, 25, 12).
     }
 }
 
@@ -418,10 +489,22 @@ FUNCTION aoso_descent_measure_dv {
     SET data["actual_dv"] TO data["actual_dv"] + (SHIP:THRUST / SHIP:MASS) * dt.
 }
 
+FUNCTION aoso_descent_steer_burn {
+    IF GROUNDSPEED > 12 {
+        aoso_steer_srf_retrograde().
+        RETURN.
+    }
+    IF SHIP:VELOCITY:SURFACE:MAG > 35 {
+        aoso_steer_srf_retrograde().
+        RETURN.
+    }
+    aoso_steer_up().
+}
+
 FUNCTION aoso_descent_burn_entry {
     PARAMETER data.
     SET WARP TO 0.
-    aoso_steer_srf_retrograde().
+    aoso_descent_steer_burn().
     aoso_descent_maintain_legs(aoso_descent_true_radar(), TRUE).
     IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
     aoso_throttle_set(aoso_descent_required_throttle()).
@@ -433,7 +516,7 @@ FUNCTION aoso_descent_burn_execute {
     aoso_parachute_auto_check().
     SET WARP TO 0.
 
-    aoso_steer_srf_retrograde().
+    aoso_descent_steer_burn().
 
     aoso_staging_auto_check().
     IF aoso_fuel_abort_check() {

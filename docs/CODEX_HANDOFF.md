@@ -1,5 +1,34 @@
 # Codex handoff — AOSO current state
 
+Updated: 2026-09-27
+
+## This cycle (Acacius Kerbin → Minmus, log UT ~797866–1609793)
+
+Polar intercepts were a coast objective. `AOSO_WANT_POLAR` made
+`orbit_needs_correct` stay true for the whole transfer, stretched the
+correction window to a day, and hill-climbed inclination at transfer
+speed (`inc N deg off polar`, 21 m/s then 2.5 m/s, GOTO_CORRECT_MAX).
+RSVP does not do that: one departure burn aims the B-plane (prograde by
+default) and the arrival inclination is whatever that aim produces.
+AOSO still raises apoapsis and plane-changes once inside SOI (tour POLAR).
+
+Landing burned 433 m/s vs 180 predicted. Suicide started at radar 3532 m
+with vVert -17.6 and vSrf 211 because stop distance used the full
+surface-speed vector against vertical radar. Final approach then sat at
+throttle 0 while VS was about -14 (PID sign was backwards). Bounds
+offset flickered 0–14 m and spammed the log.
+
+Not flown in KSP after this edit. Next-run signatures:
+
+- One departure burn. Log `Departure aim prograde` or `departure accepted`
+  with a capture-band PE. Do not log `deg off polar`, `Early polar SOI aim`,
+  or `PE/polar approach correction`.
+- At most one `Mid-course PE correction` if the live patch leaves the band.
+- Suicide log shows `tti` near `tStop`, not radar 3500 m with vVert tens of m/s.
+- Final approach must not hold throttle 0 while falling faster than -3 m/s.
+
+## Previous cycle
+
 Updated: 2026-09-23
 
 This file is a short handoff for the current AOSO debugging cycle. Read

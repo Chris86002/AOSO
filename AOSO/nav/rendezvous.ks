@@ -488,6 +488,7 @@ FUNCTION aoso_rendezvous_native_candidates_to_node {
     SET nd_native:NORMAL TO win_nml.
     aoso_rendezvous_settle_long().
 
+    aoso_rendezvous_aim_prograde_departure(nd_native, hop).
     LOCAL final_pe IS aoso_rendezvous_orbit_pe(nd_native:ORBIT, hop).
     IF NOT aoso_rendezvous_pe_ok_value(final_pe, hop) {
         aoso_log_warn("RENDEZVOUS", "Native winner lost capture PE after re-apply; returning to fallback navigation.").
@@ -923,7 +924,8 @@ FUNCTION aoso_rendezvous_porkchop_search {
     SET nd:RADIALOUT TO win_rad.
     SET nd:NORMAL TO win_nml.
     aoso_rendezvous_settle_long().
-    aoso_log_info("RENDEZVOUS", "Porkchop picked cheapest capture: PE " + ROUND(win_pe, 0) + "m dv=" + ROUND(nd:DELTAV:MAG, 1) +
+    aoso_rendezvous_aim_prograde_departure(nd, hop).
+    aoso_log_info("RENDEZVOUS", "Porkchop picked cheapest capture: PE " + ROUND(aoso_rendezvous_orbit_pe(nd:ORBIT, hop), 0) + "m dv=" + ROUND(nd:DELTAV:MAG, 1) +
         " m/s in " + ROUND(nd:ETA, 0) + "s (compared " + n_tried + ", capture " + n_cap + ").").
 
     RETURN nd.
@@ -1464,11 +1466,17 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
         IF aoso_rendezvous_node_hits_body(nd, target_orbitable) {
             IF aoso_rendezvous_pe_rough_ok_value(rough_pe0, target_orbitable) {
                 IF aoso_rendezvous_pe_ok_value(rough_pe0, target_orbitable) OR burn_s <= 35 {
-                    LOCAL rough_inc0 IS aoso_rendezvous_orbit_inc(nd:ORBIT, target_orbitable).
+                    aoso_rendezvous_aim_prograde_departure(nd, target_orbitable).
+                    LOCAL rough_pe1 IS aoso_rendezvous_orbit_pe(nd:ORBIT, target_orbitable).
+                    LOCAL rough_inc1 IS aoso_rendezvous_orbit_inc(nd:ORBIT, target_orbitable).
+                    LOCAL accept_why IS "Capture PE is already in band; polar is an in-SOI plane change, not a mid-course.".
+                    IF NOT aoso_rendezvous_pe_ok_value(rough_pe1, target_orbitable) {
+                        SET accept_why TO "One PE-only mid-course if the live patch leaves the capture band.".
+                    }
                     aoso_log_info("RENDEZVOUS", "Rough " + target_orbitable:NAME +
-                        " departure accepted immediately: PE=" + ROUND(rough_pe0, 0) +
-                        "m inc=" + ROUND(rough_inc0, 1) + "deg dv=" +
-                        ROUND(nd:DELTAV:MAG, 1) + " m/s. Mid-course will refine PE.").
+                        " departure accepted: PE=" + ROUND(rough_pe1, 0) +
+                        "m inc=" + ROUND(rough_inc1, 1) + "deg dv=" +
+                        ROUND(nd:DELTAV:MAG, 1) + " m/s. " + accept_why).
 
                     RETURN nd.
                 }
@@ -1502,6 +1510,7 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
             }
         }
         aoso_rendezvous_tune_pe_keep(nd, target_orbitable).
+        aoso_rendezvous_aim_prograde_departure(nd, target_orbitable).
         LOCAL pe_now IS aoso_rendezvous_orbit_pe(nd:ORBIT, target_orbitable).
         LOCAL want_pe IS aoso_rendezvous_desired_pe(target_orbitable).
         LOCAL pe_txt IS "".
@@ -1517,7 +1526,7 @@ FUNCTION aoso_rendezvous_add_phasing_transfer_node {
             aoso_log_info("RENDEZVOUS", "Rough encounter with " + target_orbitable:NAME +
                 " accepted for departure in " + ROUND(nd:ETA, 0) + "s dv=" +
                 ROUND(nd:DELTAV:MAG, 1) + " m/s" + pe_txt +
-                "; mid-course owns final PE targeting.").
+                "; one PE-only mid-course if the live patch leaves the capture band.").
 
             RETURN nd.
         }
@@ -1584,25 +1593,14 @@ FUNCTION aoso_rendezvous_orbit_inc {
     RETURN -1.
 }
 
-// A landing tour wants the arrival patch near polar before capture. The
-// parent-body orbit's inclination is not the inclination at the moon.
+// Polar survey is an in-SOI plane change after a raised apoapsis (tour
+// POLAR). It is not a coast objective. Chasing 90 deg from Kerbin burned
+// a chain of mid-course corrections at transfer speed; plane change is
+// 2*v*sin(theta/2) and that v is the expensive one. Callers that still
+// ask get "not a coast error" so a capture-band PE is left alone.
 FUNCTION aoso_rendezvous_polar_approach_error {
     PARAMETER orb.
     PARAMETER hop.
-    IF DEFINED AOSO_WANT_POLAR {
-        IF AOSO_WANT_POLAR {
-            IF DEFINED AOSO_WANT_POLAR_BODY {
-                IF AOSO_WANT_POLAR_BODY = hop:NAME {
-                    IF SHIP:BODY:NAME <> hop:NAME {
-                        LOCAL inc_p IS aoso_rendezvous_orbit_inc(orb, hop).
-                        IF inc_p >= 0 {
-                            RETURN ABS(inc_p - aoso_config_get("TOUR_POLAR_INCLINATION", 90)).
-                        }
-                    }
-                }
-            }
-        }
-    }
     RETURN -1.
 }
 
@@ -1631,10 +1629,6 @@ FUNCTION aoso_rendezvous_pe_score {
     LOCAL graze IS aoso_rendezvous_soi_alt(hop) * 0.35.
     IF pe > graze { RETURN 100000000 + (pe - desired_pe). }
     LOCAL sc IS ABS(pe - desired_pe).
-    IF AOSO_POLAR_MIDCOURSE_TUNING {
-        LOCAL polar_err IS aoso_rendezvous_polar_approach_error(nd:ORBIT, hop).
-        IF polar_err >= 0 { SET sc TO sc + polar_err * 400. }
-    }
     RETURN sc.
 }
 
@@ -1686,10 +1680,9 @@ FUNCTION aoso_rendezvous_pe_rough_ok_value {
 FUNCTION aoso_rendezvous_orbit_needs_correct {
     PARAMETER orb.
     PARAMETER hop.
-    IF NOT aoso_rendezvous_pe_ok_value(aoso_rendezvous_orbit_pe(orb, hop), hop) { RETURN TRUE. }
-    LOCAL polar_err IS aoso_rendezvous_polar_approach_error(orb, hop).
-    IF polar_err < 0 { RETURN FALSE. }
-    RETURN polar_err > aoso_config_get("TOUR_POLAR_TOLERANCE_DEG", 5).
+    // PE only. Inclination at the moon is whatever the prograde B-plane
+    // produced; tour POLAR rotates it once, slow, after capture.
+    RETURN NOT aoso_rendezvous_pe_ok_value(aoso_rendezvous_orbit_pe(orb, hop), hop).
 }
 
 FUNCTION aoso_rendezvous_clamp_prograde {
@@ -1818,14 +1811,7 @@ FUNCTION aoso_rendezvous_tune_pe {
 
         LOCAL orig_n IS nd:NORMAL.
         LOCAL rel_left IS aoso_orbit_rel_inc_from_orbit(nd:ORBIT, hop).
-        LOCAL walk_n IS FALSE.
-        IF rel_left >= 0.4 { SET walk_n TO TRUE. }
-        IF AOSO_POLAR_MIDCOURSE_TUNING {
-            IF DEFINED AOSO_WANT_POLAR {
-                IF AOSO_WANT_POLAR { SET walk_n TO TRUE. }
-            }
-        }
-        IF walk_n {
+        IF rel_left >= 0.4 {
             SET nd:NORMAL TO orig_n + step_dv.
             aoso_rendezvous_settle().
             SET s TO aoso_rendezvous_pe_score(nd, hop, desired).
@@ -1963,11 +1949,156 @@ FUNCTION aoso_rendezvous_seed_polar_correction {
 
 // Mid-course while on a live patch, or while its saved SOI clock is still
 // available. A missing live patch never authorizes an unverified burn.
+// Prograde SOI-edge aim (Jin Li patched conic, minimum inclination).
+// The position is an offset from the body center in the same frame as the
+// incoming Lambert velocity. Polar is intentionally not an option here:
+// a polar B-plane at Mun/Minmus distance is a large plane change.
+FUNCTION aoso_rendezvous_prograde_soi_offset {
+    PARAMETER hop.
+    PARAMETER incoming.
+    PARAMETER peri_alt.
+    LOCAL speed2 IS VDOT(incoming, incoming).
+    IF speed2 < 1 { RETURN V(0, 0, 0). }
+    LOCAL peri_r IS hop:RADIUS + peri_alt.
+    LOCAL soi_r IS hop:SOIRADIUS.
+    IF soi_r <= peri_r + 50 { RETURN V(0, 0, 0). }
+    LOCAL mu_b IS hop:MU.
+    LOCAL ve2 IS speed2 + mu_b * (2 / peri_r - 2 / soi_r).
+    IF ve2 <= 0 { RETURN V(0, 0, 0). }
+    LOCAL ve IS SQRT(ve2).
+    LOCAL h_mag IS ve * peri_r.
+    LOCAL n_plane IS incoming:X * incoming:X + incoming:Z * incoming:Z.
+    IF n_plane < speed2 * 0.002 { RETURN V(0, 0, 0). }
+    LOCAL cos_i IS SQRT(n_plane / speed2).
+    LOCAL hscale IS h_mag * cos_i.
+    LOCAL hx IS (-incoming:X * incoming:Y / n_plane) * hscale.
+    LOCAL hy IS hscale.
+    LOCAL hz IS (-incoming:Y * incoming:Z / n_plane) * hscale.
+    LOCAL hvec IS V(hx, hy, hz).
+    LOCAL reach2 IS speed2 * soi_r * soi_r - h_mag * h_mag.
+    IF reach2 <= 1 { RETURN V(0, 0, 0). }
+    LOCAL along IS SQRT(reach2).
+    LOCAL cross_h IS VCRS(incoming, hvec).
+    RETURN (incoming * along + cross_h) / speed2.
+}
+
+// One departure-side prograde aim. Kept only when KSP's own conic stays a
+// direct hit, PE is at least as close to the capture altitude, and the
+// burn does not grow by a plane-change. Otherwise the rough node is restored.
+FUNCTION aoso_rendezvous_aim_prograde_departure {
+    PARAMETER nd.
+    PARAMETER hop.
+    IF NOT aoso_rendezvous_node_hits_body(nd, hop) { RETURN FALSE. }
+    IF hop:BODY:NAME <> SHIP:BODY:NAME { RETURN FALSE. }
+    LOCAL parent_body IS SHIP:BODY.
+    LOCAL t_dep IS TIME:SECONDS + nd:ETA.
+    IF t_dep <= TIME:SECONDS + 30 { RETURN FALSE. }
+    LOCAL t_arr IS 0.
+    IF nd:ORBIT:HASNEXTPATCH {
+        IF nd:ORBIT:NEXTPATCH:BODY:NAME = hop:NAME {
+            IF nd:ORBIT:NEXTPATCH:HASSUFFIX("EPOCH") {
+                SET t_arr TO nd:ORBIT:NEXTPATCH:EPOCH.
+            }
+        }
+    }
+    IF t_arr <= t_dep + 60 {
+        SET t_arr TO t_dep + aoso_rendezvous_porkchop_tof_hoh(hop).
+    }
+    IF t_arr <= t_dep + 60 { RETURN FALSE. }
+    LOCAL tof_s IS t_arr - t_dep.
+    LOCAL keep_pg IS nd:PROGRADE.
+    LOCAL keep_nml IS nd:NORMAL.
+    LOCAL keep_rad IS nd:RADIALOUT.
+    LOCAL keep_eta IS nd:ETA.
+    LOCAL keep_pe IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
+    LOCAL keep_dv IS nd:DELTAV:MAG.
+    LOCAL pos1 IS aoso_lambert_rel_pos(SHIP, t_dep, parent_body).
+    LOCAL body_pos IS aoso_lambert_rel_pos(hop, t_arr, parent_body).
+    LOCAL vel_ship IS VELOCITYAT(SHIP, t_dep):ORBIT.
+    LOCAL vel_hop IS VELOCITYAT(hop, t_arr):ORBIT.
+    LOCAL peri_alt IS aoso_rendezvous_desired_pe(hop).
+    LOCAL aim_pos IS body_pos.
+    LOCAL sol IS LEXICON("ok", FALSE).
+    LOCAL incoming IS V(0, 0, 0).
+    LOCAL offset IS V(0, 0, 0).
+    LOCAL use_long IS FALSE.
+    LOCAL iter IS 0.
+    UNTIL iter >= 6 {
+        SET sol TO aoso_lambert_solve(pos1, aim_pos, tof_s, parent_body:MU, use_long).
+        IF NOT sol["ok"] {
+            IF iter = 0 {
+                SET use_long TO TRUE.
+                SET sol TO aoso_lambert_solve(pos1, aim_pos, tof_s, parent_body:MU, use_long).
+            }
+        }
+        IF NOT sol["ok"] { RETURN FALSE. }
+        SET incoming TO sol["vel2"] - vel_hop.
+        SET offset TO aoso_rendezvous_prograde_soi_offset(hop, incoming, peri_alt).
+        IF offset:MAG < 1 { RETURN FALSE. }
+        SET aim_pos TO body_pos + offset.
+        SET iter TO iter + 1.
+    }
+    SET sol TO aoso_lambert_solve(pos1, aim_pos, tof_s, parent_body:MU, use_long).
+    IF NOT sol["ok"] { RETURN FALSE. }
+    LOCAL dv_vec IS sol["vel1"] - vel_ship.
+    LOCAL extra_cap IS aoso_config_get("DEPARTURE_AIM_MAX_EXTRA_DV", 40).
+    IF extra_cap < 15 { SET extra_cap TO 15. }
+    IF extra_cap > 80 { SET extra_cap TO 80. }
+    IF dv_vec:MAG > keep_dv + extra_cap {
+        aoso_log_info("RENDEZVOUS", "Prograde SOI aim for " + hop:NAME + " costs +" +
+            ROUND(dv_vec:MAG - keep_dv, 1) + " m/s - keeping the rough intercept.").
+        RETURN FALSE.
+    }
+    LOCAL xyz IS aoso_lambert_dv_to_node_xyz(dv_vec, pos1, vel_ship).
+    SET nd:RADIALOUT TO xyz["radial"].
+    SET nd:NORMAL TO xyz["normal"].
+    SET nd:PROGRADE TO xyz["prograde"].
+    aoso_rendezvous_clamp_prograde(nd).
+    aoso_rendezvous_settle().
+    LOCAL new_pe IS aoso_rendezvous_orbit_pe(nd:ORBIT, hop).
+    LOCAL hit_ok IS aoso_rendezvous_node_hits_body(nd, hop).
+    LOCAL keep_err IS ABS(keep_pe - peri_alt).
+    LOCAL new_err IS ABS(new_pe - peri_alt).
+    LOCAL aim_ok IS FALSE.
+    IF hit_ok {
+        IF aoso_rendezvous_pe_rough_ok_value(new_pe, hop) {
+            IF new_err <= keep_err + 500 { SET aim_ok TO TRUE. }
+        }
+    }
+    // Native porkchop deletes the winner if PE leaves the capture band
+    // after this aim. A node that was already inside the band must stay
+    // there; otherwise restore the rough intercept.
+    IF aim_ok {
+        IF aoso_rendezvous_pe_ok_value(keep_pe, hop) {
+            IF NOT aoso_rendezvous_pe_ok_value(new_pe, hop) { SET aim_ok TO FALSE. }
+        }
+    }
+    IF NOT aim_ok {
+        SET nd:PROGRADE TO keep_pg.
+        SET nd:NORMAL TO keep_nml.
+        SET nd:RADIALOUT TO keep_rad.
+        SET nd:ETA TO keep_eta.
+        IF nd:ETA < 25 { SET nd:ETA TO 25. }
+        aoso_rendezvous_settle().
+        aoso_log_info("RENDEZVOUS", "Prograde SOI aim did not improve " + hop:NAME +
+            " (PE " + ROUND(keep_pe, 0) + "m -> " + ROUND(new_pe, 0) + "m) - keeping the rough intercept.").
+        RETURN FALSE.
+    }
+    LOCAL inc_p IS aoso_rendezvous_orbit_inc(nd:ORBIT, hop).
+    aoso_log_info("RENDEZVOUS", "Departure aim prograde " + hop:NAME +
+        " PE=" + ROUND(new_pe, 0) + "m inc=" + ROUND(inc_p, 1) + "deg dv=" +
+        ROUND(nd:DELTAV:MAG, 1) + " m/s (was PE=" + ROUND(keep_pe, 0) + "m dv=" +
+        ROUND(keep_dv, 1) + ").").
+    RETURN TRUE.
+}
+
+// Mid-course while on a live patch. A missing live patch never authorizes
+// an unverified burn. Polar inclination is not a reason to correct.
 FUNCTION aoso_rendezvous_add_correction_node {
     PARAMETER hop.
     PARAMETER arrival_ut IS 0.
     LOCAL live_patch IS SHIP:ORBIT:HASNEXTPATCH.
-    IF NOT live_patch AND arrival_ut <= TIME:SECONDS + 150 { RETURN 0. }
+    IF NOT live_patch { RETURN 0. }
 
     // tune_pe() deliberately yields so patched conics can settle. Never enter
     // it while packed/rails/unpacking. The 17.6-day Minmus run spent most of
@@ -1976,25 +2107,14 @@ FUNCTION aoso_rendezvous_add_correction_node {
     IF NOT aoso_warp_ensure_physics_idle() { RETURN 0. }
 
     LOCAL pe_now IS aoso_rendezvous_orbit_pe(SHIP:ORBIT, hop).
-    LOCAL polar_before IS aoso_rendezvous_polar_approach_error(SHIP:ORBIT, hop).
-    // A good PE several patches later is not enough for a direct moon hop:
-    // if another moon is the first SOI, this correction still has work to do.
+    // A capture-band PE on a direct patch is finished. Another moon as the
+    // first SOI still needs a repair; that fails ship_hits_body.
     IF aoso_rendezvous_pe_ok_value(pe_now, hop) {
-        IF aoso_rendezvous_ship_hits_body(hop) {
-            IF polar_before < 0 { RETURN 0. }
-            IF polar_before <= aoso_config_get("TOUR_POLAR_TOLERANCE_DEG", 5) { RETURN 0. }
-        }
+        IF aoso_rendezvous_ship_hits_body(hop) { RETURN 0. }
     }
 
-    LOCAL eta_p IS arrival_ut - TIME:SECONDS.
-    IF live_patch {
-        SET eta_p TO SHIP:ORBIT:NEXTPATCHETA.
-        SET arrival_ut TO TIME:SECONDS + eta_p.
-    }
+    LOCAL eta_p IS SHIP:ORBIT:NEXTPATCHETA.
     IF eta_p < 150 { RETURN 0. }
-    // Mid-course correction is time-sensitive local guidance. Once physics is
-    // settled, calculate it immediately instead of spending another bounded
-    // CPU-quiet wait at 1x.
     // Place the burn soon: hours-out nodes overshoot on rails (Acacius
     // 11 h / 0.3 placement, ETA -360, never aligned). A few minutes is
     // still early enough for a few m/s to move PE.
@@ -2005,30 +2125,8 @@ FUNCTION aoso_rendezvous_add_correction_node {
 
     LOCAL nd IS NODE(TIME:SECONDS + t_corr, 0, 0, 0).
     ADD nd.
-    SET AOSO_POLAR_MIDCOURSE_TUNING TO TRUE.
-    LOCAL seeded IS FALSE.
-    LOCAL seed_direct IS TRUE.
-    IF live_patch {
-        IF SHIP:ORBIT:NEXTPATCH:BODY:NAME <> hop:NAME { SET seed_direct TO FALSE. }
-    }
-    IF seed_direct {
-        IF DEFINED AOSO_WANT_POLAR {
-            IF AOSO_WANT_POLAR {
-                IF DEFINED AOSO_WANT_POLAR_BODY {
-                    IF AOSO_WANT_POLAR_BODY = hop:NAME {
-                        SET seeded TO aoso_rendezvous_seed_polar_correction(nd, hop, arrival_ut).
-                    }
-                }
-            }
-        }
-    }
-    IF NOT live_patch AND NOT seeded {
-        SET AOSO_POLAR_MIDCOURSE_TUNING TO FALSE.
-        REMOVE nd.
-        RETURN 0.
-    }
-    LOCAL tuned IS aoso_rendezvous_tune_pe(nd, hop).
     SET AOSO_POLAR_MIDCOURSE_TUNING TO FALSE.
+    LOCAL tuned IS aoso_rendezvous_tune_pe(nd, hop).
     IF NOT tuned {
         aoso_log_warn("RENDEZVOUS", "Mid-course tune did not reach a safe capture PE - leaving the coast as-is.").
         REMOVE nd.
@@ -2041,9 +2139,6 @@ FUNCTION aoso_rendezvous_add_correction_node {
     }
     LOCAL dv_cap IS aoso_config_get("MIDCOURSE_MAX_DV", 40).
     IF nd:DELTAV:MAG > dv_cap {
-        // A polar approach can need more than one correction. Keep a safe
-        // partial step within the existing burn cap if it still hits the
-        // target with a capture PE; a later coast pass can refine again.
         LOCAL shrink IS dv_cap / nd:DELTAV:MAG.
         SET nd:PROGRADE TO nd:PROGRADE * shrink.
         SET nd:RADIALOUT TO nd:RADIALOUT * shrink.
@@ -2060,16 +2155,6 @@ FUNCTION aoso_rendezvous_add_correction_node {
             RETURN 0.
         }
     }
-    LOCAL polar_after IS aoso_rendezvous_polar_approach_error(nd:ORBIT, hop).
-    IF aoso_rendezvous_pe_ok_value(pe_now, hop) {
-        IF polar_before >= 0 {
-            IF polar_after < 0 OR polar_after > polar_before - 1 {
-                aoso_log_warn("RENDEZVOUS", "Polar approach did not improve enough - leaving the safe encounter intact.").
-                REMOVE nd.
-                RETURN 0.
-            }
-        }
-    }
     IF nd:DELTAV:MAG < 0.8 {
         REMOVE nd.
         RETURN 0.
@@ -2079,12 +2164,7 @@ FUNCTION aoso_rendezvous_add_correction_node {
         REMOVE nd.
         RETURN 0.
     }
-    LOCAL polar_msg IS "".
-    IF polar_before >= 0 {
-        IF polar_after >= 0 {
-            SET polar_msg TO " inc " + ROUND(polar_before, 1) + " -> " + ROUND(polar_after, 1) + " deg off polar".
-        }
-    }
-    aoso_log_info("RENDEZVOUS", "Mid-course correction dv=" + ROUND(nd:DELTAV:MAG, 1) + " m/s, PE " + ROUND(pe_now, 0) + " -> " + ROUND(aoso_rendezvous_orbit_pe(nd:ORBIT, hop), 0) + "m" + polar_msg + ".").
+    aoso_log_info("RENDEZVOUS", "Mid-course PE correction dv=" + ROUND(nd:DELTAV:MAG, 1) +
+        " m/s, PE " + ROUND(pe_now, 0) + " -> " + ROUND(aoso_rendezvous_orbit_pe(nd:ORBIT, hop), 0) + "m.").
     RETURN nd.
 }
