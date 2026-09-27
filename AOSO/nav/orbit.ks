@@ -243,3 +243,24 @@ FUNCTION aoso_orbit_equatorial_node_etas {
     }
     RETURN etas.
 }
+
+// Unit north in the body-centered non-rotating frame. Equatorial-node
+// search uses the same axis (BODY:ANGULARVEL). A tiny spin falls back to
+// the geodetic north pole, then to a fixed axis so a plane-change sign
+// still has a defined target.
+FUNCTION aoso_orbit_north {
+    PARAMETER body IS SHIP:BODY.
+    LOCAL spin IS body:ANGULARVEL.
+    IF spin:MAG > 0.00000001 {
+        RETURN spin:NORMALIZED.
+    }
+    IF body:NAME = SHIP:BODY:NAME {
+        LOCAL pole_pos IS LATLNG(90, 0):POSITION.
+        LOCAL body_pos IS body:POSITION.
+        LOCAL north_v IS pole_pos - body_pos.
+        IF north_v:MAG > 1 {
+            RETURN north_v:NORMALIZED.
+        }
+    }
+    RETURN V(0, 1, 0).
+}

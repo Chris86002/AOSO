@@ -2,7 +2,24 @@
 
 Updated: 2026-09-27
 
-## This cycle (Acacius Kerbin → Minmus, log UT ~797866–1609793)
+## This cycle (Acacius Minmus capture, log UT ~785706–1097683)
+
+Capture promised a polar orbit at inc 10.3, then deferred because e=0.98
+and circularized 62 m/s into a 15 km orbit at inc 10.2. GOTO marked that
+parked. Tour then spent 42 m/s raising apoapsis back to 270 km. Inclination
+was still 10.2 when the log ended. The e<0.18 / first-node gate made an
+in-SOI polar burn impossible on a real arrival, and the inclination picker
+could commit the first normal sign even when predicted inclination did not
+improve.
+
+Not flown in KSP after this edit. Next-run signatures:
+
+- Do not log `Polar capture deferred` or `circularizing at periapsis` while inclination is still outside `TOUR_POLAR_TOLERANCE_DEG` of 90.
+- Do log `setting apoapsis to` before the plane change, then `plane-changing at the slow AN/DN` / `Inclination node added` with predicted inc near 90.
+- SCAN only after inc is within about 5 deg of 90. A 15 km circle at ~10 deg is not parked-and-done for a landing.
+- Still no coast `deg off polar`, `Early polar SOI aim`, or `PE/polar approach correction`.
+
+## Previous cycle (Acacius Kerbin → Minmus, log UT ~797866–1609793)
 
 Polar intercepts were a coast objective. `AOSO_WANT_POLAR` made
 `orbit_needs_correct` stay true for the whole transfer, stretched the

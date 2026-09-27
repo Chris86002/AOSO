@@ -138,12 +138,166 @@ FUNCTION aoso_planechange_add_node_for_target {
     RETURN nd.
 }
 
+// kOS NODE:NORMAL is KSP's v×r, the opposite of VCRS(r,v). Returns +1 or -1
+// for the NODE:NORMAL sign of a constant-speed inclination burn (normal
+// magnitude dv_n, prograde dv_pro). Used when patched conics do not move
+// between the two trial signs — the Acacius Minmus burn that trusted the
+// first +NORMAL candidate and never left 10 deg.
+FUNCTION aoso_planechange_normal_sign {
+    PARAMETER burn_eta.
+    PARAMETER dv_n.
+    PARAMETER dv_pro.
+    PARAMETER target_inc_deg.
+
+    LOCAL t_ut IS TIME:SECONDS + burn_eta.
+    LOCAL pos_b IS aoso_orbit_position_at(SHIP, t_ut).
+    LOCAL vel_b IS aoso_orbit_velocity_at(SHIP, t_ut).
+    LOCAL h_now IS VCRS(pos_b, vel_b).
+    IF h_now:MAG < 1 { RETURN 1. }
+    IF vel_b:MAG < 0.5 { RETURN 1. }
+    LOCAL north_u IS aoso_orbit_north(SHIP:BODY).
+    LOCAL h_north IS VDOT(h_now, north_u).
+    LOCAL h_eq IS h_now - (north_u * h_north).
+    LOCAL h_eq_hat IS h_eq.
+    IF h_eq:MAG > h_now:MAG * 0.02 {
+        SET h_eq_hat TO h_eq:NORMALIZED.
+    } ELSE {
+        LOCAL node_x IS VCRS(north_u, pos_b).
+        IF node_x:MAG < 1 { RETURN 1. }
+        SET h_eq_hat TO node_x:NORMALIZED.
+    }
+    LOCAL h_des IS (h_eq_hat * SIN(target_inc_deg)) + (north_u * COS(target_inc_deg)).
+    LOCAL h_hat IS h_now:NORMALIZED.
+    LOCAL v_hat IS vel_b:NORMALIZED.
+    // Physical +h is r×v. Positive NODE:NORMAL is the opposite direction.
+    LOCAL h_plus IS VCRS(pos_b, vel_b + (v_hat * dv_pro) + (h_hat * dv_n)).
+    LOCAL h_minus IS VCRS(pos_b, vel_b + (v_hat * dv_pro) - (h_hat * dv_n)).
+    LOCAL ang_p IS 180.
+    LOCAL ang_m IS 180.
+    IF h_plus:MAG > 1 { SET ang_p TO VANG(h_plus, h_des). }
+    IF h_minus:MAG > 1 { SET ang_m TO VANG(h_minus, h_des). }
+    IF ang_p <= ang_m { RETURN -1. }
+    RETURN 1.
+}
+
+// Constant-speed plane change: normal = v*sin(dInc), prograde = v*(cos(dInc)-1).
+// A pure normal of 2*v*sin(dInc/2) from 10 deg to 90 deg does not finish the
+// inclination change, and the same burn at the fast node can dive periapsis.
+// Returns a lexicon ok/pro/nrm. ok FALSE means do not burn this crossing.
+FUNCTION aoso_planechange_choose_normal {
+    PARAMETER burn_eta.
+    PARAMETER target_inc_deg.
+    PARAMETER err_now.
+    PARAMETER pe_min.
+
+    LOCAL pick IS LEXICON().
+    pick:ADD("ok", FALSE).
+    pick:ADD("pro", 0).
+    pick:ADD("nrm", 0).
+
+    LOCAL t_ut IS TIME:SECONDS + burn_eta.
+    LOCAL vel_b IS aoso_orbit_velocity_at(SHIP, t_ut).
+    LOCAL spd_b IS vel_b:MAG.
+    IF spd_b < 0.5 { RETURN pick. }
+    LOCAL dv_n IS spd_b * SIN(err_now).
+    LOCAL dv_p IS spd_b * (COS(err_now) - 1).
+    IF dv_n < 0.05 { RETURN pick. }
+
+    LOCAL nd_try IS NODE(t_ut, 0, dv_n, dv_p).
+    ADD nd_try.
+    aoso_yield().
+    LOCAL inc_p IS nd_try:ORBIT:INCLINATION.
+    LOCAL err_p IS ABS(inc_p - target_inc_deg).
+    LOCAL pe_p IS nd_try:ORBIT:PERIAPSIS.
+    LOCAL ecc_p IS nd_try:ORBIT:ECCENTRICITY.
+    SET nd_try:NORMAL TO -dv_n.
+    SET nd_try:PROGRADE TO dv_p.
+    aoso_yield().
+    LOCAL inc_m IS nd_try:ORBIT:INCLINATION.
+    LOCAL err_m IS ABS(inc_m - target_inc_deg).
+    LOCAL pe_m IS nd_try:ORBIT:PERIAPSIS.
+    LOCAL ecc_m IS nd_try:ORBIT:ECCENTRICITY.
+    REMOVE nd_try.
+
+    LOCAL inc_ship IS SHIP:ORBIT:INCLINATION.
+    LOCAL stale IS FALSE.
+    IF ABS(inc_p - inc_ship) < 0.15 {
+        IF ABS(inc_m - inc_ship) < 0.15 { SET stale TO TRUE. }
+    }
+
+    IF stale {
+        LOCAL sgn IS aoso_planechange_normal_sign(burn_eta, dv_n, dv_p, target_inc_deg).
+        LOCAL nd_geo IS NODE(t_ut, 0, sgn * dv_n, dv_p).
+        ADD nd_geo.
+        aoso_yield().
+        LOCAL pe_g IS nd_geo:ORBIT:PERIAPSIS.
+        LOCAL ecc_g IS nd_geo:ORBIT:ECCENTRICITY.
+        LOCAL inc_g IS nd_geo:ORBIT:INCLINATION.
+        REMOVE nd_geo.
+        LOCAL geo_ok IS TRUE.
+        IF ecc_g >= 1 { SET geo_ok TO FALSE. }
+        IF pe_g < pe_min { SET geo_ok TO FALSE. }
+        IF NOT geo_ok {
+            IF ABS(inc_g - inc_ship) < 0.15 {
+                IF PERIAPSIS >= pe_min { SET geo_ok TO TRUE. }
+            }
+        }
+        IF geo_ok {
+            aoso_log_info("PLANECHANGE", "Patched conics did not move inclination; geometric normal sign " + sgn + " at eta " + ROUND(burn_eta, 0) + "s.").
+            SET pick["ok"] TO TRUE.
+            SET pick["pro"] TO dv_p.
+            SET pick["nrm"] TO sgn * dv_n.
+        } ELSE {
+            aoso_log_warn_every(15, "INC_PE", "Geometric plane-change at eta " + ROUND(burn_eta, 0) + "s would drop PE to " + ROUND(pe_g, 0) + "m. Skipping this node.").
+        }
+        RETURN pick.
+    }
+
+    LOCAL use_n IS 0.
+    LOCAL use_err IS err_now.
+    LOCAL ok_p IS FALSE.
+    IF ecc_p < 1 {
+        IF pe_p >= pe_min {
+            IF err_p <= err_now - 1 { SET ok_p TO TRUE. }
+        }
+    }
+    LOCAL ok_m IS FALSE.
+    IF ecc_m < 1 {
+        IF pe_m >= pe_min {
+            IF err_m <= err_now - 1 { SET ok_m TO TRUE. }
+        }
+    }
+    IF ok_p {
+        SET use_n TO dv_n.
+        SET use_err TO err_p.
+    }
+    IF ok_m {
+        LOCAL take_m IS FALSE.
+        IF NOT ok_p { SET take_m TO TRUE. }
+        IF err_m < use_err { SET take_m TO TRUE. }
+        IF take_m {
+            SET use_n TO -dv_n.
+            SET use_err TO err_m.
+        }
+    }
+    IF use_n = 0 {
+        aoso_log_warn_every(15, "INC_SIGN", "Neither normal sign at eta " + ROUND(burn_eta, 0) + "s improved inclination without dropping PE (err " + ROUND(err_p, 1) + " / " + ROUND(err_m, 1) + " deg, PE " + ROUND(pe_p, 0) + " / " + ROUND(pe_m, 0) + "m).").
+        RETURN pick.
+    }
+    SET pick["ok"] TO TRUE.
+    SET pick["pro"] TO dv_p.
+    SET pick["nrm"] TO use_n.
+    RETURN pick.
+}
+
 FUNCTION aoso_planechange_add_node_for_inclination {
     PARAMETER target_inc_deg IS 90.
-    PARAMETER tolerance_deg IS 15.
+    PARAMETER tolerance_deg IS 5.
+    PARAMETER pe_floor IS -1.
 
     IF SHIP:ORBIT:ECCENTRICITY >= 1 { RETURN 0. }
-    IF aoso_orbit_period_s() <= 0 { RETURN 0. }
+    LOCAL period_s IS aoso_orbit_period_s().
+    IF period_s <= 0 { RETURN 0. }
 
     LOCAL inc_now IS SHIP:ORBIT:INCLINATION.
     LOCAL err IS ABS(inc_now - target_inc_deg).
@@ -152,67 +306,100 @@ FUNCTION aoso_planechange_add_node_for_inclination {
         RETURN 0.
     }
 
+    LOCAL pe_min IS pe_floor.
+    IF pe_min < 0 {
+        SET pe_min TO 5000.
+        IF SHIP:BODY:ATM:EXISTS {
+            SET pe_min TO SHIP:BODY:ATM:HEIGHT + 5000.
+        } ELSE {
+            LOCAL dive_pe IS aoso_config_get("DESCENT_SAFE_PE_ALT", 8000).
+            IF pe_min < dive_pe { SET pe_min TO dive_pe. }
+        }
+    }
+
     LOCAL etas IS aoso_orbit_equatorial_node_etas(SHIP).
     IF etas:LENGTH = 0 {
         aoso_log_warn("PLANECHANGE", "No equatorial crossing found within one orbit.").
         RETURN 0.
     }
 
-    LOCAL best_eta IS 0.
-    LOCAL best_normal IS 0.
-    LOCAL best_err IS err.
-    LOCAL best_spd IS 1000000000.
-    LOCAL found IS FALSE.
-    LOCAL ei IS 0.
-    UNTIL ei >= etas:LENGTH {
-        LOCAL burn_eta IS etas[ei].
-        IF burn_eta > 25 {
-            LOCAL t_ut IS TIME:SECONDS + burn_eta.
-            LOCAL v_vec IS aoso_orbit_velocity_at(SHIP, t_ut).
-            LOCAL dv_mag IS aoso_planechange_dv_for_angle(err, v_vec:MAG).
-
-            LOCAL nd_try IS NODE(t_ut, 0, 0, 0).
-            ADD nd_try.
-            SET nd_try:NORMAL TO dv_mag.
-            aoso_yield().
-            LOCAL err_p IS ABS(nd_try:ORBIT:INCLINATION - target_inc_deg).
-            SET nd_try:NORMAL TO -dv_mag.
-            aoso_yield().
-            LOCAL err_m IS ABS(nd_try:ORBIT:INCLINATION - target_inc_deg).
-            REMOVE nd_try.
-
-            LOCAL use_n IS dv_mag.
-            LOCAL use_err IS err_p.
-            IF err_m < err_p {
-                SET use_n TO -dv_mag.
-                SET use_err TO err_m.
-            }
-            LOCAL better IS FALSE.
-            IF NOT found { SET better TO TRUE. }
-            IF use_err < best_err - 1 { SET better TO TRUE. }
-            IF NOT better {
-                IF use_err <= best_err + 2 {
-                    IF v_vec:MAG < best_spd - 1 { SET better TO TRUE. }
-                }
-            }
-            IF better {
-                SET best_err TO use_err.
-                SET best_eta TO burn_eta.
-                SET best_normal TO use_n.
-                SET best_spd TO v_vec:MAG.
-                SET found TO TRUE.
-            }
+    LOCAL eta_slow IS -1.
+    LOCAL spd_slow IS 0.
+    LOCAL eta_fast IS -1.
+    LOCAL spd_fast IS 0.
+    IF etas:LENGTH > 0 {
+        SET eta_slow TO etas[0].
+        SET spd_slow TO aoso_orbit_velocity_at(SHIP, TIME:SECONDS + eta_slow):MAG.
+    }
+    IF etas:LENGTH > 1 {
+        SET eta_fast TO etas[1].
+        SET spd_fast TO aoso_orbit_velocity_at(SHIP, TIME:SECONDS + eta_fast):MAG.
+        IF spd_fast < spd_slow - 0.5 {
+            LOCAL swap_eta IS eta_slow.
+            LOCAL swap_spd IS spd_slow.
+            SET eta_slow TO eta_fast.
+            SET spd_slow TO spd_fast.
+            SET eta_fast TO swap_eta.
+            SET spd_fast TO swap_spd.
         }
-        SET ei TO ei + 1.
     }
 
-    IF NOT found { RETURN 0. }
+    // A crossing under 40 s is the one we are leaving. Push the slow node
+    // a full period rather than burning the fast node at periapsis.
+    LOCAL orig_spd IS spd_slow.
+    IF eta_slow < 40 {
+        LOCAL use_fast IS FALSE.
+        IF eta_fast >= 40 {
+            IF spd_fast <= orig_spd * 1.15 { SET use_fast TO TRUE. }
+        }
+        IF use_fast {
+            SET eta_slow TO eta_fast.
+            SET spd_slow TO spd_fast.
+            SET eta_fast TO -1.
+        } ELSE {
+            SET eta_slow TO eta_slow + period_s.
+        }
+    }
 
-    LOCAL nd IS NODE(TIME:SECONDS + best_eta, 0, best_normal, 0).
+    LOCAL pick IS aoso_planechange_choose_normal(eta_slow, target_inc_deg, err, pe_min).
+    IF NOT pick["ok"] {
+        IF eta_fast >= 40 {
+            IF spd_fast <= orig_spd * 1.15 {
+                SET pick TO aoso_planechange_choose_normal(eta_fast, target_inc_deg, err, pe_min).
+                IF pick["ok"] {
+                    SET eta_slow TO eta_fast.
+                    SET spd_slow TO spd_fast.
+                }
+            }
+        }
+    }
+    IF NOT pick["ok"] { RETURN 0. }
+
+    LOCAL nd IS NODE(TIME:SECONDS + eta_slow, 0, pick["nrm"], pick["pro"]).
     ADD nd.
     aoso_yield().
-    aoso_log_info("PLANECHANGE", "Inclination node added: dv=" + ROUND(best_normal, 1) +
-        " m/s normal at v=" + ROUND(best_spd, 1) + " m/s, " + ROUND(inc_now, 1) + " -> pred " +
-        ROUND(nd:ORBIT:INCLINATION, 1) + " deg (want " + ROUND(target_inc_deg, 0) + ").").
+    LOCAL inc_pred IS nd:ORBIT:INCLINATION.
+    LOCAL err_pred IS ABS(inc_pred - target_inc_deg).
+    IF err_pred > err + 2 {
+        REMOVE nd.
+        aoso_log_warn("PLANECHANGE", "Removed inclination node: predicted inc " + ROUND(inc_pred, 1) + " is worse than " + ROUND(inc_now, 1) + " (want " + ROUND(target_inc_deg, 0) + ").").
+        RETURN 0.
+    }
+    IF nd:ORBIT:ECCENTRICITY >= 1 {
+        REMOVE nd.
+        aoso_log_warn("PLANECHANGE", "Removed inclination node: predicted orbit is unbound.").
+        RETURN 0.
+    }
+    LOCAL pe_pred IS nd:ORBIT:PERIAPSIS.
+    IF pe_pred < pe_min {
+        IF ABS(inc_pred - inc_now) >= 0.15 {
+            REMOVE nd.
+            aoso_log_warn("PLANECHANGE", "Removed inclination node: predicted PE " + ROUND(pe_pred, 0) + "m is below " + ROUND(pe_min, 0) + "m.").
+            RETURN 0.
+        }
+    }
+    aoso_log_info("PLANECHANGE", "Inclination node added: dv=" + ROUND(nd:DELTAV:MAG, 1) +
+        " m/s at v=" + ROUND(spd_slow, 1) + " m/s, " + ROUND(inc_now, 1) + " -> pred " +
+        ROUND(inc_pred, 1) + " deg (want " + ROUND(target_inc_deg, 0) + ").").
     RETURN nd.
 }

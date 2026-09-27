@@ -373,25 +373,31 @@ FUNCTION aoso_tour_polar_entry {
     IF NOT aoso_tour_is_polar() {
         LOCAL tgt IS aoso_config_get("TOUR_POLAR_INCLINATION", 90).
         LOCAL park IS aoso_goto_parking_alt(SHIP:BODY).
-        LOCAL soi_a IS SHIP:BODY:SOIRADIUS - SHIP:BODY:RADIUS.
-        LOCAL high_ap IS park * 18.
-        IF high_ap < park * 8 { SET high_ap TO park * 8. }
-        IF high_ap > soi_a * 0.28 { SET high_ap TO soi_a * 0.28. }
+        LOCAL high_ap IS aoso_capture_high_ap(park).
         LOCAL ap_now IS aoso_orbit_apoapsis_alt().
-        IF SHIP:ORBIT:ECCENTRICITY < 0.2 {
-            IF ap_now < high_ap * 0.7 {
-                aoso_log_info("TOUR", "Raising AP to " + ROUND(high_ap, 0) + "m before polar plane-change (cheap at low speed, not 140 m/s at circular PE).").
-                LOCAL nd_ap IS aoso_hohmann_add_apoapsis_change(high_ap).
-                IF nd_ap = 0 {
-                    aoso_log_warn_every(15, "POLAR_AP", "Could not raise apoapsis before the polar plane-change at " + SHIP:BODY:NAME + " (inc " + ROUND(SHIP:ORBIT:INCLINATION, 1) + " deg). Not scanning an equatorial orbit.").
-                    SET data["polar_ready"] TO FALSE.
-                    SET AOSO_TOUR["need_entry"] TO TRUE.
-                }
-                RETURN.
+        // Any eccentricity. A 15 km circle (ecc ~0) and a leftover capture
+        // ellipse both need the slow node near the survey apoapsis. Do not
+        // plane-change at circular periapsis, and do not SCAN until polar.
+        LOCAL ap_off IS FALSE.
+        IF ap_now < high_ap * 0.7 { SET ap_off TO TRUE. }
+        IF ap_now > high_ap * 1.35 { SET ap_off TO TRUE. }
+        IF ap_off {
+            aoso_log_info("TOUR", "Setting AP to " + ROUND(high_ap, 0) + "m before polar plane-change (now " + ROUND(ap_now, 0) + "m, inc " + ROUND(SHIP:ORBIT:INCLINATION, 1) + " deg). Not scanning until the orbit is polar.").
+            LOCAL nd_ap IS aoso_hohmann_add_apoapsis_change(high_ap).
+            IF nd_ap = 0 {
+                aoso_log_warn_every(15, "POLAR_AP", "Could not set apoapsis before the polar plane-change at " + SHIP:BODY:NAME + " (inc " + ROUND(SHIP:ORBIT:INCLINATION, 1) + " deg). Not scanning an equatorial orbit.").
+                SET data["polar_ready"] TO FALSE.
+                SET AOSO_TOUR["need_entry"] TO TRUE.
             }
+            RETURN.
         }
         aoso_log_info("TOUR", "Plane-changing to polar (" + ROUND(SHIP:ORBIT:INCLINATION, 1) + " -> " + tgt + " deg) at the slow node.").
-        LOCAL nd_p IS aoso_planechange_add_node_for_inclination(tgt, aoso_config_get("TOUR_POLAR_TOLERANCE_DEG", 5)).
+        LOCAL pe_min IS aoso_capture_safe_pe_floor(park).
+        LOCAL dive_pe IS aoso_config_get("DESCENT_SAFE_PE_ALT", 8000).
+        IF NOT SHIP:BODY:ATM:EXISTS {
+            IF pe_min < dive_pe { SET pe_min TO dive_pe. }
+        }
+        LOCAL nd_p IS aoso_planechange_add_node_for_inclination(tgt, aoso_config_get("TOUR_POLAR_TOLERANCE_DEG", 5), pe_min).
         IF nd_p = 0 {
             aoso_log_warn_every(15, "POLAR_NODE", "No polar plane-change node yet at " + SHIP:BODY:NAME + " (inc " + ROUND(SHIP:ORBIT:INCLINATION, 1) + " deg). Not scanning until inclination is near " + ROUND(tgt, 0) + " deg.").
             SET data["polar_ready"] TO FALSE.

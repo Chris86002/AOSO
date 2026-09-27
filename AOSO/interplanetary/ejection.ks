@@ -557,28 +557,38 @@ FUNCTION aoso_interplanetary_add_capture_node {
 
     LOCAL want_polar IS aoso_capture_want_polar().
     LOCAL polar_err IS aoso_capture_polar_err().
-    LOCAL polar_tol IS aoso_config_get("TOUR_POLAR_TOLERANCE_DEG", 15).
+    LOCAL polar_tol IS aoso_config_get("TOUR_POLAR_TOLERANCE_DEG", 5).
     LOCAL high_ap IS aoso_capture_high_ap(min_pe).
 
+    // Bind the survey ellipse, plane-change at the slow AN/DN, then
+    // circularize. The old e<0.18 gate deferred every real arrival (Minmus
+    // e=0.98, inc 10) and circularized a non-polar orbit, which GOTO then
+    // marked parked. Do not circularize while inclination is still outside
+    // tolerance — a 15 km plane change is the expensive burn.
     IF want_polar {
         IF polar_err > polar_tol {
-            LOCAL e_now IS SHIP:ORBIT:ECCENTRICITY.
-            IF e_now < 0.18 {
-                IF NOT aoso_orbit_is_hyperbolic() {
-                    LOCAL etas_p IS aoso_orbit_equatorial_node_etas(SHIP).
-                    LOCAL v_node IS 100000.
-                    IF etas_p:LENGTH > 0 {
-                        LOCAL v_vec_p IS aoso_orbit_velocity_at(SHIP, TIME:SECONDS + etas_p[0]).
-                        SET v_node TO v_vec_p:MAG.
-                    }
-                    LOCAL dv_pl IS aoso_planechange_dv_for_angle(polar_err, v_node).
-                    IF dv_pl < v_node * 0.4 {
-                        aoso_log_info("EJECTION", "Polar capture at " + SHIP:BODY:NAME + ": plane-changing at the slow AN/DN (inc=" + ROUND(SHIP:ORBIT:INCLINATION, 1) + " e=" + ROUND(e_now, 2) + ").").
-                        RETURN aoso_planechange_add_node_for_inclination(aoso_config_get("TOUR_POLAR_INCLINATION", 90), polar_tol).
-                    }
-                }
+            LOCAL ap_now IS aoso_orbit_apoapsis_alt().
+            LOCAL soi_lim IS SHIP:BODY:SOIRADIUS - SHIP:BODY:RADIUS.
+            LOCAL ap_bad IS aoso_orbit_is_hyperbolic().
+            IF ap_now < high_ap * 0.7 { SET ap_bad TO TRUE. }
+            IF ap_now > high_ap * 1.35 { SET ap_bad TO TRUE. }
+            IF ap_now > soi_lim * 0.85 { SET ap_bad TO TRUE. }
+            IF ap_bad {
+                aoso_log_info("EJECTION", "Polar capture at " + SHIP:BODY:NAME + ": setting apoapsis to " + ROUND(high_ap, 0) + "m before the plane change (inc " + ROUND(SHIP:ORBIT:INCLINATION, 1) + " deg). Not circularizing yet.").
+                RETURN aoso_hohmann_add_apoapsis_change(high_ap).
             }
-            aoso_log_info("EJECTION", "Polar capture deferred at " + SHIP:BODY:NAME + " - circularize/bind first (e=" + ROUND(SHIP:ORBIT:ECCENTRICITY, 2) + "). A 230 m/s plane-change at v=180 unbound Minmus.").
+            LOCAL pe_min IS aoso_capture_safe_pe_floor(min_pe).
+            LOCAL dive_pe IS aoso_config_get("DESCENT_SAFE_PE_ALT", 8000).
+            IF NOT SHIP:BODY:ATM:EXISTS {
+                IF pe_min < dive_pe { SET pe_min TO dive_pe. }
+            }
+            aoso_log_info("EJECTION", "Polar capture at " + SHIP:BODY:NAME + ": plane-changing at the slow AN/DN (inc=" + ROUND(SHIP:ORBIT:INCLINATION, 1) + " e=" + ROUND(SHIP:ORBIT:ECCENTRICITY, 2) + "). Not circularizing a non-polar orbit.").
+            LOCAL nd_pol IS aoso_planechange_add_node_for_inclination(aoso_config_get("TOUR_POLAR_INCLINATION", 90), polar_tol, pe_min).
+            IF nd_pol = 0 {
+                aoso_log_warn("EJECTION", "Polar plane-change node was not created at " + SHIP:BODY:NAME + " (inc " + ROUND(SHIP:ORBIT:INCLINATION, 1) + "). Not circularizing a non-polar orbit.").
+                RETURN 0.
+            }
+            RETURN nd_pol.
         }
     }
 
