@@ -96,6 +96,13 @@ FUNCTION aoso_watchdog_in_critical_flight {
 // grow mission history each sample — treating that as a stall safe-held
 // the Minmus overflight and recover() deletes NEXTNODE.
 FUNCTION aoso_watchdog_deliberate_wait {
+    // A node that has not reached ignition is the plan, not a stall.
+    // Maneuver heartbeats overwrite the CTX controller, so the old
+    // "goto" + CAPTURE check missed and recover() deleted a Minmus
+    // circularize (ETA ~28000s, e still 1.11) about 15 times.
+    IF HASNODE {
+        IF NEXTNODE:ETA > 0 { RETURN TRUE. }
+    }
     IF DEFINED AOSO_TOUR {
         LOCAL tst IS AOSO_TOUR["current"].
         IF tst = "SCAN" { RETURN TRUE. }
@@ -145,8 +152,12 @@ FUNCTION aoso_watchdog_recover {
     LOCAL ctl IS "".
     IF DEFINED AOSO_CTX { SET ctl TO aoso_ctx_get("controller", ""). }
     aoso_throttle_set(0).
+    // Do not delete a burn that is still in the future. A missed node
+    // (ETA already negative) is the one recover() may clear.
     IF HASNODE {
-        REMOVE NEXTNODE.
+        IF NEXTNODE:ETA <= 0 {
+            REMOVE NEXTNODE.
+        }
     }
     IF ctl = "refuel" {
         IF DEFINED AOSO_REFUEL {

@@ -637,16 +637,23 @@ FUNCTION aoso_tour_deorbit_execute {
         SET site_ang TO aoso_tour_site_vang(data["site_lat"], data["site_lng"]).
         IF NOT data:HASKEY("deorbit_ang_peak") { SET data["deorbit_ang_peak"] TO site_ang. }
         IF site_ang > data["deorbit_ang_peak"] { SET data["deorbit_ang_peak"] TO site_ang. }
-        // A polar track can crest short of 180 (this Minmus site peaked at
-        // 174 while the target was 179). Comparing a 1.5 deg drop to the
-        // previous sample never fired, so the wait ran a full period and
-        // burned at 119 deg. Commit once the pass has cleared the opposite
-        // floor and fallen 2 deg off that crest. Reaching the 179 target
-        // still wins on the YES path.
+        // A polar survey ellipse never reaches 179. This Minmus pass crested
+        // at 129 (ship -18/83 vs site 29/-152). The 150 deg floor never
+        // armed, so TIMEOUT burned at 75 deg. A 2 deg drop is too twitchy
+        // on the same pass: 113 fell only to 106 and then climbed to 129,
+        // and a polar passage peaked at 68. On a fat ellipse, commit once
+        // the high-water mark has cleared 100 and fallen 12 deg (129 -> 116
+        // fires; 113 -> 106 and 68 do not). A round orbit keeps the 150/2
+        // gate. Reaching the 179 target still wins on the YES path.
         LOCAL falling IS FALSE.
         LOCAL floor_ang IS aoso_config_get("DEORBIT_OPPOSITE_MIN_DEG", 150).
+        LOCAL drop_ang IS 2.
+        IF SHIP:ORBIT:ECCENTRICITY >= 0.25 {
+            SET floor_ang TO 100.
+            SET drop_ang TO 12.
+        }
         IF data["deorbit_ang_peak"] >= floor_ang {
-            IF site_ang < data["deorbit_ang_peak"] - 2 { SET falling TO TRUE. }
+            IF site_ang < data["deorbit_ang_peak"] - drop_ang { SET falling TO TRUE. }
         }
         IF site_ang >= target_ang {
             SET opposite TO TRUE.
@@ -710,6 +717,22 @@ FUNCTION aoso_tour_deorbit_execute {
 
     LOCAL eta_s IS -1.
     IF opposite { SET eta_s TO aoso_maneuver_align_s(). }
+    // The node dv is the apoapsis Hohmann value. Lighting it 50s from a
+    // crest near periapsis barely lowers PE (this pass: -10.5 m/s, PE
+    // 133878 -> 36652, target 3677). On a fat ellipse put the burn at
+    // apoapsis. If this apo is already inside the align window, take the
+    // next one so the node is not born missed.
+    IF opposite {
+        IF SHIP:ORBIT:ECCENTRICITY >= 0.25 {
+            IF NOT aoso_orbit_is_hyperbolic() {
+                LOCAL eta_apo IS aoso_orbit_eta_apoapsis().
+                IF eta_apo < align_s + 20 {
+                    IF period > align_s + 80 { SET eta_apo TO eta_apo + period. }
+                }
+                SET eta_s TO eta_apo.
+            }
+        }
+    }
     aoso_log_info("TOUR", "Placing deorbit node opposite=" + opp_txt + " ang=" + ROUND(site_ang, 0) +
         " deg target=" + ROUND(target_ang, 0) + " align=" + ROUND(align_s, 0) +
         "s eta=" + ROUND(eta_s, 0) + "s AP=" + ROUND(APOAPSIS, 0) + " PE=" + ROUND(PERIAPSIS, 0) +
