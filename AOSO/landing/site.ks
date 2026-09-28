@@ -82,6 +82,37 @@ FUNCTION aoso_landing_site_roughness_m {
     RETURN hi - lo.
 }
 
+// Height of the tallest ground above the touchdown point inside the landing
+// footprint. Slope and the 200 m roughness sample both call a crater floor
+// or the lip of a flat "perfect" — the pad is the size of the stop distance,
+// not the contact patch. Rim is max(sample) - center, not max-min, so a
+// basin reads as a wall and a broad interior does not.
+FUNCTION aoso_landing_site_rim_m {
+    PARAMETER geo.
+    LOCAL foot IS aoso_config_get("LANDING_FOOTPRINT_M", 3500).
+    IF foot < 50 { RETURN 0. }
+    LOCAL h0 IS geo:TERRAINHEIGHT.
+    LOCAL hi IS h0.
+    LOCAL band IS 0.
+    UNTIL band >= 2 {
+        LOCAL dist IS foot.
+        IF band = 1 { SET dist TO foot * 0.4. }
+        LOCAL d IS aoso_landing_site_sample_delta_deg(geo, dist).
+        IF d > 0 {
+            LOCAL hn IS aoso_landing_site_offset_geo(geo, d, 0):TERRAINHEIGHT.
+            LOCAL hs IS aoso_landing_site_offset_geo(geo, -d, 0):TERRAINHEIGHT.
+            LOCAL he IS aoso_landing_site_offset_geo(geo, 0, d):TERRAINHEIGHT.
+            LOCAL hw IS aoso_landing_site_offset_geo(geo, 0, -d):TERRAINHEIGHT.
+            IF hn > hi { SET hi TO hn. }
+            IF hs > hi { SET hi TO hs. }
+            IF he > hi { SET hi TO he. }
+            IF hw > hi { SET hi TO hw. }
+        }
+        SET band TO band + 1.
+    }
+    RETURN hi - h0.
+}
+
 // TRUE if geo sits on/under this body's ocean (never a valid touchdown
 // site for a lander). Bodies with no ocean always report FALSE here
 // regardless of TERRAINHEIGHT sign.
@@ -91,12 +122,14 @@ FUNCTION aoso_landing_site_is_water {
     RETURN geo:TERRAINHEIGHT < 0.
 }
 
-// Lower-is-better score for comparing candidate sites: disqualifies water
-// or over-slope sites outright (-1). Remaining terms: slope (safety),
-// latitude (solar / equatorial departure), terrain altitude (takeoff dV
-// on atmo worlds, peak penalty on airless), optional distance to a
-// preferred waypoint. A slightly steeper highland that is cheaper to
-// leave can beat a dead-flat basin.
+// Lower-is-better score for comparing candidate sites: disqualifies water,
+// over-slope sites, or a footprint rim taller than LANDING_RIM_MAX_M (-1).
+// Remaining terms: slope (safety), local roughness, footprint rim, latitude
+// (solar / equatorial departure), terrain altitude (takeoff dV on atmo
+// worlds, peak penalty on airless), optional distance to a preferred
+// waypoint. A slightly steeper highland that is cheaper to leave can beat
+// a dead-flat basin. Far unloaded queries still look perfect (alt 0 / rim 0);
+// aoso_landing_site_trustworthy() is what keeps that sentinel from winning.
 FUNCTION aoso_landing_site_score {
     PARAMETER geo.
     PARAMETER target_geo IS 0.
@@ -112,6 +145,12 @@ FUNCTION aoso_landing_site_score {
     IF rough_w < 0 { SET rough_w TO 0. }
 
     LOCAL score IS slope * 2.5 + roughness * rough_w.
+    LOCAL rim IS aoso_landing_site_rim_m(geo).
+    LOCAL rim_max IS aoso_config_get("LANDING_RIM_MAX_M", 450).
+    IF rim > rim_max { RETURN -1. }
+    LOCAL rim_w IS aoso_config_get("LANDING_RIM_WEIGHT", 0.015).
+    IF rim_w < 0 { SET rim_w TO 0. }
+    SET score TO score + rim * rim_w.
     LOCAL alt_m IS geo:TERRAINHEIGHT.
     LOCAL lat_abs IS ABS(geo:LAT).
 
@@ -290,6 +329,7 @@ FUNCTION aoso_landing_site_scan_orbit {
 
     LOCAL slope IS aoso_landing_site_slope_deg(best_geo).
     LOCAL roughness IS aoso_landing_site_roughness_m(best_geo).
+    LOCAL rim IS aoso_landing_site_rim_m(best_geo).
     LOCAL quality IS aoso_landing_site_quality(best_geo).
     LOCAL trust_txt IS "no".
     IF best_trust { SET trust_txt TO "yes". }
@@ -298,7 +338,7 @@ FUNCTION aoso_landing_site_scan_orbit {
     }
     aoso_log_info("SITE", "Best landing site lat=" + ROUND(best_geo:LAT, 2) + " lng=" + ROUND(best_geo:LNG, 2) +
         " alt=" + ROUND(best_geo:TERRAINHEIGHT, 0) + "m slope=" + ROUND(slope, 1) +
-        "deg rough=" + ROUND(roughness, 0) + "m score=" + ROUND(best_score, 2) +
+        "deg rough=" + ROUND(roughness, 0) + "m rim=" + ROUND(rim, 0) + "m score=" + ROUND(best_score, 2) +
         " verified=" + trust_txt +
         " quality=" + quality["overall_score"] + " sun=" + quality["sun_score"] +
         " takeoff=" + quality["takeoff_score"] +

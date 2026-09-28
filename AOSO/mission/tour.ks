@@ -128,6 +128,178 @@ FUNCTION aoso_tour_opposite_site {
     RETURN aoso_tour_site_vang(lat, lng) >= target.
 }
 
+// Longitude into (-180, 180]. kOS LATLNG accepts other ranges, but the
+// deorbit log is unreadable if a rotation correction is left unwrapped.
+FUNCTION aoso_tour_lng_wrap {
+    PARAMETER lng.
+    UNTIL lng <= 180 { SET lng TO lng - 360. }
+    UNTIL lng > -180 { SET lng TO lng + 360. }
+    RETURN lng.
+}
+
+// Great-circle distance (m) along the surface. GeoCoordinates:DISTANCE is
+// the distance to the SHIP, not between two sites.
+FUNCTION aoso_tour_geo_miss_m {
+    PARAMETER lat1.
+    PARAMETER lng1.
+    PARAMETER lat2.
+    PARAMETER lng2.
+    LOCAL body IS SHIP:BODY.
+    LOCAL p1 IS LATLNG(lat1, lng1):POSITION - body:POSITION.
+    LOCAL p2 IS LATLNG(lat2, lng2):POSITION - body:POSITION.
+    IF p1:MAG < 1 { RETURN -1. }
+    IF p2:MAG < 1 { RETURN -1. }
+    RETURN VANG(p1, p2) * AOSO_CONST["DEG2RAD"] * body:RADIUS.
+}
+
+// Seconds from a retrograde deorbit burn to the new periapsis. The burn
+// point becomes apoapsis. On Minmus that half-period is ~230 s shorter
+// than the survey orbit; using the old half-period walks the ground
+// point about 2 km off the site.
+FUNCTION aoso_tour_deorbit_coast_s {
+    LOCAL r_pe IS SHIP:BODY:RADIUS + aoso_deorbit_target_periapsis_alt().
+    LOCAL r_ap IS SHIP:BODY:RADIUS + ALTITUDE.
+    IF SHIP:ORBIT:ECCENTRICITY >= 0.25 {
+        SET r_ap TO SHIP:BODY:RADIUS + APOAPSIS.
+    }
+    IF r_ap < r_pe + 1 { SET r_ap TO r_pe + 1. }
+    LOCAL sma IS (r_ap + r_pe) / 2.
+    LOCAL mu IS SHIP:BODY:MU.
+    IF mu < 1 { RETURN 0. }
+    RETURN CONSTANT:PI * SQRT((sma * sma * sma) / mu).
+}
+
+// Where the new periapsis meets the ground if we burn retrograde `eta_burn`
+// seconds from now.
+// The inertial direction is the body-centred POSITIONAT at half the current
+// period (the antipode). GEOPOSITIONOF uses the body's CURRENT centre and
+// CURRENT rotation, so pass that relative vector shifted onto the current
+// centre — raw POSITIONAT still contains the moon's travel around its parent
+// and walks the aim off Minmus entirely over a multi-orbit wait.
+// Longitude of an inertial point then unwinds by the rotation that happens
+// before arrival: true_lng = geo:LNG - 360*dt/ROTATIONPERIOD.
+// Latitude does not change. Sign checked against the failed Minmus pass:
+// site locked at lng -39.56, half an orbit later the ship was at 126.6,
+// which is -39.56 + 180 - 13.87. Do not flip the sign.
+// dt for the unwind is eta_burn + the NEW half-period, not the survey
+// period/2. The deorbit shortens the coast by ~230 s on Minmus (~2 km).
+FUNCTION aoso_tour_pe_ground {
+    PARAMETER eta_burn.
+    IF eta_burn < 0 { SET eta_burn TO 0. }
+    LOCAL period IS aoso_orbit_period_s().
+    IF period < 30 { SET period TO 30. }
+    LOCAL coast IS aoso_tour_deorbit_coast_s().
+    IF coast < 30 { SET coast TO period / 2. }
+    LOCAL dt_pos IS eta_burn + (period / 2).
+    LOCAL rel IS aoso_orbit_position_at(SHIP, TIME:SECONDS + dt_pos).
+    LOCAL geo IS SHIP:BODY:GEOPOSITIONOF(rel + SHIP:BODY:POSITION).
+    LOCAL lng IS geo:LNG.
+    LOCAL rot IS SHIP:BODY:ROTATIONPERIOD.
+    IF rot > 1 {
+        SET lng TO lng - 360 * (eta_burn + coast) / rot.
+    }
+    SET lng TO aoso_tour_lng_wrap(lng).
+    RETURN LEXICON("lat", geo:LAT, "lng", lng).
+}
+
+FUNCTION aoso_tour_pe_miss_m {
+    PARAMETER eta_burn.
+    PARAMETER site_lat.
+    PARAMETER site_lng.
+    LOCAL g IS aoso_tour_pe_ground(eta_burn).
+    IF NOT g:ISTYPE("Lexicon") { RETURN -1. }
+    RETURN aoso_tour_geo_miss_m(g["lat"], g["lng"], site_lat, site_lng).
+}
+
+// Burn time (seconds from now) that puts periapsis closest to the site.
+// Near-circular: any true anomaly works, so the ground track is sampled.
+// Eccentric: the burn stays at apoapsis (periapsis direction does not
+// move) and only whole-orbit delays are tried, so rotation can still
+// walk that fixed point onto the site. Minmus sidereal day is 40400 s
+// against a ~3115 s polar orbit, ~27.8 deg per rev; the node that is
+// 28 km off does not come back inside a 6 km pad for many orbits. A
+// ship-site angle peak is the wrong commit — burning at the crest of
+// the last pass put PE on the highlands.
+FUNCTION aoso_tour_deorbit_find {
+    PARAMETER site_lat.
+    PARAMETER site_lng.
+    LOCAL align_s IS aoso_maneuver_align_s().
+    LOCAL period IS aoso_orbit_period_s().
+    IF period < 30 { SET period TO 30. }
+    LOCAL max_orb IS aoso_config_get("DEORBIT_SITE_MAX_ORBITS", 14).
+    IF max_orb < 1 { SET max_orb TO 1. }
+    IF max_orb > 20 { SET max_orb TO 20. }
+    LOCAL best_eta IS align_s.
+    LOCAL best_miss IS -1.
+    LOCAL best_lat IS 0.
+    LOCAL best_lng IS 0.
+    LOCAL ecc IS SHIP:ORBIT:ECCENTRICITY.
+
+    IF ecc >= 0.25 OR aoso_orbit_is_hyperbolic() {
+        LOCAL eta0 IS align_s.
+        IF NOT aoso_orbit_is_hyperbolic() {
+            SET eta0 TO aoso_orbit_eta_apoapsis().
+            IF eta0 < align_s + 20 { SET eta0 TO eta0 + period. }
+        }
+        LOCAL n IS 0.
+        UNTIL n >= max_orb {
+            LOCAL eta IS eta0 + n * period.
+            LOCAL g IS aoso_tour_pe_ground(eta).
+            IF g:ISTYPE("Lexicon") {
+                LOCAL miss IS aoso_tour_geo_miss_m(g["lat"], g["lng"], site_lat, site_lng).
+                IF miss >= 0 {
+                    IF best_miss < 0 OR miss < best_miss {
+                        SET best_miss TO miss.
+                        SET best_eta TO eta.
+                        SET best_lat TO g["lat"].
+                        SET best_lng TO g["lng"].
+                    }
+                }
+            }
+            SET n TO n + 1.
+        }
+    } ELSE {
+        LOCAL step IS period / 18.
+        IF step < 20 { SET step TO 20. }
+        LOCAL eta IS align_s.
+        LOCAL end_eta IS align_s + max_orb * period.
+        UNTIL eta > end_eta {
+            LOCAL g IS aoso_tour_pe_ground(eta).
+            IF g:ISTYPE("Lexicon") {
+                LOCAL miss IS aoso_tour_geo_miss_m(g["lat"], g["lng"], site_lat, site_lng).
+                IF miss >= 0 {
+                    IF best_miss < 0 OR miss < best_miss {
+                        SET best_miss TO miss.
+                        SET best_eta TO eta.
+                        SET best_lat TO g["lat"].
+                        SET best_lng TO g["lng"].
+                    }
+                }
+            }
+            SET eta TO eta + step.
+        }
+        LOCAL fine IS best_eta - step * 2.
+        LOCAL fine_end IS best_eta + step * 2.
+        IF fine < align_s { SET fine TO align_s. }
+        UNTIL fine > fine_end {
+            LOCAL g2 IS aoso_tour_pe_ground(fine).
+            IF g2:ISTYPE("Lexicon") {
+                LOCAL miss2 IS aoso_tour_geo_miss_m(g2["lat"], g2["lng"], site_lat, site_lng).
+                IF miss2 >= 0 {
+                    IF best_miss < 0 OR miss2 < best_miss {
+                        SET best_miss TO miss2.
+                        SET best_eta TO fine.
+                        SET best_lat TO g2["lat"].
+                        SET best_lng TO g2["lng"].
+                    }
+                }
+            }
+            SET fine TO fine + 12.
+        }
+    }
+    RETURN LEXICON("eta", best_eta, "miss", best_miss, "lat", best_lat, "lng", best_lng).
+}
+
 FUNCTION aoso_tour_on_abort {
     PARAMETER data.
     SET WARP TO 0.
@@ -539,18 +711,19 @@ FUNCTION aoso_tour_scan_execute {
                         SET data["site_score"] TO sc.
                         SET data["site_roughness"] TO aoso_landing_site_roughness_m(geo).
                         SET data["site_verified"] TO TRUE.
+                        LOCAL rim_m IS aoso_landing_site_rim_m(geo).
                         IF was_verified {
                             aoso_log_info("TOUR", "Live polar overflight improved landing site: score " +
                                 ROUND(old_sc, 2) + " -> " + ROUND(sc, 2) + " lat=" +
                                 ROUND(geo:LAT, 2) + " lng=" + ROUND(geo:LNG, 2) +
                                 " alt=" + ROUND(geo:TERRAINHEIGHT, 0) + "m rough=" +
-                                ROUND(data["site_roughness"], 0) + "m.").
+                                ROUND(data["site_roughness"], 0) + "m rim=" + ROUND(rim_m, 0) + "m.").
                         } ELSE {
                             aoso_log_info("TOUR", "Live overflight replaced unloaded site prediction: score " +
                                 ROUND(old_sc, 2) + " -> " + ROUND(sc, 2) + " lat=" +
                                 ROUND(geo:LAT, 2) + " lng=" + ROUND(geo:LNG, 2) +
                                 " alt=" + ROUND(geo:TERRAINHEIGHT, 0) + "m rough=" +
-                                ROUND(data["site_roughness"], 0) + "m.").
+                                ROUND(data["site_roughness"], 0) + "m rim=" + ROUND(rim_m, 0) + "m.").
                         }
                     } ELSE {
                         aoso_log_every(80, "TOUR", "Overflight sample lat=" + ROUND(geo:LAT, 2) +
@@ -634,69 +807,85 @@ FUNCTION aoso_tour_deorbit_execute {
     LOCAL period IS aoso_orbit_period_s().
     IF period <= 0 { SET period TO 600. }
     LOCAL align_s IS aoso_maneuver_align_s().
-    LOCAL target_ang IS aoso_tour_deorbit_target_ang(period, align_s).
-
-    LOCAL opposite IS FALSE.
+    LOCAL max_orb IS aoso_config_get("DEORBIT_SITE_MAX_ORBITS", 14).
+    IF max_orb < 1 { SET max_orb TO 1. }
+    LOCAL tol_m IS aoso_config_get("DEORBIT_SITE_TOL_M", 6000).
     LOCAL site_ang IS 0.
-    LOCAL opp_txt IS "NO".
+    LOCAL opp_txt IS "NOSITE".
+    LOCAL eta_s IS -1.
+    LOCAL miss_m IS -1.
+
     IF have_site {
         SET site_ang TO aoso_tour_site_vang(data["site_lat"], data["site_lng"]).
-        IF NOT data:HASKEY("deorbit_ang_peak") { SET data["deorbit_ang_peak"] TO site_ang. }
-        IF site_ang > data["deorbit_ang_peak"] { SET data["deorbit_ang_peak"] TO site_ang. }
-        // A polar survey ellipse never reaches 179. This Minmus pass crested
-        // at 129 (ship -18/83 vs site 29/-152). The 150 deg floor never
-        // armed, so TIMEOUT burned at 75 deg. A 2 deg drop is too twitchy
-        // on the same pass: 113 fell only to 106 and then climbed to 129,
-        // and a polar passage peaked at 68. On a fat ellipse, commit once
-        // the high-water mark has cleared 100 and fallen 12 deg (129 -> 116
-        // fires; 113 -> 106 and 68 do not). A round orbit keeps the 150/2
-        // gate. Reaching the 179 target still wins on the YES path.
-        LOCAL falling IS FALSE.
-        LOCAL floor_ang IS aoso_config_get("DEORBIT_OPPOSITE_MIN_DEG", 150).
-        LOCAL drop_ang IS 2.
-        IF SHIP:ORBIT:ECCENTRICITY >= 0.25 {
-            SET floor_ang TO 100.
-            SET drop_ang TO 12.
+        IF NOT data:HASKEY("deorbit_eta_ut") {
+            aoso_log_info("TOUR", "Predicting which burn puts periapsis on the site (rotation unwound, up to " +
+                max_orb + " orbits). site lat=" + ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) + ".").
+            LOCAL found IS aoso_tour_deorbit_find(data["site_lat"], data["site_lng"]).
+            SET data["deorbit_eta_ut"] TO TIME:SECONDS + found["eta"].
+            SET data["deorbit_best_miss"] TO found["miss"].
+            SET data["deorbit_pe_lat"] TO found["lat"].
+            SET data["deorbit_pe_lng"] TO found["lng"].
+            LOCAL tag IS "ONTRACK".
+            IF found["miss"] < 0 OR found["miss"] > tol_m { SET tag TO "BEST". }
+            aoso_log_info("TOUR", "Deorbit aim " + tag + " in " + ROUND(found["eta"], 0) + "s miss=" +
+                ROUND(found["miss"], 0) + "m peLat=" + ROUND(found["lat"], 2) + " peLng=" + ROUND(found["lng"], 2) +
+                " site=" + ROUND(data["site_lat"], 2) + "/" + ROUND(data["site_lng"], 2) +
+                " tol=" + ROUND(tol_m, 0) + "m align=" + ROUND(align_s, 0) + "s.").
         }
-        IF data["deorbit_ang_peak"] >= floor_ang {
-            IF site_ang < data["deorbit_ang_peak"] - drop_ang { SET falling TO TRUE. }
-        }
-        IF site_ang >= target_ang {
-            SET opposite TO TRUE.
-            SET opp_txt TO "YES".
-        }
-        IF falling {
-            SET opposite TO TRUE.
-            SET opp_txt TO "PEAK".
-        }
-    }
 
-    IF waited >= period * 1.05 {
-        SET opposite TO TRUE.
-        SET opp_txt TO "TIMEOUT".
-    }
+        LOCAL eta_burn IS data["deorbit_eta_ut"] - TIME:SECONDS.
+        SET miss_m TO data["deorbit_best_miss"].
+        LOCAL force IS FALSE.
+        IF data:HASKEY("deorbit_force") {
+            IF data["deorbit_force"] { SET force TO TRUE. }
+        }
 
-    IF have_site {
-        IF NOT opposite {
-            LOCAL guess IS period * (target_ang - site_ang) / 360.
-            IF guess < 20 { SET guess TO 20. }
+        // A rails flush can jump the whole window. Search again unless we
+        // have already used the orbit budget — then burn the closest pass
+        // rather than wait another Minmus day.
+        IF eta_burn < align_s - 8 AND NOT force {
+            LOCAL n_over IS 0.
+            IF data:HASKEY("deorbit_overshoot") { SET n_over TO data["deorbit_overshoot"]. }
+            SET n_over TO n_over + 1.
+            SET data["deorbit_overshoot"] TO n_over.
+            IF n_over <= 2 AND waited < period * max_orb {
+                data:REMOVE("deorbit_eta_ut").
+                aoso_log_warn("TOUR", "Deorbit window passed (eta " + ROUND(eta_burn, 0) +
+                    "s). Searching the next pass.").
+                SET WARP TO 0.
+                RETURN.
+            }
+            SET data["deorbit_force"] TO TRUE.
+            SET force TO TRUE.
+            SET eta_burn TO align_s.
+            aoso_log_warn("TOUR", "Deorbit wait hit " + max_orb + " orbits without a clean window. Burning the closest predicted pass.").
+        }
 
+        IF eta_burn > align_s + 30 AND NOT force {
+            LOCAL until_place IS eta_burn - align_s.
+            IF until_place < 20 { SET until_place TO 20. }
             IF NOT data:HASKEY("deorbit_warp_logged") {
-                aoso_log_info("TOUR", "Rails-warping until the landing site is opposite before deorbit (up to ~" + ROUND(period, 0) + "s). site lat=" +
-                    ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) + " ship lat=" +
-                    ROUND(SHIP:GEOPOSITION:LAT, 2) + " lng=" + ROUND(SHIP:GEOPOSITION:LNG, 2) + " ang=" + ROUND(site_ang, 0) +
-                    " target=" + ROUND(target_ang, 0) + " align=" + ROUND(align_s, 0) + "s.").
+                aoso_log_info("TOUR", "Rails-warping to the burn that puts periapsis on the site (in " +
+                    ROUND(eta_burn, 0) + "s, miss " + ROUND(miss_m, 0) + "m). site lat=" +
+                    ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) + ".").
                 SET data["deorbit_warp_logged"] TO TRUE.
             }
-            aoso_log_every(45, "TOUR", "Deorbit wait opposite=NO ang=" + ROUND(site_ang, 0) + " deg target=" + ROUND(target_ang, 0) +
-                " peak=" + ROUND(data["deorbit_ang_peak"], 0) + " ship=" +
+            aoso_log_every(45, "TOUR", "Deorbit wait ONTRACK=NO eta=" + ROUND(eta_burn, 0) +
+                "s miss=" + ROUND(miss_m, 0) + "m ship=" +
                 ROUND(SHIP:GEOPOSITION:LAT, 1) + "/" + ROUND(SHIP:GEOPOSITION:LNG, 1) + " site=" +
                 ROUND(data["site_lat"], 1) + "/" + ROUND(data["site_lng"], 1) + " waited=" + ROUND(waited, 0) +
                 "s period=" + ROUND(period, 0) + "s " + aoso_warp_diag_txt() + ".").
             aoso_steer_release().
-            aoso_warp_approach(guess, 20, 10).
+            aoso_warp_approach(until_place, 20, 10).
             RETURN.
         }
+
+        SET eta_s TO eta_burn.
+        IF eta_s < align_s { SET eta_s TO align_s. }
+        SET miss_m TO aoso_tour_pe_miss_m(eta_s, data["site_lat"], data["site_lng"]).
+        SET opp_txt TO "ONTRACK".
+        IF miss_m < 0 OR miss_m > tol_m { SET opp_txt TO "BEST". }
+        IF force { SET opp_txt TO "LATE". }
     }
 
     // Dropping out of rails onto a short node overshoots. A 1000x drop
@@ -705,7 +894,7 @@ FUNCTION aoso_tour_deorbit_execute {
     // later tick moves a few seconds — one rails flush cannot put ETA
     // negative.
     IF WARP > 0 {
-        aoso_log_every(8, "TOUR", "Deorbit settling " + aoso_warp_diag_txt() + " opposite=" + opp_txt + " ang=" + ROUND(site_ang, 0) + " deg before placing node.").
+        aoso_log_every(8, "TOUR", "Deorbit settling " + aoso_warp_diag_txt() + " aim=" + opp_txt + " eta=" + ROUND(eta_s, 0) + "s before placing node.").
         SET data["deorbit_settle_ut"] TO TIME:SECONDS.
         SET WARP TO 0.
         RETURN.
@@ -714,33 +903,18 @@ FUNCTION aoso_tour_deorbit_execute {
         LOCAL jumped IS TIME:SECONDS - data["deorbit_settle_ut"].
         SET data["deorbit_settle_ut"] TO TIME:SECONDS.
         IF jumped > 3 {
-            aoso_log_every(8, "TOUR", "Deorbit waiting out rails flush (" + ROUND(jumped, 0) + "s) before placing node. opposite=" + opp_txt + " ang=" + ROUND(site_ang, 0) + " " + aoso_warp_diag_txt() + ".").
+            aoso_log_every(8, "TOUR", "Deorbit waiting out rails flush (" + ROUND(jumped, 0) + "s) before placing node. aim=" + opp_txt + " " + aoso_warp_diag_txt() + ".").
             SET WARP TO 0.
             RETURN.
         }
         data:REMOVE("deorbit_settle_ut").
     }
 
-    LOCAL eta_s IS -1.
-    IF opposite { SET eta_s TO aoso_maneuver_align_s(). }
-    // The node dv is the apoapsis Hohmann value. Lighting it 50s from a
-    // crest near periapsis barely lowers PE (this pass: -10.5 m/s, PE
-    // 133878 -> 36652, target 3677). On a fat ellipse put the burn at
-    // apoapsis. If this apo is already inside the align window, take the
-    // next one so the node is not born missed.
-    IF opposite {
-        IF SHIP:ORBIT:ECCENTRICITY >= 0.25 {
-            IF NOT aoso_orbit_is_hyperbolic() {
-                LOCAL eta_apo IS aoso_orbit_eta_apoapsis().
-                IF eta_apo < align_s + 20 {
-                    IF period > align_s + 80 { SET eta_apo TO eta_apo + period. }
-                }
-                SET eta_s TO eta_apo.
-            }
-        }
-    }
-    aoso_log_info("TOUR", "Placing deorbit node opposite=" + opp_txt + " ang=" + ROUND(site_ang, 0) +
-        " deg target=" + ROUND(target_ang, 0) + " align=" + ROUND(align_s, 0) +
+    // eta_s > 0 is the predicted burn. eta_s < 0 (no site) still means
+    // "at apoapsis" inside landing/deorbit.ks. Fat ellipses already had
+    // their apoapsis delay applied in aoso_tour_deorbit_find.
+    aoso_log_info("TOUR", "Placing deorbit node aim=" + opp_txt + " miss=" + ROUND(miss_m, 0) +
+        "m ang=" + ROUND(site_ang, 0) + " deg align=" + ROUND(align_s, 0) +
         "s eta=" + ROUND(eta_s, 0) + "s AP=" + ROUND(APOAPSIS, 0) + " PE=" + ROUND(PERIAPSIS, 0) +
         " " + aoso_warp_diag_txt() + ".").
     LOCAL nd IS aoso_deorbit_add_node(0, FALSE, eta_s).
@@ -944,6 +1118,11 @@ FUNCTION aoso_tour_update {
             SET prog TO ABS(SHIP:GEOPOSITION:LAT) / 90.
         } ELSE IF st = "POLAR" {
             SET prog TO SHIP:ORBIT:INCLINATION / 180.
+        } ELSE IF AOSO_TOUR["data"]:HASKEY("deorbit_eta_ut") {
+            LOCAL eta_b IS AOSO_TOUR["data"]["deorbit_eta_ut"] - TIME:SECONDS.
+            LOCAL span_b IS aoso_orbit_period_s() * aoso_config_get("DEORBIT_SITE_MAX_ORBITS", 14).
+            IF span_b < 1 { SET span_b TO 1. }
+            SET prog TO 1 - (eta_b / span_b).
         } ELSE IF AOSO_TOUR["data"]:HASKEY("site_lat") {
             SET prog TO aoso_tour_site_vang(AOSO_TOUR["data"]["site_lat"], AOSO_TOUR["data"]["site_lng"]) / 180.
         }

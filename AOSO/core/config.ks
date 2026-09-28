@@ -115,12 +115,18 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "LANDING_SCAN_MAX_S", 7200,          // hard cap on survey duration; scan must hand off to deorbit
     "LANDING_ROUGHNESS_SAMPLE_M", 200,   // radius for local relief/roughness scoring around a site
     "LANDING_ROUGHNESS_WEIGHT", 0.08,    // score penalty per metre of local relief (lower total score is better)
+    "LANDING_FOOTPRINT_M", 3500,         // m, cardinal samples for the basin/rim check (a flat crater floor is not a pad)
+    "LANDING_RIM_MAX_M", 450,            // m of terrain above the touchdown point inside the footprint; steeper rims are rejected
+    "LANDING_RIM_WEIGHT", 0.015,         // score penalty per metre of that rim (lower total score is better)
     "DEORBIT_ALIGN_CAP_DEG", 40,         // max orbit angle the align lead may eat before ignition
-    "DEORBIT_OPPOSITE_MIN_DEG", 150,     // never call the site "opposite" before this ship-site angle
+    "DEORBIT_OPPOSITE_MIN_DEG", 150,     // legacy floor; deorbit commit is now predicted PE miss, not this angle
+    "DEORBIT_SITE_TOL_M", 6000,          // m, burn only when predicted periapsis ground point is this close to the site
+    "DEORBIT_SITE_MAX_ORBITS", 14,       // how long to wait for body rotation to walk the ground track back onto the site
     "MAX_Q_LIMIT_MULT", 1.0,            // extra throttle cap near this-flight peak Q (1.0=off; ASCENT_MAX_Q is the real limiter)
     "ASCENT_MAX_Q", 0.30,               // atm (SHIP:Q). Throttle down while Q is still rising above this. 0=off. 0.30≈30 kPa.
-    "DESCENT_BURN_MARGIN_S", 4,         // s of surface-speed reaction time added to the suicide-burn trigger altitude
-    "DESCENT_STOP_MARGIN", 1.2,         // extra multiplier on kinematic stop distance (elwanderer / MechJeb-style pad)
+    "DESCENT_BURN_MARGIN_S", 4,         // s of surface-speed lead added on top of the kinematic stop distance (not a vertical-TTI cap)
+    "DESCENT_STOP_MARGIN", 1.2,         // extra multiplier on v^2/2a before the suicide burn (elwanderer / MechJeb-style pad)
+    "DESCENT_ALIGN_LEAD_S", 30,         // s to be out of warp and slewing to surface retrograde before the stop distance
     "DESCENT_RADAR_OFFSET", 0,          // m, CoM/radar to belly; 0 = vessel bounds, remeasured after legs deploy
     "DESCENT_FINAL_APPROACH_ALT", 150,  // m, radar altitude where descent *may* switch to a slow vertical hold
     "DESCENT_FINAL_SPEED_MAX", 25,      // m/s surface speed required before leaving suicide burn for final approach
