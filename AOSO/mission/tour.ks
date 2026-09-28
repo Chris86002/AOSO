@@ -243,14 +243,14 @@ FUNCTION aoso_tour_deorbit_find {
         }
         LOCAL n IS 0.
         UNTIL n >= max_orb {
-            LOCAL eta IS eta0 + n * period.
-            LOCAL g IS aoso_tour_pe_ground(eta).
+            LOCAL burn_eta IS eta0 + n * period.
+            LOCAL g IS aoso_tour_pe_ground(burn_eta).
             IF g:ISTYPE("Lexicon") {
                 LOCAL miss IS aoso_tour_geo_miss_m(g["lat"], g["lng"], site_lat, site_lng).
                 IF miss >= 0 {
                     IF best_miss < 0 OR miss < best_miss {
                         SET best_miss TO miss.
-                        SET best_eta TO eta.
+                        SET best_eta TO burn_eta.
                         SET best_lat TO g["lat"].
                         SET best_lng TO g["lng"].
                     }
@@ -261,22 +261,22 @@ FUNCTION aoso_tour_deorbit_find {
     } ELSE {
         LOCAL step IS period / 18.
         IF step < 20 { SET step TO 20. }
-        LOCAL eta IS align_s.
+        LOCAL burn_eta IS align_s.
         LOCAL end_eta IS align_s + max_orb * period.
-        UNTIL eta > end_eta {
-            LOCAL g IS aoso_tour_pe_ground(eta).
+        UNTIL burn_eta > end_eta {
+            LOCAL g IS aoso_tour_pe_ground(burn_eta).
             IF g:ISTYPE("Lexicon") {
                 LOCAL miss IS aoso_tour_geo_miss_m(g["lat"], g["lng"], site_lat, site_lng).
                 IF miss >= 0 {
                     IF best_miss < 0 OR miss < best_miss {
                         SET best_miss TO miss.
-                        SET best_eta TO eta.
+                        SET best_eta TO burn_eta.
                         SET best_lat TO g["lat"].
                         SET best_lng TO g["lng"].
                     }
                 }
             }
-            SET eta TO eta + step.
+            SET burn_eta TO burn_eta + step.
         }
         LOCAL fine IS best_eta - step * 2.
         LOCAL fine_end IS best_eta + step * 2.
