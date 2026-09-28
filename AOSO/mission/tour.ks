@@ -144,12 +144,12 @@ FUNCTION aoso_tour_geo_miss_m {
     PARAMETER lng1.
     PARAMETER lat2.
     PARAMETER lng2.
-    LOCAL body IS SHIP:BODY.
-    LOCAL p1 IS LATLNG(lat1, lng1):POSITION - body:POSITION.
-    LOCAL p2 IS LATLNG(lat2, lng2):POSITION - body:POSITION.
+    LOCAL body_ref IS SHIP:BODY.
+    LOCAL p1 IS LATLNG(lat1, lng1):POSITION - body_ref:POSITION.
+    LOCAL p2 IS LATLNG(lat2, lng2):POSITION - body_ref:POSITION.
     IF p1:MAG < 1 { RETURN -1. }
     IF p2:MAG < 1 { RETURN -1. }
-    RETURN VANG(p1, p2) * AOSO_CONST["DEG2RAD"] * body:RADIUS.
+    RETURN VANG(p1, p2) * AOSO_CONST["DEG2RAD"] * body_ref:RADIUS.
 }
 
 // Seconds from a retrograde deorbit burn to the new periapsis. The burn

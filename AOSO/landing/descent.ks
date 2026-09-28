@@ -265,8 +265,8 @@ FUNCTION aoso_descent_burn_trigger_alt {
 // SHIP:POSITION - BODY:POSITION, and GEOPOSITIONOF wants ship-raw.
 FUNCTION aoso_descent_ahead_geo {
     PARAMETER dist_m.
-    LOCAL body IS SHIP:BODY.
-    LOCAL radius_vec IS SHIP:POSITION - body:POSITION.
+    LOCAL body_ref IS SHIP:BODY.
+    LOCAL radius_vec IS SHIP:POSITION - body_ref:POSITION.
     LOCAL rmag IS radius_vec:MAG.
     IF rmag < 1 { RETURN 0. }
     LOCAL horizontal IS VXCL(radius_vec, SHIP:VELOCITY:SURFACE).
@@ -278,7 +278,7 @@ FUNCTION aoso_descent_ahead_geo {
     LOCAL rhat IS radius_vec:NORMALIZED.
     LOCAL hhat IS horizontal:NORMALIZED.
     LOCAL ahead_from_body IS rhat * (rmag * COS(ang_deg)) + hhat * (rmag * SIN(ang_deg)).
-    RETURN body:GEOPOSITIONOF(ahead_from_body - radius_vec).
+    RETURN body_ref:GEOPOSITIONOF(ahead_from_body - radius_vec).
 }
 
 // Lowest of true radar and altitude-above-terrain out along the ground
@@ -416,12 +416,12 @@ FUNCTION aoso_descent_eta_to_asl {
     }
     LOCAL lo IS 0.
     LOCAL hi IS pe_eta.
-    LOCAL body IS SHIP:BODY.
+    LOCAL body_ref IS SHIP:BODY.
     LOCAL i IS 0.
     UNTIL i >= 8 {
         LOCAL mid IS (lo + hi) / 2.
         LOCAL rel IS aoso_orbit_position_at(SHIP, now_ut + mid).
-        LOCAL alt_at IS rel:MAG - body:RADIUS.
+        LOCAL alt_at IS rel:MAG - body_ref:RADIUS.
         IF alt_at > asl_m { SET lo TO mid. }
         ELSE { SET hi TO mid. }
         SET i TO i + 1.
