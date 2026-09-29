@@ -959,6 +959,20 @@ FUNCTION aoso_tour_deorbit_execute {
         "s eta=" + ROUND(eta_s, 0) + "s AP=" + ROUND(APOAPSIS, 0) + " PE=" + ROUND(PERIAPSIS, 0) +
         " " + aoso_warp_diag_txt() + ".").
     LOCAL nd IS aoso_deorbit_add_node(0, FALSE, eta_s).
+    IF nd <> 0 {
+        LOCAL burn_dv IS 0.
+        IF nd:ISTYPE("ManeuverNode") { SET burn_dv TO nd:DELTAV:MAG. }
+        LOCAL rot_period IS SHIP:BODY:ROTATIONPERIOD.
+        aoso_log_info("LAND_TARGET_PLAN", "site=" + ROUND(data["site_lat"], 3) +
+            "/" + ROUND(data["site_lng"], 3) + " burnUT=" +
+            ROUND(TIME:SECONDS + eta_s, 1) + " burnETA=" + ROUND(eta_s, 1) +
+            "s orbitPeriod=" + ROUND(period, 1) + "s rotationPeriod=" +
+            ROUND(rot_period, 1) + "s PEproxy=" + ROUND(data["deorbit_pe_lat"], 3) +
+            "/" + ROUND(data["deorbit_pe_lng"], 3) + " proxyMiss=" +
+            ROUND(miss_m, 0) + "m deltaV=" + ROUND(burn_dv, 2) +
+            "m/s AP=" + ROUND(APOAPSIS, 0) + "m PE=" + ROUND(PERIAPSIS, 0) +
+            "m impactPrediction=after-burn.").
+    }
     IF nd = 0 {
         aoso_log_info("TOUR", "No deorbit burn needed (PE already " + ROUND(PERIAPSIS, 0) + "m) - descent now.").
         aoso_descent_start().
