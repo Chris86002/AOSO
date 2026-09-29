@@ -16,6 +16,17 @@ FUNCTION aoso_landing_wrap_lng {
 // surface coordinates that will be under that inertial point at that UT.
 // GEOPOSITIONOF uses the body's current rotation, so unwind future spin
 // using the same sign convention as the established deorbit geometry code.
+FUNCTION aoso_landing_future_lng {
+    PARAMETER current_lng.
+    PARAMETER dt_s.
+    PARAMETER rotation_s.
+    LOCAL future_lng IS current_lng.
+    IF rotation_s > 1 {
+        SET future_lng TO future_lng - 360 * dt_s / rotation_s.
+    }
+    RETURN aoso_landing_wrap_lng(future_lng).
+}
+
 FUNCTION aoso_landing_impact_geo_at {
     PARAMETER impact_ut.
     LOCAL body_ref IS SHIP:BODY.
@@ -24,11 +35,8 @@ FUNCTION aoso_landing_impact_geo_at {
     IF rel_pos:MAG < 1 { RETURN 0. }
     LOCAL current_frame_geo IS body_ref:GEOPOSITIONOF(rel_pos + body_ref:POSITION).
     LOCAL rotation_s IS body_ref:ROTATIONPERIOD.
-    LOCAL future_lng IS current_frame_geo:LNG.
-    IF rotation_s > 1 {
-        SET future_lng TO future_lng - 360 * dt_s / rotation_s.
-    }
-    RETURN LATLNG(current_frame_geo:LAT, aoso_landing_wrap_lng(future_lng)).
+    LOCAL future_lng IS aoso_landing_future_lng(current_frame_geo:LNG, dt_s, rotation_s).
+    RETURN LATLNG(current_frame_geo:LAT, future_lng).
 }
 
 // Evaluate radial clearance against the terrain queried at the future-fixed
