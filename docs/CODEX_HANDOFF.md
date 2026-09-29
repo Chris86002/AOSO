@@ -2,7 +2,7 @@
 
 Updated: 2026-09-28
 
-## Landing guidance update (2026-09-29)
+## Landing guidance update (2026-09-28)
 
 The Minmus deorbit path was confirmed to optimize the geographic position of
 the *new periapsis*, not the later terrain intersection. Its site coordinate
