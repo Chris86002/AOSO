@@ -226,9 +226,9 @@ FUNCTION aoso_tour_deorbit_find {
     LOCAL align_s IS aoso_maneuver_align_s().
     LOCAL period IS aoso_orbit_period_s().
     IF period < 30 { SET period TO 30. }
-    LOCAL max_orb IS aoso_config_get("DEORBIT_SITE_MAX_ORBITS", 14).
+    LOCAL max_orb IS aoso_config_get("DEORBIT_SITE_MAX_ORBITS", 2).
     IF max_orb < 1 { SET max_orb TO 1. }
-    IF max_orb > 20 { SET max_orb TO 20. }
+    IF max_orb > 4 { SET max_orb TO 4. }
     LOCAL best_eta IS align_s.
     LOCAL best_miss IS -1.
     LOCAL best_lat IS 0.
@@ -749,7 +749,7 @@ FUNCTION aoso_tour_scan_execute {
     IF NOT data:HASKEY("site_verified") { SET data["site_verified"] TO FALSE. }
     LOCAL ver_txt IS "no".
     IF data["site_verified"] { SET ver_txt TO "yes". }
-    aoso_log_info("TOUR", "Polar survey complete. Selected site lat=" +
+    aoso_log_info("TOUR", "LAND_SITE_SELECTED lat=" +
         ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) +
         " score=" + ROUND(data["site_score"], 2) + " rough=" +
         ROUND(final_rough, 0) + "m verified=" + ver_txt + " AP=" + ROUND(APOAPSIS, 0) +
@@ -818,7 +818,7 @@ FUNCTION aoso_tour_deorbit_execute {
     IF have_site {
         SET site_ang TO aoso_tour_site_vang(data["site_lat"], data["site_lng"]).
         IF NOT data:HASKEY("deorbit_eta_ut") {
-            aoso_log_info("TOUR", "Predicting which burn puts periapsis on the site (rotation unwound, up to " +
+            aoso_log_info("TOUR", "Predicting the closest periapsis-proxy candidate (rotation unwound, at most " +
                 max_orb + " orbits). site lat=" + ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) + ".").
             LOCAL found IS aoso_tour_deorbit_find(data["site_lat"], data["site_lng"]).
             SET data["deorbit_eta_ut"] TO TIME:SECONDS + found["eta"].
