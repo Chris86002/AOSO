@@ -164,9 +164,7 @@ FUNCTION aoso_sched_keep {
         }
         // Thrust and the last 10 km must keep a row even at CRITICAL.
         // The opcode floor still applies; this only stops the shed.
-        IF DEFINED aoso_telemetry_hot {
-            IF aoso_telemetry_hot() { RETURN TRUE. }
-        }
+        IF aoso_telemetry_hot() { RETURN TRUE. }
         RETURN aoso_cpu_allow(2).
     }
     IF name = "vehicle_profile" { RETURN aoso_cpu_allow(3). }

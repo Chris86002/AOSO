@@ -18,8 +18,10 @@ FUNCTION aoso_telemetry_header {
 }
 
 FUNCTION aoso_telemetry_hot {
-    IF THROTTLE > 0.02 { RETURN TRUE. }
-    IF ALT:RADAR < 10000 { RETURN TRUE. }
+    IF SHIP:UNPACKED {
+        IF THROTTLE > 0.02 { RETURN TRUE. }
+        IF ALT:RADAR < 10000 { RETURN TRUE. }
+    }
     IF ALTITUDE < 10000 { RETURN TRUE. }
     RETURN FALSE.
 }
@@ -81,15 +83,19 @@ FUNCTION aoso_telemetry_row {
     LOCAL vs2 IS vs * vs.
     IF srf * srf > vs2 { SET hs TO SQRT(srf * srf - vs2). }
     LOCAL alt_m IS ALTITUDE.
+    LOCAL radar_m IS -1.
+    IF SHIP:UNPACKED { SET radar_m TO ALT:RADAR. }
+    LOCAL throt_now IS 0.
+    IF SHIP:UNPACKED { SET throt_now TO THROTTLE. }
 
     RETURN ROUND(TIME:SECONDS, 2) + "," + ROUND(MISSIONTIME, 1) + "," + SHIP:BODY:NAME + "," +
         ROUND(SHIP:LATITUDE, 4) + "," + ROUND(SHIP:LONGITUDE, 4) + "," +
-        ROUND(alt_m, 1) + "," + ROUND(ALT:RADAR, 1) + "," +
+        ROUND(alt_m, 1) + "," + ROUND(radar_m, 1) + "," +
         ROUND(srf, 2) + "," + ROUND(SHIP:VELOCITY:ORBIT:MAG, 2) + "," +
         ROUND(vs, 2) + "," + ROUND(hs, 2) + "," +
         ROUND(pitch, 2) + "," + ROUND(SHIP:FACING:YAW, 1) + "," + ROUND(aoa, 2) + "," +
         ROUND(SHIP:Q, 4) + "," + ROUND(aoso_aero_drag_kn(), 2) + "," +
-        ROUND(THROTTLE, 3) + "," + ROUND(SHIP:AVAILABLETHRUST, 2) + "," + ROUND(SHIP:MASS, 3) + "," +
+        ROUND(throt_now, 3) + "," + ROUND(SHIP:AVAILABLETHRUST, 2) + "," + ROUND(SHIP:MASS, 3) + "," +
         STAGE:NUMBER + "," + ROUND(lf_amt, 1) + "," + ROUND(ox_amt, 1) + "," + ROUND(ec_amt, 1) + "," +
         ROUND(sf_amt, 1) + "," + ROUND(ore_amt, 1) + "," + ROUND(ab_amt, 1) + "," + ROUND(mp_amt, 1) + "," +
         ROUND(APOAPSIS, 1) + "," + ROUND(PERIAPSIS, 1) + "," +

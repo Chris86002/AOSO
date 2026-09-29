@@ -523,12 +523,9 @@ FUNCTION aoso_maneuver_tick_guard {
 }
 
 FUNCTION aoso_maneuver_fuel_units {
-    LOCAL amt IS 0.
-    IF DEFINED aoso_resource_amount {
-        SET amt TO aoso_resource_amount("LiquidFuel").
-        SET amt TO amt + aoso_resource_amount("Oxidizer").
-        SET amt TO amt + aoso_resource_amount("SolidFuel").
-    }
+    LOCAL amt IS aoso_resource_amount("LiquidFuel").
+    SET amt TO amt + aoso_resource_amount("Oxidizer").
+    SET amt TO amt + aoso_resource_amount("SolidFuel").
     RETURN amt.
 }
 
