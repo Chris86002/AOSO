@@ -80,6 +80,7 @@ RUN ONCE "AOSO/world/world".
 
 // --- Landing -------------------------------------------------------------
 RUN ONCE "AOSO/landing/site".
+RUN ONCE "AOSO/landing/impact".
 RUN ONCE "AOSO/landing/deorbit".
 RUN ONCE "AOSO/landing/descent".
 RUN ONCE "AOSO/landing/parachute".
