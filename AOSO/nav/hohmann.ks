@@ -19,6 +19,27 @@ FUNCTION aoso_hohmann_dv_at_periapsis_for_apoapsis {
     RETURN v_new - v_now.
 }
 
+// Retrograde bind when periapsis is already behind or too close for a node
+// at PE. dv is vis-viva at the current radius (not PE radius) toward the
+// target apoapsis. No WAIT. Capture entry is already at physics 1x.
+FUNCTION aoso_hohmann_add_apoapsis_change_soon {
+    PARAMETER target_apo_alt.
+    PARAMETER eta_s.
+    LOCAL mu IS SHIP:BODY:MU.
+    LOCAL radius IS SHIP:BODY:RADIUS + ALTITUDE.
+    LOCAL r_apo IS SHIP:BODY:RADIUS + target_apo_alt.
+    IF r_apo < radius { SET r_apo TO radius. }
+    LOCAL sma_new IS (radius + r_apo) / 2.
+    LOCAL v_new IS SQRT(MAX(0, mu * (2 / radius - 1 / sma_new))).
+    LOCAL v_now IS SHIP:VELOCITY:ORBIT:MAG.
+    LOCAL dv IS v_new - v_now.
+    IF eta_s < 5 { SET eta_s TO 5. }
+    LOCAL nd IS NODE(TIME:SECONDS + eta_s, 0, 0, dv).
+    ADD nd.
+    aoso_log_info("HOHMANN", "Binding from the current point in " + ROUND(eta_s, 0) + "s: dv=" + ROUND(dv, 1) + " m/s, target apo=" + ROUND(target_apo_alt, 0) + "m.").
+    RETURN nd.
+}
+
 // Delta-v (m/s, signed) at apoapsis needed to raise/lower periapsis to
 // target_peri_alt, keeping apoapsis fixed.
 FUNCTION aoso_hohmann_dv_at_apoapsis_for_periapsis {
@@ -38,8 +59,10 @@ FUNCTION aoso_hohmann_add_apoapsis_change {
     LOCAL eta_pe IS ETA:PERIAPSIS.
     IF aoso_orbit_is_hyperbolic() {
         IF eta_pe < 40 {
-            aoso_log_warn("HOHMANN", "Already past periapsis on a hyperbola - no apoapsis-change node.").
-            RETURN 0.
+            LOCAL soon IS 30.
+            IF eta_pe > 15 { SET soon TO eta_pe * 0.5. }
+            aoso_log_warn("HOHMANN", "Periapsis is too close on a hyperbola - binding from the current point.").
+            RETURN aoso_hohmann_add_apoapsis_change_soon(target_apo_alt, soon).
         }
     } ELSE {
         IF eta_pe < 45 {

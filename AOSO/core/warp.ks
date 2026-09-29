@@ -4,8 +4,9 @@
 // critical UT so a long rails coast cannot skip a burn or SOI.
 //
 // WARPTO is unused: the main loop WAIT 0 under rails jumps UT and cancels
-// it. SET WARP must step down early — warp 7 (100000x) can skip a node by
-// minutes in one tick (Acacius mid-course ETA 41708 → -360).
+// it. SET WARP must step down early — one rails frame at 10000x has jumped
+// ~8000 s and skipped a Minmus capture node (ETA 122 s, then -18 s, still
+// at 100x). 100000x straight to 0 also froze FlightIntegrator on unpack.
 
 GLOBAL AOSO_WARP_DEADLINES IS LEXICON().
 GLOBAL AOSO_WARP_WALL_EST IS 0.06.
@@ -101,9 +102,9 @@ FUNCTION aoso_warp_update_wall_est {
 FUNCTION aoso_warp_min_remain {
     PARAMETER idx.
     IF idx = 7 { RETURN 86400. } // leave 100000x at least a day before a critical event
-    IF idx = 6 { RETURN 7200. }  // KSP can jump several thousand seconds per scheduler tick at 10000x
-    IF idx = 5 { RETURN 480. }
-    IF idx = 4 { RETURN 150. }
+    IF idx = 6 { RETURN 20000. } // one 10000x hitch is ~8000-12500 s; 7200 was inside it
+    IF idx = 5 { RETURN 2000. }  // one 1000x hitch is ~600-1500 s
+    IF idx = 4 { RETURN 250. }   // one 100x hitch jumped 141 s
     IF idx = 3 { RETURN 70. }
     IF idx = 2 { RETURN 35. }
     IF idx = 1 { RETURN 15. }
@@ -115,6 +116,24 @@ FUNCTION aoso_warp_guard_frames {
     IF idx >= 7 { RETURN 8. } // extra margin for 100000x
     IF idx >= 6 { RETURN 6. }
     RETURN 5.
+}
+
+// Worst frame the guard will believe. Calm wall_est (clamped at 0.18 s) is
+// smaller than the hitches that skipped the Minmus capture: ~0.83 s at
+// 10000x, ~0.6 s at 1000x, ~1.4 s at 100x. Floors and this wall both have
+// to clear or the rate is illegal.
+FUNCTION aoso_warp_guard_wall {
+    PARAMETER idx.
+    LOCAL worst IS 0.2.
+    IF idx >= 6 { SET worst TO 1.25. }
+    ELSE {
+        IF idx >= 5 { SET worst TO 1.0. }
+        ELSE {
+            IF idx >= 4 { SET worst TO 0.8. }
+        }
+    }
+    IF AOSO_WARP_WALL_EST > worst { RETURN AOSO_WARP_WALL_EST. }
+    RETURN worst.
 }
 
 FUNCTION aoso_warp_rails_want {
@@ -132,11 +151,11 @@ FUNCTION aoso_warp_rails_want {
         IF NOT aoso_config_get("WARP_ALLOW_100000", FALSE) { SET cap TO 6. }
     }
 
-    LOCAL wall_est IS aoso_warp_update_wall_est().
+    aoso_warp_update_wall_est().
     LOCAL idx IS cap.
     UNTIL idx <= 0 {
         LOCAL floor_s IS aoso_warp_min_remain(idx).
-        LOCAL jump_s IS aoso_warp_rails_factor(idx) * wall_est.
+        LOCAL jump_s IS aoso_warp_rails_factor(idx) * aoso_warp_guard_wall(idx).
         LOCAL guard_s IS jump_s * aoso_warp_guard_frames(idx).
 
         // Promotion hysteresis: once KSP has stepped down, require noticeably
@@ -209,6 +228,31 @@ FUNCTION aoso_warp_step_target {
     SET AOSO_WARP_DEMOTE_UNTIL_RT TO now_rt + aoso_config_get("WARP_DEMOTE_HOLD_S", 8).
     SET AOSO_WARP_CMD_RT TO now_rt.
     RETURN down_idx.
+}
+
+// -1 means this tick is not an emergency drop. Otherwise the rails index
+// to SET. One frame at the current rate would cross eta_s.
+// 1000x and above drop two indices and never straight to 0 — that unpack
+// is the FlightIntegrator freeze. 100x and below may drop to target_idx,
+// including 0, which is what a capture inside the align window needs.
+// Does not SET WARP.
+FUNCTION aoso_warp_urgent_index {
+    PARAMETER target_idx.
+    PARAMETER eta_s.
+    IF WARP <= 0 { RETURN -1. }
+    IF WARPMODE <> "RAILS" { RETURN -1. }
+    IF target_idx < 0 { SET target_idx TO 0. }
+    IF target_idx >= WARP { RETURN -1. }
+    LOCAL factor_now IS aoso_warp_rails_factor(WARP).
+    LOCAL hitch_s IS factor_now * 1.5.
+    IF eta_s >= hitch_s { RETURN -1. }
+    IF WARP >= 5 {
+        LOCAL drop_idx IS WARP - 2.
+        IF drop_idx < 2 { SET drop_idx TO 2. }
+        IF drop_idx < target_idx { SET drop_idx TO target_idx. }
+        RETURN drop_idx.
+    }
+    RETURN target_idx.
 }
 
 FUNCTION aoso_warp_request {

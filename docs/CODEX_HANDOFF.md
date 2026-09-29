@@ -1,8 +1,29 @@
 # Codex handoff — AOSO current state
 
-Updated: 2026-09-27
+Updated: 2026-09-28
 
-## This cycle (Acacius Minmus capture, log UT ~785706–1097683)
+## This cycle (Acacius Minmus capture miss, log UT ~1521160–1530287)
+
+Intercept was good (PE 13770 m vs park 15000 m). Capture added the polar
+apoapsis node (dv=-126.2 m/s, ETA ~9037 s) and then never flew it. Last
+coast line was `COAST T-8335s RAILS 10000x`; next warp line was
+`UNPACK T-32s RAILS 100x`; maneuver logged `Missed node (ETA=-18.3s)`.
+One rails frame at 10000x/1000x/100x was larger than the old floors.
+After the miss, `Already past periapsis on a hyperbola - no apoapsis-change
+node` fired three times in one second and GOTO safe-held a still-capturable
+hyperbola (e=3.385, PE=13770 m, ~18 km, climbing).
+
+Not flown in KSP after this edit. Next-run signatures:
+
+- Coasts do not sit at `RAILS 10000x` inside ~2 h of a node. Expect the
+  drop from 1000x while the node is still thousands of seconds out.
+- A hitch inside one frame of the node logs `urgent drop` and is at
+  physics 1x before PE, not `Missed node` from 100x.
+- If PE is already behind, log `binding from the current point` and fly
+  that retrograde node. Do not log `no apoapsis-change node` followed by
+  `Capture failed 3x` while PE is still above the safe floor.
+
+## Previous cycle (Acacius Minmus capture, log UT ~785706–1097683)
 
 Capture promised a polar orbit at inc 10.3, then deferred because e=0.98
 and circularized 62 m/s into a 15 km orbit at inc 10.2. GOTO marked that

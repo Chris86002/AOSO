@@ -191,6 +191,22 @@ FUNCTION aoso_warp_hard_stop {
     IF WARP > 0 { SET WARP TO 0. }
 }
 
+// Emergency rails drop. One index every 0.2 s cannot reach 1x after a hitch
+// leaves the node inside the align window (capture log: still 100x at
+// T-32 s, then ETA -18 s). 1000x and above do not drop straight to 0.
+FUNCTION aoso_warp_apply_urgent {
+    PARAMETER target_idx.
+    PARAMETER eta_s.
+    LOCAL urg IS aoso_warp_urgent_index(target_idx, eta_s).
+    IF urg < 0 { RETURN -1. }
+    SET WARP TO urg.
+    LOCAL now_rt IS KUNIVERSE:REALTIME.
+    SET AOSO_WARP_CMD_RT TO now_rt.
+    SET AOSO_WARP_DEMOTE_CAP TO urg.
+    SET AOSO_WARP_DEMOTE_UNTIL_RT TO now_rt + aoso_config_get("WARP_DEMOTE_HOLD_S", 8).
+    RETURN urg.
+}
+
 FUNCTION aoso_warp_rate_txt {
     IF WARP <= 0 { RETURN "1x". }
     IF WARPMODE = "PHYSICS" {
@@ -305,6 +321,16 @@ FUNCTION aoso_warp_approach {
         IF align_transition {
             IF AOSO_STEER_MODE <> "OFF" { aoso_steer_release(). }
         }
+        // 100x (and below) may go to 0 in one SET. 1000x+ drops two indices
+        // inside aoso_warp_apply_urgent, then this returns so the slow
+        // unpack stepper does not also run on the same tick.
+        LOCAL urg_align IS aoso_warp_apply_urgent(0, eta_s).
+        IF urg_align >= 0 {
+            IF WARP > 0 {
+                aoso_warp_report("UNPACK", eta_s, "urgent drop, rails -> physics 1x before align").
+                RETURN "transition".
+            }
+        }
         // 1x, not physics cruise. Cruise (2x) saturated yaw on Acacius and
         // the burn vector never became the attitude the PID would hold.
         IF NOT aoso_warp_ensure_physics_idle() {
@@ -337,6 +363,10 @@ FUNCTION aoso_warp_approach {
         // before the next settled tick. Step one index — a direct SET to
         // `want` jumped 100000x to 1x and restarted the temperature catch-up.
         IF want < WARP {
+            LOCAL urg_down IS aoso_warp_apply_urgent(want, eta_s).
+            IF urg_down >= 0 {
+                IF WARP > 0 { RETURN "transition". }
+            }
             LOCAL down_now IS aoso_warp_step_target(want).
             IF down_now <> WARP { SET WARP TO down_now. }
         }
@@ -344,6 +374,15 @@ FUNCTION aoso_warp_approach {
     }
 
     IF WARP <> want {
+        IF want < WARP {
+            LOCAL urg_step IS aoso_warp_apply_urgent(want, eta_s).
+            IF urg_step >= 0 {
+                IF WARP > 0 {
+                    aoso_warp_report("COAST", eta_s, "urgent drop, precision lead T-" + ROUND(rails_lead_s, 0) + "s").
+                    RETURN "rails".
+                }
+            }
+        }
         LOCAL step_now IS aoso_warp_step_target(want).
         IF step_now <> WARP { SET WARP TO step_now. }
     }

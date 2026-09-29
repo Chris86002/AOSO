@@ -31,7 +31,15 @@ are retired farther from critical events. 100000x is not the default: the
 rails unpack (logged `UNPACK T-65s`, 117 parts) ended in a FlightIntegrator
 analytic-temperature storm that froze KSP. Coasts cap at 10000x unless
 `WARP_ALLOW_100000` is set, and each `SET WARP` moves one index so the unpack
-is not a stale high-warp frame.
+is not a stale high-warp frame. Guards use a worst-case frame (1.25 s at
+10000x, 1.0 s at 1000x, 0.8 s at 100x), not the calm ~0.1 s wall estimate.
+The 2026-09-28 capture coast was still at 10000x at T-8335 s and the next
+warp line was UNPACK at T-32 s (node ETA -18 s, still 100x). A frame that
+would cross the node now drops at once: two indices from 1000x and above,
+or straight to 1x from 100x and below. After that miss, periapsis was
+already behind on the hyperbola, the apoapsis-change helper returned no
+node, and three capture retries aborted the tour. That case places a
+retrograde bind from the current point instead.
 
 To diagnose a later encounter, retain `aoso_log.txt`, `aoso_events.csv`,
 `aoso_telemetry.csv`, `aoso_flightrec.txt`, and the game save near the

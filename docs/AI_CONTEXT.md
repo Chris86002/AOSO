@@ -91,7 +91,13 @@ they watch the kOS terminal and the log files.
   `MAX_WARP_FACTOR` defaults to 6 (10000x). Index 7 (100000x) stays off
   unless `WARP_ALLOW_100000` — it chattered with 10000x and the unpack
   froze FlightIntegrator on a 117-part coast. Do not `SET WARP TO 0`
-  from a high rails index in one tick. Align is physics 1x. Mid-course
+  from a high rails index in one tick. 10000x is not legal inside the
+  hitch budget — one rails frame has skipped a capture node. If one
+  frame at the current rate would cross the node,
+  `aoso_warp_urgent_index` drops immediately: 1000x and above drop two
+  indices, never straight to 0; 100x and below may go to the target
+  including 0. A hyperbola already past periapsis gets a near-term
+  retrograde bind instead of aborting capture. Align is physics 1x. Mid-course
   nodes sit minutes out, not hours. A missed correction decrements
   `correct_count` and replans immediately — there is no next pass on
   a transfer.

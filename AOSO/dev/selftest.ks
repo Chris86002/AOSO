@@ -317,10 +317,12 @@ FUNCTION aoso_selftest {
     SET fail TO aoso_selftest_check("warp rails align window is 0", aoso_warp_rails_want(20, 50) = 0, fail).
     SET fail TO aoso_selftest_check("warp rails respects max factor", aoso_warp_rails_want(400000, 50) <= aoso_config_get("MAX_WARP_FACTOR", 6), fail).
     SET fail TO aoso_selftest_check("warp rails mid not 7 at 11h", aoso_warp_rails_want(40000, 70) <= 6, fail).
+    SET fail TO aoso_selftest_check("warp 10000x stays outside 2h", aoso_warp_rails_want(8000, 60) <= 5, fail).
     SET fail TO aoso_selftest_check("warp 100000x stays opt-in", aoso_config_get("MAX_WARP_FACTOR", 6) <= 6 OR aoso_config_get("WARP_ALLOW_100000", FALSE), fail).
     IF WARP <= 0 {
         LOCAL step_hi IS aoso_warp_step_target(7).
         SET fail TO aoso_selftest_check("warp step does not jump to 7", step_hi <= 1, fail).
+        SET fail TO aoso_selftest_check("warp urgent at 1x is idle", aoso_warp_urgent_index(0, 5) = -1, fail).
     }
 
     LOCAL up_look IS aoso_steer_heading_pitch_vector(90, 90).
