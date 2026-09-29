@@ -265,6 +265,10 @@ FUNCTION aoso_descent_log_impact {
     LOCAL pred IS aoso_landing_impact_predict(target_lat, target_lng).
     IF pred:ISTYPE("Lexicon") {
         IF pred["ok"] {
+            SET data["impact_miss"] TO pred["miss_distance"].
+            SET data["impact_lat"] TO pred["lat"].
+            SET data["impact_lng"] TO pred["lng"].
+            SET data["impact_ut"] TO pred["impact_ut"].
             aoso_log_info("LAND_PREDICT", "radar=" + ROUND(aoso_descent_true_radar(), 0) +
                 "m terrainClr=" + ROUND(pred["radial_alt"] - pred["terrain_alt"], 0) +
                 "m v=" + ROUND(SHIP:VELOCITY:SURFACE:MAG, 1) +
@@ -649,6 +653,21 @@ FUNCTION aoso_descent_freefall_execute {
     IF critical { SET arm TO TRUE. }
     IF NOT arm { RETURN. }
 
+    LOCAL grav_commit IS aoso_descent_local_gravity().
+    LOCAL twr_commit IS 0.
+    IF grav_commit > 0 AND SHIP:MASS > 0 {
+        SET twr_commit TO SHIP:AVAILABLETHRUST / (SHIP:MASS * grav_commit).
+    }
+    LOCAL miss_commit IS -1.
+    IF data:HASKEY("impact_miss") { SET miss_commit TO data["impact_miss"]. }
+    aoso_log_info("SUICIDE_COMMIT", "radar=" + ROUND(radar, 1) +
+        "m clearance=" + ROUND(clear, 1) + "m speed=" + ROUND(speed_ms, 1) +
+        "m/s vertical=" + ROUND(VERTICALSPEED, 1) + "m/s horizontal=" +
+        ROUND(GROUNDSPEED, 1) + "m/s thrust=" + ROUND(SHIP:AVAILABLETHRUST, 0) +
+        "N mass=" + ROUND(SHIP:MASS, 1) + "twr=" + ROUND(twr_commit, 2) +
+        "g=" + ROUND(grav_commit, 3) + "m/s2 netDecel=" + ROUND(decel, 3) +
+        "m/s2 stop=" + ROUND(stop_m, 1) + "m targetMiss=" + ROUND(miss_commit, 0) +
+        "m " + aoso_warp_diag_txt() + ".").
     aoso_log_info("DESCENT", "Suicide burn now: radar=" + ROUND(radar, 0) + " m clr=" + ROUND(clear, 0) +
         " m trigger=" + ROUND(trigger, 0) + " m vSrf=" + ROUND(speed_ms, 1) + " m/s vVert=" +
         ROUND(VERTICALSPEED, 1) + " m/s face=" + ROUND(facing_err, 0) + " deg held=" + ROUND(held, 1) +
@@ -769,6 +788,33 @@ FUNCTION aoso_descent_touchdown_entry {
     IF data:HASKEY("actual_dv") { aoso_action_add_actual_dv(data["actual_dv"]). }
     aoso_throttle_set(0).
     aoso_steer_release().
+    LOCAL touchdown_geo IS SHIP:GEOPOSITION.
+    LOCAL touchdown_target_lat IS touchdown_geo:LAT.
+    LOCAL touchdown_target_lng IS touchdown_geo:LNG.
+    LOCAL touchdown_site_slope IS aoso_landing_site_slope_deg(touchdown_geo).
+    LOCAL touchdown_miss IS -1.
+    IF DEFINED AOSO_TOUR {
+        IF AOSO_TOUR:HASKEY("data") {
+            IF AOSO_TOUR["data"]:HASKEY("site_lat") {
+                SET touchdown_target_lat TO AOSO_TOUR["data"]["site_lat"].
+                SET touchdown_target_lng TO AOSO_TOUR["data"]["site_lng"].
+                SET touchdown_miss TO aoso_landing_target_miss_m(touchdown_geo:LAT,
+                    touchdown_geo:LNG, touchdown_target_lat, touchdown_target_lng).
+            }
+        }
+    }
+    LOCAL elapsed_land IS 0.
+    IF data:HASKEY("land_start_ut") {
+        SET elapsed_land TO TIME:SECONDS - data["land_start_ut"].
+    }
+    aoso_log_info("LAND_TOUCHDOWN", "actual=" + ROUND(touchdown_geo:LAT, 4) + "/" +
+        ROUND(touchdown_geo:LNG, 4) + " target=" + ROUND(touchdown_target_lat, 4) +
+        "/" + ROUND(touchdown_target_lng, 4) + " miss=" + ROUND(touchdown_miss, 1) +
+        "m vertical=" + ROUND(VERTICALSPEED, 2) + "m/s horizontal=" +
+        ROUND(GROUNDSPEED, 2) + "m/s total=" +
+        ROUND(SHIP:VELOCITY:SURFACE:MAG, 2) + "m/s dv=" +
+        ROUND(data["actual_dv"], 1) + "m/s slope=" +
+        ROUND(touchdown_site_slope, 2) + "deg elapsed=" + ROUND(elapsed_land, 1) + "s.").
     aoso_log_info("DESCENT", "Touchdown, throttle cut.").
     aoso_observe_event("TOUCHDOWN", "INFO", "TOUCHDOWN", "radar=" + ROUND(aoso_descent_true_radar(), 1)).
     LOCAL ver_l IS aoso_verify_landing().
@@ -811,7 +857,8 @@ FUNCTION aoso_descent_start {
     aoso_state_define(AOSO_DESCENT, "TOUCHDOWN", aoso_descent_touchdown_entry@, 0, 0).
     aoso_state_define(AOSO_DESCENT, "ABORTED", aoso_descent_aborted_entry@, 0, 0).
 
-    SET AOSO_DESCENT["data"] TO LEXICON("actual_dv", 0, "dv_last_ut", TIME:SECONDS).
+    SET AOSO_DESCENT["data"] TO LEXICON("actual_dv", 0, "dv_last_ut", TIME:SECONDS,
+        "land_start_ut", TIME:SECONDS).
     aoso_state_queue(AOSO_DESCENT, "FREEFALL").
     aoso_sched_add("descent", 0, aoso_descent_tick@).
     aoso_auth_acquire("descent", "STEERING", 4).
