@@ -26,6 +26,7 @@ RUN ONCE "AOSO/surface/operations".
 RUN ONCE "AOSO/hardening/watchdog".
 RUN ONCE "AOSO/interplanetary/bodydb".
 RUN ONCE "AOSO/nav/orbit".
+RUN ONCE "AOSO/landing/impact".
 RUN ONCE "AOSO/nav/lambert".
 RUN ONCE "AOSO/interplanetary/transfer".
 RUN ONCE "AOSO/mission/windows".
@@ -49,6 +50,13 @@ FUNCTION aoso_selftest {
     LOCAL fail IS 0.
 
     aoso_event_init().
+
+    SET fail TO aoso_selftest_check("landing longitude wrap +181",
+        ABS(aoso_landing_wrap_lng(181) + 179) < 0.001, fail).
+    SET fail TO aoso_selftest_check("landing longitude wrap -181",
+        ABS(aoso_landing_wrap_lng(-181) - 179) < 0.001, fail).
+    SET fail TO aoso_selftest_check("landing future longitude rotation",
+        ABS(aoso_landing_future_lng(25, 100, 1000) - (-11)) < 0.001, fail).
 
     LOCAL selftest_res_pct IS aoso_resource_pct("ElectricCharge").
     SET fail TO aoso_selftest_check("resource helper loaded",
