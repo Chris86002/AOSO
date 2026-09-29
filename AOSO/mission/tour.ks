@@ -742,6 +742,8 @@ FUNCTION aoso_tour_scan_execute {
                         LOCAL chosen_rim IS aoso_landing_site_rim_m(chosen_geo).
                         LOCAL good_score IS aoso_config_get("LANDING_SCAN_GOOD_ENOUGH_SCORE", 5).
                         LOCAL sample_need IS aoso_config_get("LANDING_SCAN_EARLY_EXIT_SAMPLES", 3).
+                        IF sample_need < 2 { SET sample_need TO 2. }
+                        IF sample_need > 6 { SET sample_need TO 6. }
                         LOCAL safe_quality IS FALSE.
                         IF chosen_score >= 0 AND chosen_score <= good_score {
                             IF chosen_slope <= aoso_config_get("MAX_SLOPE_DEG", 15) * 0.6 {
