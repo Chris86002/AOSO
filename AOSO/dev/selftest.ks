@@ -57,6 +57,10 @@ FUNCTION aoso_selftest {
         ABS(aoso_landing_wrap_lng(-181) - 179) < 0.001, fail).
     SET fail TO aoso_selftest_check("landing future longitude rotation",
         ABS(aoso_landing_future_lng(25, 100, 1000) - (-11)) < 0.001, fail).
+    SET fail TO aoso_selftest_check("landing same-point error zero",
+        ABS(aoso_landing_target_miss_m(0, 12, 0, 12)) < 0.01, fail).
+    SET fail TO aoso_selftest_check("landing dateline error wraps",
+        aoso_landing_target_miss_m(0, 179.9, 0, -179.9) < SHIP:BODY:RADIUS * 0.005, fail).
 
     LOCAL selftest_res_pct IS aoso_resource_pct("ElectricCharge").
     SET fail TO aoso_selftest_check("resource helper loaded",
