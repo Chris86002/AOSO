@@ -16,6 +16,17 @@ FUNCTION aoso_landing_wrap_lng {
 // surface coordinates that will be under that inertial point at that UT.
 // GEOPOSITIONOF uses the body's current rotation, so unwind future spin
 // using the same sign convention as the established deorbit geometry code.
+FUNCTION aoso_landing_target_miss_m {
+    PARAMETER actual_lat.
+    PARAMETER actual_lng.
+    PARAMETER target_lat.
+    PARAMETER target_lng.
+    LOCAL actual_vec IS LATLNG(actual_lat, actual_lng):POSITION - SHIP:BODY:POSITION.
+    LOCAL target_vec IS LATLNG(target_lat, target_lng):POSITION - SHIP:BODY:POSITION.
+    IF actual_vec:MAG < 1 OR target_vec:MAG < 1 { RETURN -1. }
+    RETURN VANG(actual_vec, target_vec) * AOSO_CONST["DEG2RAD"] * SHIP:BODY:RADIUS.
+}
+
 FUNCTION aoso_landing_future_lng {
     PARAMETER current_lng.
     PARAMETER dt_s.
@@ -151,11 +162,7 @@ FUNCTION aoso_landing_impact_predict {
     SET best TO aoso_landing_impact_sample(impact_ut).
     LOCAL miss_m IS -1.
     IF target_lat >= -90 AND target_lat <= 90 {
-        LOCAL target_vec IS LATLNG(target_lat, target_lng):POSITION - SHIP:BODY:POSITION.
-        LOCAL impact_vec IS LATLNG(best["lat"], best["lng"]):POSITION - SHIP:BODY:POSITION.
-        IF target_vec:MAG > 1 AND impact_vec:MAG > 1 {
-            SET miss_m TO VANG(target_vec, impact_vec) * AOSO_CONST["DEG2RAD"] * SHIP:BODY:RADIUS.
-        }
+        SET miss_m TO aoso_landing_target_miss_m(best["lat"], best["lng"], target_lat, target_lng).
     }
     RETURN LEXICON(
         "ok", TRUE,
