@@ -47,6 +47,14 @@ Next-run signatures:
   miss, and time to impact. If it says `no_surface_intersection`, inspect the
   actual PE and body terrain height; if the point jumps with time, compare
   consecutive logs and the body's rotation period.
+- Review references: Garwel's `SBLAND2` uses stopping time and target
+  distance to estimate a braking range
+  (https://github.com/GarwelGarwel/kOS-lib/blob/master/SBLAND2.ks). Its
+  `DTLZ` estimate is useful as a guidance idea, but does not replace an
+  impact predictor. CalebJ2's landing script queries the Trajectories addon
+  for impact position
+  (https://github.com/CalebJ2/kOS-landing-script/blob/master/land.ks); AOSO
+  remains stock-only and does not depend on it.
 - `SUICIDE_COMMIT` should include clearance, full speed vector, available
   thrust, mass, TWR, gravity, net deceleration, stopping distance, and the
   most recent predicted target miss.
