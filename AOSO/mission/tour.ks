@@ -775,10 +775,11 @@ FUNCTION aoso_tour_scan_execute {
                 SET data["scan_next_sample"] TO now + 25.
             }
             LOCAL left IS data["scan_until"] - now.
-
-            aoso_steer_release().
-            aoso_warp_approach(left, 15, 8).
-            RETURN.
+            IF left > 0 {
+                aoso_steer_release().
+                aoso_warp_approach(left, 15, 8).
+                RETURN.
+            }
         }
     }
     IF NOT aoso_warp_ensure_physics_idle() {
