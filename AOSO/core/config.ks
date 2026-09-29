@@ -209,6 +209,16 @@ FUNCTION aoso_config_load {
             SET AOSO_CONFIG[k] TO loaded[k].
         }
     }
+    // Bound legacy user overrides too; old saved configs may still request
+    // a 14-orbit wait even after the default changed.
+    IF AOSO_CONFIG:HASKEY("DEORBIT_SITE_MAX_ORBITS") {
+        IF AOSO_CONFIG["DEORBIT_SITE_MAX_ORBITS"] < 1 {
+            SET AOSO_CONFIG["DEORBIT_SITE_MAX_ORBITS"] TO 1.
+        }
+        IF AOSO_CONFIG["DEORBIT_SITE_MAX_ORBITS"] > 4 {
+            SET AOSO_CONFIG["DEORBIT_SITE_MAX_ORBITS"] TO 4.
+        }
+    }
     // Old kick-angle configs commanded 10-20 deg off vertical. The 1.8 deg
     // / 12 s "smooth" config produced a sounding rocket (Acacius FPA 83 deg
     // at 30 km, 1807 m/s circ). Reset those leftovers.
