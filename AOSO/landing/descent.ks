@@ -277,7 +277,7 @@ FUNCTION aoso_descent_log_impact {
                 ROUND(GROUNDSPEED, 1) + "m/s impact=" + ROUND(pred["lat"], 3) + "/" +
                 ROUND(pred["lng"], 3) + " target=" + ROUND(target_lat, 3) + "/" +
                 ROUND(target_lng, 3) + " miss=" + ROUND(pred["miss_distance"], 0) +
-                "m tImpact=" + ROUND(pred["time_to_impact"], 1) +
+                "m confidence=" + pred["confidence"] + " tImpact=" + ROUND(pred["time_to_impact"], 1) +
                 "s stop=" + ROUND(aoso_descent_stopping_distance(SHIP:VELOCITY:SURFACE:MAG,
                 aoso_descent_max_deceleration()), 0) + "m burnAt~" +
                 ROUND(aoso_descent_burn_trigger_alt(), 0) + "m rotation=" +
