@@ -124,8 +124,8 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "LANDING_RIM_WEIGHT", 0.015,         // score penalty per metre of that rim (lower total score is better)
     "DEORBIT_ALIGN_CAP_DEG", 40,         // max orbit angle the align lead may eat before ignition
     "DEORBIT_OPPOSITE_MIN_DEG", 150,     // legacy floor; deorbit commit is now predicted PE miss, not this angle
-    "DEORBIT_SITE_TOL_M", 6000,          // m, burn only when predicted periapsis ground point is this close to the site
-    "DEORBIT_SITE_MAX_ORBITS", 14,       // how long to wait for body rotation to walk the ground track back onto the site
+    "DEORBIT_SITE_TOL_M", 6000,          // m, legacy periapsis-proxy tolerance for the selected burn candidate
+    "DEORBIT_SITE_MAX_ORBITS", 2,        // bounded candidate horizon; do not spend many body orbits waiting for periapsis alignment
     "MAX_Q_LIMIT_MULT", 1.0,            // extra throttle cap near this-flight peak Q (1.0=off; ASCENT_MAX_Q is the real limiter)
     "ASCENT_MAX_Q", 0.30,               // atm (SHIP:Q). Throttle down while Q is still rising above this. 0=off. 0.30≈30 kPa.
     "DESCENT_BURN_MARGIN_S", 4,         // s of surface-speed lead added on top of the kinematic stop distance (not a vertical-TTI cap)
