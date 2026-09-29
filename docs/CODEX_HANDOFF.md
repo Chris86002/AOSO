@@ -2,6 +2,57 @@
 
 Updated: 2026-09-28
 
+## Landing guidance update (2026-09-29)
+
+The Minmus deorbit path was confirmed to optimize the geographic position of
+the *new periapsis*, not the later terrain intersection. Its site coordinate
+is body-fixed; `aoso_tour_pe_ground()` maps the future inertial periapsis into
+the current body frame and subtracts body rotation through periapsis time.
+That rotation correction is confined to the periapsis proxy. It does not
+predict or correct the actual surface impact during descent. This explains why
+a 16.9 km periapsis-proxy miss could still be committed after a long wait.
+
+Changes now on main:
+
+- Added `AOSO/landing/impact.ks`: an airless-body, unpowered-conic predictor
+  that samples the live KSP patched-conic trajectory, bisects the first
+  terrain crossing, and converts impact longitude to the body's future-fixed
+  frame. It reports impact UT, lat/lng, radial/terrain altitude, inertial
+  speed, and miss distance to the selected target.
+- The descent FREEFALL loop emits rate-limited `LAND_PREDICT` observations,
+  then `SUICIDE_COMMIT` and `LAND_TOUCHDOWN` records with speed, braking,
+  thrust, mass, gravity, target miss, and elapsed landing data.
+- The default periapsis-proxy search horizon is now two orbits (still
+  configurable, capped at four), and the site survey can end early after
+  verified low-risk terrain and repeated safe live samples.
+- The new longitude wrapping / rotation transform has deterministic checks
+  in `AOSO/dev/selftest.ks`.
+
+Limits for the next flight: the impact predictor runs only after the deorbit
+burn is executed and predicts an *unpowered* conic. It does not model
+atmospheric drag, pending finite burns, or the trajectory change from powered
+lateral corrections. The deorbit candidate search still targets periapsis as
+an initial approximation, and descent still brakes surface-relative velocity
+without closed-loop lateral correction toward the selected site. Do not treat
+a low `LAND_PREDICT miss` as an in-game validated solution until it converges
+against observed touchdown. The essential next implementation is a bounded
+impact-target correction law with a survival override, followed by live
+Minmus verification.
+
+Next-run signatures:
+
+- The deorbit line should say it is selecting a periapsis-proxy candidate and
+  should not wait more than two orbits by default.
+- Expect `LAND_PREDICT` to show the predicted body-fixed impact point, target,
+  miss, and time to impact. If it says `no_surface_intersection`, inspect the
+  actual PE and body terrain height; if the point jumps with time, compare
+  consecutive logs and the body's rotation period.
+- `SUICIDE_COMMIT` should include clearance, full speed vector, available
+  thrust, mass, TWR, gravity, net deceleration, stopping distance, and the
+  most recent predicted target miss.
+- `LAND_TOUCHDOWN` should report the actual coordinates and miss. Compare it
+  with the last few `LAND_PREDICT` entries to estimate predictor residual.
+
 ## This cycle (Acacius Minmus capture miss, log UT ~1521160–1530287)
 
 Intercept was good (PE 13770 m vs park 15000 m). Capture added the polar
