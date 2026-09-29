@@ -236,6 +236,55 @@ FUNCTION aoso_descent_time_to_stop {
     RETURN SHIP:VELOCITY:SURFACE:MAG / decel.
 }
 
+ // Rate-limited diagnostic of the live unpowered conic after deorbit.
+ // It measures actual surface impact against the selected body-fixed site;
+ // it does not yet command lateral corrections.
+FUNCTION aoso_descent_log_impact {
+    PARAMETER data.
+    IF SHIP:BODY:ATM:EXISTS { RETURN. }
+    LOCAL now IS TIME:SECONDS.
+    IF data:HASKEY("impact_log_next") {
+        IF now < data["impact_log_next"] { RETURN. }
+    }
+    SET data["impact_log_next"] TO now + 20.
+
+    LOCAL have_target IS FALSE.
+    LOCAL target_lat IS 0.
+    LOCAL target_lng IS 0.
+    IF DEFINED AOSO_TOUR {
+        IF AOSO_TOUR:HASKEY("data") {
+            IF AOSO_TOUR["data"]:HASKEY("site_lat") {
+                SET target_lat TO AOSO_TOUR["data"]["site_lat"].
+                SET target_lng TO AOSO_TOUR["data"]["site_lng"].
+                SET have_target TO TRUE.
+            }
+        }
+    }
+    IF NOT have_target { RETURN. }
+
+    LOCAL pred IS aoso_landing_impact_predict(target_lat, target_lng).
+    IF pred:ISTYPE("Lexicon") {
+        IF pred["ok"] {
+            aoso_log_info("LAND_PREDICT", "radar=" + ROUND(aoso_descent_true_radar(), 0) +
+                "m terrainClr=" + ROUND(pred["radial_alt"] - pred["terrain_alt"], 0) +
+                "m v=" + ROUND(SHIP:VELOCITY:SURFACE:MAG, 1) +
+                "m/s vVert=" + ROUND(VERTICALSPEED, 1) + "m/s vHoriz=" +
+                ROUND(GROUNDSPEED, 1) + "m/s impact=" + ROUND(pred["lat"], 3) + "/" +
+                ROUND(pred["lng"], 3) + " target=" + ROUND(target_lat, 3) + "/" +
+                ROUND(target_lng, 3) + " miss=" + ROUND(pred["miss_distance"], 0) +
+                "m tImpact=" + ROUND(pred["time_to_impact"], 1) +
+                "s stop=" + ROUND(aoso_descent_stopping_distance(SHIP:VELOCITY:SURFACE:MAG,
+                aoso_descent_max_deceleration()), 0) + "m burnAt~" +
+                ROUND(aoso_descent_burn_trigger_alt(), 0) + "m rotation=" +
+                ROUND(pred["rotation_period"], 1) + "s model=unpowered-conic.").
+            RETURN.
+        }
+        aoso_log_every(60, "LAND_PREDICT", "prediction unavailable reason=" + pred["reason"] +
+            " radar=" + ROUND(aoso_descent_true_radar(), 0) + "m AP=" +
+            ROUND(APOAPSIS, 0) + "m PE=" + ROUND(PERIAPSIS, 0) + "m.").
+    }
+}
+
 // Radar-style clearance (m) at which the suicide burn must already be
 // underway. Full surface speed, not vertical speed: a periapsis above
 // the flats never makes VERTICALSPEED steep enough for a TTI trigger,
@@ -451,6 +500,7 @@ FUNCTION aoso_descent_freefall_entry {
 FUNCTION aoso_descent_freefall_execute {
     PARAMETER data.
     aoso_parachute_auto_check().
+    aoso_descent_log_impact(data).
 
     // Fly a PE-lowering node if we already decided this ellipse cannot land.
     // Descent holds STEERING and THROTTLE at prio 4, and maneuver acquires
