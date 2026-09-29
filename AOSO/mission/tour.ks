@@ -848,7 +848,7 @@ FUNCTION aoso_tour_deorbit_execute {
     LOCAL period IS aoso_orbit_period_s().
     IF period <= 0 { SET period TO 600. }
     LOCAL align_s IS aoso_maneuver_align_s().
-    LOCAL max_orb IS aoso_config_get("DEORBIT_SITE_MAX_ORBITS", 14).
+    LOCAL max_orb IS aoso_config_get("DEORBIT_SITE_MAX_ORBITS", 2).
     IF max_orb < 1 { SET max_orb TO 1. }
     LOCAL tol_m IS aoso_config_get("DEORBIT_SITE_TOL_M", 6000).
     LOCAL site_ang IS 0.
@@ -1161,7 +1161,7 @@ FUNCTION aoso_tour_update {
             SET prog TO SHIP:ORBIT:INCLINATION / 180.
         } ELSE IF AOSO_TOUR["data"]:HASKEY("deorbit_eta_ut") {
             LOCAL eta_b IS AOSO_TOUR["data"]["deorbit_eta_ut"] - TIME:SECONDS.
-            LOCAL span_b IS aoso_orbit_period_s() * aoso_config_get("DEORBIT_SITE_MAX_ORBITS", 14).
+            LOCAL span_b IS aoso_orbit_period_s() * aoso_config_get("DEORBIT_SITE_MAX_ORBITS", 2).
             IF span_b < 1 { SET span_b TO 1. }
             SET prog TO 1 - (eta_b / span_b).
         } ELSE IF AOSO_TOUR["data"]:HASKEY("site_lat") {
