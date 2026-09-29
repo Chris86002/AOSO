@@ -242,6 +242,7 @@ FUNCTION aoso_descent_time_to_stop {
 FUNCTION aoso_descent_log_impact {
     PARAMETER data.
     IF SHIP:BODY:ATM:EXISTS { RETURN. }
+    IF HASNODE { RETURN. }
     LOCAL now IS TIME:SECONDS.
     IF data:HASKEY("impact_log_next") {
         IF now < data["impact_log_next"] { RETURN. }
