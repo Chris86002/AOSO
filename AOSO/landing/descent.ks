@@ -664,7 +664,7 @@ FUNCTION aoso_descent_freefall_execute {
         "m clearance=" + ROUND(clear, 1) + "m speed=" + ROUND(speed_ms, 1) +
         "m/s vertical=" + ROUND(VERTICALSPEED, 1) + "m/s horizontal=" +
         ROUND(GROUNDSPEED, 1) + "m/s thrust=" + ROUND(SHIP:AVAILABLETHRUST, 0) +
-        "N mass=" + ROUND(SHIP:MASS, 1) + "twr=" + ROUND(twr_commit, 2) +
+        "kN mass=" + ROUND(SHIP:MASS, 1) + "twr=" + ROUND(twr_commit, 2) +
         "g=" + ROUND(grav_commit, 3) + "m/s2 netDecel=" + ROUND(decel, 3) +
         "m/s2 stop=" + ROUND(stop_m, 1) + "m targetMiss=" + ROUND(miss_commit, 0) +
         "m " + aoso_warp_diag_txt() + ".").
