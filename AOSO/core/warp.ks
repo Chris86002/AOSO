@@ -9,6 +9,9 @@
 
 GLOBAL AOSO_WARP_DEADLINES IS LEXICON().
 GLOBAL AOSO_WARP_WALL_EST IS 0.06.
+GLOBAL AOSO_WARP_DEMOTE_UNTIL_RT IS 0.
+GLOBAL AOSO_WARP_DEMOTE_CAP IS 0.
+GLOBAL AOSO_WARP_CMD_RT IS -1.
 
 FUNCTION aoso_warp_deadline_set {
     PARAMETER name.
@@ -81,11 +84,12 @@ FUNCTION aoso_warp_update_wall_est {
         }
     }
 
-    // Rise quickly when KSP hitches, decay slowly when it recovers. Using a
-    // raw single-frame sample made warp rates bounce in and out as frame
-    // time jittered.
+    // Rise quickly when KSP hitches, but not in one sample. A single frame
+    // used to pin this at the 0.18 s clamp, the index-7 guard became
+    // 144000 s, and rails chattered 100000x ↔ 10000x. Each change restarts
+    // the on-rails temperature catch-up.
     IF sample > AOSO_WARP_WALL_EST {
-        SET AOSO_WARP_WALL_EST TO sample.
+        SET AOSO_WARP_WALL_EST TO (AOSO_WARP_WALL_EST * 0.5) + (sample * 0.5).
     } ELSE {
         SET AOSO_WARP_WALL_EST TO (AOSO_WARP_WALL_EST * 0.96) + (sample * 0.04).
     }
@@ -119,9 +123,14 @@ FUNCTION aoso_warp_rails_want {
     LOCAL remain IS eta_s - lead_s.
     IF remain <= 0 { RETURN 0. }
 
-    LOCAL cap IS aoso_config_get("MAX_WARP_FACTOR", 7).
+    LOCAL cap IS aoso_config_get("MAX_WARP_FACTOR", 6).
     IF cap > 7 { SET cap TO 7. }
     IF cap < 1 { SET cap TO 1. }
+    // Index 7 is opt-in. The old default (and the 6→7 migration) put a
+    // 117-part ship on 100000x for days; the unpack then froze KSP.
+    IF cap > 6 {
+        IF NOT aoso_config_get("WARP_ALLOW_100000", FALSE) { SET cap TO 6. }
+    }
 
     LOCAL wall_est IS aoso_warp_update_wall_est().
     LOCAL idx IS cap.
@@ -147,6 +156,59 @@ FUNCTION aoso_warp_rails_want {
         SET idx TO idx - 1.
     }
     RETURN 0.
+}
+
+// Next warp index to command. At most one step toward target_idx.
+// Returns the current WARP when this tick must not SET WARP again.
+// Does not SET WARP — flight/maneuver.ks owns that.
+FUNCTION aoso_warp_step_target {
+    PARAMETER target_idx.
+    IF target_idx < 0 { SET target_idx TO 0. }
+    IF target_idx > 7 { SET target_idx TO 7. }
+    IF WARP = target_idx { RETURN WARP. }
+
+    LOCAL now_rt IS KUNIVERSE:REALTIME.
+    LOCAL since_cmd IS 999.
+    IF AOSO_WARP_CMD_RT >= 0 {
+        SET since_cmd TO now_rt - AOSO_WARP_CMD_RT.
+    }
+
+    IF target_idx > WARP {
+        IF NOT KUNIVERSE:TIMEWARP:ISSETTLED { RETURN WARP. }
+        IF since_cmd < aoso_config_get("WARP_STEP_MIN_S", 0.2) { RETURN WARP. }
+        IF now_rt < AOSO_WARP_DEMOTE_UNTIL_RT {
+            IF WARP <= AOSO_WARP_DEMOTE_CAP { RETURN WARP. }
+        }
+        LOCAL up_idx IS WARP + 1.
+        IF up_idx > target_idx { SET up_idx TO target_idx. }
+        SET AOSO_WARP_CMD_RT TO now_rt.
+        RETURN up_idx.
+    }
+
+    LOCAL down_idx IS WARP - 1.
+    IF down_idx < target_idx { SET down_idx TO target_idx. }
+    LOCAL wait_s IS aoso_config_get("WARP_STEP_MIN_S", 0.2).
+    // While KSP is still ramping, do not queue another index every
+    // scheduler tick. A stuck ISSETTLED flag still steps down, just slower,
+    // so a node cannot sit at 10000x until ETA goes negative.
+    IF NOT KUNIVERSE:TIMEWARP:ISSETTLED { SET wait_s TO wait_s * 4. }
+    // Last step into unpack sits on a settled 5x (or physics 2x) frame.
+    // Commanding 0 while a higher rails rate is still catching up is the
+    // FlightIntegrator storm: pack, "unloaded Ns", unpack, freeze.
+    IF down_idx <= 0 {
+        IF WARP <= 1 {
+            LOCAL unpack_s IS aoso_config_get("WARP_UNPACK_SETTLE_S", 1.5).
+            IF unpack_s > wait_s { SET wait_s TO unpack_s. }
+            IF NOT KUNIVERSE:TIMEWARP:ISSETTLED {
+                IF since_cmd < wait_s { RETURN WARP. }
+            }
+        }
+    }
+    IF since_cmd < wait_s { RETURN WARP. }
+    SET AOSO_WARP_DEMOTE_CAP TO down_idx.
+    SET AOSO_WARP_DEMOTE_UNTIL_RT TO now_rt + aoso_config_get("WARP_DEMOTE_HOLD_S", 8).
+    SET AOSO_WARP_CMD_RT TO now_rt.
+    RETURN down_idx.
 }
 
 FUNCTION aoso_warp_request {

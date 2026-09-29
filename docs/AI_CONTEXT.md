@@ -86,9 +86,13 @@ they watch the kOS terminal and the log files.
   that yawed through prograde at physics 2x and the node was missed.
   Align is physics 1x. Maneuver locks `NEXTNODE:BURNVECTOR` only.
   Do not judge THRUST_MISMATCH in the same tick as `STAGE()`.
-- Rails coasts use SET WARP only (WARPTO dies on WAIT 0). Step down
-  via `aoso_warp_rails_want` and `MAX_WARP_FACTOR`. Mid-course nodes
-  sit minutes out, not hours. A missed correction decrements
+- Rails coasts use SET WARP only (WARPTO dies on WAIT 0). Step one
+  index at a time via `aoso_warp_step_target` and `aoso_warp_rails_want`.
+  `MAX_WARP_FACTOR` defaults to 6 (10000x). Index 7 (100000x) stays off
+  unless `WARP_ALLOW_100000` — it chattered with 10000x and the unpack
+  froze FlightIntegrator on a 117-part coast. Do not `SET WARP TO 0`
+  from a high rails index in one tick. Align is physics 1x. Mid-course
+  nodes sit minutes out, not hours. A missed correction decrements
   `correct_count` and replans immediately — there is no next pass on
   a transfer.
 - Tank Ore near zero is not biome-empty. ISRU progress is fuel/ore

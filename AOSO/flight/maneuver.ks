@@ -113,7 +113,11 @@ FUNCTION aoso_warp_force_rails {
 // that label can repeatedly release steering throughout the align window.
 FUNCTION aoso_warp_ensure_physics_idle {
     IF WARP > 0 {
-        SET WARP TO 0.
+        // One index per call. SET WARP 0 from 10000x/100000x in a single
+        // tick packed Acacius, then FlightIntegrator spent the unpack
+        // applying analytic temperature until the game froze.
+        LOCAL idle_idx IS aoso_warp_step_target(0).
+        IF idle_idx <> WARP { SET WARP TO idle_idx. }
         SET AOSO_WARP_IDLE_SINCE TO 0.
         RETURN FALSE.
     }
@@ -151,10 +155,12 @@ FUNCTION aoso_warp_set_physics_cruise {
 
     // Changing out of rails must first reach WARP=0, then switch mode, then
     // wait until KSP reports the transition settled. Do not command steering
-    // during any of those ticks.
+    // during any of those ticks. Step the index; do not slam a rails rate
+    // straight to 0 in this helper either.
     IF WARPMODE <> "PHYSICS" {
         IF WARP > 0 {
-            SET WARP TO 0.
+            LOCAL phys_idx IS aoso_warp_step_target(0).
+            IF phys_idx <> WARP { SET WARP TO phys_idx. }
             RETURN FALSE.
         }
         SET WARPMODE TO "PHYSICS".
@@ -313,7 +319,8 @@ FUNCTION aoso_warp_approach {
         // Mode changes are tick-driven. Do not WAIT 0 here; under a previous
         // rails command that can age the maneuver before KSP applies 1x.
         IF WARP > 0 {
-            SET WARP TO 0.
+            LOCAL mode_idx IS aoso_warp_step_target(0).
+            IF mode_idx <> WARP { SET WARP TO mode_idx. }
             aoso_warp_report("TRANSITION", eta_s, "settling to 1x before rails mode").
             RETURN "transition".
         }
@@ -327,24 +334,18 @@ FUNCTION aoso_warp_approach {
     IF NOT KUNIVERSE:TIMEWARP:ISSETTLED {
         // The settle gate must not block a safety downshift. A late Minmus
         // node stayed at 10000x while KSP was ramping and crossed ETA=0
-        // before the next settled tick.
-        IF want < WARP { SET WARP TO want. }
+        // before the next settled tick. Step one index — a direct SET to
+        // `want` jumped 100000x to 1x and restarted the temperature catch-up.
+        IF want < WARP {
+            LOCAL down_now IS aoso_warp_step_target(want).
+            IF down_now <> WARP { SET WARP TO down_now. }
+        }
         RETURN "transition".
     }
 
     IF WARP <> want {
-        IF want < WARP {
-            // Safety downshifts are immediate even while the previous warp
-            // command is still ramping.
-            SET WARP TO want.
-        } ELSE {
-            // KSP takes several ticks to reach a commanded warp rate. Do not
-            // issue another promotion while that transition is still moving,
-            // or the controller visibly "feathers" timewarp in and out.
-            IF KUNIVERSE:TIMEWARP:ISSETTLED {
-                SET WARP TO want.
-            }
-        }
+        LOCAL step_now IS aoso_warp_step_target(want).
+        IF step_now <> WARP { SET WARP TO step_now. }
     }
     aoso_warp_report("COAST", eta_s, "precision lead T-" + ROUND(rails_lead_s, 0) + "s").
     RETURN "rails".

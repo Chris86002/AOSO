@@ -236,14 +236,14 @@ FUNCTION aoso_tour_deorbit_find {
     LOCAL ecc IS SHIP:ORBIT:ECCENTRICITY.
 
     IF ecc >= 0.25 OR aoso_orbit_is_hyperbolic() {
-        LOCAL eta0 IS align_s.
+        LOCAL t_ap IS align_s.
         IF NOT aoso_orbit_is_hyperbolic() {
-            SET eta0 TO aoso_orbit_eta_apoapsis().
-            IF eta0 < align_s + 20 { SET eta0 TO eta0 + period. }
+            SET t_ap TO aoso_orbit_eta_apoapsis().
+            IF t_ap < align_s + 20 { SET t_ap TO t_ap + period. }
         }
         LOCAL n IS 0.
         UNTIL n >= max_orb {
-            LOCAL burn_eta IS eta0 + n * period.
+            LOCAL burn_eta IS t_ap + n * period.
             LOCAL g IS aoso_tour_pe_ground(burn_eta).
             IF g:ISTYPE("Lexicon") {
                 LOCAL miss IS aoso_tour_geo_miss_m(g["lat"], g["lng"], site_lat, site_lng).

@@ -26,7 +26,12 @@ handoff discrepancy. Other target types retain the original patch logic.
 The watchdog now treats a GOTO `COAST` or `WAIT` as an intentional wait while
 preserving its critical fuel/power abort check. Rails downshifts are issued
 even while KSP reports a warp-rate transition in progress, and 100000x/10000x
-are retired farther from critical events.
+are retired farther from critical events. 100000x is not the default: the
+2026-09-28 Acacius → Minmus coast at that rate chattered with 10000x, and the
+rails unpack (logged `UNPACK T-65s`, 117 parts) ended in a FlightIntegrator
+analytic-temperature storm that froze KSP. Coasts cap at 10000x unless
+`WARP_ALLOW_100000` is set, and each `SET WARP` moves one index so the unpack
+is not a stale high-warp frame.
 
 To diagnose a later encounter, retain `aoso_log.txt`, `aoso_events.csv`,
 `aoso_telemetry.csv`, `aoso_flightrec.txt`, and the game save near the

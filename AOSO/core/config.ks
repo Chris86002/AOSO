@@ -7,8 +7,12 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "PARKING_ORBIT_ALT", 100000,        // m, default parking orbit altitude
     "FUEL_RESERVE_PCT", 10,             // % of stage fuel kept as untouchable reserve
     "ABORT_FUEL_PCT", 3,                // % remaining that forces an abort
-    "MAX_WARP_FACTOR", 7,               // cap on SET WARP. 7=100000x rails, but adaptive frame guards only permit it on long safe coasts.
+    "MAX_WARP_FACTOR", 6,               // cap on SET WARP. 6 = 10000x. Index 7 (100000x) only with WARP_ALLOW_100000.
+    "WARP_ALLOW_100000", FALSE,         // opt-in. 100000x froze FlightIntegrator on the 117-part Minmus coast.
     "WARP_PROMOTE_MARGIN", 1.35,         // extra guard required to raise rails rate; prevents threshold chatter while ETA/frame time moves.
+    "WARP_DEMOTE_HOLD_S", 8,             // real seconds after a rails step-down before promoting again.
+    "WARP_STEP_MIN_S", 0.2,              // min real seconds between warp-index commands. Do not re-SET every tick.
+    "WARP_UNPACK_SETTLE_S", 1.5,         // sit on settled rails 5x before SET WARP 0 (the unpack that hung Acacius).
     "WARP_SOI_RAILS_CUTOFF_S", 45,       // leave rails shortly before SOI; enough for the measured ~8 s large-vessel unpack without a 5-minute physics coast.
     "WARP_STATUS_REAL_S", 30,            // real seconds between file-only coast breadcrumbs; rate/mode changes still print immediately.
     "OPTIMIZATION_MODE", "BALANCED",    // FUEL | TIME | SAFETY | BALANCED | MINIMUM_DV
@@ -278,13 +282,20 @@ FUNCTION aoso_config_load {
             SET AOSO_CONFIG["GOTO_PATCH_FLICKER_S"] TO 15.
         }
     }
-    // 2026-09 warp profile: long rails coasts may use 100000x, but only
-    // when the adaptive frame-jump guard has many frames of margin. These
-    // values were the previous defaults, so migrate them for existing AOSO
-    // installs instead of leaving persisted JSON artificially slow/noisy.
+    // 100000x was force-migrated up from the previous safe cap of 6.
+    // On the 2026-09-28 Acacius → Minmus coast that rate chattered with
+    // 10000x, then the rails unpack wedged FlightIntegrator
+    // ("has been unloaded … applying analytic temperature") and KSP froze.
+    // Restore cap 6 unless the operator set WARP_ALLOW_100000.
     IF AOSO_CONFIG:HASKEY("MAX_WARP_FACTOR") {
-        IF AOSO_CONFIG["MAX_WARP_FACTOR"] = 6 {
-            SET AOSO_CONFIG["MAX_WARP_FACTOR"] TO 7.
+        LOCAL allow_hi IS FALSE.
+        IF AOSO_CONFIG:HASKEY("WARP_ALLOW_100000") {
+            IF AOSO_CONFIG["WARP_ALLOW_100000"] { SET allow_hi TO TRUE. }
+        }
+        IF NOT allow_hi {
+            IF AOSO_CONFIG["MAX_WARP_FACTOR"] > 6 {
+                SET AOSO_CONFIG["MAX_WARP_FACTOR"] TO 6.
+            }
         }
     }
     IF AOSO_CONFIG:HASKEY("WARP_STATUS_REAL_S") {
