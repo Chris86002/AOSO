@@ -731,6 +731,45 @@ FUNCTION aoso_tour_scan_execute {
                             " best=" + ROUND(data["site_score"], 2) + " verified=" + data["site_verified"] + ".").
                     }
                 }
+                // Exit the survey early only after repeated safe live samples
+                // and a separately rechecked, verified selected site.
+                IF sc >= 0 AND data["site_verified"] {
+                    LOCAL chosen_geo IS LATLNG(data["site_lat"], data["site_lng"]).
+                    IF aoso_landing_site_near_ship(chosen_geo) {
+                        LOCAL chosen_score IS aoso_landing_site_score(chosen_geo).
+                        LOCAL chosen_slope IS aoso_landing_site_slope_deg(chosen_geo).
+                        LOCAL chosen_rough IS aoso_landing_site_roughness_m(chosen_geo).
+                        LOCAL chosen_rim IS aoso_landing_site_rim_m(chosen_geo).
+                        LOCAL good_score IS aoso_config_get("LANDING_SCAN_GOOD_ENOUGH_SCORE", 5).
+                        LOCAL sample_need IS aoso_config_get("LANDING_SCAN_EARLY_EXIT_SAMPLES", 3).
+                        LOCAL safe_quality IS FALSE.
+                        IF chosen_score >= 0 AND chosen_score <= good_score {
+                            IF chosen_slope <= aoso_config_get("MAX_SLOPE_DEG", 15) * 0.6 {
+                                IF chosen_rough <= 100 AND chosen_rim <= aoso_config_get("LANDING_RIM_MAX_M", 450) * 0.6 {
+                                    SET safe_quality TO TRUE.
+                                }
+                            }
+                        }
+                        LOCAL good_n IS 0.
+                        IF data:HASKEY("scan_good_samples") {
+                            SET good_n TO data["scan_good_samples"].
+                        }
+                        IF safe_quality {
+                            SET good_n TO good_n + 1.
+                        } ELSE {
+                            SET good_n TO 0.
+                        }
+                        SET data["scan_good_samples"] TO good_n.
+                        IF good_n >= sample_need {
+                            SET data["scan_until"] TO now.
+                            aoso_log_info("TOUR", "Landing survey early exit: verified site meets quality gates after " +
+                                good_n + " independent safe overflight samples (score=" +
+                                ROUND(chosen_score, 2) + " slope=" + ROUND(chosen_slope, 1) +
+                                "deg rough=" + ROUND(chosen_rough, 0) + "m rim=" +
+                                ROUND(chosen_rim, 0) + "m).").
+                        }
+                    }
+                }
                 SET data["scan_next_sample"] TO now + 25.
             }
             LOCAL left IS data["scan_until"] - now.
