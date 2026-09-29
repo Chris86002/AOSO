@@ -1,6 +1,8 @@
 // AOSO/vehicle/experience.ks
 // Bounded prediction corrections. Physics stays the baseline.
 // corrected = analytical * clamp(mean(actual/pred), 1±max).
+// The value written on a sample is the unclamped actual/pred. corr, mean,
+// best, and worst stay clamped so ignition timing does not chase one outlier.
 // Keys: configuration_id | body | operation. Survives Archive reverts.
 
 GLOBAL AOSO_XP IS LEXICON("loaded", FALSE, "store", LEXICON(), "save_at", 0).
@@ -95,6 +97,25 @@ FUNCTION aoso_xp_model {
     RETURN aoso_xp_blank().
 }
 
+FUNCTION aoso_xp_note_raw {
+    PARAMETER m.
+    PARAMETER raw_ratio.
+    // Post-upgrade samples only. Older JSON models have no raw_* keys;
+    // do not divide the new sum by the pre-upgrade n.
+    IF NOT m:HASKEY("raw_n") {
+        SET m["raw_n"] TO 0.
+        SET m["raw_sum"] TO 0.
+        SET m["raw_mean"] TO raw_ratio.
+        SET m["raw_best"] TO raw_ratio.
+        SET m["raw_worst"] TO raw_ratio.
+    }
+    SET m["raw_n"] TO m["raw_n"] + 1.
+    SET m["raw_sum"] TO m["raw_sum"] + raw_ratio.
+    SET m["raw_mean"] TO m["raw_sum"] / m["raw_n"].
+    IF raw_ratio < m["raw_best"] { SET m["raw_best"] TO raw_ratio. }
+    IF raw_ratio > m["raw_worst"] { SET m["raw_worst"] TO raw_ratio. }
+}
+
 FUNCTION aoso_xp_record {
     PARAMETER op_name.
     PARAMETER body_name.
@@ -122,7 +143,8 @@ FUNCTION aoso_xp_record {
         IF DEFINED AOSO_EVENTS { aoso_event_publish("MODEL_UPDATED", "xp", op_name + " reliability"). }
         RETURN m.
     }
-    LOCAL ratio IS actual / predicted.
+    LOCAL raw_ratio IS actual / predicted.
+    LOCAL ratio IS raw_ratio.
     LOCAL max_c IS aoso_config_get("XP_MAX_CORRECTION", 0.35).
     IF ratio < 1 - max_c { SET ratio TO 1 - max_c. }
     IF ratio > 1 + max_c { SET ratio TO 1 + max_c. }
@@ -146,6 +168,7 @@ FUNCTION aoso_xp_record {
     IF m["n"] >= min_n { SET conf TO 0.6. }
     IF m["n"] >= min_n * 2 { SET conf TO 0.82. }
     SET m["conf"] TO conf.
+    aoso_xp_note_raw(m, raw_ratio).
     SET store["models"][mk] TO m.
 
     store["samples"]:ADD(LEXICON(
@@ -153,7 +176,9 @@ FUNCTION aoso_xp_record {
         "body", body_name,
         "pred", predicted,
         "act", actual,
-        "ratio", ratio,
+        "ratio", raw_ratio,
+        "raw_ratio", raw_ratio,
+        "ratio_clamped", ratio,
         "fail", failed,
         "ut", TIME:SECONDS
     )).
@@ -165,7 +190,8 @@ FUNCTION aoso_xp_record {
     aoso_ctx_bump("rev_xp").
     IF DEFINED AOSO_EVENTS { aoso_event_publish("MODEL_UPDATED", "xp", op_name + " cost"). }
     aoso_log_info("XP", op_name + " " + body_name + " n=" + m["n"] + " corr=" + ROUND(corr, 3) +
-        " pred=" + ROUND(predicted, 1) + " act=" + ROUND(actual, 1) + " conf=" + ROUND(conf, 2) + ".").
+        " pred=" + ROUND(predicted, 1) + " act=" + ROUND(actual, 1) +
+        " raw=" + ROUND(raw_ratio, 3) + " conf=" + ROUND(conf, 2) + ".").
     RETURN m.
 }
 
@@ -237,7 +263,8 @@ FUNCTION aoso_xp_record_metric {
         IF DEFINED AOSO_EVENTS { aoso_event_publish("MODEL_UPDATED", "xp", op_name + " " + metric_name + " reliability"). }
         RETURN m.
     }
-    LOCAL ratio IS actual / predicted.
+    LOCAL raw_ratio IS actual / predicted.
+    LOCAL ratio IS raw_ratio.
     LOCAL max_c IS aoso_config_get("XP_MAX_CORRECTION", 0.35).
     IF ratio < 1 - max_c { SET ratio TO 1 - max_c. }
     IF ratio > 1 + max_c { SET ratio TO 1 + max_c. }
@@ -259,16 +286,19 @@ FUNCTION aoso_xp_record_metric {
     IF m["n"] >= min_n { SET conf TO 0.6. }
     IF m["n"] >= min_n * 2 { SET conf TO 0.82. }
     SET m["conf"] TO conf.
+    aoso_xp_note_raw(m, raw_ratio).
     SET store["models"][mk] TO m.
     store["samples"]:ADD(LEXICON("op", op_name, "body", body_name, "metric", metric_name,
-        "pred", predicted, "act", actual, "ratio", ratio, "fail", failed, "ut", TIME:SECONDS)).
+        "pred", predicted, "act", actual, "ratio", raw_ratio, "raw_ratio", raw_ratio,
+        "ratio_clamped", ratio, "fail", failed, "ut", TIME:SECONDS)).
     UNTIL store["samples"]:LENGTH <= 40 { store["samples"]:REMOVE(0). }
     IF TIME:SECONDS - AOSO_XP["save_at"] > 8 { aoso_xp_save(). }
     aoso_ctx_bump("rev_xp").
     IF DEFINED AOSO_EVENTS { aoso_event_publish("MODEL_UPDATED", "xp", op_name + " " + metric_name). }
     aoso_log_info("XP", op_name + " " + metric_name + " " + body_name +
         " n=" + m["n"] + " corr=" + ROUND(corr, 3) + " pred=" + ROUND(predicted, 2) +
-        " act=" + ROUND(actual, 2) + " conf=" + ROUND(conf, 2) + ".").
+        " act=" + ROUND(actual, 2) + " raw=" + ROUND(raw_ratio, 3) +
+        " conf=" + ROUND(conf, 2) + ".").
     RETURN m.
 }
 

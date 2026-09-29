@@ -673,8 +673,12 @@ FUNCTION aoso_descent_freefall_execute {
         " m trigger=" + ROUND(trigger, 0) + " m vSrf=" + ROUND(speed_ms, 1) + " m/s vVert=" +
         ROUND(VERTICALSPEED, 1) + " m/s face=" + ROUND(facing_err, 0) + " deg held=" + ROUND(held, 1) +
         "s tStop=" + ROUND(t_stop, 1) + "s decel=" + ROUND(decel, 2) + " m/s^2 " + aoso_warp_diag_txt() + ".").
+    SET AOSO_LAND_SUICIDE_ALT TO radar.
     aoso_observe_event("LAND", "INFO", "BURN", "suicide radar=" + ROUND(radar, 0) + " clr=" + ROUND(clear, 0) +
-        " vSrf=" + ROUND(speed_ms, 1) + " face=" + ROUND(facing_err, 0) + " tStop=" + ROUND(t_stop, 1)).
+        " vSrf=" + ROUND(speed_ms, 1) + " vs=" + ROUND(VERTICALSPEED, 1) +
+        " hs=" + ROUND(GROUNDSPEED, 1) + " twr=" + ROUND(twr_commit, 2) +
+        " face=" + ROUND(facing_err, 0) + " tStop=" + ROUND(t_stop, 1) +
+        " suic=" + ROUND(radar, 0)).
     aoso_decide("DESCENT", "suicide", "BURN", "trigger", "radar=" + ROUND(radar, 0) + " clr=" + ROUND(clear, 0) +
         " trig=" + ROUND(trigger, 0) + " face=" + ROUND(facing_err, 0)).
     aoso_state_transition(AOSO_DESCENT, "BURN").
@@ -764,6 +768,12 @@ FUNCTION aoso_descent_final_approach_execute {
         IF SHIP:STATUS <> "LANDED" {
             aoso_log_warn("DESCENT", "Final approach still fast (vSrf=" + ROUND(SHIP:VELOCITY:SURFACE:MAG, 1) +
                 " m/s) - returning to suicide burn.").
+            aoso_observe_event("LAND", "WARN", "BOUNCE",
+                "radar=" + ROUND(aoso_descent_true_radar(), 1) +
+                " vs=" + ROUND(VERTICALSPEED, 2) +
+                " hs=" + ROUND(GROUNDSPEED, 2) +
+                " thr=" + ROUND(THROTTLE, 3) +
+                " spd=" + ROUND(SHIP:VELOCITY:SURFACE:MAG, 1)).
             aoso_state_transition(AOSO_DESCENT, "BURN").
             RETURN.
         }
@@ -787,6 +797,7 @@ FUNCTION aoso_descent_touchdown_entry {
     PARAMETER data.
     aoso_descent_measure_dv(data).
     IF data:HASKEY("actual_dv") { aoso_action_add_actual_dv(data["actual_dv"]). }
+    LOCAL thr_cut IS THROTTLE.
     aoso_throttle_set(0).
     aoso_steer_release().
     LOCAL touchdown_geo IS SHIP:GEOPOSITION.
@@ -817,7 +828,27 @@ FUNCTION aoso_descent_touchdown_entry {
         ROUND(data["actual_dv"], 1) + "m/s slope=" +
         ROUND(touchdown_site_slope, 2) + "deg elapsed=" + ROUND(elapsed_land, 1) + "s.").
     aoso_log_info("DESCENT", "Touchdown, throttle cut.").
-    aoso_observe_event("TOUCHDOWN", "INFO", "TOUCHDOWN", "radar=" + ROUND(aoso_descent_true_radar(), 1)).
+    LOCAL land_pitch IS 90 - VANG(SHIP:UP:VECTOR, SHIP:FACING:FOREVECTOR).
+    LOCAL land_twr IS 0.
+    IF SHIP:MASS > 0 {
+        LOCAL g_touch IS SHIP:BODY:MU / ((SHIP:BODY:RADIUS + ALTITUDE) * (SHIP:BODY:RADIUS + ALTITUDE)).
+        IF g_touch > 0 { SET land_twr TO SHIP:AVAILABLETHRUST / (SHIP:MASS * g_touch). }
+    }
+    LOCAL suic_alt IS -1.
+    IF DEFINED AOSO_LAND_SUICIDE_ALT { SET suic_alt TO AOSO_LAND_SUICIDE_ALT. }
+    aoso_observe_event("TOUCHDOWN", "INFO", "TOUCHDOWN",
+        "lat=" + ROUND(touchdown_geo:LAT, 4) +
+        " lng=" + ROUND(touchdown_geo:LNG, 4) +
+        " site=" + ROUND(touchdown_target_lat, 4) + "/" + ROUND(touchdown_target_lng, 4) +
+        " slope=" + ROUND(touchdown_site_slope, 2) +
+        " radar=" + ROUND(aoso_descent_true_radar(), 1) +
+        " vs=" + ROUND(VERTICALSPEED, 2) +
+        " hs=" + ROUND(GROUNDSPEED, 2) +
+        " thr=" + ROUND(thr_cut, 3) +
+        " pitch=" + ROUND(land_pitch, 1) +
+        " twr=" + ROUND(land_twr, 2) +
+        " suic=" + ROUND(suic_alt, 0) +
+        " miss=" + ROUND(touchdown_miss, 1)).
     LOCAL ver_l IS aoso_verify_landing().
     LOCAL res_l IS aoso_result_make("LANDING", "SUCCESS", "touchdown").
     IF data:HASKEY("pred_land") { SET res_l["predicted_dv"] TO data["pred_land"]. }
@@ -829,6 +860,13 @@ FUNCTION aoso_descent_touchdown_entry {
 
 FUNCTION aoso_descent_aborted_entry {
     PARAMETER data.
+    aoso_observe_event("ABORT", "ERROR", "DESCENT",
+        "radar=" + ROUND(aoso_descent_true_radar(), 1) +
+        " vs=" + ROUND(VERTICALSPEED, 2) +
+        " hs=" + ROUND(GROUNDSPEED, 2) +
+        " thr=" + ROUND(THROTTLE, 3) +
+        " alt_m=" + ROUND(ALTITUDE, 0) +
+        " suic=" + ROUND(AOSO_LAND_SUICIDE_ALT, 0)).
     aoso_descent_measure_dv(data).
     IF AOSO_ACTION_CUR:ISTYPE("Lexicon") {
         IF AOSO_ACTION_CUR["type"] = "LANDING" {

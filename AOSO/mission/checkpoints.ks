@@ -40,6 +40,8 @@ FUNCTION aoso_checkpoints_context {
             }
         }
     }
+    SET ctx["obs_phase"] TO "".
+    IF DEFINED AOSO_OBS_PHASE { SET ctx["obs_phase"] TO AOSO_OBS_PHASE. }
     RETURN ctx.
 }
 

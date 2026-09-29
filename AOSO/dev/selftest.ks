@@ -264,6 +264,11 @@ FUNCTION aoso_selftest {
     SET fail TO aoso_selftest_check("xp time corr rises", tm3["corr"] > 1, fail).
     SET fail TO aoso_selftest_check("xp time apply changes estimate", aoso_xp_metric_apply("MANEUVER", "SelftestBody", "BURN_TIME", 10) > 10, fail).
     SET fail TO aoso_selftest_check("xp corr bounded", m3["corr"] <= 1.35, fail).
+    LOCAL mraw IS aoso_xp_record("EJECT", "SelftestBody", 1000, 4000, FALSE).
+    SET fail TO aoso_selftest_check("xp raw unclamped", mraw["raw_worst"] >= 3.9, fail).
+    SET fail TO aoso_selftest_check("xp raw mean unclamped", mraw["raw_mean"] > 1.35, fail).
+    SET fail TO aoso_selftest_check("xp worst stays clamped", mraw["worst"] <= 1.35, fail).
+    SET fail TO aoso_selftest_check("xp outlier corr bounded", mraw["corr"] <= 1.35, fail).
     SET AOSO_XP["store"] TO xp_store.
     SET AOSO_XP["loaded"] TO xp_loaded.
     SET AOSO_XP["save_at"] TO xp_save_at.

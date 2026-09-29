@@ -5,25 +5,44 @@
 // ~0.2 s in ASCENT/DESCENT/BURN/LANDING, ~1 s in cruise, ~5 s on the pad.
 // Samples go to a RAM buffer and flush every ~8 rows / 2 s / important
 // event -- not a WRITELN every physics tick. Do not LIST PARTS. One
-// SHIP:RESOURCES loop for LF/OX/EC.
+// SHIP:RESOURCES loop covers LF/OX/EC plus SolidFuel, Ore, Ablator, and
+// MonoPropellant. Below 10 km, or whenever throttle is open, the row
+// stays at 1 Hz even if the CPU band would otherwise shed telemetry.
 
 GLOBAL AOSO_TELEMETRY_HEADER_WRITTEN IS FALSE.
 GLOBAL AOSO_TELEM_BUF IS LIST().
 GLOBAL AOSO_TELEM_LAST_FLUSH IS 0.
 
 FUNCTION aoso_telemetry_header {
-    RETURN "ut,met,body,lat,lng,alt,radar,srf,orb,vs,hs,pitch,hdg,aoa,q,drag,throt,thrust,mass,stg,lf,ox,ec,apo,pe,inc,ecc,etaap,phase,cpu".
+    RETURN "ut,met,body,lat,lng,alt,radar,srf,orb,vs,hs,pitch,hdg,aoa,q,drag,throt,thrust,mass,stg,lf,ox,ec,sf,ore,ablator,mp,apo,pe,inc,ecc,etaap,phase,cpu".
+}
+
+FUNCTION aoso_telemetry_hot {
+    IF THROTTLE > 0.02 { RETURN TRUE. }
+    IF ALT:RADAR < 10000 { RETURN TRUE. }
+    IF ALTITUDE < 10000 { RETURN TRUE. }
+    RETURN FALSE.
 }
 
 FUNCTION aoso_telemetry_interval {
-    IF AOSO_CPU_LEVEL >= 3 { RETURN 99. }
-    IF AOSO_CPU_LEVEL >= 2 { RETURN 5. }
     LOCAL rate IS "AUTO".
     IF AOSO_CONFIG:HASKEY("TELEM_RATE") { SET rate TO AOSO_CONFIG["TELEM_RATE"]. }
     IF rate = "OFF" { RETURN 99. }
     IF rate = "FAST" { RETURN 0.1. }
     IF rate = "NORMAL" { RETURN 0.5. }
-    IF rate = "SLOW" { RETURN 2. }
+    IF rate = "SLOW" {
+        IF aoso_telemetry_hot() { RETURN 1. }
+        RETURN 2.
+    }
+    LOCAL hot IS aoso_telemetry_hot().
+    IF AOSO_CPU_LEVEL >= 2 {
+        IF hot { RETURN 1. }
+        IF AOSO_CPU_LEVEL >= 3 { RETURN 99. }
+        RETURN 5.
+    }
+    IF hot {
+        IF AOSO_CPU_LEVEL >= 1 { RETURN 1. }
+    }
     IF AOSO_CPU_LEVEL >= 1 { RETURN 2. }
     LOCAL p IS AOSO_OBS_PHASE.
     IF p = "ASCENT" { RETURN 0.2. }
@@ -32,6 +51,7 @@ FUNCTION aoso_telemetry_interval {
     IF p = "LANDING" { RETURN 0.2. }
     IF p = "PRELAUNCH" { RETURN 5. }
     IF p = "SURFACE" { RETURN 5. }
+    IF hot { RETURN 1. }
     RETURN 1.
 }
 
@@ -39,6 +59,10 @@ FUNCTION aoso_telemetry_row {
     LOCAL lf_amt IS aoso_resource_amount("LiquidFuel").
     LOCAL ox_amt IS aoso_resource_amount("Oxidizer").
     LOCAL ec_amt IS aoso_resource_amount("ElectricCharge").
+    LOCAL sf_amt IS aoso_resource_amount("SolidFuel").
+    LOCAL ore_amt IS aoso_resource_amount("Ore").
+    LOCAL ab_amt IS aoso_resource_amount("Ablator").
+    LOCAL mp_amt IS aoso_resource_amount("MonoPropellant").
 
     LOCAL pitch IS 90 - VANG(SHIP:UP:VECTOR, SHIP:FACING:FOREVECTOR).
     IF pitch < 0 { SET pitch TO 0. }
@@ -67,6 +91,7 @@ FUNCTION aoso_telemetry_row {
         ROUND(SHIP:Q, 4) + "," + ROUND(aoso_aero_drag_kn(), 2) + "," +
         ROUND(THROTTLE, 3) + "," + ROUND(SHIP:AVAILABLETHRUST, 2) + "," + ROUND(SHIP:MASS, 3) + "," +
         STAGE:NUMBER + "," + ROUND(lf_amt, 1) + "," + ROUND(ox_amt, 1) + "," + ROUND(ec_amt, 1) + "," +
+        ROUND(sf_amt, 1) + "," + ROUND(ore_amt, 1) + "," + ROUND(ab_amt, 1) + "," + ROUND(mp_amt, 1) + "," +
         ROUND(APOAPSIS, 1) + "," + ROUND(PERIAPSIS, 1) + "," +
         ROUND(SHIP:ORBIT:INCLINATION, 3) + "," + ROUND(SHIP:ORBIT:ECCENTRICITY, 5) + "," +
         ROUND(ETA:APOAPSIS, 1) + "," + AOSO_OBS_PHASE + "," + AOSO_CPU_NAME.

@@ -53,6 +53,23 @@ GLOBAL AOSO_TICK_GAP_N IS 0.
 GLOBAL AOSO_TICK_GAP_MAX IS 0.
 GLOBAL AOSO_TICK_N IS 0.
 GLOBAL AOSO_TICK_WARN_UT IS 0.
+GLOBAL AOSO_REC_BUF IS LIST().
+GLOBAL AOSO_REC_LAST IS -1.
+GLOBAL AOSO_OBS_BODY IS "".
+GLOBAL AOSO_OBS_PATCH IS "".
+GLOBAL AOSO_OBS_PATCH_PE IS 0.
+GLOBAL AOSO_OBS_ENCOUNTER_UT IS -1.
+GLOBAL AOSO_NAV_WATCH_UT IS -1.
+GLOBAL AOSO_LAND_RADAR_MIN IS -1.
+GLOBAL AOSO_LAND_VS_PREV IS 0.
+GLOBAL AOSO_LAND_TIP_LOGGED IS FALSE.
+GLOBAL AOSO_LAND_SETTLED IS FALSE.
+GLOBAL AOSO_LAND_SETTLE_UT IS 0.
+GLOBAL AOSO_LAND_TURN_UT IS -1.
+GLOBAL AOSO_LAND_BOUNCE_UT IS -1.
+GLOBAL AOSO_LAND_SUICIDE_ALT IS -1.
+GLOBAL AOSO_CPU_PEND_NAME IS "".
+GLOBAL AOSO_CPU_PEND_UT IS 0.
 
 FUNCTION aoso_observe_reset_files {
     // Keep exactly one previous session instead of appending forever. Long
@@ -123,6 +140,23 @@ FUNCTION aoso_observe_init {
     SET AOSO_TICK_GAP_MAX TO 0.
     SET AOSO_TICK_N TO 0.
     SET AOSO_TICK_WARN_UT TO 0.
+    SET AOSO_REC_BUF TO LIST().
+    SET AOSO_REC_LAST TO -1.
+    SET AOSO_OBS_BODY TO SHIP:BODY:NAME.
+    SET AOSO_OBS_PATCH TO "".
+    SET AOSO_OBS_PATCH_PE TO 0.
+    SET AOSO_OBS_ENCOUNTER_UT TO -1.
+    SET AOSO_NAV_WATCH_UT TO -1.
+    SET AOSO_LAND_RADAR_MIN TO -1.
+    SET AOSO_LAND_VS_PREV TO 0.
+    SET AOSO_LAND_TIP_LOGGED TO FALSE.
+    SET AOSO_LAND_SETTLED TO FALSE.
+    SET AOSO_LAND_SETTLE_UT TO 0.
+    SET AOSO_LAND_TURN_UT TO -1.
+    SET AOSO_LAND_BOUNCE_UT TO -1.
+    SET AOSO_LAND_SUICIDE_ALT TO -1.
+    SET AOSO_CPU_PEND_NAME TO "".
+    SET AOSO_CPU_PEND_UT TO 0.
 
     SET AOSO_OBS_PHASE TO "BOOT".
     IF SHIP:STATUS = "PRELAUNCH" { SET AOSO_OBS_PHASE TO "PRELAUNCH". }
@@ -151,6 +185,7 @@ FUNCTION aoso_observe_set_phase {
     LOCAL old IS AOSO_OBS_PHASE.
     SET AOSO_OBS_PHASE TO p.
     aoso_observe_event("PHASE", "INFO", p, old + "->" + p).
+    aoso_observe_persist_phase("phase").
 }
 
 // Coarse phase from a state-machine transition. Cheap string compares.
@@ -161,11 +196,29 @@ FUNCTION aoso_observe_on_state {
     IF new_state = "CIRCULARIZE" { aoso_observe_set_phase("ASCENT"). RETURN. }
     IF new_state = "ASCEND" { aoso_observe_set_phase("ASCENT"). RETURN. }
     IF new_state = "LAUNCH" { aoso_observe_set_phase("ASCENT"). RETURN. }
-    IF new_state = "FREEFALL" { aoso_observe_set_phase("DESCENT"). RETURN. }
+    IF new_state = "FREEFALL" {
+        SET AOSO_LAND_SUICIDE_ALT TO -1.
+        aoso_observe_set_phase("DESCENT").
+        aoso_observe_event("LAND", "INFO", "FREEFALL", aoso_observe_land_msg(ALT:RADAR)).
+        RETURN.
+    }
     IF new_state = "DESCEND" { aoso_observe_set_phase("DESCENT"). RETURN. }
-    IF new_state = "DEORBIT" { aoso_observe_set_phase("DESCENT"). RETURN. }
-    IF new_state = "FINAL_APPROACH" { aoso_observe_set_phase("LANDING"). RETURN. }
-    IF new_state = "TOUCHDOWN" { aoso_observe_set_phase("SURFACE"). RETURN. }
+    IF new_state = "DEORBIT" {
+        SET AOSO_LAND_SUICIDE_ALT TO -1.
+        aoso_observe_set_phase("DESCENT").
+        aoso_observe_event("LAND", "INFO", "DEORBIT", aoso_observe_land_msg(ALT:RADAR)).
+        RETURN.
+    }
+    IF new_state = "FINAL_APPROACH" {
+        aoso_observe_set_phase("LANDING").
+        aoso_observe_event("LAND", "INFO", "FINAL_APPROACH", aoso_observe_land_msg(ALT:RADAR)).
+        RETURN.
+    }
+    IF new_state = "TOUCHDOWN" {
+        aoso_observe_set_phase("SURFACE").
+        aoso_observe_event("TOUCHDOWN", "INFO", "TOUCHDOWN", aoso_observe_land_msg(ALT:RADAR)).
+        RETURN.
+    }
     IF new_state = "REFUEL" { aoso_observe_set_phase("SURFACE"). RETURN. }
     IF new_state = "HARVEST" { aoso_observe_set_phase("SURFACE"). RETURN. }
     IF new_state = "DEPLOY" { aoso_observe_set_phase("SURFACE"). RETURN. }
@@ -190,6 +243,7 @@ FUNCTION aoso_observe_on_state {
     IF new_state = "BURN" {
         IF AOSO_OBS_PHASE = "DESCENT" {
             aoso_observe_set_phase("LANDING").
+            aoso_observe_event("LAND", "INFO", "BURN", aoso_observe_land_msg(ALT:RADAR)).
             RETURN.
         }
         IF AOSO_OBS_PHASE = "LANDING" { RETURN. }
@@ -224,6 +278,13 @@ FUNCTION aoso_observe_event {
         IF etype = "ABORT" { SET keep TO TRUE. }
         IF etype = "ANOMALY" { SET keep TO TRUE. }
         IF etype = "BURN" { SET keep TO TRUE. }
+        IF etype = "LAND" { SET keep TO TRUE. }
+        IF etype = "TOUCHDOWN" { SET keep TO TRUE. }
+        IF etype = "SOI" { SET keep TO TRUE. }
+        IF etype = "ENCOUNTER" { SET keep TO TRUE. }
+        IF etype = "PHASE" { SET keep TO TRUE. }
+        IF etype = "FINGERPRINT" { SET keep TO TRUE. }
+        IF etype = "STATE" { SET keep TO TRUE. }
         IF NOT keep { RETURN. }
     }
 
@@ -242,10 +303,14 @@ FUNCTION aoso_observe_event {
     IF etype = "LAND" { SET dump TO TRUE. }
     IF etype = "TOUCHDOWN" { SET dump TO TRUE. }
     IF etype = "RELIGHT" { SET dump TO TRUE. }
+    IF etype = "SOI" { SET dump TO TRUE. }
+    IF etype = "ENCOUNTER" { SET dump TO TRUE. }
+    IF etype = "PHASE" { SET dump TO TRUE. }
     IF dump {
         SET AOSO_DUMP_PENDING TO etype + " " + message.
         SET AOSO_POST_LEFT TO 8.
         SET AOSO_TELEM_FLUSH_NOW TO TRUE.
+        IF DEFINED aoso_log_flush { aoso_log_flush(). }
     }
 
     LOCAL must_flush IS FALSE.
@@ -253,6 +318,7 @@ FUNCTION aoso_observe_event {
     IF severity = "FATAL" { SET must_flush TO TRUE. }
     IF AOSO_EVT_BUF:LENGTH >= 20 { SET must_flush TO TRUE. }
     IF AOSO_EVT_BUF:LENGTH > 80 { SET must_flush TO TRUE. }
+    IF dump { SET must_flush TO TRUE. }
     IF (ut - AOSO_EVT_LAST_FLUSH) >= 5 {
         LOCAL busy IS FALSE.
         IF DEFINED AOSO_CPU_LEVEL {
@@ -366,6 +432,278 @@ FUNCTION aoso_observe_post_sample {
     SET AOSO_POST_LEFT TO AOSO_POST_LEFT - 1.
 }
 
+FUNCTION aoso_observe_rec_flush {
+    IF AOSO_REC_BUF:LENGTH = 0 { RETURN. }
+    LOCAL recpath IS AOSO_CONST["FLIGHTREC_FILE"].
+    LOCAL out IS 0.
+    IF EXISTS(recpath) {
+        SET out TO OPEN(recpath).
+    } ELSE {
+        SET out TO CREATE(recpath).
+    }
+    UNTIL AOSO_REC_BUF:LENGTH = 0 {
+        out:WRITELN(AOSO_REC_BUF[0]).
+        AOSO_REC_BUF:REMOVE(0).
+    }
+}
+
+FUNCTION aoso_observe_persist_phase {
+    PARAMETER why.
+    aoso_observe_on_fingerprint().
+    LOCAL do_profile IS FALSE.
+    IF DEFINED AOSO_CPU_LEVEL {
+        IF AOSO_CPU_LEVEL < 2 { SET do_profile TO TRUE. }
+    }
+    IF do_profile {
+        IF AOSO_OBS_PHASE = "ASCENT" { SET do_profile TO FALSE. }
+        IF AOSO_OBS_PHASE = "BURN" { SET do_profile TO FALSE. }
+        IF AOSO_OBS_PHASE = "LANDING" { SET do_profile TO FALSE. }
+    }
+    IF do_profile {
+        IF OPCODESLEFT >= 400 {
+            IF DEFINED aoso_profile_refresh {
+                aoso_profile_refresh(why).
+            }
+        }
+    }
+    IF DEFINED aoso_checkpoints_save {
+        LOCAL idx IS -1.
+        LOCAL step_nm IS AOSO_OBS_PHASE.
+        LOCAL data_lx IS LEXICON().
+        IF DEFINED AOSO_CHECKPOINT {
+            SET idx TO AOSO_CHECKPOINT["step_index"].
+            IF AOSO_CHECKPOINT["step_name"] <> "" {
+                SET step_nm TO AOSO_CHECKPOINT["step_name"].
+            }
+            IF AOSO_CHECKPOINT:HASKEY("data") {
+                IF AOSO_CHECKPOINT["data"]:ISTYPE("Lexicon") {
+                    SET data_lx TO AOSO_CHECKPOINT["data"].
+                }
+            }
+        }
+        IF DEFINED AOSO_MISSION {
+            IF AOSO_MISSION:HASKEY("current") {
+                IF AOSO_MISSION["current"] = "RUNNING" {
+                    IF AOSO_MISSION:HASKEY("data") {
+                        IF AOSO_MISSION["data"]:HASKEY("index") {
+                            SET idx TO AOSO_MISSION["data"]["index"].
+                        }
+                    }
+                    IF DEFINED AOSO_MISSION_PLAN {
+                        IF idx >= 0 {
+                            IF idx < AOSO_MISSION_PLAN:LENGTH {
+                                SET step_nm TO AOSO_MISSION_PLAN[idx]["name"].
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        SET data_lx["obs_why"] TO why.
+        aoso_checkpoints_save(idx, step_nm, data_lx, TRUE).
+    }
+}
+
+FUNCTION aoso_observe_land_msg {
+    PARAMETER radar_m.
+    LOCAL pitch_deg IS 90 - VANG(SHIP:UP:VECTOR, SHIP:FACING:FOREVECTOR).
+    LOCAL twr_now IS 0.
+    IF SHIP:MASS > 0 {
+        LOCAL g_now IS SHIP:BODY:MU / ((SHIP:BODY:RADIUS + ALTITUDE) * (SHIP:BODY:RADIUS + ALTITUDE)).
+        IF g_now > 0 { SET twr_now TO SHIP:AVAILABLETHRUST / (SHIP:MASS * g_now). }
+    }
+    LOCAL site_lat IS 0.
+    LOCAL site_lng IS 0.
+    IF DEFINED AOSO_TOUR {
+        IF AOSO_TOUR:HASKEY("data") {
+            IF AOSO_TOUR["data"]:HASKEY("site_lat") {
+                SET site_lat TO AOSO_TOUR["data"]["site_lat"].
+                SET site_lng TO AOSO_TOUR["data"]["site_lng"].
+            }
+        }
+    }
+    LOCAL slope_deg IS -1.
+    IF DEFINED aoso_landing_site_slope_deg {
+        SET slope_deg TO aoso_landing_site_slope_deg(SHIP:GEOPOSITION).
+    }
+    RETURN "lat=" + ROUND(SHIP:LATITUDE, 4) +
+        " lng=" + ROUND(SHIP:LONGITUDE, 4) +
+        " site=" + ROUND(site_lat, 4) + "/" + ROUND(site_lng, 4) +
+        " slope=" + ROUND(slope_deg, 2) +
+        " radar=" + ROUND(radar_m, 1) +
+        " vs=" + ROUND(VERTICALSPEED, 2) +
+        " hs=" + ROUND(GROUNDSPEED, 2) +
+        " thr=" + ROUND(THROTTLE, 3) +
+        " pitch=" + ROUND(pitch_deg, 1) +
+        " twr=" + ROUND(twr_now, 2) +
+        " suic=" + ROUND(AOSO_LAND_SUICIDE_ALT, 0).
+}
+
+FUNCTION aoso_observe_land_watch {
+    PARAMETER now_ut.
+    LOCAL radar_m IS ALT:RADAR.
+    LOCAL watch IS FALSE.
+    IF AOSO_OBS_PHASE = "DESCENT" { SET watch TO TRUE. }
+    IF AOSO_OBS_PHASE = "LANDING" { SET watch TO TRUE. }
+    IF AOSO_OBS_PHASE = "SURFACE" { SET watch TO TRUE. }
+    IF AOSO_OBS_PHASE = "ASCENT" { SET watch TO FALSE. }
+    IF AOSO_OBS_PHASE = "PRELAUNCH" { SET watch TO FALSE. }
+    IF AOSO_OBS_PHASE = "BURN" { SET watch TO FALSE. }
+    IF AOSO_OBS_PHASE = "ORBIT" { SET watch TO FALSE. }
+    IF AOSO_OBS_PHASE = "CRUISE" { SET watch TO FALSE. }
+    IF AOSO_OBS_PHASE = "TRANSFER" { SET watch TO FALSE. }
+    IF NOT watch {
+        SET AOSO_LAND_RADAR_MIN TO -1.
+        SET AOSO_LAND_VS_PREV TO 0.
+        SET AOSO_LAND_TIP_LOGGED TO FALSE.
+        SET AOSO_LAND_SETTLED TO FALSE.
+        SET AOSO_LAND_SETTLE_UT TO 0.
+        RETURN.
+    }
+
+    LOCAL powered IS FALSE.
+    IF AOSO_OBS_PHASE = "LANDING" { SET powered TO TRUE. }
+    IF THROTTLE > 0.02 { SET powered TO TRUE. }
+    IF AOSO_LAND_SUICIDE_ALT >= 0 { SET powered TO TRUE. }
+    IF NOT powered {
+        SET AOSO_LAND_RADAR_MIN TO -1.
+    } ELSE {
+        IF AOSO_LAND_RADAR_MIN < 0 OR radar_m < AOSO_LAND_RADAR_MIN {
+            SET AOSO_LAND_RADAR_MIN TO radar_m.
+        }
+    }
+    LOCAL ship_landed IS FALSE.
+    IF SHIP:STATUS = "LANDED" { SET ship_landed TO TRUE. }
+    IF SHIP:STATUS = "SPLASHED" { SET ship_landed TO TRUE. }
+    IF powered {
+        IF NOT ship_landed {
+            IF AOSO_LAND_RADAR_MIN >= 0 {
+                IF radar_m > AOSO_LAND_RADAR_MIN + 40 {
+                    LOCAL pad_climb IS FALSE.
+                    IF AOSO_OBS_PHASE = "SURFACE" {
+                        IF AOSO_LAND_RADAR_MIN < 30 {
+                            IF THROTTLE > 0.5 { SET pad_climb TO TRUE. }
+                        }
+                    }
+                    IF NOT pad_climb {
+                        IF now_ut - AOSO_LAND_TURN_UT >= 10 {
+                            SET AOSO_LAND_TURN_UT TO now_ut.
+                            aoso_observe_event("LAND", "WARN", "TURNAROUND",
+                                "min=" + ROUND(AOSO_LAND_RADAR_MIN, 1) + " " + aoso_observe_land_msg(radar_m)).
+                            SET AOSO_LAND_RADAR_MIN TO radar_m.
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    IF radar_m < 50 {
+        IF AOSO_LAND_VS_PREV < -2 {
+            IF VERTICALSPEED > 2 {
+                IF now_ut - AOSO_LAND_BOUNCE_UT >= 5 {
+                    SET AOSO_LAND_BOUNCE_UT TO now_ut.
+                    aoso_observe_event("LAND", "WARN", "BOUNCE", aoso_observe_land_msg(radar_m)).
+                }
+            }
+        }
+    }
+    SET AOSO_LAND_VS_PREV TO VERTICALSPEED.
+
+    LOCAL tip_ang IS VANG(SHIP:UP:VECTOR, SHIP:FACING:FOREVECTOR).
+    LOCAL tip_now IS FALSE.
+    IF tip_ang > 45 {
+        IF radar_m < 5 OR ship_landed { SET tip_now TO TRUE. }
+    }
+    IF tip_now {
+        IF NOT AOSO_LAND_TIP_LOGGED {
+            SET AOSO_LAND_TIP_LOGGED TO TRUE.
+            aoso_observe_event("LAND", "WARN", "TIP", aoso_observe_land_msg(radar_m)).
+        }
+    } ELSE {
+        SET AOSO_LAND_TIP_LOGGED TO FALSE.
+    }
+
+    LOCAL srf_spd IS SHIP:VELOCITY:SURFACE:MAG.
+    IF ship_landed {
+        IF srf_spd < 0.5 {
+            IF AOSO_LAND_SETTLE_UT <= 0 { SET AOSO_LAND_SETTLE_UT TO now_ut. }
+            IF NOT AOSO_LAND_SETTLED {
+                IF now_ut - AOSO_LAND_SETTLE_UT >= 2 {
+                    SET AOSO_LAND_SETTLED TO TRUE.
+                    aoso_observe_event("LAND", "INFO", "SETTLED", aoso_observe_land_msg(radar_m)).
+                }
+            }
+        } ELSE {
+            IF NOT AOSO_LAND_SETTLED { SET AOSO_LAND_SETTLE_UT TO 0. }
+        }
+    } ELSE {
+        SET AOSO_LAND_SETTLED TO FALSE.
+        SET AOSO_LAND_SETTLE_UT TO 0.
+    }
+}
+
+FUNCTION aoso_observe_nav_watch {
+    LOCAL now_ut IS TIME:SECONDS.
+    IF now_ut - AOSO_NAV_WATCH_UT < 1 { RETURN. }
+    SET AOSO_NAV_WATCH_UT TO now_ut.
+
+    LOCAL body_now IS SHIP:BODY:NAME.
+    IF AOSO_OBS_BODY = "" { SET AOSO_OBS_BODY TO body_now. }
+    IF body_now <> AOSO_OBS_BODY {
+        LOCAL from_b IS AOSO_OBS_BODY.
+        SET AOSO_OBS_BODY TO body_now.
+        SET AOSO_OBS_PATCH TO "".
+        SET AOSO_OBS_PATCH_PE TO 0.
+        aoso_observe_event("SOI", "INFO", body_now,
+            "from=" + from_b + " to=" + body_now +
+            " ut=" + ROUND(now_ut, 1) +
+            " pe=" + ROUND(PERIAPSIS, 0) +
+            " inc=" + ROUND(SHIP:ORBIT:INCLINATION, 3) +
+            " ecc=" + ROUND(SHIP:ORBIT:ECCENTRICITY, 4) +
+            " ttp=" + ROUND(ETA:PERIAPSIS, 1)).
+        aoso_observe_persist_phase("soi").
+    }
+
+    LOCAL patch_name IS "".
+    LOCAL patch_pe IS 0.
+    LOCAL patch_inc IS 0.
+    LOCAL patch_eta IS -1.
+    IF SHIP:ORBIT:HASNEXTPATCH {
+        SET patch_name TO SHIP:ORBIT:NEXTPATCH:BODY:NAME.
+        SET patch_pe TO SHIP:ORBIT:NEXTPATCH:PERIAPSIS.
+        SET patch_inc TO SHIP:ORBIT:NEXTPATCH:INCLINATION.
+        SET patch_eta TO ETA:TRANSITION.
+    }
+    IF patch_name = "" {
+        SET AOSO_OBS_PATCH TO "".
+        SET AOSO_OBS_PATCH_PE TO 0.
+    } ELSE {
+        LOCAL changed IS FALSE.
+        IF patch_name <> AOSO_OBS_PATCH { SET changed TO TRUE. }
+        IF NOT changed {
+            LOCAL pe_delta IS ABS(patch_pe - AOSO_OBS_PATCH_PE).
+            LOCAL pe_gate IS 5000.
+            LOCAL pe_frac IS ABS(AOSO_OBS_PATCH_PE) * 0.15.
+            IF pe_frac > pe_gate { SET pe_gate TO pe_frac. }
+            IF pe_delta > pe_gate {
+                IF now_ut - AOSO_OBS_ENCOUNTER_UT >= 60 { SET changed TO TRUE. }
+            }
+        }
+        IF changed {
+            SET AOSO_OBS_PATCH TO patch_name.
+            SET AOSO_OBS_PATCH_PE TO patch_pe.
+            SET AOSO_OBS_ENCOUNTER_UT TO now_ut.
+            aoso_observe_event("ENCOUNTER", "INFO", patch_name,
+                "from=" + body_now + " to=" + patch_name +
+                " ut=" + ROUND(now_ut, 1) +
+                " pe=" + ROUND(patch_pe, 0) +
+                " inc=" + ROUND(patch_inc, 3) +
+                " eta=" + ROUND(patch_eta, 1)).
+        }
+    }
+}
+
 FUNCTION aoso_observe_tick_begin {
     LOCAL now_ut IS TIME:SECONDS.
     LOCAL now_rt IS KUNIVERSE:REALTIME.
@@ -381,57 +719,90 @@ FUNCTION aoso_observe_tick_begin {
     }
     SET AOSO_PHYS_DT TO dt.
     SET AOSO_WALL_DT TO wall_dt.
+    aoso_observe_nav_watch().
+    aoso_observe_land_watch(now_ut).
 
     LOCAL critical IS FALSE.
     IF AOSO_OBS_PHASE = "ASCENT" OR AOSO_OBS_PHASE = "BURN" OR
        AOSO_OBS_PHASE = "DESCENT" OR AOSO_OBS_PHASE = "LANDING" {
         SET critical TO TRUE.
     }
-    IF NOT critical { RETURN. }
 
-    LOCAL warn_dt IS aoso_config_get("TICK_DT_WARN", 0.12).
-    LOCAL warn_wall IS aoso_config_get("TICK_WALL_WARN", 0.12).
+    IF critical {
+        LOCAL warn_dt IS aoso_config_get("TICK_DT_WARN", 0.5).
+        LOCAL warn_wall IS aoso_config_get("TICK_WALL_WARN", 0.25).
 
-    // Physics warp intentionally lengthens game-time physics steps. Treat the
-    // documented PHYSICSDELTAT as the expected cadence instead of reporting
-    // every 2x/3x/4x physics-warp tick as a hitch. Real wall-time stalls still
-    // trip warn_wall regardless of warp.
-    IF WARPMODE = "PHYSICS" {
-        LOCAL expected_dt IS KUNIVERSE:TIMEWARP:PHYSICSDELTAT.
-        IF expected_dt > 0 {
-            LOCAL phys_warn IS expected_dt * 3.
-            IF phys_warn > warn_dt { SET warn_dt TO phys_warn. }
-        }
-    }
-
-    LOCAL coarse IS FALSE.
-    IF dt > warn_dt { SET coarse TO TRUE. }
-    IF wall_dt > warn_wall { SET coarse TO TRUE. }
-    IF coarse {
-        SET AOSO_TICK_GAP_N TO AOSO_TICK_GAP_N + 1.
-        IF dt > AOSO_TICK_GAP_MAX { SET AOSO_TICK_GAP_MAX TO dt. }
-        IF now_ut - AOSO_TICK_WARN_UT > 1 {
-            SET AOSO_TICK_WARN_UT TO now_ut.
-            LOCAL stage_age IS -1.
-            IF DEFINED AOSO_STAGING_LAST_STAGE_UT {
-                IF AOSO_STAGING_LAST_STAGE_UT >= 0 {
-                    SET stage_age TO now_ut - AOSO_STAGING_LAST_STAGE_UT.
-                }
+        // Physics warp intentionally lengthens game-time physics steps. Treat the
+        // documented PHYSICSDELTAT as the expected cadence instead of reporting
+        // every 2x/3x/4x physics-warp tick as a hitch. Real wall-time stalls still
+        // trip warn_wall regardless of warp.
+        IF WARPMODE = "PHYSICS" {
+            LOCAL expected_dt IS KUNIVERSE:TIMEWARP:PHYSICSDELTAT.
+            IF expected_dt > 0 {
+                LOCAL phys_warn IS expected_dt * 3.
+                IF phys_warn > warn_dt { SET warn_dt TO phys_warn. }
             }
-            aoso_observe_event("TICK", "WARN", AOSO_OBS_PHASE,
-                "game_dt=" + ROUND(dt, 4) +
-                " wall_dt=" + ROUND(wall_dt, 4) +
-                " stage_age=" + ROUND(stage_age, 3) +
-                " warp=" + WARP + " mode=" + WARPMODE +
-                " op=" + OPCODESLEFT).
+        }
+
+        LOCAL coarse IS FALSE.
+        IF dt > warn_dt { SET coarse TO TRUE. }
+        IF wall_dt > warn_wall { SET coarse TO TRUE. }
+        IF coarse {
+            SET AOSO_TICK_GAP_N TO AOSO_TICK_GAP_N + 1.
+            IF dt > AOSO_TICK_GAP_MAX { SET AOSO_TICK_GAP_MAX TO dt. }
+            IF now_ut - AOSO_TICK_WARN_UT > 1 {
+                SET AOSO_TICK_WARN_UT TO now_ut.
+                LOCAL stage_age IS -1.
+                IF DEFINED AOSO_STAGING_LAST_STAGE_UT {
+                    IF AOSO_STAGING_LAST_STAGE_UT >= 0 {
+                        SET stage_age TO now_ut - AOSO_STAGING_LAST_STAGE_UT.
+                    }
+                }
+                aoso_observe_event("TICK", "WARN", AOSO_OBS_PHASE,
+                    "game_dt=" + ROUND(dt, 4) +
+                    " wall_dt=" + ROUND(wall_dt, 4) +
+                    " stage_age=" + ROUND(stage_age, 3) +
+                    " warp=" + WARP + " mode=" + WARPMODE +
+                    " op=" + OPCODESLEFT).
+            }
         }
     }
 
-    IF NOT aoso_config_get("TICK_DEBUG", TRUE) { RETURN. }
-    LOCAL every IS aoso_config_get("TICK_DEBUG_EVERY", 2).
-    IF every < 1 { SET every TO 1. }
-    LOCAL rem IS AOSO_TICK_N - FLOOR(AOSO_TICK_N / every) * every.
-    IF rem <> 0 { RETURN. }
+    LOCAL hot IS FALSE.
+    IF AOSO_OBS_PHASE = "BURN" OR AOSO_OBS_PHASE = "LANDING" { SET hot TO TRUE. }
+    IF THROTTLE > 0.02 { SET hot TO TRUE. }
+    IF DEFINED AOSO_MANEUVER_BURNING {
+        IF AOSO_MANEUVER_BURNING { SET hot TO TRUE. }
+    }
+    IF AOSO_OBS_PHASE = "DESCENT" {
+        IF ALT:RADAR < 10000 { SET hot TO TRUE. }
+    }
+
+    LOCAL debug_hit IS FALSE.
+    IF critical {
+        IF aoso_config_get("TICK_DEBUG", TRUE) {
+            LOCAL every IS aoso_config_get("TICK_DEBUG_EVERY", 2).
+            IF every < 1 { SET every TO 1. }
+            LOCAL rem IS AOSO_TICK_N - FLOOR(AOSO_TICK_N / every) * every.
+            IF rem = 0 { SET debug_hit TO TRUE. }
+        }
+    }
+    LOCAL file_hit IS FALSE.
+    IF hot {
+        LOCAL rec_gap IS 0.25.
+        IF AOSO_OBS_PHASE = "LANDING" { SET rec_gap TO 0.2. }
+        IF ALT:RADAR < 10000 { SET rec_gap TO 0.2. }
+        IF DEFINED AOSO_CPU_LEVEL {
+            IF AOSO_CPU_LEVEL >= 3 { SET rec_gap TO 1. }
+        }
+        IF AOSO_REC_LAST < 0 OR now_ut - AOSO_REC_LAST >= rec_gap {
+            SET file_hit TO TRUE.
+            SET AOSO_REC_LAST TO now_ut.
+        }
+    }
+    IF NOT debug_hit {
+        IF NOT file_hit { RETURN. }
+    }
 
     LOCAL node_dv IS -1.
     LOCAL node_eta IS -999.
@@ -447,6 +818,7 @@ FUNCTION aoso_observe_tick_begin {
             SET stage_age_row TO now_ut - AOSO_STAGING_LAST_STAGE_UT.
         }
     }
+    LOCAL radar_m IS ALT:RADAR.
     LOCAL row IS "TICK ut=" + ROUND(now_ut, 3) +
         " dt=" + ROUND(dt, 4) +
         " wall=" + ROUND(wall_dt, 4) +
@@ -459,9 +831,23 @@ FUNCTION aoso_observe_tick_begin {
         " spd=" + ROUND(SHIP:VELOCITY:ORBIT:MAG, 2) +
         " vs=" + ROUND(VERTICALSPEED, 2) +
         " node=" + ROUND(node_dv, 3) +
-        " eta=" + ROUND(node_eta, 2).
+        " eta=" + ROUND(node_eta, 2) +
+        " alt=" + ROUND(ALTITUDE, 1) +
+        " radar=" + ROUND(radar_m, 1) +
+        " apo=" + ROUND(APOAPSIS, 0) +
+        " pe=" + ROUND(PERIAPSIS, 0) +
+        " body=" + SHIP:BODY:NAME.
     aoso_observe_ring_push(row).
     aoso_observe_post_sample(row).
+    IF file_hit {
+        AOSO_REC_BUF:ADD(row).
+        LOCAL flush_rec IS FALSE.
+        IF AOSO_REC_BUF:LENGTH >= 40 { SET flush_rec TO TRUE. }
+        IF AOSO_REC_BUF:LENGTH >= 12 {
+            IF OPCODESLEFT >= aoso_cpu_headroom() { SET flush_rec TO TRUE. }
+        }
+        IF flush_rec { aoso_observe_rec_flush(). }
+    }
 }
 
 FUNCTION aoso_prof_start {
@@ -694,22 +1080,32 @@ FUNCTION aoso_observe_idle {
     IF AOSO_DUMP_PENDING <> "" { SET want TO TRUE. }
     IF AOSO_EVT_BUF:LENGTH >= 8 { SET want TO TRUE. }
     IF AOSO_CPU_TRACE_BUF:LENGTH > 0 { SET want TO TRUE. }
+    IF AOSO_REC_BUF:LENGTH > 0 { SET want TO TRUE. }
     IF NOT want { RETURN. }
     LOCAL room_ok IS TRUE.
     IF OPCODESLEFT < aoso_cpu_headroom() { SET room_ok TO FALSE. }
     IF NOT room_ok {
-        IF AOSO_CPU_TRACE_BUF:LENGTH < 80 { RETURN. }
+        IF AOSO_CPU_TRACE_BUF:LENGTH < 80 {
+            IF AOSO_REC_BUF:LENGTH < 40 {
+                IF AOSO_EVT_BUF:LENGTH < 40 { RETURN. }
+            }
+        }
     }
+    LOCAL dumped IS FALSE.
     IF room_ok {
         IF AOSO_DUMP_PENDING <> "" {
             LOCAL why IS AOSO_DUMP_PENDING.
             SET AOSO_DUMP_PENDING TO "".
             aoso_observe_dump_pre(why).
+            SET dumped TO TRUE.
             IF OPCODESLEFT < aoso_cpu_headroom() { SET room_ok TO FALSE. }
         }
     }
     IF room_ok {
-        IF AOSO_EVT_BUF:LENGTH >= 8 { aoso_observe_flush(). }
+        IF dumped OR AOSO_EVT_BUF:LENGTH >= 8 { aoso_observe_flush(). }
+    }
+    IF AOSO_REC_BUF:LENGTH > 0 {
+        IF room_ok OR AOSO_REC_BUF:LENGTH >= 40 { aoso_observe_rec_flush(). }
     }
     IF AOSO_CPU_TRACE_BUF:LENGTH > 0 {
         IF room_ok OR AOSO_CPU_TRACE_BUF:LENGTH >= 80 { aoso_cpu_trace_flush(). }
@@ -817,10 +1213,22 @@ FUNCTION aoso_observe_cpu_end {
     SET AOSO_CPU_LAST_WALL TO wall.
     SET AOSO_CPU_FRAC TO frac.
     SET AOSO_CPU_USED TO op_used.
-    IF cname <> AOSO_CPU_LOG_NAME {
-        IF now_ut - AOSO_CPU_LOG_UT >= 8 {
+    IF cname = AOSO_CPU_LOG_NAME {
+        SET AOSO_CPU_PEND_NAME TO cname.
+        SET AOSO_CPU_PEND_UT TO now_ut.
+    } ELSE {
+        IF AOSO_CPU_PEND_NAME <> cname {
+            SET AOSO_CPU_PEND_NAME TO cname.
+            SET AOSO_CPU_PEND_UT TO now_ut.
+        }
+        LOCAL stick_s IS aoso_config_get("CPU_LOG_STICK_S", 20).
+        LOCAL stuck IS FALSE.
+        IF cname = "CRITICAL" { SET stuck TO TRUE. }
+        IF now_ut - AOSO_CPU_PEND_UT >= stick_s { SET stuck TO TRUE. }
+        IF stuck {
             SET AOSO_CPU_LOG_UT TO now_ut.
             SET AOSO_CPU_LOG_NAME TO cname.
+            SET AOSO_CPU_PEND_NAME TO cname.
             aoso_observe_event("CPU", "INFO", cname, "level=" + prev + "->" + level + " frac=" + ROUND(frac, 2) + " wall=" + ROUND(wall, 3) + " band=" + aoso_cpu_band()).
             IF DEFINED AOSO_EVENTS {
                 IF level >= 3 { aoso_event_publish("CPU_LOAD_CRITICAL", "cpu", cname). }

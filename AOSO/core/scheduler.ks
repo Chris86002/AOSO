@@ -162,10 +162,15 @@ FUNCTION aoso_sched_keep {
         IF DEFINED AOSO_POST_LEFT {
             IF AOSO_POST_LEFT > 0 { RETURN TRUE. }
         }
+        // Thrust and the last 10 km must keep a row even at CRITICAL.
+        // The opcode floor still applies; this only stops the shed.
+        IF DEFINED aoso_telemetry_hot {
+            IF aoso_telemetry_hot() { RETURN TRUE. }
+        }
         RETURN aoso_cpu_allow(2).
     }
     IF name = "vehicle_profile" { RETURN aoso_cpu_allow(3). }
-    IF name = "checkpoint_autosave" { RETURN aoso_cpu_allow(3). }
+    IF name = "checkpoint_autosave" { RETURN aoso_cpu_allow(2). }
     RETURN aoso_cpu_allow(1).
 }
 

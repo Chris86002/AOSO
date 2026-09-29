@@ -59,7 +59,7 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "MANEUVER_FOLLOW_ABOVE_S", 8,       // s of remaining burn-time above which we follow the live node instead of locking
     "MANEUVER_GAP_CUT_S", 0.12,          // s, cut throttle for a recovery tick if guidance did not run for this much game time
     "MANEUVER_STAGE_PRECUT", TRUE,       // during a burn, command zero throttle for one physics tick before STAGE()
-    "TICK_WALL_WARN", 0.12,              // s real-time gap logged beside game-time dt to separate KSP hitches from script cadence
+    "TICK_WALL_WARN", 0.25,              // s real-time gap logged beside game-time dt to separate KSP hitches from script cadence
     "GOTO_CORRECT_WITHIN_S", 28800,     // s (~8 h): only mid-course a graze this close to SOI; lithobrake still corrects immediately
     "GOTO_CORRECT_MAX", 5,              // mid-course PE retunes per hop (was 3; grazes need more)
     "ASTROGATOR_INTERCEPTS", FALSE,     // compatibility/status only; AOSO never asks Astrogator for intercept nodes
@@ -183,7 +183,8 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "TICK_DEBUG", TRUE,                  // keep a cheap in-memory physics-tick trace for pre/post event dumps
     "TICK_DEBUG_EVERY", 2,              // sample every N physics ticks in critical flight phases
     "LAUNCH_HOLD", TRUE,                 // PRELAUNCH only: wait until systems, plan, and departure cert are green, then commit
-    "TICK_DT_WARN", 0.12,               // s, game-time gap warning; physics-warp expected dt is handled separately
+    "TICK_DT_WARN", 0.5,                // s, game-time hitch; physics-warp expected dt is handled separately
+    "CPU_LOG_STICK_S", 20,              // s a CPU band must hold before it is written to the event log (CRITICAL is immediate)
     "MANEUVER_TICK_GUARD", 0.80,        // fraction of remaining dV allowed in the next measured physics tick
     "CPU_PROFILE", FALSE,               // extra per-task wall-time stats (also honors PROF_ENABLED)
     "CPU_TRACE_S", 5                    // real seconds between 0:/aoso_cpu.csv samples; 0 disables the timer (band and phase changes still record)
@@ -315,12 +316,20 @@ FUNCTION aoso_config_load {
             SET AOSO_CONFIG["WARP_STATUS_REAL_S"] TO 30.
         }
     }
-    // The old 0.06 s warning threshold classified normal scheduler cadence
-    // and 2x physics warp as thousands of WARN events. Preserve explicit
-    // operator overrides, but migrate the old shipped value.
+    // The 0.06 s threshold, then the 0.12 s default, classified ordinary
+    // scheduler cadence as WARN. Move those shipped values up. Leave any
+    // other operator override (for example 0.2 or 1.0) alone.
     IF AOSO_CONFIG:HASKEY("TICK_DT_WARN") {
         IF AOSO_CONFIG["TICK_DT_WARN"] <= 0.061 {
-            SET AOSO_CONFIG["TICK_DT_WARN"] TO 0.12.
+            SET AOSO_CONFIG["TICK_DT_WARN"] TO 0.5.
+        }
+        IF AOSO_CONFIG["TICK_DT_WARN"] = 0.12 {
+            SET AOSO_CONFIG["TICK_DT_WARN"] TO 0.5.
+        }
+    }
+    IF AOSO_CONFIG:HASKEY("TICK_WALL_WARN") {
+        IF AOSO_CONFIG["TICK_WALL_WARN"] = 0.12 {
+            SET AOSO_CONFIG["TICK_WALL_WARN"] TO 0.25.
         }
     }
     aoso_log_set_level(aoso_config_get("LOG_LEVEL", "INFO")).

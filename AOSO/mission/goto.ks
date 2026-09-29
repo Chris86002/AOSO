@@ -837,6 +837,12 @@ FUNCTION aoso_goto_coast_execute {
                 " while routing to " + hop_name + " / goal " + goal_name +
                 ". Coasting through. The intercept is rebuilt after exit.").
             aoso_observe_anomaly("UNEXPECTED_SOI", "HIGH", 0, 1).
+            aoso_observe_event("SOI", "WARN", "UNEXPECTED",
+                "from=" + data["depart_body"] + " to=" + SHIP:BODY:NAME +
+                " ut=" + ROUND(TIME:SECONDS, 1) +
+                " pe=" + ROUND(PERIAPSIS, 0) +
+                " inc=" + ROUND(SHIP:ORBIT:INCLINATION, 3) +
+                " ttp=" + ROUND(ETA:PERIAPSIS, 1)).
             IF DEFINED AOSO_EVENTS {
                 aoso_event_publish("UNEXPECTED_SOI", "goto", data["depart_body"] + "->" + SHIP:BODY:NAME).
             }
@@ -855,6 +861,12 @@ FUNCTION aoso_goto_coast_execute {
         SET data["recover_hop"] TO "".
         SET data["recover_from"] TO "".
         aoso_log_info("GOTO", "SOI change: " + data["depart_body"] + " -> " + SHIP:BODY:NAME + ".").
+        aoso_observe_event("SOI", "INFO", "GOTO",
+            "from=" + data["depart_body"] + " to=" + SHIP:BODY:NAME +
+            " ut=" + ROUND(TIME:SECONDS, 1) +
+            " pe=" + ROUND(PERIAPSIS, 0) +
+            " inc=" + ROUND(SHIP:ORBIT:INCLINATION, 3) +
+            " ttp=" + ROUND(ETA:PERIAPSIS, 1)).
         aoso_event_publish("SOI_CHANGED", "goto", data["depart_body"] + "->" + SHIP:BODY:NAME).
         IF hop_name <> "" {
             LOCAL ver_t IS aoso_verify_transfer(hop_name).

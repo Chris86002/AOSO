@@ -27,6 +27,18 @@ GLOBAL AOSO_MANEUVER_NO_THRUST_TICKS IS 0.
 GLOBAL AOSO_MANEUVER_APO_CAP IS -1.
 GLOBAL AOSO_MANEUVER_CUT_BODY IS "".
 GLOBAL AOSO_MANEUVER_LEAD_LOGGED IS FALSE.
+GLOBAL AOSO_MANEUVER_PURPOSE IS "".
+GLOBAL AOSO_MANEUVER_DV_PROG IS 0.
+GLOBAL AOSO_MANEUVER_DV_NORM IS 0.
+GLOBAL AOSO_MANEUVER_DV_RAD IS 0.
+GLOBAL AOSO_MANEUVER_ETA0 IS 0.
+GLOBAL AOSO_MANEUVER_BODY0 IS "".
+GLOBAL AOSO_MANEUVER_APO0 IS 0.
+GLOBAL AOSO_MANEUVER_PE0 IS 0.
+GLOBAL AOSO_MANEUVER_INC0 IS 0.
+GLOBAL AOSO_MANEUVER_ECC0 IS 0.
+GLOBAL AOSO_MANEUVER_FUEL0 IS 0.
+GLOBAL AOSO_MANEUVER_SNAP_OK IS FALSE.
 GLOBAL AOSO_WARP_LAST_KEY IS "".
 GLOBAL AOSO_WARP_LAST_RT IS -1.
 GLOBAL AOSO_WARP_IDLE_SINCE IS 0.
@@ -41,6 +53,18 @@ FUNCTION aoso_maneuver_reset_exec {
     SET AOSO_MANEUVER_PREDICTED_TIME TO 0.
     SET AOSO_MANEUVER_NO_THRUST_TICKS TO 0.
     SET AOSO_MANEUVER_LEAD_LOGGED TO FALSE.
+    SET AOSO_MANEUVER_PURPOSE TO "".
+    SET AOSO_MANEUVER_DV_PROG TO 0.
+    SET AOSO_MANEUVER_DV_NORM TO 0.
+    SET AOSO_MANEUVER_DV_RAD TO 0.
+    SET AOSO_MANEUVER_ETA0 TO 0.
+    SET AOSO_MANEUVER_BODY0 TO "".
+    SET AOSO_MANEUVER_APO0 TO 0.
+    SET AOSO_MANEUVER_PE0 TO 0.
+    SET AOSO_MANEUVER_INC0 TO 0.
+    SET AOSO_MANEUVER_ECC0 TO 0.
+    SET AOSO_MANEUVER_FUEL0 TO 0.
+    SET AOSO_MANEUVER_SNAP_OK TO FALSE.
     aoso_staging_reset_relight().
     IF DEFINED AOSO_STAGING_BURN_RECOVERY {
         aoso_staging_reset_burn_guard().
@@ -498,6 +522,46 @@ FUNCTION aoso_maneuver_tick_guard {
     RETURN cap.
 }
 
+FUNCTION aoso_maneuver_fuel_units {
+    LOCAL amt IS 0.
+    IF DEFINED aoso_resource_amount {
+        SET amt TO aoso_resource_amount("LiquidFuel").
+        SET amt TO amt + aoso_resource_amount("Oxidizer").
+        SET amt TO amt + aoso_resource_amount("SolidFuel").
+    }
+    RETURN amt.
+}
+
+FUNCTION aoso_maneuver_classify {
+    PARAMETER nd.
+    LOCAL act_ty IS "".
+    IF DEFINED AOSO_ACTION_CUR {
+        IF AOSO_ACTION_CUR:ISTYPE("Lexicon") {
+            IF AOSO_ACTION_CUR:HASKEY("type") { SET act_ty TO AOSO_ACTION_CUR["type"]. }
+        }
+    }
+    IF act_ty <> "" {
+        IF act_ty <> "MANEUVER" { RETURN act_ty. }
+    }
+    IF DEFINED AOSO_OBS_PHASE {
+        IF AOSO_OBS_PHASE = "ASCENT" { RETURN "CIRCULARIZE". }
+        IF AOSO_OBS_PHASE = "DESCENT" { RETURN "DEORBIT". }
+        IF AOSO_OBS_PHASE = "LANDING" { RETURN "DEORBIT". }
+    }
+    LOCAL n_prog IS nd:PROGRADE.
+    LOCAL n_norm IS nd:NORMAL.
+    LOCAL n_rad IS nd:RADIALOUT.
+    IF ABS(n_norm) > ABS(n_prog) + ABS(n_rad) { RETURN "PLANE". }
+    LOCAL ecc_now IS SHIP:ORBIT:ECCENTRICITY.
+    IF ecc_now > 1 { RETURN "CAPTURE". }
+    IF n_prog > 0 {
+        IF PERIAPSIS < 0 { RETURN "EJECT". }
+        IF ecc_now > 0.9 { RETURN "EJECT". }
+        IF SHIP:STATUS = "ESCAPING" { RETURN "EJECT". }
+    }
+    RETURN "MANEUVER".
+}
+
 FUNCTION aoso_maneuver_finish_node {
     PARAMETER nd.
     PARAMETER reason.
@@ -509,6 +573,28 @@ FUNCTION aoso_maneuver_finish_node {
     IF burn_started > 0 { SET burn_actual TO MAX(0, TIME:SECONDS - burn_started). }
     LOCAL burn_used IS start_dv - left.
     IF burn_used < 0 { SET burn_used TO 0. }
+    LOCAL purpose0 IS AOSO_MANEUVER_PURPOSE.
+    LOCAL dv_prog IS AOSO_MANEUVER_DV_PROG.
+    LOCAL dv_norm IS AOSO_MANEUVER_DV_NORM.
+    LOCAL dv_rad IS AOSO_MANEUVER_DV_RAD.
+    LOCAL eta0 IS AOSO_MANEUVER_ETA0.
+    LOCAL body0 IS AOSO_MANEUVER_BODY0.
+    LOCAL apo0 IS AOSO_MANEUVER_APO0.
+    LOCAL pe0 IS AOSO_MANEUVER_PE0.
+    LOCAL inc0 IS AOSO_MANEUVER_INC0.
+    LOCAL ecc0 IS AOSO_MANEUVER_ECC0.
+    LOCAL fuel0 IS AOSO_MANEUVER_FUEL0.
+    LOCAL snap_ok IS AOSO_MANEUVER_SNAP_OK.
+    LOCAL apo1 IS APOAPSIS.
+    LOCAL pe1 IS PERIAPSIS.
+    LOCAL inc1 IS SHIP:ORBIT:INCLINATION.
+    LOCAL ecc1 IS SHIP:ORBIT:ECCENTRICITY.
+    LOCAL body1 IS SHIP:BODY:NAME.
+    LOCAL fuel1 IS aoso_maneuver_fuel_units().
+    LOCAL fuel_used IS 0.
+    IF snap_ok { SET fuel_used TO fuel0 - fuel1. }
+    LOCAL raw_ratio IS 0.
+    IF burn_pred > 0.01 { SET raw_ratio TO burn_actual / burn_pred. }
 
     LOCAL parent_type IS "".
     LOCAL owns_action IS FALSE.
@@ -538,10 +624,29 @@ FUNCTION aoso_maneuver_finish_node {
         }
     }
 
-    aoso_log_info("MANEUVER", "Node executed (" + reason + ").").
+    aoso_log_info("MANEUVER", "Node executed (" + reason + ") " + purpose0 +
+        " body=" + body0 + "->" + body1 +
+        " dv=" + ROUND(dv_prog, 1) + "/" + ROUND(dv_norm, 1) + "/" + ROUND(dv_rad, 1) +
+        " eta=" + ROUND(eta0, 1) +
+        " fuel=" + ROUND(fuel_used, 1) +
+        " apo=" + ROUND(apo0, 0) + "->" + ROUND(apo1, 0) +
+        " pe=" + ROUND(pe0, 0) + "->" + ROUND(pe1, 0) +
+        " inc=" + ROUND(inc0, 3) + "->" + ROUND(inc1, 3) +
+        " ecc=" + ROUND(ecc0, 4) + "->" + ROUND(ecc1, 4) +
+        " left=" + ROUND(left, 2) +
+        " raw=" + ROUND(raw_ratio, 3) + ".").
     aoso_observe_event("BURN", "INFO", reason,
-        "left=" + ROUND(left, 2) + " used=" + ROUND(burn_used, 2) +
-        " pred_t=" + ROUND(burn_pred, 2) + " act_t=" + ROUND(burn_actual, 2)).
+        "purpose=" + purpose0 + " body=" + body0 + "->" + body1 +
+        " dv_prog=" + ROUND(dv_prog, 2) + " dv_norm=" + ROUND(dv_norm, 2) +
+        " dv_rad=" + ROUND(dv_rad, 2) + " eta=" + ROUND(eta0, 1) +
+        " fuel=" + ROUND(fuel_used, 1) +
+        " apo0=" + ROUND(apo0, 0) + " pe0=" + ROUND(pe0, 0) +
+        " inc0=" + ROUND(inc0, 3) + " ecc0=" + ROUND(ecc0, 4) +
+        " apo1=" + ROUND(apo1, 0) + " pe1=" + ROUND(pe1, 0) +
+        " inc1=" + ROUND(inc1, 3) + " ecc1=" + ROUND(ecc1, 4) +
+        " left=" + ROUND(left, 2) + " used=" + ROUND(burn_used, 2) +
+        " pred_t=" + ROUND(burn_pred, 2) + " act_t=" + ROUND(burn_actual, 2) +
+        " raw=" + ROUND(raw_ratio, 3)).
 
     LOCAL failed IS AOSO_MANEUVER_RESULT <> "ok".
     IF parent_type <> "" {
@@ -812,12 +917,23 @@ FUNCTION aoso_maneuver_execute_next {
         SET AOSO_MANEUVER_NO_THRUST_TICKS TO 0.
         aoso_staging_reset_relight().
         SET AOSO_MANEUVER_RESULT TO "ok".
+        SET AOSO_MANEUVER_PURPOSE TO aoso_maneuver_classify(nd).
+        SET AOSO_MANEUVER_DV_PROG TO nd:PROGRADE.
+        SET AOSO_MANEUVER_DV_NORM TO nd:NORMAL.
+        SET AOSO_MANEUVER_DV_RAD TO nd:RADIALOUT.
+        SET AOSO_MANEUVER_ETA0 TO nd:ETA.
+        SET AOSO_MANEUVER_BODY0 TO SHIP:BODY:NAME.
+        SET AOSO_MANEUVER_APO0 TO APOAPSIS.
+        SET AOSO_MANEUVER_PE0 TO PERIAPSIS.
+        SET AOSO_MANEUVER_INC0 TO SHIP:ORBIT:INCLINATION.
+        SET AOSO_MANEUVER_ECC0 TO SHIP:ORBIT:ECCENTRICITY.
+        SET AOSO_MANEUVER_FUEL0 TO aoso_maneuver_fuel_units().
+        SET AOSO_MANEUVER_SNAP_OK TO TRUE.
         LOCAL accel0 IS aoso_maneuver_current_accel().
         LOCAL t0 IS burn_time.
         IF t0 <= 0 {
             IF accel0 > 0.05 { SET t0 TO remaining / accel0. }
         }
-        aoso_observe_event("BURN", "INFO", "start", "dv=" + ROUND(remaining, 1) + " t=" + ROUND(t0, 1)).
         IF NOT AOSO_ACTION_CUR:ISTYPE("Lexicon") {
             LOCAL did_i IS aoso_decide("MANEUVER", "ignite", "burn", "node",
                 "dv=" + ROUND(remaining, 1) + " t=" + ROUND(t0, 1), remaining).
@@ -841,11 +957,24 @@ FUNCTION aoso_maneuver_execute_next {
         IF off_axis { SET follow TO TRUE. }
         IF peri_unsafe { SET follow TO TRUE. }
         IF follow {
-            aoso_log_info("MANEUVER", "Burn started, following node, remaining=" + ROUND(remaining, 1) + " m/s.").
+            aoso_log_info("MANEUVER", "Burn started (" + AOSO_MANEUVER_PURPOSE + "), following node, remaining=" + ROUND(remaining, 1) + " m/s.").
         } ELSE {
             SET AOSO_MANEUVER_LOCK TO SHIP:FACING:FOREVECTOR.
-            aoso_log_info("MANEUVER", "Burn lock engaged, remaining=" + ROUND(remaining, 1) + " m/s.").
+            aoso_log_info("MANEUVER", "Burn lock engaged (" + AOSO_MANEUVER_PURPOSE + "), remaining=" + ROUND(remaining, 1) + " m/s.").
         }
+        aoso_observe_event("BURN", "INFO", "start",
+            "purpose=" + AOSO_MANEUVER_PURPOSE + " body=" + AOSO_MANEUVER_BODY0 +
+            " dv=" + ROUND(remaining, 1) +
+            " dv_prog=" + ROUND(AOSO_MANEUVER_DV_PROG, 2) +
+            " dv_norm=" + ROUND(AOSO_MANEUVER_DV_NORM, 2) +
+            " dv_rad=" + ROUND(AOSO_MANEUVER_DV_RAD, 2) +
+            " eta=" + ROUND(AOSO_MANEUVER_ETA0, 1) +
+            " apo=" + ROUND(AOSO_MANEUVER_APO0, 0) +
+            " pe=" + ROUND(AOSO_MANEUVER_PE0, 0) +
+            " inc=" + ROUND(AOSO_MANEUVER_INC0, 3) +
+            " ecc=" + ROUND(AOSO_MANEUVER_ECC0, 4) +
+            " fuel=" + ROUND(AOSO_MANEUVER_FUEL0, 1) +
+            " t=" + ROUND(t0, 1)).
     }
 
     IF SHIP:AVAILABLETHRUST <= 0 {

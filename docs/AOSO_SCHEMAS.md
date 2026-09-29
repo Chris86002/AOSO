@@ -172,7 +172,8 @@ phase, reason     // NONE | HOLD | REFUEL | LAUNCH
 step_index, step_name, data, saved_at, schema_version
 ```
 
-`data` includes `cfg_id, body, status, topo_fp, tour_index`.
+`data` includes `cfg_id, body, status, topo_fp, tour_index, obs_phase`.
+Phase changes also set `obs_why` (`phase` or `soi`).
 
 ## Experience model
 
@@ -180,10 +181,31 @@ Key: `cfg_id|body|OP`
 
 ```
 n, sum_ratio, mean_ratio, best, worst, corr, conf
+raw_n, raw_sum, raw_mean, raw_best, raw_worst
 ```
 
 `corr = 1 + (mean_ratio-1) * n/(n+XP_MIN_SAMPLES)`, then clamped to
-`1 ± XP_MAX_CORRECTION`.
+`1 ± XP_MAX_CORRECTION`. `mean_ratio`, `best`, `worst`, and `corr` stay
+clamped. Samples store the unclamped `ratio` / `raw_ratio` plus
+`ratio_clamped` (the value that entered the mean). `raw_*` counts only
+samples recorded after that field existed.
+
+## Flight logs
+
+`0:/aoso_telemetry.csv` appends `sf,ore,ablator,mp` after `ec`
+(SolidFuel, Ore, Ablator, MonoPropellant). Boot rotates the file, so a
+new session writes the new header.
+
+`0:/aoso_events.csv` burn results are one `BURN` line with purpose, body,
+node axes, fuel, apo/pe/inc/ecc before and after, residual, and unclamped
+time ratio. `SOI` and `ENCOUNTER` carry from, to, UT, periapsis altitude,
+inclination, and time-to-peri or time-to-transition. Landing uses
+`LAND` / `TOUCHDOWN` tags `FREEFALL`, `DEORBIT`, `BURN`, `FINAL_APPROACH`,
+`TURNAROUND`, `BOUNCE`, `TIP`, `ABORT`, `SETTLED`.
+
+`0:/aoso_flightrec.txt` tick rows add `alt`, `radar`, `apo`, `pe`, `body`.
+The file buffer stays armed for the whole burn and for landing, not only
+the ring dumped around a trigger.
 
 ## Feasibility report
 
