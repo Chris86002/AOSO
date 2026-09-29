@@ -117,6 +117,8 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "LANDING_SCAN_SAMPLES", 36,         // ground-track samples scored before picking a landing site
     "LANDING_SCAN_ORBITS", 1,           // one polar orbit is enough to confirm/improve the predicted site
     "LANDING_SCAN_MAX_S", 7200,          // hard cap on survey duration; scan must hand off to deorbit
+    "LANDING_SCAN_GOOD_ENOUGH_SCORE", 5, // lower-is-better site score for a safe early survey exit
+    "LANDING_SCAN_EARLY_EXIT_SAMPLES", 3, // independent safe overflight samples required for early exit
     "LANDING_ROUGHNESS_SAMPLE_M", 200,   // radius for local relief/roughness scoring around a site
     "LANDING_ROUGHNESS_WEIGHT", 0.08,    // score penalty per metre of local relief (lower total score is better)
     "LANDING_FOOTPRINT_M", 3500,         // m, cardinal samples for the basin/rim check (a flat crater floor is not a pad)
