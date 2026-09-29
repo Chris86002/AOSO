@@ -70,7 +70,8 @@ FUNCTION aoso_landing_impact_sample {
         "terrain", terrain_m,
         "lat", geo:LAT,
         "lng", geo:LNG,
-        "speed", rel_vel:MAG
+        "speed", rel_vel:MAG,
+        "terrain_verified", aoso_landing_site_trustworthy(geo)
     ).
 }
 
@@ -164,9 +165,13 @@ FUNCTION aoso_landing_impact_predict {
     IF target_lat >= -90 AND target_lat <= 90 {
         SET miss_m TO aoso_landing_target_miss_m(best["lat"], best["lng"], target_lat, target_lng).
     }
+    LOCAL confidence IS "terrain_unverified".
+    IF best["terrain_verified"] { SET confidence TO "local_terrain". }
     RETURN LEXICON(
         "ok", TRUE,
         "reason", "conic_terrain_crossing",
+        "confidence", confidence,
+        "terrain_verified", best["terrain_verified"],
         "time_to_impact", impact_dt,
         "impact_ut", impact_ut,
         "lat", best["lat"],
