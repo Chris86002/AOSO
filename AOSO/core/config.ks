@@ -137,6 +137,16 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "DESCENT_FINAL_APPROACH_ALT", 150,  // m, radar altitude where descent *may* switch to a slow vertical hold
     "DESCENT_FINAL_SPEED_MAX", 25,      // m/s surface speed required before leaving suicide burn for final approach
     "DESCENT_FINAL_SPEED", -3,          // m/s, target vertical speed held during final approach
+    "DESCENT_GUIDE_MAX_SINK", 20,       // m/s, fastest commanded sink after the full-vector braking phase
+    "DESCENT_GUIDE_SINK_GAIN", 0.01,    // (m/s)/m, adds sink speed with clearance above final approach
+    "DESCENT_BRAKE_HANDOFF_HS", 2,      // m/s horizontal speed required before leaving full surface-retro braking
+    "DESCENT_BRAKE_RESUME_HS", 6,       // m/s horizontal speed that re-enters full surface-retro braking
+    "DESCENT_GUIDE_MAX_TILT", 45,       // deg from vertical while cancelling residual horizontal velocity
+    "DESCENT_TARGET_MAX_TILT", 10,      // deg of the guidance cone reserved for bounded site correction
+    "DESCENT_TARGET_MAX_MISS", 6000,    // m, never chase a farther predicted impact error during powered descent
+    "DESCENT_TARGET_MAX_SPEED", 5,      // m/s, max lateral velocity requested toward the selected site
+    "DESCENT_STALL_S", 15,              // s without meaningful altitude loss before sink recovery is announced
+    "DESCENT_STATUS_S", 2,              // s between operator-visible powered-descent status lines
     "DESCENT_TOUCHDOWN_ALT", 0.5,       // m, radar altitude below which touchdown is declared
     "DESCENT_SAFE_PE_ALT", 8000,        // m, airless deorbit ceiling if no site (never sea level / lithobrake)
     "DESCENT_PE_MARGIN", 600,           // m above scanned site terrain for airless deorbit PE (8 km was above suicide range on Minmus)

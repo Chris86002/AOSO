@@ -618,7 +618,18 @@ FUNCTION aoso_tour_scan_entry {
 
     aoso_log_info("TOUR", "Scanning " + SHIP:BODY:NAME + " ground track for a landing site (inc=" + ROUND(SHIP:ORBIT:INCLINATION, 1) + ").").
 
-    LOCAL result IS aoso_landing_site_scan_orbit().
+    IF data:HASKEY("site_reselect_body") {
+        IF data["site_reselect_body"] <> SHIP:BODY:NAME {
+            SET data["site_reselect_count"] TO 0.
+            data:REMOVE("site_reselect_body").
+        }
+    }
+    LOCAL result IS 0.
+    LOCAL live_reselect IS FALSE.
+    IF data:HASKEY("site_reselect_count") {
+        IF data["site_reselect_count"] > 0 { SET live_reselect TO TRUE. }
+    }
+    IF NOT live_reselect { SET result TO aoso_landing_site_scan_orbit(). }
     IF result:ISTYPE("Lexicon") {
         SET data["site_lat"] TO result["lat"].
         SET data["site_lng"] TO result["lng"].
@@ -647,7 +658,9 @@ FUNCTION aoso_tour_scan_entry {
         SET data["site_alt"] TO SHIP:GEOPOSITION:TERRAINHEIGHT.
         SET data["site_roughness"] TO aoso_landing_site_roughness_m(SHIP:GEOPOSITION).
         SET data["site_verified"] TO TRUE.
-        aoso_log_warn("TOUR", "Predictive scan found no safe candidate; using the current ground track as the live-survey seed near lat=" +
+        LOCAL seed_reason IS "Predictive scan found no safe candidate".
+        IF live_reselect { SET seed_reason TO "Unreachable deorbit target rejected; restarting from a live ground-track sample". }
+        aoso_log_warn("TOUR", seed_reason + "; using the current ground track as the live-survey seed near lat=" +
             ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) + ".").
         SET data["site_score"] TO aoso_landing_site_score(SHIP:GEOPOSITION).
     }
@@ -800,6 +813,18 @@ FUNCTION aoso_tour_scan_execute {
     IF NOT data["site_verified"] {
         aoso_log_warn("TOUR", "Survey ended on an unverified site. Deorbit will use the prediction anyway.").
     }
+    LOCAL was_reselect IS FALSE.
+    IF data:HASKEY("site_reselect_count") {
+        IF data["site_reselect_count"] > 0 { SET was_reselect TO TRUE. }
+    }
+    IF was_reselect {
+        IF data["site_score"] < 0 {
+            aoso_log_error("LAND_TARGET_REJECT", "Live reselection found no safe site. Keeping the stable orbit and continuing the tour.").
+            aoso_tour_mark(data, aoso_tour_current_name(data), "ORBITED").
+            aoso_tour_advance(data).
+            RETURN.
+        }
+    }
     aoso_state_transition(AOSO_TOUR, "DEORBIT").
 }
 
@@ -873,6 +898,35 @@ FUNCTION aoso_tour_deorbit_execute {
                 ROUND(found["miss"], 0) + "m peLat=" + ROUND(found["lat"], 2) + " peLng=" + ROUND(found["lng"], 2) +
                 " site=" + ROUND(data["site_lat"], 2) + "/" + ROUND(data["site_lng"], 2) +
                 " tol=" + ROUND(tol_m, 0) + "m align=" + ROUND(align_s, 0) + "s.").
+
+            // Never turn a clearly unreachable site into a deorbit burn.
+            // One fresh live survey is allowed; a second failure preserves
+            // the orbit and records the body as orbited instead of gambling
+            // the lander on tens of kilometres of powered crossrange.
+            IF found["miss"] < 0 OR found["miss"] > tol_m {
+                LOCAL reselect_n IS 0.
+                IF data:HASKEY("site_reselect_count") { SET reselect_n TO data["site_reselect_count"]. }
+                SET reselect_n TO reselect_n + 1.
+                SET data["site_reselect_count"] TO reselect_n.
+                SET data["site_reselect_body"] TO SHIP:BODY:NAME.
+                data:REMOVE("deorbit_eta_ut").
+                data:REMOVE("deorbit_best_miss").
+                data:REMOVE("deorbit_pe_lat").
+                data:REMOVE("deorbit_pe_lng").
+                IF reselect_n <= 1 {
+                    aoso_log_warn("LAND_TARGET_REJECT", "Best deorbit proxy misses the selected site by " +
+                        ROUND(found["miss"], 0) + "m (limit " + ROUND(tol_m, 0) +
+                        "m). Refusing the burn and surveying a new live site.").
+                    aoso_state_transition(AOSO_TOUR, "SCAN").
+                    RETURN.
+                }
+                aoso_log_error("LAND_TARGET_REJECT", "No reachable landing site after live reselection; best miss=" +
+                    ROUND(found["miss"], 0) + "m, limit=" + ROUND(tol_m, 0) +
+                    "m. Keeping the stable orbit and continuing the tour.").
+                aoso_tour_mark(data, aoso_tour_current_name(data), "ORBITED").
+                aoso_tour_advance(data).
+                RETURN.
+            }
         }
 
         LOCAL eta_burn IS data["deorbit_eta_ut"] - TIME:SECONDS.

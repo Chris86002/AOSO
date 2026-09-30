@@ -106,6 +106,20 @@ FUNCTION aoso_log_flush {
 FUNCTION aoso_log_debug { PARAMETER tag. PARAMETER msg. aoso_log("DEBUG", tag, msg). }
 FUNCTION aoso_log_info  { PARAMETER tag. PARAMETER msg. aoso_log("INFO", tag, msg). }
 
+// Sparse operator heartbeat for critical flight phases. Normal INFO is
+// intentionally hidden from the terminal when the CPU is saturated, which
+// made a powered-descent stall look like a frozen script. Callers must rate
+// limit this themselves; the line is still written through the normal buffer.
+FUNCTION aoso_log_operator {
+    PARAMETER tag.
+    PARAMETER msg.
+    LOCAL old_quiet IS AOSO_LOG_QUIET_PRINT.
+    SET AOSO_LOG_QUIET_PRINT TO TRUE.
+    aoso_log("INFO", tag, msg).
+    SET AOSO_LOG_QUIET_PRINT TO old_quiet.
+    PRINT "[" + ROUND(TIME:SECONDS, 1) + "][" + tag + "] " + msg.
+}
+
 // Hit/miss breadcrumb for RAM caches. Debug only, and hits are throttled
 // so a cruise tick that rechecks the parts fingerprint does not flood.
 FUNCTION aoso_cache_log {
