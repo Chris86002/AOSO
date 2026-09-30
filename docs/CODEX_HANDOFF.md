@@ -2,6 +2,51 @@
 
 Updated: 2026-09-30
 
+## Mandatory landing and full ISRU (user policy correction)
+
+This supersedes the preceding policy that a failed Minmus landing could
+advance the tour. Every surface destination must land, finish ISRU with
+all carried refillable propellants full, and complete certified takeoff
+before the itinerary can move on. Jool has no surface and remains an
+orbit-only stop. Initial PRELAUNCH at KSC still uses the normal launch gate.
+
+- Repeated unsafe/unreachable site rejection re-enters the live survey on
+  the same body without changing the stop index. Descent interruption
+  returns to refuel if landed, otherwise retries survey/capture/descent
+  according to the live orbit. It never authorizes onward navigation.
+- Surface bodies classified ORBIT_ONLY are still mandatory landing stops;
+  existing flight/landing safety gates remain. An unreachable destination
+  holds and rechecks live feasibility rather than incrementing the index.
+- Replanning retains all requested stops, including bodies omitted by the
+  capability ranking, and removes only completed stops. An old checkpoint
+  index cannot skip an unverified stop in a differently rebuilt route.
+  Starting in a non-Kerbin surface body's orbit services that body first.
+- Tour drives the existing ISRU FSM with an explicit 100% target for every
+  present LiquidFuel/Oxidizer/MonoPropellant tank. Other ISRU callers keep
+  their optimized targets. Completion checks allow only 0.01 percentage
+  point capacity-readout tolerance. Missing hardware, power or known Ore
+  blocks departure. Stalled/partial/aborted ISRU retries after 60 seconds.
+- Launch independently requires a verified full ISRU cycle on the current
+  body, live full-tank readings, surface stability and departure certificate.
+  Fill levels are checked before ignition, not after ascent consumes fuel.
+- ISRU progress now tracks every requested product, not only LiquidFuel.
+  Already-full tanks stow successfully before the stall test, and a
+  LiquidFuel-only success cannot hide an incomplete other resource.
+
+Validation: static delimiter/name/collision/whitespace checks passed for
+the changed scripts. Source control-flow checks cover every landing failure
+exit and launch gating; decision-table models cover partial fill, absent or
+wrong-body ISRU verification, and full refill. Added vessel-safe kOS
+selftests for the actual fill/verification helpers. No KSP/kOS execution
+was available. This enforces persistence and departure gating; it does
+not establish that the current deorbit proxy can reach every safe site.
+
+Next flight: `LAND_RETRY` must retain Minmus after each rejection, with no
+Minmus ORBITED mark or next-body navigation. After touchdown expect target
+100%, then `ISRU_FULL` before LAUNCH. Missing resources or a stall must
+print an ISRU hold and remain on Minmus. Landing search safety tolerances
+were not relaxed to force a burn.
+
 ## Minmus unintended plane-match escape (033129 run)
 
 Capture succeeded: at UT 1531959.95 the vessel was bound at roughly

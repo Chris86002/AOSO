@@ -126,8 +126,11 @@ burn zero a cost.
 
 - Opportunity scores change **order**, not membership. CAN is still
   SKIP vs not. 1-hop leftover is a score bonus only.
-- `DEAD_END` continuation demotes `FEASIBLE` → `ORBIT_ONLY`. Tour
-  lands only on `result = FEASIBLE`.
+- `DEAD_END` continuation demotes `FEASIBLE` → `ORBIT_ONLY` in planning.
+  Tour surface stops remain mandatory: failures re-survey/hold, never
+  advance as ORBITED. All refillable propellant tanks must be full after
+  an ISRU cycle on that body before certified takeoff. Capability limits
+  can block progress, but cannot silently remove a required stop.
 - After a surface launch, replan remaining and `index = 0`. Do not
   also `aoso_tour_advance`.
 - Do not drill while sliding. Do not launch at an arbitrary fuel %.
@@ -152,4 +155,3 @@ Manual KSP flights: `docs/AOSO_SCENARIOS.md`.
 
 There is no flight HUD. Do not add one back. Display work was removed so
 IPU stays on steering, staging, and the mission.
-

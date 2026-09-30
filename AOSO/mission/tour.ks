@@ -1,26 +1,8 @@
 // AOSO/mission/tour.ks
-// Default autonomous mission: visit every stock planet and moon the
-// vessel can actually reach, land and refuel where it needs propellant
-// and can take off again. The itinerary is NOT a hard-coded list --
-// mission/planner.ks classifies the ship, builds a capability matrix,
-// scores CAN vs SHOULD, then a cluster-greedy route (Jool's moons are
-// one interplanetary hop). Destination checks still go through
-// mission/feasibility.ks: SKIP unreachable, ORBIT_ONLY rather than
-// landing a ship that cannot leave.
-// Built on core/state.ks as AOSO_TOUR, driving the existing goto / ascent /
-// polar / scan / deorbit / descent / refuel / return / kscreturn machines as
-// sub-steps the same way mission/mission.ks drives aoso_ascent_*.
-// Landings go polar -> ground-track scan (landing/site.ks, then two
-// confirm orbits) -> wait until the site is opposite -> deorbit to a
-// periapsis above the highlands -> surface-velocity suicide burn. The old
-// GOTO-capture -> PE=0 deorbit -> immediate descent skipped the scan and
-// lithobraked into Mun. A one-tick scan plus a 120 s deorbit node dropped
-// onto 100000x rails overshot Minmus by 360 s and never descended.
-//
-// Gas giants (Jool) and the Sun are orbited, not landed. High-g / thick-
-// atmosphere bodies the ship cannot leave (Eve, Tylo with TWR ~1) are
-// visited in orbit only. A missing landing fails that stop and continues
-// the tour rather than pretending the visit never happened.
+// Every surface stop requires landing, full ISRU and a certified takeoff.
+// Failed sites are re-surveyed; impossible capability/resource conditions
+// hold the tour instead of advancing. Jool has no surface and is orbit-only.
+// Existing goto, survey, descent and ISRU controllers own the flight work.
 
 GLOBAL AOSO_TOUR IS aoso_state_new_machine().
 
@@ -53,21 +35,70 @@ FUNCTION aoso_tour_plan_result {
 FUNCTION aoso_tour_landable {
     PARAMETER body_name.
     IF NOT aoso_world_body_stat(body_name, "has_surface", TRUE) { RETURN FALSE. }
-    RETURN aoso_tour_plan_result(body_name) = "FEASIBLE".
+    RETURN TRUE.
+}
+
+// Tour completion is landing + a verified full ISRU cycle + takeoff.
+// Feasibility is a hold reason, never permission to silently skip a stop.
+FUNCTION aoso_tour_retry_landing {
+    PARAMETER data.
+    PARAMETER reason.
+    aoso_warp_hard_stop().
+    aoso_throttle_set(0).
+    aoso_log_warn("LAND_RETRY", reason + "; staying at " + SHIP:BODY:NAME + " and surveying again.").
+    PRINT "LAND RETRY: " + reason + ". Staying at " + SHIP:BODY:NAME + ".".
+    SET data["site_reselect_body"] TO SHIP:BODY:NAME.
+    SET data["site_reselect_count"] TO 1.
+    FOR key_name IN LIST("deorbit_eta_ut", "deorbit_best_miss", "deorbit_pe_lat", "deorbit_pe_lng") {
+        IF data:HASKEY(key_name) { data:REMOVE(key_name). }
+    }
+    IF aoso_orbit_is_hyperbolic() {
+        aoso_state_transition(AOSO_TOUR, "GOTO").
+        RETURN.
+    }
+    IF aoso_tour_is_impacting() {
+        aoso_descent_start().
+        aoso_state_transition(AOSO_TOUR, "DESCEND").
+        RETURN.
+    }
+    aoso_state_transition(AOSO_TOUR, "SCAN").
+}
+
+FUNCTION aoso_tour_fuel_targets {
+    LOCAL targets IS LIST().
+    FOR res_name IN LIST("LiquidFuel", "Oxidizer", "MonoPropellant") {
+        IF aoso_resource_capacity(res_name) > 0 { targets:ADD(res_name). }
+    }
+    RETURN targets.
+}
+
+FUNCTION aoso_tour_tanks_full {
+    LOCAL targets IS aoso_tour_fuel_targets().
+    IF targets:LENGTH = 0 { RETURN FALSE. }
+    FOR res_name IN targets {
+        // Small tolerance for floating-point capacity readings, not 95%.
+        IF NOT aoso_tour_fill_complete(aoso_resource_pct(res_name)) { RETURN FALSE. }
+    }
+    RETURN TRUE.
+}
+
+FUNCTION aoso_tour_fill_complete {
+    PARAMETER fill_pct.
+    RETURN fill_pct >= 99.99.
+}
+
+FUNCTION aoso_tour_refuel_verified {
+    PARAMETER serviced_body.
+    PARAMETER current_body.
+    PARAMETER tanks_full.
+    IF serviced_body = "" { RETURN FALSE. }
+    IF serviced_body <> current_body { RETURN FALSE. }
+    RETURN tanks_full.
 }
 
 FUNCTION aoso_tour_should_refuel {
     PARAMETER body_name.
-    LOCAL report IS aoso_feas_cached(body_name).
-    IF aoso_tour_plan_result(body_name) <> "FEASIBLE" { RETURN FALSE. }
-    IF NOT report["can_refuel"] { RETURN FALSE. }
-    LOCAL fuel_pct IS aoso_resource_pct("LiquidFuel").
-    LOCAL need IS aoso_config_get("TOUR_REFUEL_BELOW_PCT", 60).
-    IF fuel_pct >= need {
-        aoso_log_info("TOUR", "Fuel at " + ROUND(fuel_pct, 0) + "% - orbiting " + body_name + " without landing.").
-        RETURN FALSE.
-    }
-    RETURN TRUE.
+    RETURN aoso_world_body_stat(body_name, "has_surface", TRUE).
 }
 
 FUNCTION aoso_tour_is_polar {
@@ -327,6 +358,14 @@ FUNCTION aoso_tour_mark {
 
 FUNCTION aoso_tour_advance {
     PARAMETER data.
+    LOCAL name IS aoso_tour_current_name(data).
+    IF aoso_world_body_stat(name, "has_surface", TRUE) {
+        IF NOT data["accomplished"]:HASKEY(name) { RETURN. }
+        IF data["accomplished"][name] <> "COMPLETED" {
+            aoso_log_warn("TOUR", "Departure blocked: " + name + " requires landing, full ISRU and takeoff.").
+            RETURN.
+        }
+    }
     SET data["index"] TO data["index"] + 1.
     IF data["index"] >= data["targets"]:LENGTH {
         aoso_log_info("TOUR", "All bodies visited - returning home.").
@@ -345,15 +384,40 @@ FUNCTION aoso_tour_replan_remaining {
     aoso_log_info("TOUR", "Replanning remaining tour against current dV.").
     aoso_profile_refresh("tour_replan").
     aoso_plan_build().
-    LOCAL next_targets IS aoso_plan_targets().
+    LOCAL ranked IS aoso_plan_targets().
+    LOCAL required IS aoso_tour_default_targets().
+    IF data:HASKEY("required_targets") { SET required TO data["required_targets"]. }
+    LOCAL next_targets IS LIST().
+    // Keep every required stop even if the capability matrix omits it.
+    FOR name IN ranked {
+        IF required:CONTAINS(name) { next_targets:ADD(name). }
+    }
+    FOR name IN required {
+        IF NOT next_targets:CONTAINS(name) { next_targets:ADD(name). }
+    }
+    LOCAL remaining IS LIST().
+    FOR name IN next_targets {
+        LOCAL complete IS FALSE.
+        IF data["accomplished"]:HASKEY(name) {
+            IF data["accomplished"][name] = "COMPLETED" { SET complete TO TRUE. }
+            IF NOT aoso_world_body_stat(name, "has_surface", TRUE) {
+                IF data["accomplished"][name] = "ORBITED" { SET complete TO TRUE. }
+            }
+        }
+        IF NOT complete { remaining:ADD(name). }
+    }
     IF AOSO_PLAN_LAST:HASKEY("targets") {
-        SET data["targets"] TO next_targets.
+        SET data["targets"] TO remaining.
         SET data["index"] TO 0.
     }
 }
 
 FUNCTION aoso_tour_boot_entry {
     PARAMETER data.
+    IF SHIP:STATUS = "LANDED" {
+        aoso_state_transition(AOSO_TOUR, "REFUEL").
+        RETURN.
+    }
     IF SHIP:STATUS = "PRELAUNCH" OR SHIP:STATUS = "LANDED" {
         // Pad only: sit in BOOT until the systems board is green and the
         // operator commits. Do the plan once, then wait. Later LANDED
@@ -416,6 +480,13 @@ FUNCTION aoso_tour_ascend_execute {
 
 FUNCTION aoso_tour_goto_entry {
     PARAMETER data.
+    SET data["goto_started"] TO FALSE.
+    IF data:HASKEY("goto_retry_ut") {
+        IF TIME:SECONDS < data["goto_retry_ut"] {
+            SET AOSO_TOUR["need_entry"] TO TRUE.
+            RETURN.
+        }
+    }
     aoso_profile_refresh("tour_goto").
     UNTIL FALSE {
         LOCAL name IS aoso_tour_current_name(data).
@@ -429,18 +500,22 @@ FUNCTION aoso_tour_goto_entry {
         SET data["feas_result"] TO plan_result.
         IF report["result"] <> plan_result {
             aoso_log_warn("TOUR", "Feasibility now says " + report["result"] + " for " + name +
-                ", but itinerary says " + plan_result + "; trusting the planned matrix result.").
+                ", itinerary says " + plan_result + "; the stop remains mandatory.").
         }
-        IF plan_result = "SKIP" {
-            aoso_log_warn("TOUR", "Skipping " + name + " per mission plan.").
-            aoso_tour_mark(data, name, "SKIPPED").
-            SET data["index"] TO data["index"] + 1.
+        LOCAL route_blocked IS FALSE.
+        IF report["result"] = "SKIP" {
+            IF SHIP:BODY:NAME <> name { SET route_blocked TO TRUE. }
+        }
+        IF route_blocked {
+            aoso_log_every(20, "TOUR", "Required stop " + name + " is currently unreachable; holding, not skipping.").
+            SET data["goto_retry_ut"] TO TIME:SECONDS + 60.
+            SET AOSO_TOUR["need_entry"] TO TRUE.
+            RETURN.
         } ELSE {
             SET AOSO_WANT_POLAR TO FALSE.
-            IF plan_result <> "ORBIT_ONLY" {
-                SET AOSO_WANT_POLAR TO aoso_world_body_stat(name, "has_surface", TRUE).
-            }
+            SET AOSO_WANT_POLAR TO aoso_world_body_stat(name, "has_surface", TRUE).
             aoso_goto_start(name).
+            SET data["goto_started"] TO TRUE.
             RETURN.
         }
     }
@@ -448,6 +523,7 @@ FUNCTION aoso_tour_goto_entry {
 
 FUNCTION aoso_tour_goto_execute {
     PARAMETER data.
+    IF NOT data["goto_started"] { RETURN. }
     IF aoso_goto_is_aborted() {
         aoso_state_abort(AOSO_TOUR).
         RETURN.
@@ -821,10 +897,7 @@ FUNCTION aoso_tour_scan_execute {
     }
     IF was_reselect {
         IF data["site_score"] < 0 {
-            aoso_log_error("LAND_TARGET_REJECT", "Live reselection found no safe site. No landing burn; advancing the tour from the stable orbit.").
-            PRINT "LAND SKIPPED: no safe live site. Tour will plan departure from " + SHIP:BODY:NAME + ".".
-            aoso_tour_mark(data, aoso_tour_current_name(data), "ORBITED").
-            aoso_tour_advance(data).
+            aoso_tour_retry_landing(data, "Live reselection found no safe site").
             RETURN.
         }
     }
@@ -923,12 +996,8 @@ FUNCTION aoso_tour_deorbit_execute {
                     aoso_state_transition(AOSO_TOUR, "SCAN").
                     RETURN.
                 }
-                aoso_log_error("LAND_TARGET_REJECT", "No reachable landing site after live reselection; best miss=" +
-                    ROUND(found["miss"], 0) + "m, limit=" + ROUND(tol_m, 0) +
-                    "m. No landing burn; advancing the tour from the stable orbit.").
-                PRINT "LAND SKIPPED: no reachable site. Tour will plan departure from " + SHIP:BODY:NAME + ".".
-                aoso_tour_mark(data, aoso_tour_current_name(data), "ORBITED").
-                aoso_tour_advance(data).
+                aoso_tour_retry_landing(data, "No reachable landing site; best miss=" +
+                    ROUND(found["miss"], 0) + "m, limit=" + ROUND(tol_m, 0) + "m").
                 RETURN.
             }
         }
@@ -1048,13 +1117,12 @@ FUNCTION aoso_tour_deorbit_execute {
 FUNCTION aoso_tour_descend_execute {
     PARAMETER data.
     IF aoso_descent_is_aborted() {
-        aoso_log_warn("TOUR", "Landing aborted at " + SHIP:BODY:NAME + " - continuing the tour from orbit if possible.").
+        aoso_log_warn("TOUR", "Landing interrupted at " + SHIP:BODY:NAME + "; this stop remains mandatory.").
         IF SHIP:STATUS = "LANDED" {
             aoso_tour_mark(data, SHIP:BODY:NAME, "LANDED").
-            aoso_state_transition(AOSO_TOUR, "LAUNCH").
+            aoso_state_transition(AOSO_TOUR, "REFUEL").
         } ELSE {
-            aoso_tour_mark(data, aoso_tour_current_name(data), "ORBITED").
-            aoso_tour_advance(data).
+            aoso_tour_retry_landing(data, "Descent interrupted").
         }
         RETURN.
     }
@@ -1066,31 +1134,59 @@ FUNCTION aoso_tour_descend_execute {
 
 FUNCTION aoso_tour_refuel_entry {
     PARAMETER data.
-    LOCAL surf IS aoso_surface_begin().
-    IF surf["phase"] = "HOLD" {
-        aoso_log_warn("TOUR", "Surface hold before ISRU: " + surf["reason"] + ".").
-
-        RETURN.
-    }
-    IF surf["phase"] = "LAUNCH" {
-        aoso_log_info("TOUR", "No ISRU needed at " + SHIP:BODY:NAME + " (" + surf["reason"] + ").").
-        aoso_state_transition(AOSO_TOUR, "LAUNCH").
-        RETURN.
-    }
-    aoso_log_info("TOUR", "Surface executive: " + surf["phase"] + " " + surf["reason"] + ".").
+    SET data["refuel_body"] TO "".
+    SET data["refuel_started"] TO FALSE.
+    SET data["refuel_retry_ut"] TO 0.
+    aoso_tour_mark(data, SHIP:BODY:NAME, "LANDED").
+    aoso_log_info("TOUR", "Mandatory ISRU: filling all refillable propellant tanks to 100% before takeoff.").
 }
 
 FUNCTION aoso_tour_refuel_execute {
     PARAMETER data.
-    LOCAL surf IS aoso_surface_update().
-    IF surf["phase"] = "HOLD" {
-
-        aoso_log_every(20, "TOUR", "Surface hold: " + surf["reason"] + ".").
+    IF NOT aoso_surface_stable() {
+        IF data["refuel_started"] { aoso_refuel_tick(). }
+        aoso_log_every(20, "TOUR", "ISRU hold: vessel must remain landed and stable; departure blocked.").
         RETURN.
     }
-    IF surf["phase"] = "LAUNCH" {
-        aoso_state_transition(AOSO_TOUR, "LAUNCH").
+    IF NOT data["refuel_started"] {
+        IF TIME:SECONDS < data["refuel_retry_ut"] { RETURN. }
+        IF NOT aoso_surface_power_ok() {
+            aoso_log_every(20, "TOUR", "ISRU hold: waiting for power; departure blocked.").
+            RETURN.
+        }
+        IF NOT aoso_refuel_available() {
+            aoso_log_every(20, "TOUR", "ISRU hold: missing drill/converter; departure blocked.").
+            RETURN.
+        }
+        IF NOT aoso_world_has_ore(SHIP:BODY:NAME) {
+            aoso_log_every(20, "TOUR", "ISRU hold: no known Ore; departure blocked.").
+            RETURN.
+        }
+        LOCAL targets IS aoso_tour_fuel_targets().
+        IF targets:LENGTH = 0 {
+            aoso_log_every(20, "TOUR", "ISRU hold: no refillable propellant tanks; departure blocked.").
+            RETURN.
+        }
+        SET data["refuel_started"] TO aoso_refuel_start(targets, 100).
+        RETURN.
     }
+    aoso_refuel_tick().
+    IF aoso_refuel_is_done() {
+        IF aoso_tour_tanks_full() {
+            IF AOSO_REFUEL["data"]["stow_kind"] = "full" {
+                SET data["refuel_body"] TO SHIP:BODY:NAME.
+                aoso_log_info("TOUR", "ISRU_FULL verified at " + SHIP:BODY:NAME + "; takeoff permitted after departure certification.").
+                aoso_state_transition(AOSO_TOUR, "LAUNCH").
+                RETURN.
+            }
+        }
+    } ELSE {
+        IF NOT aoso_refuel_is_aborted() { RETURN. }
+    }
+    SET data["refuel_started"] TO FALSE.
+    SET data["refuel_retry_ut"] TO TIME:SECONDS + 60.
+    aoso_log_warn("TOUR", "ISRU incomplete/stalled/aborted; departure blocked. Retrying in 60s.").
+    PRINT "ISRU HOLD: tanks not verified full. Remaining on " + SHIP:BODY:NAME + ".".
 }
 
 FUNCTION aoso_tour_launch_entry {
@@ -1102,6 +1198,16 @@ FUNCTION aoso_tour_launch_execute {
     PARAMETER data.
     IF NOT data:HASKEY("depart_ok") { SET data["depart_ok"] TO FALSE. }
     IF NOT data["depart_ok"] {
+        LOCAL full_verified IS FALSE.
+        IF data:HASKEY("refuel_body") {
+            SET full_verified TO aoso_tour_refuel_verified(data["refuel_body"],
+                SHIP:BODY:NAME, aoso_tour_tanks_full()).
+        }
+        IF NOT full_verified {
+            aoso_log_warn("TOUR", "Launch blocked: mandatory full ISRU has not been verified on this body.").
+            aoso_state_transition(AOSO_TOUR, "REFUEL").
+            RETURN.
+        }
         IF NOT aoso_surface_stable() {
 
             aoso_log_every(20, "TOUR", "Holding launch - surface not stable.").
@@ -1219,21 +1325,27 @@ FUNCTION aoso_tour_define_states {
 
 FUNCTION aoso_tour_start {
     PARAMETER targets IS LIST().
-    IF targets:LENGTH = 0 {
-        SET targets TO aoso_plan_targets().
-        IF targets:LENGTH = 0 {
-            IF NOT AOSO_PLAN_LAST:HASKEY("targets") { SET targets TO aoso_tour_default_targets(). }
+    IF targets:LENGTH = 0 { SET targets TO aoso_tour_default_targets(). }
+    // Starting/restarting in a moon orbit must service that moon before
+    // navigating to the first destination in a freshly rebuilt itinerary.
+    IF SHIP:STATUS <> "PRELAUNCH" {
+        IF SHIP:BODY:NAME <> "Kerbin" {
+            IF aoso_world_body_stat(SHIP:BODY:NAME, "has_surface", TRUE) {
+                LOCAL ordered IS LIST(SHIP:BODY:NAME).
+                FOR name IN targets {
+                    IF name <> SHIP:BODY:NAME { ordered:ADD(name). }
+                }
+                SET targets TO ordered.
+            }
         }
     }
 
     aoso_tour_define_states().
     SET AOSO_TOUR["data"] TO LEXICON("targets", targets, "index", 0, "site_lat", 0, "site_lng", 0, "site_alt", 0, "site_score", -1, "site_verified", FALSE, "deorbit_wait_since", 0, "polar_warp_logged", FALSE, "scan_until", 0, "scan_next_sample", 0, "scan_orbits", 1, "accomplished", LEXICON(), "depart_ok", FALSE).
+    SET AOSO_TOUR["data"]["required_targets"] TO targets:COPY().
     LOCAL saved_tour_idx IS aoso_checkpoints_grand_tour_index().
     IF saved_tour_idx >= 0 {
-        IF saved_tour_idx < targets:LENGTH {
-            SET AOSO_TOUR["data"]["index"] TO saved_tour_idx.
-            aoso_log_info("TOUR", "Restored grand-tour index " + saved_tour_idx + " from checkpoint after rebuilding the live plan.").
-        }
+        aoso_log_info("TOUR", "Checkpoint index is advisory; mandatory stops are rebuilt from live state without skipping unverified landings.").
     }
     aoso_ctx_refresh_control().
     aoso_ctx_refresh_plan().

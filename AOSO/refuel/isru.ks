@@ -36,7 +36,9 @@ FUNCTION aoso_refuel_targets_full {
         }
     }
     FOR name IN target_names {
-        IF aoso_resource_pct(name) < target_pct { RETURN FALSE. }
+        LOCAL threshold IS target_pct.
+        IF target_pct = 100 { SET threshold TO 99.99. }
+        IF aoso_resource_pct(name) < threshold { RETURN FALSE. }
     }
     RETURN TRUE.
 }
@@ -71,6 +73,15 @@ FUNCTION aoso_refuel_note_progress {
     LOCAL fuel_now IS aoso_resource_amount("LiquidFuel").
     LOCAL ore_now IS aoso_resource_amount("Ore").
     LOCAL moved IS FALSE.
+    IF data:HASKEY("last_products") {
+        FOR res_name IN data["targets"] {
+            LOCAL product_now IS aoso_resource_amount(res_name).
+            IF data["last_products"]:HASKEY(res_name) {
+                IF product_now > data["last_products"][res_name] + 0.05 { SET moved TO TRUE. }
+            }
+            SET data["last_products"][res_name] TO product_now.
+        }
+    }
     IF data:HASKEY("last_fuel") {
         IF fuel_now > data["last_fuel"] + 0.05 { SET moved TO TRUE. }
     }
@@ -160,15 +171,17 @@ FUNCTION aoso_refuel_harvest_execute {
     }
     aoso_warp_set_physics_cruise().
     aoso_refuel_note_progress(data).
+    // Already-full tanks must stow successfully even without new production.
+    IF aoso_refuel_targets_full(data["targets"]) {
+        SET data["stow_kind"] TO "full".
+        aoso_state_transition(AOSO_REFUEL, "STOW").
+        RETURN.
+    }
     IF aoso_refuel_stalled(data) {
         aoso_log_warn("REFUEL", "Harvest stalled (no fuel/ore progress).").
         SET data["stow_kind"] TO "stalled".
         aoso_state_transition(AOSO_REFUEL, "STOW").
         RETURN.
-    }
-    IF aoso_refuel_targets_full(data["targets"]) {
-        SET data["stow_kind"] TO "full".
-        aoso_state_transition(AOSO_REFUEL, "STOW").
     }
     LOCAL fuel_p IS aoso_resource_pct("LiquidFuel") / 100.
     aoso_hb_set("refuel", "HARVEST", fuel_p).
@@ -187,6 +200,9 @@ FUNCTION aoso_refuel_stow_entry {
     IF data:HASKEY("target_pct") { SET target_pct TO data["target_pct"]. }
     LOCAL end_pct IS aoso_resource_pct("LiquidFuel").
     LOCAL stow_st IS aoso_refuel_classify(start_pct, end_pct, target_pct).
+    IF NOT aoso_refuel_targets_full(data["targets"]) {
+        IF stow_st = "SUCCESS" { SET stow_st TO "PARTIAL". }
+    }
     LOCAL why IS "stow".
     IF data:HASKEY("stow_kind") { SET why TO data["stow_kind"]. }
     aoso_log_info("REFUEL", "Harvest " + stow_st + " (" + why + ") " + ROUND(start_pct, 0) + "% -> " + ROUND(end_pct, 0) + "% target " + ROUND(target_pct, 0) + "%.").
@@ -217,6 +233,7 @@ FUNCTION aoso_refuel_is_aborted {
 // drills/converters at all.
 FUNCTION aoso_refuel_start {
     PARAMETER target_names IS LIST("LiquidFuel", "Oxidizer").
+    PARAMETER required_pct IS -1.
 
     IF NOT aoso_refuel_available() {
         aoso_log_warn("REFUEL", "No harvester/converter aboard; refuel not started.").
@@ -234,10 +251,12 @@ FUNCTION aoso_refuel_start {
 
     LOCAL pct IS aoso_config_get("REFUEL_TARGET_PCT", 95).
     SET pct TO aoso_refuel_needed_pct().
+    IF required_pct >= 0 { SET pct TO MIN(100, MAX(0, required_pct)). }
     LOCAL start_pct IS aoso_resource_pct("LiquidFuel").
     SET AOSO_REFUEL["data"] TO LEXICON(
         "targets", target_names,
         "target_pct", pct,
+        "last_products", LEXICON(),
         "ec_paused", FALSE,
         "start_fuel_pct", start_pct,
         "last_fuel", aoso_resource_amount("LiquidFuel"),

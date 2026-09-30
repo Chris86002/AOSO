@@ -27,6 +27,7 @@ RUN ONCE "AOSO/hardening/watchdog".
 RUN ONCE "AOSO/interplanetary/bodydb".
 RUN ONCE "AOSO/nav/orbit".
 RUN ONCE "AOSO/nav/planechange".
+RUN ONCE "AOSO/mission/tour".
 RUN ONCE "AOSO/landing/impact".
 RUN ONCE "AOSO/nav/lambert".
 RUN ONCE "AOSO/interplanetary/transfer".
@@ -51,6 +52,20 @@ FUNCTION aoso_selftest {
     LOCAL fail IS 0.
 
     aoso_event_init().
+    SET fail TO aoso_selftest_check("tour rejects optimized 70 percent fill",
+        NOT aoso_tour_fill_complete(70), fail).
+    SET fail TO aoso_selftest_check("tour rejects old 95 percent target",
+        NOT aoso_tour_fill_complete(95), fail).
+    SET fail TO aoso_selftest_check("tour accepts full tanks",
+        aoso_tour_fill_complete(100), fail).
+    SET fail TO aoso_selftest_check("tour rejects full tanks without ISRU record",
+        NOT aoso_tour_refuel_verified("", "Minmus", TRUE), fail).
+    SET fail TO aoso_selftest_check("tour rejects prior body ISRU record",
+        NOT aoso_tour_refuel_verified("Mun", "Minmus", TRUE), fail).
+    SET fail TO aoso_selftest_check("tour rejects incomplete tanks after ISRU",
+        NOT aoso_tour_refuel_verified("Minmus", "Minmus", FALSE), fail).
+    SET fail TO aoso_selftest_check("tour accepts same body full ISRU",
+        aoso_tour_refuel_verified("Minmus", "Minmus", TRUE), fail).
 
     SET fail TO aoso_selftest_check("plane match Kerbin ship to Minmus orbit allowed",
         aoso_planechange_same_primary("Kerbin", "Kerbin"), fail).
