@@ -315,9 +315,8 @@ FUNCTION aoso_launch_prep_tick {
     }
     aoso_launch_board_eval(TRUE).
     IF AOSO_LAUNCH_BOARD["arm"] {
-        SET AOSO_LAUNCH_COMMIT TO TRUE.
-        SET AOSO_LAUNCH_INHIBIT_LOG TO FALSE.
-        aoso_log_info("LAUNCH", "Systems green. Committing the pad launch.").
+        aoso_log_info("LAUNCH", "Systems green. Requesting the pad launch.").
+        aoso_launch_request().
     }
 }
 

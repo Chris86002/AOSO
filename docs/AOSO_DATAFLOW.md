@@ -71,6 +71,10 @@ orbit, land, takeoff, leftover come from sequential remaining, not
 independent comparisons against original `mission_dv`. Transfer cost
 is split (`xfer_only`) so dest capture is not paid twice.
 
+The route projection applies `aoso_project_return` to its final state.
+Assurance reads that post-return margin instead of treating the pre-return
+route remainder as return reserve.
+
 Opportunity scores still do not decide CAN. They add a 1-hop leftover
 bonus (`aoso_project_lookahead_bonus`, else matrix `leftover_dv`).
 CAN remains matrix `result <> SKIP`. First plan: `opp_build` runs

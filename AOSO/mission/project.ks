@@ -473,6 +473,8 @@ FUNCTION aoso_project_route {
             IF next_refuel = "" { SET next_refuel TO dest_name. }
         }
     }
+    LOCAL return_start_ut IS st["ut"].
+    LOCAL returned IS aoso_project_return(st).
     LOCAL twr_home IS 0.
     IF DEFINED AOSO_CAPS {
         SET twr_home TO aoso_caps_get("twr", 0).
@@ -485,6 +487,9 @@ FUNCTION aoso_project_route {
         "min_twr", twr_home,
         "next_refuel", next_refuel,
         "ok", ok_all,
+        "return_ok", returned["ok"],
+        "return_margin", returned["dv_remaining"],
+        "return_duration_s", returned["ut"] - return_start_ut,
         "end_dv", st["dv_remaining"],
         "end_body", st["body"],
         "end_ut", st["ut"],

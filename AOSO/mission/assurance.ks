@@ -132,9 +132,13 @@ FUNCTION aoso_assure_eval {
         IF AOSO_PROJECT_LAST:HASKEY("min_margin") { SET snap["weak_margin"] TO AOSO_PROJECT_LAST["min_margin"]. }
         IF AOSO_PROJECT_LAST:HASKEY("weakest") { SET snap["weak_body"] TO AOSO_PROJECT_LAST["weakest"]. }
         IF AOSO_PROJECT_LAST:HASKEY("next_refuel") { SET snap["next_refuel"] TO AOSO_PROJECT_LAST["next_refuel"]. }
-        IF AOSO_PROJECT_LAST:HASKEY("end_dv") { SET snap["return_margin"] TO AOSO_PROJECT_LAST["end_dv"]. }
+        IF AOSO_PROJECT_LAST:HASKEY("return_margin") { SET snap["return_margin"] TO AOSO_PROJECT_LAST["return_margin"]. }
         IF AOSO_PROJECT_LAST:HASKEY("min_twr") { SET snap["min_twr_margin"] TO AOSO_PROJECT_LAST["min_twr"]. }
         SET snap["confidence"] TO 0.75.
+    }
+    IF snap["return_margin"] < 0 {
+        SET snap["health"] TO "AT_RISK".
+        SET snap["can_return"] TO FALSE.
     }
     SET AOSO_ASSURE_LAST TO snap.
     RETURN snap.

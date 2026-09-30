@@ -39,6 +39,9 @@ FUNCTION aoso_mission_step {
     PARAMETER is_done_fn.
     PARAMETER is_aborted_fn IS 0.
 
+    // Optional mission-plan builder contract: callbacks must be the same
+    // controller start/update/is_done/is_aborted wrappers used by tour, so
+    // authority, action/result, heartbeat, and context behavior stays shared.
     RETURN LEXICON(
         "name", name,
         "start", start_fn,
@@ -86,6 +89,8 @@ FUNCTION aoso_mission_burn_is_aborted {
 FUNCTION aoso_mission_step_burn {
     PARAMETER name.
     PARAMETER add_node_fn.
+    // Optional node-builder adapter; execution still goes through the
+    // maneuver controller wrapper rather than commanding controls here.
     RETURN aoso_mission_step(name, aoso_mission_burn_start@:BIND(add_node_fn), aoso_mission_burn_update@, aoso_mission_burn_is_done@, aoso_mission_burn_is_aborted@).
 }
 

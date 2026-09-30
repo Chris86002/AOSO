@@ -155,9 +155,9 @@ FUNCTION aoso_sched_keep {
         IF DEFINED AOSO_POWER_SPACE_DONE {
             IF NOT AOSO_POWER_SPACE_DONE { RETURN TRUE. }
         }
-        RETURN aoso_cpu_allow(1).
+        RETURN aoso_cpu_can_run(1).
     }
-    IF name = "brain" { RETURN aoso_cpu_allow(2). }
+    IF name = "brain" { RETURN aoso_cpu_can_run(2). }
     IF name = "telemetry" {
         IF DEFINED AOSO_POST_LEFT {
             IF AOSO_POST_LEFT > 0 { RETURN TRUE. }
@@ -165,18 +165,17 @@ FUNCTION aoso_sched_keep {
         // Thrust and the last 10 km must keep a row even at CRITICAL.
         // The opcode floor still applies; this only stops the shed.
         IF aoso_telemetry_hot() { RETURN TRUE. }
-        RETURN aoso_cpu_allow(2).
+        RETURN aoso_cpu_can_run(2).
     }
-    IF name = "vehicle_profile" { RETURN aoso_cpu_allow(3). }
-    IF name = "checkpoint_autosave" { RETURN aoso_cpu_allow(2). }
-    RETURN aoso_cpu_allow(1).
+    IF name = "vehicle_profile" { RETURN aoso_cpu_can_run(3). }
+    IF name = "checkpoint_autosave" { RETURN aoso_cpu_can_run(2). }
+    RETURN aoso_cpu_can_run(1).
 }
 
 FUNCTION aoso_sched_run {
     LOCAL start_ut IS TIME:SECONDS.
     IF AOSO_TASKS_DIRTY { aoso_sched_rebuild_snap(). }
     LOCAL snap IS AOSO_TASKS_SNAP.
-    LOCAL room IS aoso_cpu_headroom().
     LOCAL ran IS 0.
     LOCAL prof IS FALSE.
     IF DEFINED AOSO_CONFIG {
@@ -194,7 +193,7 @@ FUNCTION aoso_sched_run {
         LOCAL left0 IS OPCODESLEFT.
         IF ran > 0 {
             IF t["prio"] > 0 {
-                IF left0 < room { RETURN. }
+                IF aoso_cpu_should_yield() { RETURN. }
             }
         } ELSE {
             IF left0 < 50 { RETURN. }
@@ -207,7 +206,7 @@ FUNCTION aoso_sched_run {
                 IF run_it {
                     LOCAL floor_n IS t["floor"].
                     IF t["prio"] > 0 {
-                        IF left0 < room { SET floor_n TO left0 + 1. }
+                        IF aoso_cpu_should_yield() { SET floor_n TO left0 + 1. }
                     }
                     IF left0 < floor_n {
                         SET t["skip_n"] TO t["skip_n"] + 1.

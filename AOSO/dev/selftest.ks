@@ -224,6 +224,8 @@ FUNCTION aoso_selftest {
     SET fail TO aoso_selftest_check("project state carries elapsed", pst:HASKEY("elapsed_s"), fail).
     LOCAL pst2 IS aoso_project_advance_time(pst, "TEST", 123).
     SET fail TO aoso_selftest_check("project time advances", ABS(pst2["ut"] - pst["ut"] - 123) < 0.01, fail).
+    LOCAL pst_return IS aoso_project_return(pst).
+    SET fail TO aoso_selftest_check("project return hook", pst_return["last_step"] = "RETURN", fail).
 
     LOCAL seq_a IS aoso_project_seq(5000, 3000, 1500, 1000, 800, FALSE, 5000).
     SET fail TO aoso_selftest_check("proj reach 5000-3000", seq_a["can_reach"] = TRUE, fail).
