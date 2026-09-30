@@ -72,6 +72,8 @@ FUNCTION aoso_topo_ensure_group {
 }
 
 FUNCTION aoso_topo_rebuild {
+    LOCAL prev_fp IS "".
+    IF AOSO_TOPO:HASKEY("fp") { SET prev_fp TO AOSO_TOPO["fp"]. }
     aoso_parts_cache_ensure().
     LOCAL plist IS aoso_parts_list().
     LOCAL elist IS aoso_parts_engines().
@@ -327,6 +329,11 @@ FUNCTION aoso_topo_rebuild {
         " engines=" + elist:LENGTH + " layers=" + layers:LENGTH + " fp=" + fp + ".").
     IF DEFINED AOSO_CTX {
         SET AOSO_CTX["rev_topo"] TO AOSO_TOPO["rev"].
+    }
+    IF prev_fp <> "" {
+        IF prev_fp <> fp {
+            aoso_event_publish("VEHICLE_CHANGED", "topology", prev_fp + "->" + fp).
+        }
     }
     RETURN AOSO_TOPO.
 }

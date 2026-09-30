@@ -25,6 +25,7 @@ FUNCTION aoso_event_publish {
         "data", data_str,
         "ut", TIME:SECONDS
     )).
+    aoso_log_info("EVENT", "type=" + etype + " source=" + source + " data=" + data_str).
 }
 
 FUNCTION aoso_event_count {

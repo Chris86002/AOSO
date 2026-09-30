@@ -63,6 +63,19 @@ GLOBAL AOSO_STAGING_PRECUT_REASON IS "".
 GLOBAL AOSO_STAGING_BURN_RECOVERY IS FALSE.
 GLOBAL AOSO_STAGING_LAST_STAGE_UT IS -1.
 GLOBAL AOSO_STAGING_LAST_STAGE_RT IS -1.
+GLOBAL AOSO_STAGING_LAST_ANOMALY IS "".
+GLOBAL AOSO_STAGING_LAST_ANOMALY_UT IS -1.
+
+FUNCTION aoso_staging_engine_anomaly {
+    PARAMETER reason.
+    LOCAL sig IS "stg=" + STAGE:NUMBER + " " + reason.
+    IF sig = AOSO_STAGING_LAST_ANOMALY {
+        IF TIME:SECONDS - AOSO_STAGING_LAST_ANOMALY_UT < 8 { RETURN. }
+    }
+    SET AOSO_STAGING_LAST_ANOMALY TO sig.
+    SET AOSO_STAGING_LAST_ANOMALY_UT TO TIME:SECONDS.
+    aoso_event_publish("ENGINE_ANOMALY", "staging", sig).
+}
 
 FUNCTION aoso_staging_airborne {
     LOCAL st IS SHIP:STATUS.
@@ -569,10 +582,12 @@ FUNCTION aoso_staging_should_stage {
     IF engines_spent {
         IF airborne {
             SET AOSO_STAGING_LAST_REASON TO "flameout".
+            aoso_staging_engine_anomaly("flameout").
             RETURN TRUE.
         }
         IF commanded_throttle > 0 {
             SET AOSO_STAGING_LAST_REASON TO "flameout".
+            aoso_staging_engine_anomaly("flameout").
             RETURN TRUE.
         }
     }
@@ -590,6 +605,7 @@ FUNCTION aoso_staging_should_stage {
                 }
                 IF allow_tc {
                     SET AOSO_STAGING_LAST_REASON TO "thrust collapse".
+                    aoso_staging_engine_anomaly("no-thrust").
                     RETURN TRUE.
                 }
             }
@@ -716,6 +732,7 @@ FUNCTION aoso_staging_judge_mismatch {
     IF pred_twr > 1.2 {
         IF actual_twr < 0.5 {
             aoso_observe_anomaly("THRUST_MISMATCH", "HIGH", pred_twr, actual_twr).
+            aoso_staging_engine_anomaly("THRUST_MISMATCH predicted=" + ROUND(pred_twr, 2) + " actual=" + ROUND(actual_twr, 2)).
             aoso_log_warn("STAGING", "Thrust mismatch after spool: predicted TWR " + ROUND(pred_twr, 2) +
                 " actual " + ROUND(actual_twr, 2) + " stg=" + STAGE:NUMBER + " unlit=" + AOSO_STG_UNIGNITED + ".").
         }

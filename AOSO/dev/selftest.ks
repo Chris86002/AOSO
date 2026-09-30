@@ -82,6 +82,18 @@ FUNCTION aoso_selftest {
     LOCAL n_drain IS aoso_event_process(4).
     SET fail TO aoso_selftest_check("event drain 4", n_drain = 4, fail).
     SET fail TO aoso_selftest_check("event leftover 28", aoso_event_count() = 28, fail).
+    LOCAL canonical_events IS LIST(
+        "STAGE_COMPLETE", "VEHICLE_CHANGED", "PROFILE_UPDATED", "CAPABILITY_CHANGED",
+        "SOI_CHANGED", "ORBIT_ACHIEVED", "ASCENT_SUCCESS", "TAKEOFF_SUCCESS",
+        "REFUEL_SUCCESS", "LANDING_SUCCESS", "ENGINE_ANOMALY", "MANEUVER_FAILED",
+        "MODEL_UPDATED", "REPLAN_REQUESTED", "CORRECT_REQUESTED", "HOLD",
+        "UNEXPECTED_SOI", "UNEXPECTED_PATCH", "NAV_FALLBACK", "CPU_LOAD_HIGH",
+        "CPU_LOAD_CRITICAL", "PLAN_UPDATED").
+    LOCAL event_map_ok IS TRUE.
+    FOR event_name IN canonical_events {
+        IF NOT AOSO_BRAIN_EVENTS:HASKEY(event_name) { SET event_map_ok TO FALSE. }
+    }
+    SET fail TO aoso_selftest_check("brain canonical event map", event_map_ok, fail).
 
     LOCAL res IS aoso_result_make("ASCENT", "SUCCESS", "orbit").
     SET fail TO aoso_selftest_check("result action_type", res["action_type"] = "ASCENT", fail).

@@ -14,6 +14,9 @@
 // ignited, which is why the planner SKIP'd every body on Acacius).
 
 GLOBAL AOSO_CAPS IS LEXICON().
+GLOBAL AOSO_CAPS_EVENT_TWR IS -1.
+GLOBAL AOSO_CAPS_EVENT_DV IS -1.
+GLOBAL AOSO_CAPS_EVENT_ENG IS -1.
 
 FUNCTION aoso_capabilities_is_propellant {
     PARAMETER res_name.
@@ -134,6 +137,24 @@ FUNCTION aoso_capabilities_refresh {
 
     aoso_log_debug("CAPS", "TWR=" + ROUND(twr, 2) + " dV(stage)=" + ROUND(dv_now, 0) +
         " dV(all,vac)=" + ROUND(dv_total_vac, 0) + " unusable=" + ROUND(dv_unusable, 0)).
+
+    LOCAL changed IS FALSE.
+    IF AOSO_CAPS_EVENT_TWR >= 0 {
+        IF ABS(AOSO_CAPS_EVENT_TWR - twr) >= 0.05 { SET changed TO TRUE. }
+        IF ABS(AOSO_CAPS_EVENT_DV - dv_total_vac) >= 25 { SET changed TO TRUE. }
+        IF AOSO_CAPS_EVENT_ENG <> lit:LENGTH { SET changed TO TRUE. }
+    } ELSE {
+        SET AOSO_CAPS_EVENT_TWR TO twr.
+        SET AOSO_CAPS_EVENT_DV TO dv_total_vac.
+        SET AOSO_CAPS_EVENT_ENG TO lit:LENGTH.
+    }
+    IF changed {
+        aoso_event_publish("CAPABILITY_CHANGED", "capabilities",
+            "twr=" + ROUND(twr, 2) + " dv=" + ROUND(dv_total_vac, 0) + " engines=" + lit:LENGTH).
+        SET AOSO_CAPS_EVENT_TWR TO twr.
+        SET AOSO_CAPS_EVENT_DV TO dv_total_vac.
+        SET AOSO_CAPS_EVENT_ENG TO lit:LENGTH.
+    }
 
     RETURN AOSO_CAPS.
 }

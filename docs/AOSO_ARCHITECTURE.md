@@ -124,7 +124,7 @@ from PLAN → event → replan → PLAN.
 
 Also: `HOLD`, `CPU_LOAD_HIGH`, `CPU_LOAD_CRITICAL`, `NAV_FALLBACK`,
 `CORRECT_REQUESTED`. `PLAN_UPDATED` is published after a replan; the
-brain does not subscribe to it.
+brain refreshes context plan fields without restarting an active GOTO.
 
 ## IPU
 

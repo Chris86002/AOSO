@@ -10,7 +10,32 @@ GLOBAL AOSO_BRAIN IS LEXICON(
     "pending_replan", "",
     "last_think", 0,
     "last_body", "",
-    "last_cert", 0
+    "last_cert", 0,
+    "hold", FALSE
+).
+GLOBAL AOSO_BRAIN_EVENTS IS LEXICON(
+    "STAGE_COMPLETE", TRUE,
+    "VEHICLE_CHANGED", TRUE,
+    "PROFILE_UPDATED", TRUE,
+    "CAPABILITY_CHANGED", TRUE,
+    "SOI_CHANGED", TRUE,
+    "ORBIT_ACHIEVED", TRUE,
+    "ASCENT_SUCCESS", TRUE,
+    "TAKEOFF_SUCCESS", TRUE,
+    "REFUEL_SUCCESS", TRUE,
+    "LANDING_SUCCESS", TRUE,
+    "ENGINE_ANOMALY", TRUE,
+    "MANEUVER_FAILED", TRUE,
+    "MODEL_UPDATED", TRUE,
+    "REPLAN_REQUESTED", TRUE,
+    "CORRECT_REQUESTED", TRUE,
+    "HOLD", TRUE,
+    "UNEXPECTED_SOI", TRUE,
+    "UNEXPECTED_PATCH", TRUE,
+    "NAV_FALLBACK", TRUE,
+    "CPU_LOAD_HIGH", TRUE,
+    "CPU_LOAD_CRITICAL", TRUE,
+    "PLAN_UPDATED", TRUE
 ).
 
 FUNCTION aoso_brain_init {
@@ -20,6 +45,7 @@ FUNCTION aoso_brain_init {
     SET AOSO_BRAIN["last_think"] TO 0.
     SET AOSO_BRAIN["last_body"] TO SHIP:BODY:NAME.
     SET AOSO_BRAIN["last_cert"] TO 0.
+    SET AOSO_BRAIN["hold"] TO FALSE.
     aoso_ctx_init().
     aoso_event_init().
 }
@@ -116,7 +142,7 @@ FUNCTION aoso_brain_on_event {
     IF etype = "ASCENT_SUCCESS" { aoso_ctx_mark_budget(). aoso_brain_consider_replan("ascent"). }
     IF etype = "REFUEL_SUCCESS" { aoso_ctx_mark_budget(). aoso_brain_consider_replan("refuel"). }
     IF etype = "LANDING_SUCCESS" { aoso_ctx_mark_world(). }
-    IF etype = "TAKEOFF_COMPLETE" { aoso_ctx_mark_budget(). aoso_brain_consider_replan("takeoff"). }
+    IF etype = "TAKEOFF_SUCCESS" { aoso_ctx_mark_budget(). aoso_brain_consider_replan("takeoff"). }
     IF etype = "ENGINE_ANOMALY" { aoso_ctx_mark_vehicle(). aoso_brain_consider_replan("engine"). }
     IF etype = "MANEUVER_FAILED" {
         IF DEFINED AOSO_INTERCEPT_EPOCH { SET AOSO_INTERCEPT_EPOCH TO AOSO_INTERCEPT_EPOCH + 1. }
@@ -130,8 +156,61 @@ FUNCTION aoso_brain_on_event {
         aoso_brain_consider_replan("model " + ev["data"]).
     }
     IF etype = "REPLAN_REQUESTED" { aoso_brain_consider_replan(ev["data"]). }
-    IF etype = "CORRECT_REQUESTED" { aoso_log_info("BRAIN", "Local correction indicated: " + ev["data"]). }
-    IF etype = "HOLD" { aoso_log_warn("BRAIN", "Safe hold: " + ev["data"]). }
+    IF etype = "CORRECT_REQUESTED" { aoso_brain_request_correction(ev["data"], TRUE). }
+    IF etype = "HOLD" {
+        SET AOSO_BRAIN["hold"] TO TRUE.
+        SET AOSO_BRAIN["pending_replan"] TO "".
+        aoso_log_warn("BRAIN", "Safe hold: " + ev["data"]).
+    }
+    IF etype = "UNEXPECTED_SOI" OR etype = "UNEXPECTED_PATCH" {
+        aoso_ctx_mark_world().
+        IF aoso_brain_local_guidance_active() {
+            aoso_brain_request_correction(etype + " " + ev["data"], FALSE).
+        } ELSE {
+            aoso_brain_consider_replan(etype + " " + ev["data"]).
+        }
+    }
+    IF etype = "NAV_FALLBACK" {
+        aoso_ctx_dirty("dirty_route").
+        IF NOT aoso_brain_local_guidance_active() { aoso_brain_consider_replan("nav fallback " + ev["data"]). }
+    }
+    IF etype = "CPU_LOAD_HIGH" { aoso_log_warn("BRAIN", "CPU high: " + ev["data"]). }
+    IF etype = "CPU_LOAD_CRITICAL" { aoso_log_warn("BRAIN", "CPU critical: " + ev["data"]). }
+    IF etype = "PLAN_UPDATED" { aoso_ctx_mark_plan(). }
+}
+
+// Route correction events into the existing GOTO/rendezvous mid-course path.
+// The brain only requests work; GOTO still owns node creation and execution.
+FUNCTION aoso_brain_request_correction {
+    PARAMETER reason.
+    PARAMETER require_residual IS TRUE.
+    LOCAL residual IS 0.
+    LOCAL target_name IS "".
+    IF DEFINED AOSO_LAST_RESULT {
+        IF AOSO_LAST_RESULT:HASKEY("dv_error") { SET residual TO ABS(AOSO_LAST_RESULT["dv_error"]). }
+        IF AOSO_LAST_RESULT:HASKEY("target") { SET target_name TO AOSO_LAST_RESULT["target"]. }
+    }
+    IF require_residual {
+        IF residual < aoso_config_get("CORRECT_LOCAL_DV", 25) { RETURN FALSE. }
+    }
+    IF DEFINED AOSO_GOTO {
+        LOCAL gs IS AOSO_GOTO["current"].
+        IF gs <> "" AND gs <> "DONE" AND gs <> "ABORTED" {
+            SET AOSO_GOTO["data"]["correct_requested"] TO TRUE.
+            SET AOSO_GOTO["data"]["correct_cool_ut"] TO 0.
+            aoso_log_info("BRAIN", "Requested existing GOTO correction: " + reason).
+            RETURN TRUE.
+        }
+    }
+    IF target_name = "" { SET target_name TO aoso_ctx_get("target", ""). }
+    IF target_name = "" { RETURN FALSE. }
+    IF target_name = SHIP:BODY:NAME { RETURN FALSE. }
+    IF NOT SHIP:ORBIT:HASNEXTPATCH { RETURN FALSE. }
+    LOCAL patch_name IS SHIP:ORBIT:NEXTPATCH:BODY:NAME.
+    IF patch_name <> target_name { RETURN FALSE. }
+    aoso_goto_start(target_name, TRUE).
+    aoso_log_info("BRAIN", "Requested one existing GOTO mid-course for " + target_name + ": " + reason).
+    RETURN TRUE.
 }
 
 FUNCTION aoso_brain_consider_replan {
@@ -158,6 +237,7 @@ FUNCTION aoso_brain_local_guidance_active {
 
 FUNCTION aoso_brain_do_replan {
     PARAMETER reason.
+    IF AOSO_BRAIN["hold"] { RETURN. }
     IF aoso_brain_local_guidance_active() { RETURN. }
     IF DEFINED AOSO_PLAN_LAST {
         IF DEFINED AOSO_CPU_LEVEL {

@@ -681,6 +681,15 @@ FUNCTION aoso_goto_burn_execute {
             aoso_state_transition(AOSO_GOTO, "PLAN").
             RETURN.
         }
+        IF data["burn_kind"] = "correct" {
+            IF data:HASKEY("correction_only") {
+                IF data["correction_only"] {
+                    aoso_log_info("GOTO", "Requested single mid-course completed.").
+                    aoso_state_transition(AOSO_GOTO, "DONE").
+                    RETURN.
+                }
+            }
+        }
         IF data["burn_kind"] = "plane" OR data["burn_kind"] = "circ" OR data["burn_kind"] = "raise" {
             aoso_state_transition(AOSO_GOTO, "PLAN").
         } ELSE {
@@ -968,6 +977,9 @@ FUNCTION aoso_goto_coast_execute {
             SET patch_safe_floor TO hop_check:ATM:HEIGHT + 5000.
         }
         LOCAL want_correct IS FALSE.
+        IF data:HASKEY("correct_requested") {
+            IF data["correct_requested"] { SET want_correct TO TRUE. }
+        }
         IF aoso_goto_patch_is_ours(data, np) {
             IF aoso_rendezvous_orbit_needs_correct(SHIP:ORBIT, hop_check) {
                 LOCAL pe_now IS patch_pe.
@@ -1000,6 +1012,7 @@ FUNCTION aoso_goto_coast_execute {
                         IF NOT aoso_warp_ensure_physics_idle() { RETURN. }
                         LOCAL ndc IS aoso_rendezvous_add_correction_node(hop_check).
                         IF ndc <> 0 {
+                            SET data["correct_requested"] TO FALSE.
                             SET data["correct_count"] TO ncorr + 1.
                             aoso_log_info("GOTO", "Patch needs PE correction " + data["correct_count"] + "/" + ROUND(aoso_config_get("GOTO_CORRECT_MAX", 5), 0) + ".").
                             SET data["burn_kind"] TO "correct".
@@ -1398,10 +1411,12 @@ FUNCTION aoso_goto_define_states {
 
 FUNCTION aoso_goto_start {
     PARAMETER body_name.
+    PARAMETER correction_only IS FALSE.
     aoso_goto_define_states().
     SET AOSO_WANT_POLAR_BODY TO "".
     IF AOSO_WANT_POLAR { SET AOSO_WANT_POLAR_BODY TO body_name. }
-    SET AOSO_GOTO["data"] TO LEXICON("goal", body_name, "hop", "", "burn_kind", "", "depart_body", SHIP:BODY:NAME, "window_ut", 0, "coast_since", 0, "retry_ut", 0, "corrected", FALSE, "correct_count", 0, "last_patch_ut", 0, "expect_body", "", "expect_ut", 0, "patch_lost_ut", 0, "capture_fails", 0, "skip_capture", FALSE, "recover_hop", "", "recover_from", "", "intruder", "", "transit_logged", "").
+    SET AOSO_GOTO["data"] TO LEXICON("goal", body_name, "hop", "", "burn_kind", "", "depart_body", SHIP:BODY:NAME, "window_ut", 0, "coast_since", 0, "retry_ut", 0, "corrected", FALSE, "correct_count", 0, "correct_requested", correction_only, "correction_only", correction_only, "last_patch_ut", 0, "expect_body", "", "expect_ut", 0, "patch_lost_ut", 0, "capture_fails", 0, "skip_capture", FALSE, "recover_hop", "", "recover_from", "", "intruder", "", "transit_logged", "").
+    IF correction_only { SET AOSO_GOTO["data"]["hop"] TO body_name. }
     aoso_log_info("GOTO", "Navigating to " + body_name + ".").
     // TRANSFER begins in PLAN once the vessel is actually in flight and
     // the next hop is known. This avoids ASCENT overwriting it on launch
@@ -1412,7 +1427,8 @@ FUNCTION aoso_goto_start {
     // Do not run PLAN on the tour/mission stack - that blew kOS's 3000-slot
     // argument stack at aoso_goto_update (Acacius). Queue it; the sibling
     // "goto" scheduler task runs PLAN from a shallow stack next tick.
-    aoso_state_queue(AOSO_GOTO, "PLAN").
+    IF correction_only { aoso_state_queue(AOSO_GOTO, "COAST"). }
+    ELSE { aoso_state_queue(AOSO_GOTO, "PLAN"). }
     aoso_sched_add("goto", 0, aoso_goto_update@).
 }
 
