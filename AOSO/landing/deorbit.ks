@@ -7,14 +7,11 @@
 // target periapsis.
 
 // Target periapsis altitude (m) for a deorbit burn. Atmospheric bodies use
-// the configured DEORBIT_PE_ALT (core/config.ks) directly -- deep enough to
-// guarantee entry, shallow enough that landing/descent.ks and any
-// parachutes still have room to work. Airless PE used to be a global
-// DESCENT_SAFE_PE_ALT (8 km). On Minmus that parked Acacius on a 25x8 km
-// ellipse: suicide trigger was ~2.5 km (TWR 41) so the hoverslam never
-// started and descent looped apo-to-pe forever. Airless PE is now the
-// scanned site terrain plus DESCENT_PE_MARGIN so the ground is actually
-// inside the suicide radar, with a small floor to avoid lithobrakes.
+// DEORBIT_PE_ALT so drag/chutes still have room. A true airless suicide burn
+// must start from an IMPACT trajectory: a periapsis above the selected
+// terrain can only be arrested high and then hovered down. Aim a bounded
+// distance below the scanned terrain; landing/descent.ks waits until its
+// full-thrust retrograde simulation says ignition is due.
 FUNCTION aoso_deorbit_site_alt {
     IF DEFINED AOSO_TOUR {
         IF AOSO_TOUR:HASKEY("data") {
@@ -30,21 +27,13 @@ FUNCTION aoso_deorbit_target_periapsis_alt {
     IF SHIP:BODY:ATM:EXISTS {
         RETURN aoso_config_get("DEORBIT_PE_ALT", 30000).
     }
-    LOCAL margin IS aoso_config_get("DESCENT_PE_MARGIN", 600).
-    IF margin < 300 { SET margin TO 300. }
-    IF margin > 2500 { SET margin TO 2500. }
+    LOCAL impact_depth IS aoso_config_get("DESCENT_IMPACT_DEPTH", 500).
+    IF impact_depth < 100 { SET impact_depth TO 100. }
+    IF impact_depth > 2000 { SET impact_depth TO 2000. }
     LOCAL site_alt IS aoso_deorbit_site_alt().
-    LOCAL target_pe IS site_alt + margin.
-    LOCAL min_pe IS 400.
-    IF SHIP:BODY:RADIUS < 80000 {
-        SET min_pe TO 250.
-    }
-    IF target_pe < min_pe { SET target_pe TO min_pe. }
-    LOCAL cap IS aoso_config_get("DESCENT_SAFE_PE_ALT", 8000).
-    IF cap > SHIP:BODY:RADIUS * 0.15 {
-        SET cap TO MAX(1500, SHIP:BODY:RADIUS * 0.08).
-    }
-    IF target_pe > cap { SET target_pe TO cap. }
+    LOCAL target_pe IS site_alt - impact_depth.
+    LOCAL radius_floor IS 0 - SHIP:BODY:RADIUS * 0.5.
+    IF target_pe < radius_floor { SET target_pe TO radius_floor. }
     RETURN target_pe.
 }
 

@@ -1,20 +1,16 @@
 // AOSO/landing/descent.ks
 // Suicide-burn (hoverslam) + final-approach descent guidance.
 //
-// Do not go back to a vertical-only time-to-impact ignition. That is what
-// hit Minmus at 173 m/s: on a shallow arc centripetal support cancels
-// gravity, so ballistic TTI stays ~90 s while the full-vector stop is
-// ~16 s, throttle stays 0, and a cliff can collapse radar inside one
-// rails tick. The law below is the usual community hoverslam
-// (CheersKevin / amartyn1996 / HerrCraziDev / Garwel SBLAND):
-//   decel = AVAILABLETHRUST/MASS - g
-//   stop  = (v_srf^2)/(2*decel) * DESCENT_STOP_MARGIN + v_srf * DESCENT_BURN_MARGIN_S
-//   ignite when clearance <= stop, after warp is already 0 and the nose
-//   is on surface retrograde (or the pad has run out).
-// Clearance is the minimum of true radar and altitude above terrain
-// sampled ahead along the surface-velocity vector. After the survival burn,
-// one vector controller damps horizontal motion and commands a continuous
-// radar-dependent sink instead of allowing a high-altitude hover equilibrium.
+// Airless landing follows an actual suicide-burn profile:
+//   1. lower periapsis below the selected terrain (an impact trajectory),
+//   2. numerically simulate a full-thrust surface-retrograde burn,
+//   3. coast until that burn's predicted vertical drop equals clearance,
+//   4. commit to 100% throttle until terminal velocity is reached near ground.
+// A scalar v^2/2a is distance along the velocity vector and is not a radar
+// altitude on a shallow orbital approach. The local integrator below tracks
+// horizontal and vertical velocity separately, so the burn does not ignite
+// kilometres early and settle into a high-altitude hover. Throttle modulation
+// is reserved for the final touchdown flare only.
 
 GLOBAL AOSO_DESCENT IS aoso_state_new_machine().
 GLOBAL AOSO_DESCENT_RADAR_OFFSET IS 8.
@@ -32,6 +28,8 @@ GLOBAL AOSO_DESCENT_OFFSET_REV IS -999.
 GLOBAL AOSO_DESCENT_COAST_ETA IS -1.
 GLOBAL AOSO_DESCENT_COAST_AT IS -1.
 GLOBAL AOSO_DESCENT_COAST_ASL IS -1.
+GLOBAL AOSO_DESCENT_PRED_AT IS -1.
+GLOBAL AOSO_DESCENT_PRED IS LEXICON().
 
 FUNCTION aoso_descent_local_gravity {
     RETURN SHIP:BODY:MU / (SHIP:BODY:RADIUS + ALTITUDE) ^ 2.
@@ -276,9 +274,9 @@ FUNCTION aoso_descent_time_to_stop {
     RETURN SHIP:VELOCITY:SURFACE:MAG / decel.
 }
 
- // Rate-limited diagnostic of the live unpowered conic after deorbit.
- // It measures actual surface impact against the selected body-fixed site;
- // powered guidance later consumes the stored error as a bounded bias.
+// Rate-limited diagnostic of the live unpowered conic after deorbit.
+// It measures actual surface impact against the selected body-fixed site;
+// the full-thrust burn remains pure surface-retrograde and does not chase it.
 FUNCTION aoso_descent_log_impact {
     PARAMETER data.
     IF SHIP:BODY:ATM:EXISTS { RETURN. }
@@ -330,26 +328,107 @@ FUNCTION aoso_descent_log_impact {
     }
 }
 
-// Radar-style clearance (m) at which the suicide burn must already be
-// underway. Full surface speed, not vertical speed: a periapsis above
-// the flats never makes VERTICALSPEED steep enough for a TTI trigger,
-// and at PE itself vy≈0 used to return 0 so the burn never armed.
-// DESCENT_STOP_MARGIN pads v^2/2a; DESCENT_BURN_MARGIN_S adds reaction
-// distance at the current surface speed. Neither is capped — a 2.5 s
-// clamp was eating the 4 s configured lead.
+// Simulate an immediate, maximum-thrust surface-retrograde burn in the local
+// vertical/horizontal plane. A scalar v^2/2a is distance ALONG the velocity
+// vector; comparing it to radar altitude ignites far too early on a shallow
+// orbital approach. This integrator returns the maximum VERTICAL clearance
+// consumed while the ideal retrograde burn kills both velocity components.
+FUNCTION aoso_descent_full_burn_prediction {
+    LOCAL now_ut IS TIME:SECONDS.
+    IF AOSO_DESCENT_PRED_AT >= 0 {
+        IF now_ut - AOSO_DESCENT_PRED_AT < 0.08 {
+            IF AOSO_DESCENT_PRED:LENGTH > 0 { RETURN AOSO_DESCENT_PRED. }
+        }
+    }
+
+    LOCAL max_accel IS 0.
+    IF SHIP:MASS > 0 { SET max_accel TO SHIP:AVAILABLETHRUST / SHIP:MASS. }
+    LOCAL g_loc IS aoso_descent_local_gravity().
+    IF max_accel <= g_loc + 0.05 {
+        SET AOSO_DESCENT_PRED_AT TO now_ut.
+        SET AOSO_DESCENT_PRED TO LEXICON("ok", FALSE, "trigger", 999999,
+            "drop", 999999, "burn_time", 999999, "end_vs", VERTICALSPEED,
+            "end_hs", GROUNDSPEED, "max_accel", max_accel).
+        RETURN AOSO_DESCENT_PRED.
+    }
+
+    LOCAL steps_n IS aoso_config_get("DESCENT_PREDICT_STEPS", 36).
+    IF steps_n < 16 { SET steps_n TO 16. }
+    IF steps_n > 64 { SET steps_n TO 64. }
+    LOCAL target_vs IS aoso_config_get("DESCENT_FINAL_SPEED", -2).
+    IF target_vs > -0.2 { SET target_vs TO -0.2. }
+    LOCAL target_hs IS aoso_config_get("DESCENT_TERMINAL_HS", 1.5).
+    IF target_hs < 0.2 { SET target_hs TO 0.2. }
+
+    LOCAL sim_vs IS VERTICALSPEED.
+    LOCAL sim_hs IS GROUNDSPEED.
+    LOCAL speed_ms IS SQRT(sim_vs ^ 2 + sim_hs ^ 2).
+    LOCAL net_accel IS max_accel - g_loc.
+    // Retrograde thrust initially spends most of its authority cancelling
+    // lateral velocity. Give the simulation enough time for low-TWR landers
+    // without increasing its configured step count.
+    LOCAL estimate_s IS speed_ms / net_accel * 1.35.
+    LOCAL step_s IS estimate_s / steps_n.
+    IF step_s < 0.02 { SET step_s TO 0.02. }
+    IF step_s > 1.5 { SET step_s TO 1.5. }
+
+    LOCAL drop_m IS 0.
+    LOCAL max_drop IS 0.
+    LOCAL elapsed_s IS 0.
+    LOCAL idx IS 0.
+    LOCAL done IS FALSE.
+    UNTIL idx >= steps_n OR done {
+        IF sim_hs <= target_hs AND sim_vs >= target_vs {
+            SET done TO TRUE.
+        } ELSE {
+            SET speed_ms TO SQRT(sim_vs ^ 2 + sim_hs ^ 2).
+            IF speed_ms < 0.05 {
+                SET done TO TRUE.
+            } ELSE {
+                LOCAL previous_vs IS sim_vs.
+                LOCAL horizontal_accel IS 0 - max_accel * sim_hs / speed_ms.
+                // Tangential speed curves away from the surface. Its h^2/r
+                // radial term is why a shallow Minmus pass does not fall as
+                // though it were hovering motionless over flat ground.
+                LOCAL radial_m IS SHIP:BODY:RADIUS + ALTITUDE - drop_m.
+                IF radial_m < SHIP:BODY:RADIUS { SET radial_m TO SHIP:BODY:RADIUS. }
+                LOCAL curve_accel IS sim_hs ^ 2 / radial_m.
+                LOCAL vertical_accel IS max_accel * (0 - sim_vs) / speed_ms - g_loc + curve_accel.
+                SET sim_hs TO sim_hs + horizontal_accel * step_s.
+                IF sim_hs < 0 { SET sim_hs TO 0. }
+                SET sim_vs TO sim_vs + vertical_accel * step_s.
+                SET drop_m TO drop_m - (previous_vs + sim_vs) * 0.5 * step_s.
+                IF drop_m > max_drop { SET max_drop TO drop_m. }
+                SET elapsed_s TO elapsed_s + step_s.
+            }
+        }
+        SET idx TO idx + 1.
+    }
+    IF sim_hs <= target_hs AND sim_vs >= target_vs { SET done TO TRUE. }
+
+    LOCAL terminal_h IS aoso_config_get("DESCENT_TERMINAL_ALT", 12).
+    IF terminal_h < 3 { SET terminal_h TO 3. }
+    LOCAL margin_mult IS aoso_config_get("DESCENT_SUICIDE_MARGIN", 1.02).
+    IF margin_mult < 1 { SET margin_mult TO 1. }
+    IF margin_mult > 1.15 { SET margin_mult TO 1.15. }
+    LOCAL reaction_s IS aoso_config_get("DESCENT_IGNITION_MARGIN_S", 0.15).
+    IF reaction_s < 0 { SET reaction_s TO 0. }
+    IF reaction_s > 1 { SET reaction_s TO 1. }
+    LOCAL reaction_m IS MAX(0, 0 - VERTICALSPEED) * reaction_s.
+    LOCAL trigger_m IS max_drop * margin_mult + reaction_m + terminal_h.
+    IF trigger_m < terminal_h + 2 { SET trigger_m TO terminal_h + 2. }
+    IF NOT done { SET trigger_m TO 999999. }
+
+    SET AOSO_DESCENT_PRED_AT TO now_ut.
+    SET AOSO_DESCENT_PRED TO LEXICON("ok", done, "trigger", trigger_m,
+        "drop", max_drop, "burn_time", elapsed_s, "end_vs", sim_vs,
+        "end_hs", sim_hs, "max_accel", max_accel).
+    RETURN AOSO_DESCENT_PRED.
+}
+
 FUNCTION aoso_descent_burn_trigger_alt {
-    LOCAL speed_ms IS SHIP:VELOCITY:SURFACE:MAG.
-    LOCAL decel IS aoso_descent_max_deceleration().
-    IF decel <= 0.05 { RETURN 999999. }
-    LOCAL stop_m IS aoso_descent_stopping_distance(speed_ms, decel).
-    IF stop_m < 0 { RETURN 999999. }
-    LOCAL pad IS aoso_config_get("DESCENT_STOP_MARGIN", 1.2).
-    IF pad < 1 { SET pad TO 1. }
-    LOCAL margin_s IS aoso_config_get("DESCENT_BURN_MARGIN_S", 4).
-    IF margin_s < 0 { SET margin_s TO 0. }
-    LOCAL trig IS stop_m * pad + speed_ms * margin_s.
-    IF trig < 8 { SET trig TO 8. }
-    RETURN trig.
+    LOCAL burn_pred IS aoso_descent_full_burn_prediction().
+    RETURN burn_pred["trigger"].
 }
 
 // Geo under a point `dist_m` ahead of the ship along surface velocity,
@@ -404,176 +483,58 @@ FUNCTION aoso_descent_clearance {
     RETURN clear.
 }
 
-// Sink schedule after the full-vector braking phase. The old hoverslam
-// throttle was stop/radar, so a high-TWR craft naturally settled at its
-// hover throttle thousands of metres up. A negative target at every height
-// makes altitude progress explicit while retaining a gentle final sink.
-FUNCTION aoso_descent_target_sink {
-    PARAMETER clearance_m.
-    PARAMETER final_mode IS FALSE.
-    LOCAL final_sink IS aoso_config_get("DESCENT_FINAL_SPEED", -3).
-    IF final_sink > -0.5 { SET final_sink TO -0.5. }
-    IF final_mode { RETURN final_sink. }
-    LOCAL final_h IS aoso_config_get("DESCENT_FINAL_APPROACH_ALT", 150).
-    LOCAL max_sink IS aoso_config_get("DESCENT_GUIDE_MAX_SINK", 20).
-    IF max_sink < ABS(final_sink) { SET max_sink TO ABS(final_sink). }
-    LOCAL sink_gain IS aoso_config_get("DESCENT_GUIDE_SINK_GAIN", 0.01).
-    IF sink_gain < 0 { SET sink_gain TO 0. }
-    LOCAL extra_h IS clearance_m - final_h.
-    IF extra_h < 0 { SET extra_h TO 0. }
-    LOCAL sink_mag IS ABS(final_sink) + extra_h * sink_gain.
-    IF sink_mag > max_sink { SET sink_mag TO max_sink. }
-    RETURN 0 - sink_mag.
-}
-
-// Direction of the stored unpowered impact error in the local tangent plane.
-// This uses the predictor only as a bounded bias; survival braking always
-// wins and large errors are explicitly ignored rather than chased.
-FUNCTION aoso_descent_impact_error_vector {
+// Throttle modulation is deliberately confined to the last few metres. The
+// actual suicide burn is always full throttle and surface-retrograde; this
+// controller merely holds a soft sink and damps the small residual lateral
+// velocity after the max-thrust burn has reached its predicted terminal state.
+FUNCTION aoso_descent_terminal_guidance {
     PARAMETER data.
-    IF NOT data:HASKEY("impact_miss") { RETURN V(0, 0, 0). }
-    IF NOT data:HASKEY("impact_lat") { RETURN V(0, 0, 0). }
-    IF NOT data:HASKEY("impact_lng") { RETURN V(0, 0, 0). }
-    LOCAL max_miss IS aoso_config_get("DESCENT_TARGET_MAX_MISS", 6000).
-    IF data["impact_miss"] <= 0 { RETURN V(0, 0, 0). }
-    IF data["impact_miss"] > max_miss { RETURN V(0, 0, 0). }
-
-    LOCAL target_lat IS 0.
-    LOCAL target_lng IS 0.
-    LOCAL have_target IS FALSE.
-    IF DEFINED AOSO_TOUR {
-        IF AOSO_TOUR:HASKEY("data") {
-            IF AOSO_TOUR["data"]:HASKEY("site_lat") {
-                SET target_lat TO AOSO_TOUR["data"]["site_lat"].
-                SET target_lng TO AOSO_TOUR["data"]["site_lng"].
-                SET have_target TO TRUE.
-            }
-        }
-    }
-    IF NOT have_target { RETURN V(0, 0, 0). }
-    LOCAL body_pos IS SHIP:BODY:POSITION.
-    LOCAL impact_vec IS LATLNG(data["impact_lat"], data["impact_lng"]):POSITION - body_pos.
-    LOCAL target_vec IS LATLNG(target_lat, target_lng):POSITION - body_pos.
-    LOCAL error_vec IS target_vec - impact_vec.
-    RETURN VXCL(SHIP:UP:VECTOR, error_vec).
-}
-
-// One vector controller owns both axes after the initial surface-retrograde
-// kill. Horizontal velocity is driven toward zero (plus a small predictor
-// bias) while vertical velocity follows the radar-dependent sink schedule.
-FUNCTION aoso_descent_guidance {
-    PARAMETER data.
-    PARAMETER final_mode IS FALSE.
-    LOCAL clear_m IS aoso_descent_clearance().
-    LOCAL speed_ms IS SHIP:VELOCITY:SURFACE:MAG.
-    LOCAL decel IS aoso_descent_max_deceleration().
-    LOCAL stop_m IS aoso_descent_stopping_distance(speed_ms, decel).
-    IF stop_m < 0 { SET stop_m TO clear_m. }
-    LOCAL pad IS aoso_config_get("DESCENT_STOP_MARGIN", 1.2).
-    IF pad < 1 { SET pad TO 1. }
-
-    LOCAL handoff_hs IS aoso_config_get("DESCENT_BRAKE_HANDOFF_HS", 2).
-    LOCAL resume_hs IS aoso_config_get("DESCENT_BRAKE_RESUME_HS", 6).
-    IF resume_hs < handoff_hs + 1 { SET resume_hs TO handoff_hs + 1. }
-    LOCAL max_handoff IS aoso_config_get("DESCENT_FINAL_SPEED_MAX", 25).
-    LOCAL guide_mode IS "SURVIVAL".
-    IF data:HASKEY("guidance_mode") { SET guide_mode TO data["guidance_mode"]. }
-    LOCAL reported_miss IS -1.
-    IF data:HASKEY("impact_miss") { SET reported_miss TO data["impact_miss"]. }
-    LOCAL must_brake IS FALSE.
-    IF clear_m <= stop_m * pad { SET must_brake TO TRUE. }
-    IF guide_mode = "SURVIVAL" {
-        IF GROUNDSPEED > handoff_hs { SET must_brake TO TRUE. }
-        IF speed_ms > max_handoff { SET must_brake TO TRUE. }
-    } ELSE {
-        IF GROUNDSPEED > resume_hs { SET must_brake TO TRUE. }
-    }
-    IF must_brake {
-        SET data["guidance_mode"] TO "SURVIVAL".
-        RETURN LEXICON("mode", "SURVIVAL", "direction", SHIP:SRFRETROGRADE:VECTOR,
-            "throttle", 1, "target_sink", 0, "clearance", clear_m,
-            "stop", stop_m, "miss", reported_miss).
-    }
-
-    LOCAL mode_txt IS "GUIDE".
-    IF final_mode { SET mode_txt TO "FINAL". }
-    SET data["guidance_mode"] TO mode_txt.
-    LOCAL target_sink IS aoso_descent_target_sink(clear_m, final_mode).
-    IF data:HASKEY("sink_recovery_until") {
-        IF TIME:SECONDS < data["sink_recovery_until"] {
-            IF target_sink > -6 { SET target_sink TO -6. }
-        }
-    }
-
+    LOCAL clear_m IS aoso_descent_true_radar().
+    LOCAL target_vs IS aoso_config_get("DESCENT_FINAL_SPEED", -2).
+    IF target_vs > -0.2 { SET target_vs TO -0.2. }
     LOCAL max_accel IS 0.
     IF SHIP:MASS > 0 { SET max_accel TO SHIP:AVAILABLETHRUST / SHIP:MASS. }
+    LOCAL miss_m IS -1.
+    IF data:HASKEY("impact_miss") { SET miss_m TO data["impact_miss"]. }
     IF max_accel <= 0 {
         RETURN LEXICON("mode", "NO_THRUST", "direction", SHIP:UP:VECTOR,
-            "throttle", 0, "target_sink", target_sink, "clearance", clear_m,
-            "stop", stop_m, "miss", reported_miss).
+            "throttle", 0, "target_sink", target_vs, "clearance", clear_m,
+            "stop", 0, "miss", miss_m).
     }
 
     LOCAL g_loc IS aoso_descent_local_gravity().
-    LOCAL vertical_gain IS 0.6.
-    LOCAL up_accel IS g_loc + vertical_gain * (target_sink - VERTICALSPEED).
+    LOCAL up_accel IS g_loc + 0.8 * (target_vs - VERTICALSPEED).
     IF up_accel < 0 { SET up_accel TO 0. }
     IF up_accel > max_accel { SET up_accel TO max_accel. }
-
     LOCAL up_vec IS SHIP:UP:VECTOR.
     LOCAL horizontal_vel IS VXCL(up_vec, SHIP:VELOCITY:SURFACE).
-    LOCAL horizontal_accel IS horizontal_vel * -0.45.
-    LOCAL miss_m IS reported_miss.
-    LOCAL target_bias IS V(0, 0, 0).
-    LOCAL impact_error IS aoso_descent_impact_error_vector(data).
-    IF impact_error:MAG > 1 {
-        LOCAL target_speed IS MIN(aoso_config_get("DESCENT_TARGET_MAX_SPEED", 5), miss_m * 0.002).
-        SET target_bias TO impact_error:NORMALIZED * target_speed * 0.35.
-    }
-
-    // Preserve a real vertical component whenever lateral thrust is needed;
-    // then cap velocity cancellation and target correction independently.
-    IF horizontal_accel:MAG > 0.01 OR target_bias:MAG > 0.01 {
-        IF up_accel < g_loc * 0.5 { SET up_accel TO g_loc * 0.5. }
-    }
-    LOCAL guide_tilt IS aoso_config_get("DESCENT_GUIDE_MAX_TILT", 45).
-    IF guide_tilt < 5 { SET guide_tilt TO 5. }
-    IF guide_tilt > 70 { SET guide_tilt TO 70. }
-    LOCAL horizontal_cap IS up_accel * TAN(guide_tilt).
-    IF horizontal_cap > max_accel * 0.9 { SET horizontal_cap TO max_accel * 0.9. }
+    LOCAL horizontal_accel IS horizontal_vel * -0.6.
+    LOCAL horizontal_cap IS up_accel.
+    IF horizontal_cap > max_accel * 0.5 { SET horizontal_cap TO max_accel * 0.5. }
     IF horizontal_accel:MAG > horizontal_cap {
         SET horizontal_accel TO horizontal_accel:NORMALIZED * horizontal_cap.
     }
-    LOCAL target_tilt IS aoso_config_get("DESCENT_TARGET_MAX_TILT", 10).
-    IF target_tilt < 0 { SET target_tilt TO 0. }
-    IF target_tilt > 25 { SET target_tilt TO 25. }
-    LOCAL target_cap IS up_accel * TAN(target_tilt).
-    IF target_bias:MAG > target_cap {
-        SET target_bias TO target_bias:NORMALIZED * target_cap.
-    }
-    SET horizontal_accel TO horizontal_accel + target_bias.
-    IF horizontal_accel:MAG > horizontal_cap {
-        SET horizontal_accel TO horizontal_accel:NORMALIZED * horizontal_cap.
-    }
-
     LOCAL command_vec IS up_vec * up_accel + horizontal_accel.
     LOCAL command_mag IS command_vec:MAG.
     IF command_mag < 0.01 { SET command_vec TO up_vec. }
     LOCAL throttle_cmd IS command_mag / max_accel.
     IF throttle_cmd > 1 { SET throttle_cmd TO 1. }
     IF throttle_cmd < 0 { SET throttle_cmd TO 0. }
-    RETURN LEXICON("mode", mode_txt, "direction", command_vec,
-        "throttle", throttle_cmd, "target_sink", target_sink,
-        "clearance", clear_m, "stop", stop_m, "miss", miss_m).
+    RETURN LEXICON("mode", "TERMINAL", "direction", command_vec,
+        "throttle", throttle_cmd, "target_sink", target_vs,
+        "clearance", clear_m, "stop", 0, "miss", miss_m).
 }
 
-FUNCTION aoso_descent_should_final_approach {
-    LOCAL h IS aoso_descent_true_radar().
-    LOCAL final_alt IS aoso_config_get("DESCENT_FINAL_APPROACH_ALT", 150).
-    IF h > final_alt { RETURN FALSE. }
+FUNCTION aoso_descent_should_terminal {
+    LOCAL terminal_h IS aoso_config_get("DESCENT_TERMINAL_ALT", 12).
+    LOCAL flare_ceiling IS terminal_h + 25.
+    IF aoso_descent_true_radar() > flare_ceiling { RETURN FALSE. }
     LOCAL max_speed IS aoso_config_get("DESCENT_FINAL_SPEED_MAX", 25).
     IF SHIP:VELOCITY:SURFACE:MAG > max_speed { RETURN FALSE. }
-    LOCAL handoff_hs IS aoso_config_get("DESCENT_BRAKE_HANDOFF_HS", 2).
-    IF GROUNDSPEED > handoff_hs + 1 { RETURN FALSE. }
+    LOCAL target_hs IS aoso_config_get("DESCENT_TERMINAL_HS", 1.5).
+    IF GROUNDSPEED > MAX(3, target_hs * 2) { RETURN FALSE. }
+    LOCAL target_vs IS aoso_config_get("DESCENT_FINAL_SPEED", -2).
+    IF VERTICALSPEED < target_vs - 2 { RETURN FALSE. }
     RETURN TRUE.
 }
 
@@ -586,10 +547,9 @@ FUNCTION aoso_descent_on_abort {
     aoso_state_transition(AOSO_DESCENT, "ABORTED").
 }
 
-// TRUE if periapsis altitude actually reaches the kinematic suicide
-// clearance. An 8 km PE on Minmus with a ~2 km stop distance never does.
-// Do not treat "radar under 6 km" as success: that shortcut is why a
-// 600 m PE over a 2.7 km highland was allowed to coast in rails.
+// TRUE if the planned orbit intersects terrain or passes inside the live
+// numerical burn trigger. A normal airless deorbit now has PE below the
+// selected terrain, so it takes the impact-path branch immediately.
 FUNCTION aoso_descent_pe_reaches_suicide {
     IF aoso_orbit_is_hyperbolic() { RETURN TRUE. }
     IF PERIAPSIS < 0 { RETURN TRUE. }
@@ -597,7 +557,8 @@ FUNCTION aoso_descent_pe_reaches_suicide {
         IF PERIAPSIS < SHIP:BODY:ATM:HEIGHT { RETURN TRUE. }
         RETURN FALSE.
     }
-    LOCAL trigger IS aoso_descent_burn_trigger_alt().
+    LOCAL burn_pred IS aoso_descent_full_burn_prediction().
+    LOCAL trigger IS burn_pred["trigger"].
     LOCAL site_alt IS aoso_deorbit_site_alt().
     LOCAL radar_pe IS PERIAPSIS - site_alt.
     IF radar_pe < 80 { RETURN TRUE. }
@@ -659,6 +620,7 @@ FUNCTION aoso_descent_freefall_entry {
     SET AOSO_DESCENT_BOTTOM_SRC TO "none".
     SET AOSO_DESCENT_COAST_ETA TO -1.
     SET AOSO_DESCENT_COAST_AT TO -1.
+    SET AOSO_DESCENT_PRED_AT TO -1.
     aoso_descent_refresh_bounds().
     aoso_log_info("DESCENT", "Radar offset=" + ROUND(AOSO_DESCENT_RADAR_OFFSET, 1) + " m via " + AOSO_DESCENT_BOTTOM_SRC +
         ". AP=" + ROUND(APOAPSIS, 0) +
@@ -744,7 +706,8 @@ FUNCTION aoso_descent_freefall_execute {
         }
     }
 
-    LOCAL trigger IS aoso_descent_burn_trigger_alt().
+    LOCAL burn_pred IS aoso_descent_full_burn_prediction().
+    LOCAL trigger IS burn_pred["trigger"].
     LOCAL radar IS aoso_descent_true_radar().
     LOCAL clear IS aoso_descent_clearance().
     LOCAL speed_ms IS SHIP:VELOCITY:SURFACE:MAG.
@@ -765,10 +728,11 @@ FUNCTION aoso_descent_freefall_execute {
         IF fall_pad > align_pad { SET align_pad TO fall_pad. }
     }
     LOCAL align_h IS trigger + align_pad.
-    LOCAL stop_m IS aoso_descent_stopping_distance(speed_ms, decel).
-    IF stop_m < 0 { SET stop_m TO trigger. }
+    LOCAL stop_m IS burn_pred["drop"].
+    LOCAL terminal_h IS aoso_config_get("DESCENT_TERMINAL_ALT", 12).
+    LOCAL no_margin_h IS stop_m + terminal_h.
     LOCAL critical IS FALSE.
-    IF clear <= stop_m * 0.7 { SET critical TO TRUE. }
+    IF clear <= no_margin_h { SET critical TO TRUE. }
 
     LOCAL coast_eta IS aoso_descent_eta_to_asl(align_h + MAX(aoso_deorbit_site_alt(), SHIP:GEOPOSITION:TERRAINHEIGHT)).
     IF coast_eta > pe_eta AND pe_eta > 0 { SET coast_eta TO pe_eta. }
@@ -777,7 +741,8 @@ FUNCTION aoso_descent_freefall_execute {
         " PE=" + ROUND(PERIAPSIS, 0) + " vs=" + ROUND(VERTICALSPEED, 1) + " radar=" + ROUND(radar, 0) +
         " clr=" + ROUND(clear, 0) + " trig=" + ROUND(trigger, 0) + " align=" + ROUND(align_h, 0) +
         " peEta=" + ROUND(pe_eta, 0) + "s tti=" + ROUND(tti, 1) +
-        "s tStop=" + ROUND(t_stop, 1) + "s coastEta=" + ROUND(coast_eta, 0) + "s " + aoso_warp_diag_txt() + ".").
+        "s burnT=" + ROUND(burn_pred["burn_time"], 1) + "s burnDrop=" + ROUND(stop_m, 1) +
+        "m coastEta=" + ROUND(coast_eta, 0) + "s " + aoso_warp_diag_txt() + ".").
 
     IF clear > align_h {
         IF data:HASKEY("align_since") { data:REMOVE("align_since"). }
@@ -831,12 +796,15 @@ FUNCTION aoso_descent_freefall_execute {
         ROUND(GROUNDSPEED, 1) + "m/s thrust=" + ROUND(SHIP:AVAILABLETHRUST, 0) +
         "kN mass=" + ROUND(SHIP:MASS, 1) + "twr=" + ROUND(twr_commit, 2) +
         "g=" + ROUND(grav_commit, 3) + "m/s2 netDecel=" + ROUND(decel, 3) +
-        "m/s2 stop=" + ROUND(stop_m, 1) + "m targetMiss=" + ROUND(miss_commit, 0) +
+        "m/s2 burnDrop=" + ROUND(stop_m, 1) + "m burnTime=" +
+        ROUND(burn_pred["burn_time"], 2) + "s endVS=" + ROUND(burn_pred["end_vs"], 2) +
+        "m/s endHS=" + ROUND(burn_pred["end_hs"], 2) + "m/s targetMiss=" + ROUND(miss_commit, 0) +
         "m " + aoso_warp_diag_txt() + ".").
     aoso_log_info("DESCENT", "Suicide burn now: radar=" + ROUND(radar, 0) + " m clr=" + ROUND(clear, 0) +
         " m trigger=" + ROUND(trigger, 0) + " m vSrf=" + ROUND(speed_ms, 1) + " m/s vVert=" +
         ROUND(VERTICALSPEED, 1) + " m/s face=" + ROUND(facing_err, 0) + " deg held=" + ROUND(held, 1) +
-        "s tStop=" + ROUND(t_stop, 1) + "s decel=" + ROUND(decel, 2) + " m/s^2 " + aoso_warp_diag_txt() + ".").
+        "s burnTime=" + ROUND(burn_pred["burn_time"], 1) + "s verticalDrop=" +
+        ROUND(stop_m, 1) + "m decel=" + ROUND(decel, 2) + " m/s^2 FULL THROTTLE " + aoso_warp_diag_txt() + ".").
     SET AOSO_LAND_SUICIDE_ALT TO radar.
     aoso_observe_event("LAND", "INFO", "BURN", "suicide radar=" + ROUND(radar, 0) + " clr=" + ROUND(clear, 0) +
         " vSrf=" + ROUND(speed_ms, 1) + " vs=" + ROUND(VERTICALSPEED, 1) +
@@ -865,49 +833,25 @@ FUNCTION aoso_descent_measure_dv {
     SET data["actual_dv"] TO data["actual_dv"] + (SHIP:THRUST / SHIP:MASS) * dt.
 }
 
-FUNCTION aoso_descent_apply_guidance {
+FUNCTION aoso_descent_suicide_command {
     PARAMETER data.
-    PARAMETER final_mode IS FALSE.
-    LOCAL cmd IS aoso_descent_guidance(data, final_mode).
-    IF cmd["mode"] = "SURVIVAL" {
-        aoso_steer_srf_retrograde().
-    } ELSE {
-        aoso_steer_to_vector(cmd["direction"]).
-    }
-    aoso_throttle_set(cmd["throttle"]).
-    RETURN cmd.
+    LOCAL burn_pred IS aoso_descent_full_burn_prediction().
+    LOCAL miss_m IS -1.
+    IF data:HASKEY("impact_miss") { SET miss_m TO data["impact_miss"]. }
+    aoso_steer_srf_retrograde().
+    aoso_throttle_set(1).
+    RETURN LEXICON("mode", "SUICIDE", "direction", SHIP:SRFRETROGRADE:VECTOR,
+        "throttle", 1, "target_sink", aoso_config_get("DESCENT_FINAL_SPEED", -2),
+        "clearance", aoso_descent_clearance(), "stop", burn_pred["trigger"],
+        "miss", miss_m).
 }
 
-FUNCTION aoso_descent_watch_progress {
+FUNCTION aoso_descent_terminal_command {
     PARAMETER data.
-    PARAMETER radar_m.
-    LOCAL now_ut IS TIME:SECONDS.
-    IF NOT data:HASKEY("progress_ut") {
-        SET data["progress_ut"] TO now_ut.
-        SET data["progress_radar"] TO radar_m.
-        RETURN.
-    }
-    IF radar_m <= data["progress_radar"] - 5 {
-        SET data["progress_ut"] TO now_ut.
-        SET data["progress_radar"] TO radar_m.
-        RETURN.
-    }
-    IF radar_m > data["progress_radar"] + 25 {
-        SET data["progress_ut"] TO now_ut.
-        SET data["progress_radar"] TO radar_m.
-        RETURN.
-    }
-    LOCAL stall_s IS aoso_config_get("DESCENT_STALL_S", 15).
-    IF now_ut - data["progress_ut"] < stall_s { RETURN. }
-    LOCAL final_h IS aoso_config_get("DESCENT_FINAL_APPROACH_ALT", 150).
-    IF radar_m <= final_h + 50 { RETURN. }
-    IF VERTICALSPEED < -1 { RETURN. }
-    SET data["sink_recovery_until"] TO now_ut + 10.
-    SET data["progress_ut"] TO now_ut.
-    SET data["progress_radar"] TO radar_m.
-    aoso_log_warn("DESCENT_STALL", "Powered descent stopped losing altitude at radar=" +
-        ROUND(radar_m, 0) + "m vs=" + ROUND(VERTICALSPEED, 1) +
-        "m/s hs=" + ROUND(GROUNDSPEED, 1) + "m/s; forcing the sink schedule.").
+    LOCAL cmd IS aoso_descent_terminal_guidance(data).
+    aoso_steer_to_vector(cmd["direction"]).
+    aoso_throttle_set(cmd["throttle"]).
+    RETURN cmd.
 }
 
 FUNCTION aoso_descent_operator_status {
@@ -937,12 +881,11 @@ FUNCTION aoso_descent_operator_status {
 FUNCTION aoso_descent_burn_entry {
     PARAMETER data.
     SET WARP TO 0.
-    SET data["guidance_mode"] TO "SURVIVAL".
-    SET data["progress_ut"] TO TIME:SECONDS.
-    SET data["progress_radar"] TO aoso_descent_true_radar().
+    SET AOSO_DESCENT_PRED_AT TO -1.
+    IF data:HASKEY("burn_rearm") { data:REMOVE("burn_rearm"). }
     aoso_descent_maintain_legs(aoso_descent_true_radar(), TRUE).
     IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
-    LOCAL cmd IS aoso_descent_apply_guidance(data, FALSE).
+    LOCAL cmd IS aoso_descent_suicide_command(data).
     aoso_descent_operator_status(data, cmd).
 }
 
@@ -966,12 +909,13 @@ FUNCTION aoso_descent_burn_execute {
         RETURN.
     }
 
-    aoso_descent_watch_progress(data, radar).
-    LOCAL cmd IS aoso_descent_apply_guidance(data, FALSE).
+    // Nominal path: stay at 100% throttle and surface retrograde for the
+    // entire suicide burn. The only planned handoff is the low terminal flare.
+    LOCAL cmd IS aoso_descent_suicide_command(data).
     aoso_descent_operator_status(data, cmd).
 
-    IF aoso_descent_should_final_approach() {
-        aoso_log_info("DESCENT", "Guidance handoff to FINAL at radar=" + ROUND(radar, 1) +
+    IF aoso_descent_should_terminal() {
+        aoso_log_info("DESCENT", "Full-thrust suicide burn complete; terminal flare at radar=" + ROUND(radar, 1) +
             "m vs=" + ROUND(VERTICALSPEED, 1) + "m/s hs=" + ROUND(GROUNDSPEED, 1) + "m/s.").
         aoso_state_transition(AOSO_DESCENT, "FINAL_APPROACH").
     }
@@ -980,8 +924,7 @@ FUNCTION aoso_descent_burn_execute {
 FUNCTION aoso_descent_final_approach_entry {
     PARAMETER data.
     aoso_descent_maintain_legs(aoso_descent_true_radar(), TRUE).
-    SET data["guidance_mode"] TO "FINAL".
-    LOCAL cmd IS aoso_descent_apply_guidance(data, TRUE).
+    LOCAL cmd IS aoso_descent_terminal_command(data).
     aoso_descent_operator_status(data, cmd).
 }
 
@@ -989,28 +932,26 @@ FUNCTION aoso_descent_final_approach_execute {
     PARAMETER data.
     aoso_descent_measure_dv(data).
     aoso_descent_maintain_legs(aoso_descent_true_radar()).
-    // Hysteresis: do not bounce states at the entry thresholds, but return to
-    // survival braking if a disturbance creates a clearly unsafe slide.
-    IF NOT aoso_descent_should_final_approach() {
-        IF SHIP:STATUS <> "LANDED" {
-            LOCAL resume_hs IS aoso_config_get("DESCENT_BRAKE_RESUME_HS", 6).
-            LOCAL resume_speed IS aoso_config_get("DESCENT_FINAL_SPEED_MAX", 25) * 1.4.
-            IF GROUNDSPEED > resume_hs OR SHIP:VELOCITY:SURFACE:MAG > resume_speed {
-                aoso_log_warn("DESCENT", "Final approach disturbed (vSrf=" + ROUND(SHIP:VELOCITY:SURFACE:MAG, 1) +
-                    "m/s hs=" + ROUND(GROUNDSPEED, 1) + "m/s) - returning to survival braking.").
-                aoso_observe_event("LAND", "WARN", "BOUNCE",
-                    "radar=" + ROUND(aoso_descent_true_radar(), 1) +
-                    " vs=" + ROUND(VERTICALSPEED, 2) +
-                    " hs=" + ROUND(GROUNDSPEED, 2) +
-                    " thr=" + ROUND(THROTTLE, 3) +
-                    " spd=" + ROUND(SHIP:VELOCITY:SURFACE:MAG, 1)).
-                aoso_state_transition(AOSO_DESCENT, "BURN").
-                RETURN.
-            }
+    // A disturbance above the terminal envelope re-enters maximum-thrust
+    // braking. This is a safety recovery, not a scheduled powered descent.
+    LOCAL resume_speed IS aoso_config_get("DESCENT_FINAL_SPEED_MAX", 25) * 1.4.
+    LOCAL target_hs IS aoso_config_get("DESCENT_TERMINAL_HS", 1.5).
+    IF SHIP:STATUS <> "LANDED" {
+        IF GROUNDSPEED > MAX(6, target_hs * 4) OR SHIP:VELOCITY:SURFACE:MAG > resume_speed {
+            aoso_log_warn("DESCENT", "Terminal flare disturbed (vSrf=" + ROUND(SHIP:VELOCITY:SURFACE:MAG, 1) +
+                "m/s hs=" + ROUND(GROUNDSPEED, 1) + "m/s) - resuming full-thrust braking.").
+            aoso_observe_event("LAND", "WARN", "BOUNCE",
+                "radar=" + ROUND(aoso_descent_true_radar(), 1) +
+                " vs=" + ROUND(VERTICALSPEED, 2) +
+                " hs=" + ROUND(GROUNDSPEED, 2) +
+                " thr=" + ROUND(THROTTLE, 3) +
+                " spd=" + ROUND(SHIP:VELOCITY:SURFACE:MAG, 1)).
+            aoso_state_transition(AOSO_DESCENT, "BURN").
+            RETURN.
         }
     }
 
-    LOCAL cmd IS aoso_descent_apply_guidance(data, TRUE).
+    LOCAL cmd IS aoso_descent_terminal_command(data).
     aoso_descent_operator_status(data, cmd).
 
     aoso_staging_auto_check().

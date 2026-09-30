@@ -130,26 +130,23 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "DEORBIT_SITE_MAX_ORBITS", 2,        // bounded candidate horizon; do not spend many body orbits waiting for periapsis alignment
     "MAX_Q_LIMIT_MULT", 1.0,            // extra throttle cap near this-flight peak Q (1.0=off; ASCENT_MAX_Q is the real limiter)
     "ASCENT_MAX_Q", 0.30,               // atm (SHIP:Q). Throttle down while Q is still rising above this. 0=off. 0.30≈30 kPa.
-    "DESCENT_BURN_MARGIN_S", 4,         // s of surface-speed lead added on top of the kinematic stop distance (not a vertical-TTI cap)
-    "DESCENT_STOP_MARGIN", 1.2,         // extra multiplier on v^2/2a before the suicide burn (elwanderer / MechJeb-style pad)
+    "DESCENT_BURN_MARGIN_S", 4,         // legacy key retained for saved configs; true suicide guidance does not use it
+    "DESCENT_STOP_MARGIN", 1.2,         // legacy scalar retained for saved configs; true suicide guidance uses its own small margin
     "DESCENT_ALIGN_LEAD_S", 30,         // s to be out of warp and slewing to surface retrograde before the stop distance
     "DESCENT_RADAR_OFFSET", 0,          // m, CoM/radar to belly; 0 = vessel bounds, remeasured after legs deploy
-    "DESCENT_FINAL_APPROACH_ALT", 150,  // m, radar altitude where descent *may* switch to a slow vertical hold
-    "DESCENT_FINAL_SPEED_MAX", 25,      // m/s surface speed required before leaving suicide burn for final approach
-    "DESCENT_FINAL_SPEED", -3,          // m/s, target vertical speed held during final approach
-    "DESCENT_GUIDE_MAX_SINK", 20,       // m/s, fastest commanded sink after the full-vector braking phase
-    "DESCENT_GUIDE_SINK_GAIN", 0.01,    // (m/s)/m, adds sink speed with clearance above final approach
-    "DESCENT_BRAKE_HANDOFF_HS", 2,      // m/s horizontal speed required before leaving full surface-retro braking
-    "DESCENT_BRAKE_RESUME_HS", 6,       // m/s horizontal speed that re-enters full surface-retro braking
-    "DESCENT_GUIDE_MAX_TILT", 45,       // deg from vertical while cancelling residual horizontal velocity
-    "DESCENT_TARGET_MAX_TILT", 10,      // deg of the guidance cone reserved for bounded site correction
-    "DESCENT_TARGET_MAX_MISS", 6000,    // m, never chase a farther predicted impact error during powered descent
-    "DESCENT_TARGET_MAX_SPEED", 5,      // m/s, max lateral velocity requested toward the selected site
-    "DESCENT_STALL_S", 15,              // s without meaningful altitude loss before sink recovery is announced
+    "DESCENT_FINAL_APPROACH_ALT", 150,  // legacy key retained; terminal flare now uses DESCENT_TERMINAL_ALT
+    "DESCENT_FINAL_SPEED_MAX", 25,      // m/s emergency ceiling for terminal-flare entry
+    "DESCENT_FINAL_SPEED", -2,          // m/s, touchdown sink held only in the last few metres
+    "DESCENT_SUICIDE_MARGIN", 1.02,     // small multiplier on predicted vertical clearance consumed by the full-thrust burn
+    "DESCENT_IGNITION_MARGIN_S", 0.15,  // s of vertical-motion allowance for scheduler/engine response
+    "DESCENT_PREDICT_STEPS", 36,        // integration steps for the full-thrust surface-retrograde burn predictor
+    "DESCENT_TERMINAL_ALT", 12,         // m, only here may full-thrust suicide guidance hand off to touchdown control
+    "DESCENT_TERMINAL_HS", 1.5,         // m/s horizontal-speed target at the end of the full-thrust burn
     "DESCENT_STATUS_S", 2,              // s between operator-visible powered-descent status lines
     "DESCENT_TOUCHDOWN_ALT", 0.5,       // m, radar altitude below which touchdown is declared
     "DESCENT_SAFE_PE_ALT", 8000,        // m, airless deorbit ceiling if no site (never sea level / lithobrake)
-    "DESCENT_PE_MARGIN", 600,           // m above scanned site terrain for airless deorbit PE (8 km was above suicide range on Minmus)
+    "DESCENT_PE_MARGIN", 600,           // legacy key retained for saved configs
+    "DESCENT_IMPACT_DEPTH", 500,        // m below selected terrain for an airless impact path before the late suicide burn
     "LOW_EC_PCT", 20,                   // % ElectricCharge at/below which fuel cells are enabled
     "FUEL_CELL_DISABLE_PCT", 90,        // % ElectricCharge at/above which fuel cells are disabled
     "PANEL_MAX_AIRSPEED", 50,           // m/s, airspeed inside atmosphere above which panels retract

@@ -1,6 +1,39 @@
 # Codex handoff — AOSO current state
 
-Updated: 2026-09-28
+Updated: 2026-09-30
+
+## True suicide-burn controller (2026-09-30)
+
+The previous landing controller was a powered descent, not a suicide burn. It
+compared full-vector stopping distance with vertical radar altitude, ignited
+kilometres early on a shallow approach, then used a sink schedule that could
+settle near hover thrust. That behavior has been removed.
+
+Current airless landing behavior:
+
+- Deorbit targets a periapsis 500 m below the selected terrain by default, so
+  FREEFALL is an impact trajectory rather than an orbit that must be hovered
+  down from periapsis.
+- FREEFALL numerically integrates an immediate full-thrust,
+  surface-retrograde burn in local horizontal/vertical coordinates. The
+  predictor includes gravity and the radial curvature term from tangential
+  velocity, and returns the vertical clearance that the burn consumes.
+- Ignition occurs only when terrain-aware clearance reaches that prediction,
+  after rails warp has stopped and the vessel has aligned.
+- BURN commands surface retrograde and 100% throttle continuously. Throttle
+  modulation is confined to the low terminal flare after horizontal and
+  vertical velocity enter the terminal envelope.
+- The kOS terminal prints `LAND SUICIDE ... thr=100%` every two seconds during
+  the burn, followed by `LAND TERMINAL ...` during the flare.
+
+This edit has static and deterministic controller-model coverage only; it has
+not yet flown in KSP. On the previous Minmus failure sample (about 169 m/s
+horizontal and -12.4 m/s vertical), the numerical model predicts roughly 90 m
+of vertical drop during the braking burn, not the old multi-kilometre scalar
+stopping distance. The next flight should therefore remain at throttle zero at
+2.5 km, log one late `SUICIDE_COMMIT`, hold `thr=100%` through BURN, and enter
+TERMINAL only near the surface. It must not show the old 3-4% high-altitude
+hover equilibrium.
 
 ## Landing guidance update (2026-09-28)
 
