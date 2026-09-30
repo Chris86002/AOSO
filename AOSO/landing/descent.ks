@@ -27,6 +27,7 @@ GLOBAL AOSO_DESCENT_LEGS_AT IS 0.
 GLOBAL AOSO_DESCENT_OFFSET_PENDING IS -1.
 GLOBAL AOSO_DESCENT_OFFSET_HITS IS 0.
 GLOBAL AOSO_DESCENT_LOGGED_OFF IS -999.
+GLOBAL AOSO_DESCENT_OFFSET_REV IS -999.
 GLOBAL AOSO_DESCENT_COAST_ETA IS -1.
 GLOBAL AOSO_DESCENT_COAST_AT IS -1.
 GLOBAL AOSO_DESCENT_COAST_ASL IS -1.
@@ -40,9 +41,26 @@ FUNCTION aoso_descent_local_gravity {
 // This is not the collider, and it does not see legs until they move.
 // Prefer aoso_descent_refresh_bounds(), which uses the vessel bounding box
 // and is called again while the gear is extending.
+FUNCTION aoso_descent_geom_rev {
+    IF DEFINED AOSO_TOPO {
+        IF AOSO_TOPO:HASKEY("rev") { RETURN AOSO_TOPO["rev"]. }
+    }
+    RETURN -1.
+}
+
 FUNCTION aoso_descent_measure_radar_offset {
     LOCAL configured IS aoso_config_get("DESCENT_RADAR_OFFSET", 0).
     IF configured > 0 { RETURN configured. }
+
+    LOCAL rev_now IS aoso_descent_geom_rev().
+    IF rev_now >= 0 {
+        IF rev_now = AOSO_DESCENT_OFFSET_REV {
+            IF AOSO_DESCENT_BOTTOM_SRC = "parts" {
+                aoso_cache_log("parts", "hit", "radar|" + rev_now).
+                RETURN AOSO_DESCENT_RADAR_OFFSET.
+            }
+        }
+    }
 
     LOCAL plist IS aoso_parts_list().
     LOCAL axis IS SHIP:UP:VECTOR.
@@ -60,6 +78,8 @@ FUNCTION aoso_descent_measure_radar_offset {
     LOCAL offset_m IS 0 - min_along.
     IF offset_m < 2 { SET offset_m TO 2. }
     IF offset_m > 80 { SET offset_m TO 80. }
+    SET AOSO_DESCENT_OFFSET_REV TO rev_now.
+    aoso_cache_log("parts", "miss", "radar|" + rev_now).
     RETURN offset_m + 2.
 }
 
@@ -69,9 +89,6 @@ FUNCTION aoso_descent_measure_radar_offset {
 // failed raycast, not touchdown.
 FUNCTION aoso_descent_refresh_bounds {
     LOCAL now IS TIME:SECONDS.
-    IF now - AOSO_DESCENT_BOUNDS_AT < 0.2 { RETURN. }
-    SET AOSO_DESCENT_BOUNDS_AT TO now.
-
     LOCAL configured IS aoso_config_get("DESCENT_RADAR_OFFSET", 0).
     IF configured > 0 {
         SET AOSO_DESCENT_RADAR_OFFSET TO configured.
@@ -79,6 +96,28 @@ FUNCTION aoso_descent_refresh_bounds {
         SET AOSO_DESCENT_BOTTOM_SRC TO "config".
         RETURN.
     }
+
+    LOCAL rev_now IS aoso_descent_geom_rev().
+    LOCAL leg_live IS FALSE.
+    IF AOSO_DESCENT_LEGS_ON {
+        IF now - AOSO_DESCENT_LEGS_AT < 6 { SET leg_live TO TRUE. }
+    }
+    IF NOT leg_live {
+        IF rev_now >= 0 {
+            IF rev_now = AOSO_DESCENT_OFFSET_REV {
+                IF AOSO_DESCENT_BOTTOM_SRC = "bounds" OR AOSO_DESCENT_BOTTOM_SRC = "parts" {
+                    IF AOSO_DESCENT_BOTTOM_SRC = "bounds" {
+                        LOCAL raw_now IS ALT:RADAR.
+                        SET AOSO_DESCENT_BOTTOM_ALT TO raw_now - AOSO_DESCENT_RADAR_OFFSET.
+                        IF AOSO_DESCENT_BOTTOM_ALT < 0 { SET AOSO_DESCENT_BOTTOM_ALT TO 0. }
+                    }
+                    RETURN.
+                }
+            }
+        }
+    }
+    IF now - AOSO_DESCENT_BOUNDS_AT < 0.2 { RETURN. }
+    SET AOSO_DESCENT_BOUNDS_AT TO now.
 
     LOCAL raw IS ALT:RADAR.
     LOCAL got IS FALSE.
@@ -130,6 +169,7 @@ FUNCTION aoso_descent_refresh_bounds {
                 SET AOSO_DESCENT_BOTTOM_ALT TO raw - AOSO_DESCENT_RADAR_OFFSET.
                 IF AOSO_DESCENT_BOTTOM_ALT < 0 { SET AOSO_DESCENT_BOTTOM_ALT TO 0. }
                 SET AOSO_DESCENT_BOTTOM_SRC TO "bounds".
+                SET AOSO_DESCENT_OFFSET_REV TO aoso_descent_geom_rev().
                 SET got TO TRUE.
             }
         }
@@ -183,7 +223,6 @@ FUNCTION aoso_descent_maintain_legs {
         LEGS ON.
         SET AOSO_DESCENT_LEGS_ON TO TRUE.
         SET AOSO_DESCENT_LEGS_AT TO TIME:SECONDS.
-        aoso_parts_cache_invalidate().
         SET AOSO_DESCENT_BOUNDS_AT TO 0.
         aoso_descent_refresh_bounds().
         aoso_log_info("DESCENT", "Legs commanded on. Remeasuring the bottom as the gear extends. offset=" +

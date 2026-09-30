@@ -8,6 +8,25 @@
 // collide (kOS identifiers are case-insensitive).
 
 GLOBAL AOSO_PROJECT_LAST IS LEXICON().
+GLOBAL AOSO_PROJECT_MEMO IS LEXICON().
+
+FUNCTION aoso_project_memo_key {
+    PARAMETER order.
+    LOCAL joined IS "".
+    FOR dest_name IN order {
+        IF joined <> "" { SET joined TO joined + ",". }
+        SET joined TO joined + dest_name.
+    }
+    LOCAL plan_n IS 0.
+    LOCAL rev_b IS 0.
+    LOCAL rev_x IS 0.
+    IF DEFINED AOSO_CTX {
+        SET plan_n TO aoso_ctx_get("plan_n", 0).
+        SET rev_b TO aoso_ctx_get("rev_budget", 0).
+        SET rev_x TO aoso_ctx_get("rev_xp", 0).
+    }
+    RETURN plan_n + "|" + joined + "|" + rev_b + "|" + rev_x.
+}
 
 FUNCTION aoso_project_state_blank {
     RETURN LEXICON(
@@ -398,6 +417,18 @@ FUNCTION aoso_project_route {
             IF AOSO_ROUTE_LAST:HASKEY("order") { SET order TO AOSO_ROUTE_LAST["order"]. }
         }
     }
+    LOCAL proj_key IS aoso_project_memo_key(order).
+    IF AOSO_PROJECT_MEMO:HASKEY(proj_key) {
+        SET AOSO_PROJECT_LAST TO AOSO_PROJECT_MEMO[proj_key].
+        aoso_cache_log("feas", "hit", "project|" + proj_key).
+        RETURN AOSO_PROJECT_LAST.
+    }
+    IF NOT aoso_ctx_heavy_ok() {
+        IF AOSO_PROJECT_LAST:HASKEY("legs") {
+            aoso_cache_log("feas", "hit", "project-shed").
+            RETURN AOSO_PROJECT_LAST.
+        }
+    }
     LOCAL st IS aoso_project_state_current().
     LOCAL hop IS aoso_budget_get("mission_dv", 0).
     LOCAL full_tank IS aoso_feas_full_tank_dv().
@@ -460,6 +491,9 @@ FUNCTION aoso_project_route {
         "elapsed_s", st["elapsed_s"],
         "at", TIME:SECONDS
     ).
+    IF AOSO_PROJECT_MEMO:LENGTH > 12 { SET AOSO_PROJECT_MEMO TO LEXICON(). }
+    SET AOSO_PROJECT_MEMO[proj_key] TO AOSO_PROJECT_LAST.
+    aoso_cache_log("feas", "miss", "project|" + proj_key).
     RETURN AOSO_PROJECT_LAST.
 }
 

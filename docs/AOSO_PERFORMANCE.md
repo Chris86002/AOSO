@@ -104,3 +104,25 @@ during the next measured physics tick is capped by `MANEUVER_TICK_GUARD`.
 This is specifically for short burns and coarse/physics-warp ticks.
 
 Flight control remains ahead of telemetry and background work.
+
+## RAM caches
+
+Caches are RAM only. A miss or a forced rebuild is the correct value.
+Disk JSON is not a hot path and is never written from ascent, descent,
+or maneuver ticks.
+
+| What | Key | Owner | Never cache |
+|---|---|---|---|
+| `LIST PARTS` / `ENGINES` / `DOCKINGPORTS`, uid→part | `aoso_parts_cache_fp()` = part count \| stage \| root UID \| control UID. `STAGE:NUMBER` is the fast reject. `aoso_parts_cache_invalidate()` after `STAGE()`. | `parts.ks` | Steering, throttle, `MASSFLOW`, `NEXTNODE:BURNVECTOR` |
+| Topology structure | Same fingerprint. `rev` increments only on rebuild. | `topology.ks` | Live part/engine/module refs in JSON |
+| Group fuel / mass | `dyn_rev`. Skip when fp is unchanged and mass / vessel LF / OX are inside epsilon. Walks tank UIDs only. | `aoso_topo_refresh_dynamic` | Full `HASMODULE` census |
+| Typed uid lists (tanks, engines-by-group, seps, solar, drills, converters, chutes, legs) | Topology `rev` / `idx` | `topology.ks` | A second census in profile, classify, or vessel once `rev` exists |
+| Body constants and Hohmann pair (MU, radius, ATM, period, SMA, required phase, TOF, v_inf) | Body name, `from\|to` | `windows.ks` (body set check in `bodydb.ks`) | Live phase, wait, efficiency |
+| Feasibility row, matrix row | `dest\|rev_topo\|rev_budget\|rev_world\|rev_xp` | `feasibility.ks` / `matrix.ks` | Approval of a burn |
+| Project leftover | `plan_n\|targets\|rev_budget\|rev_xp` | `project.ks` | |
+| Descent radar offset, ascent stack layout, bounds offset | Topology `rev` (legs-extending still resamples bounds) | descent / ascent | Live `ALT:RADAR` and throttle |
+| KS Lambert inside one search | Quantized pos1, pos2, tof, mu, long-way | `lambert.ks` | Native Lambert path |
+| Last KS intercept candidate | Hop, epoch bucket, and no `SOI_CHANGED` / `MANEUVER_FAILED` / `VEHICLE_CHANGED` since store | `rendezvous.ks` | Capture PE gate (`finalize_node` still runs) |
+
+`AOSO_CPU_LEVEL >= 2` skips matrix, project, and window-static fills unless `aoso_brain_is_quiet()`. Level 3 remains flight and safety only. Debug lines are `CACHE hit|miss <class> key=...` with class `parts`, `topo_dyn`, `feas`, `window`, or `lambert`.
+

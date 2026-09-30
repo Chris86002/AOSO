@@ -38,8 +38,11 @@
 // flameout/ignition change tick to tick.
 //
 // LIST ENGINES / LIST PARTS / LIST DOCKINGPORTS is expensive. Engine structure
-// refs stay live for IGNITION/FLAMEOUT/MASSFLOW, so we cache until STAGE:NUMBER
-// changes (or a caller invalidates after STAGE.).
+// refs stay live for IGNITION/FLAMEOUT/MASSFLOW. The cache is valid only while
+// aoso_parts_cache_fp() matches the fingerprint stored at the last rebuild.
+// That string is the same one topology uses (aoso_topo_fp_now). STAGE:NUMBER
+// is the fast reject; part count, root, and control-from catch fairings,
+// docks, and explosions that do not move the stage counter.
 // Engine grouping here is a live lit census. Structural roles (BOOSTER /
 // CORE / LANDER) and stage-local tanks are owned by topology.ks.
 
@@ -47,16 +50,44 @@ GLOBAL AOSO_PARTS IS LEXICON().
 GLOBAL AOSO_ENGINES IS LIST().
 GLOBAL AOSO_PARTS_LIVE IS LIST().
 GLOBAL AOSO_DOCKPORTS IS LIST().
+GLOBAL AOSO_PART_BY_UID IS LEXICON().
+GLOBAL AOSO_PARTS_FP IS "".
 GLOBAL AOSO_CACHE_STAGE IS -99.
 GLOBAL AOSO_CACHE_VALID IS FALSE.
+
+// Cheap structural key. Does not LIST parts. SHIP:PARTCOUNT is O(1);
+// root and control UIDs catch re-root and control-from without a census.
+FUNCTION aoso_parts_cache_fp {
+    LOCAL part_n IS -1.
+    IF SHIP:HASSUFFIX("PARTCOUNT") { SET part_n TO SHIP:PARTCOUNT. }
+    LOCAL root_id IS "".
+    IF SHIP:ROOTPART:ISTYPE("Part") { SET root_id TO "" + SHIP:ROOTPART:UID. }
+    LOCAL control_id IS "".
+    IF SHIP:CONTROLPART:ISTYPE("Part") { SET control_id TO "" + SHIP:CONTROLPART:UID. }
+    RETURN part_n + "|" + STAGE:NUMBER + "|" + root_id + "|" + control_id.
+}
 
 FUNCTION aoso_parts_cache_invalidate {
     SET AOSO_CACHE_VALID TO FALSE.
 }
 
+FUNCTION aoso_parts_index_fill {
+    SET AOSO_PART_BY_UID TO LEXICON().
+    FOR p IN AOSO_PARTS_LIVE {
+        SET AOSO_PART_BY_UID["" + p:UID] TO p.
+    }
+}
+
 FUNCTION aoso_parts_cache_ensure {
+    LOCAL stage_now IS STAGE:NUMBER.
+    LOCAL fp_now IS aoso_parts_cache_fp().
     IF AOSO_CACHE_VALID {
-        IF STAGE:NUMBER = AOSO_CACHE_STAGE { RETURN. }
+        IF stage_now = AOSO_CACHE_STAGE {
+            IF fp_now = AOSO_PARTS_FP {
+                aoso_cache_log("parts", "hit", fp_now).
+                RETURN.
+            }
+        }
     }
     LOCAL elist IS LIST().
     LIST ENGINES IN elist.
@@ -67,8 +98,11 @@ FUNCTION aoso_parts_cache_ensure {
     LOCAL dlist IS LIST().
     LIST DOCKINGPORTS IN dlist.
     SET AOSO_DOCKPORTS TO dlist.
-    SET AOSO_CACHE_STAGE TO STAGE:NUMBER.
+    aoso_parts_index_fill().
+    SET AOSO_CACHE_STAGE TO stage_now.
+    SET AOSO_PARTS_FP TO fp_now.
     SET AOSO_CACHE_VALID TO TRUE.
+    aoso_cache_log("parts", "miss", fp_now).
 }
 
 FUNCTION aoso_parts_engines {

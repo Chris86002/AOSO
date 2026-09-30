@@ -65,13 +65,28 @@ FUNCTION aoso_body_database_save {
     aoso_json_write(AOSO_CONST["BODY_DB_FILE"], AOSO_BODY_DB).
 }
 
-// Loads the persisted database if present, otherwise builds one fresh from
-// the live universe and saves it (bodies/orbits never change mid-save, so a
-// cached copy is just a faster path to the same data on the next boot).
+// TRUE when the on-disk map is the same set of body names as the live universe.
+// Order does not matter. A mismatch (or a missing file) rebuilds once.
+FUNCTION aoso_body_database_matches {
+    PARAMETER db.
+    PARAMETER live_list.
+    IF NOT db:ISTYPE("Lexicon") { RETURN FALSE. }
+    IF db:LENGTH <> live_list:LENGTH { RETURN FALSE. }
+    FOR b IN live_list {
+        IF NOT db:HASKEY(b:NAME) { RETURN FALSE. }
+    }
+    RETURN TRUE.
+}
+
+// Loads the persisted database if the body set still matches. Otherwise
+// builds from the live universe and writes once. Not called every think.
 FUNCTION aoso_body_database_load {
+    LOCAL live_list IS LIST().
+    LIST BODIES IN live_list.
     LOCAL loaded IS aoso_json_read(AOSO_CONST["BODY_DB_FILE"], LEXICON()).
-    IF loaded:ISTYPE("Lexicon") AND loaded:LENGTH > 0 {
+    IF aoso_body_database_matches(loaded, live_list) {
         SET AOSO_BODY_DB TO loaded.
+        aoso_log_info("BODYDB", "Body database loaded (" + AOSO_BODY_DB:LENGTH + " bodies, set match).").
         RETURN AOSO_BODY_DB.
     }
     aoso_body_database_build().

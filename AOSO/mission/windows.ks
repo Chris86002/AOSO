@@ -5,6 +5,8 @@
 // formulas remain a fast heuristic for route scoring and a safe fallback.
 
 GLOBAL AOSO_WINDOW_LAST IS LEXICON().
+GLOBAL AOSO_WINDOW_STATIC IS LEXICON().
+GLOBAL AOSO_WINDOW_BODIES IS LEXICON().
 
 FUNCTION aoso_window_wrap180 {
     PARAMETER ang.
@@ -16,6 +18,75 @@ FUNCTION aoso_window_wrap180 {
         SET wrapped TO wrapped + 360.
     }
     RETURN wrapped.
+}
+
+// Body constants that do not change in stock. Filled once per body name.
+FUNCTION aoso_window_body_static {
+    PARAMETER body_name.
+    IF AOSO_WINDOW_BODIES:HASKEY(body_name) {
+        RETURN AOSO_WINDOW_BODIES[body_name].
+    }
+    IF NOT aoso_ctx_heavy_ok() { RETURN LEXICON(). }
+    LOCAL body_ref IS BODY(body_name).
+    LOCAL atm_h IS 0.
+    LOCAL slp IS 0.
+    LOCAL has_atm IS FALSE.
+    IF body_ref:ATM:EXISTS {
+        SET has_atm TO TRUE.
+        SET atm_h TO body_ref:ATM:HEIGHT.
+        SET slp TO body_ref:ATM:SEALEVELPRESSURE.
+    }
+    LOCAL mu_b IS body_ref:MU.
+    LOCAL rad_b IS body_ref:RADIUS.
+    LOCAL gee_b IS 0.
+    IF rad_b > 1 { SET gee_b TO mu_b / (rad_b * rad_b). }
+    LOCAL per_b IS 0.
+    LOCAL sma_b IS 0.
+    IF body_name <> SUN:NAME {
+        SET per_b TO body_ref:ORBIT:PERIOD.
+        SET sma_b TO body_ref:ORBIT:SEMIMAJORAXIS.
+    }
+    LOCAL rec IS LEXICON(
+        "mu", mu_b,
+        "radius", rad_b,
+        "atm_h", atm_h,
+        "has_atm", has_atm,
+        "slp", slp,
+        "gee", gee_b,
+        "period", per_b,
+        "sma", sma_b
+    ).
+    SET AOSO_WINDOW_BODIES[body_name] TO rec.
+    aoso_cache_log("window", "miss", body_name).
+    RETURN rec.
+}
+
+// Hohmann pair constants. Live phase/wait are computed from these plus position at at_ut.
+FUNCTION aoso_window_pair {
+    PARAMETER from_planet.
+    PARAMETER to_planet.
+    LOCAL key_s IS from_planet + "|" + to_planet.
+    IF AOSO_WINDOW_STATIC:HASKEY(key_s) {
+        aoso_cache_log("window", "hit", key_s).
+        RETURN AOSO_WINDOW_STATIC[key_s].
+    }
+    IF NOT aoso_ctx_heavy_ok() { RETURN LEXICON(). }
+    LOCAL dep_ref IS BODY(from_planet).
+    LOCAL arr_ref IS BODY(to_planet).
+    aoso_window_body_static(from_planet).
+    aoso_window_body_static(to_planet).
+    LOCAL dep_per IS dep_ref:ORBIT:PERIOD.
+    LOCAL arr_per IS arr_ref:ORBIT:PERIOD.
+    LOCAL rec IS LEXICON(
+        "tof", aoso_interplanetary_transfer_time_s(dep_ref, arr_ref),
+        "vinf", ABS(aoso_interplanetary_v_infinity_signed(dep_ref, arr_ref)),
+        "phase_req", aoso_interplanetary_required_phase_angle_deg(dep_ref, arr_ref),
+        "dep_per", dep_per,
+        "arr_per", arr_per
+    ).
+    SET AOSO_WINDOW_STATIC[key_s] TO rec.
+    aoso_cache_log("window", "miss", key_s).
+    RETURN rec.
 }
 
 FUNCTION aoso_window_evaluate {
@@ -50,16 +121,43 @@ FUNCTION aoso_window_evaluate_at {
             "transfer_s", 0, "total_s", 0, "efficiency", 0.5, "best_dv", 2500, "now_dv", 2500, "phase_err", 0).
     }
 
-    LOCAL wait_s IS aoso_interplanetary_wait_time_to_window_s_at(dep_ref, arr_ref, at_ut).
-    IF wait_s < 0 { SET wait_s TO 0. }
-    LOCAL transfer_s IS aoso_interplanetary_transfer_time_s(dep_ref, arr_ref).
+    LOCAL pair IS aoso_window_pair(from_planet, to_planet).
+    IF NOT pair:HASKEY("tof") {
+        RETURN LEXICON("from", from_name, "to", to_name, "wait_s", 0, "wait_days", 0,
+            "transfer_s", 0, "total_s", 0, "efficiency", 0.5, "best_dv", 2500, "now_dv", 2500, "phase_err", 0).
+    }
+
     LOCAL current_phase IS aoso_interplanetary_phase_angle_deg_at(dep_ref, arr_ref, at_ut).
-    LOCAL required_phase IS aoso_interplanetary_required_phase_angle_deg(dep_ref, arr_ref).
+    LOCAL required_phase IS pair["phase_req"].
     LOCAL phase_err IS ABS(aoso_window_wrap180(current_phase - required_phase)).
     LOCAL efficiency IS 1 - (phase_err / 180) * 0.5.
     IF efficiency < 0.45 { SET efficiency TO 0.45. }
 
-    LOCAL vinf IS ABS(aoso_interplanetary_v_infinity_signed(dep_ref, arr_ref)).
+    LOCAL dep_per IS pair["dep_per"].
+    LOCAL arr_per IS pair["arr_per"].
+    LOCAL wait_s IS 0.
+    IF dep_per > 1 {
+        IF arr_per > 1 {
+            LOCAL dep_rate IS 360 / dep_per.
+            LOCAL arr_rate IS 360 / arr_per.
+            LOCAL relative_rate IS dep_rate - arr_rate.
+            IF relative_rate = 0 {
+                SET wait_s TO 0.
+            } ELSE {
+                SET wait_s TO -(current_phase - required_phase) / relative_rate.
+                LOCAL syn_s IS 360 / ABS(relative_rate).
+                UNTIL wait_s >= 0 {
+                    SET wait_s TO wait_s + syn_s.
+                }
+                UNTIL wait_s < syn_s {
+                    SET wait_s TO wait_s - syn_s.
+                }
+            }
+        }
+    }
+    IF wait_s < 0 { SET wait_s TO 0. }
+    LOCAL transfer_s IS pair["tof"].
+    LOCAL vinf IS pair["vinf"].
     LOCAL best_dv IS vinf.
     IF best_dv < 50 { SET best_dv TO 50. }
     LOCAL now_dv IS best_dv / efficiency.

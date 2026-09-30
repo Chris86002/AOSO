@@ -424,7 +424,7 @@ FUNCTION aoso_tour_goto_entry {
             aoso_state_transition(AOSO_TOUR, "RETURN").
             RETURN.
         }
-        LOCAL report IS aoso_feas_evaluate(name).
+        LOCAL report IS aoso_feas_cached(name).
         aoso_feas_log_report(report).
         SET data["feas_result"] TO report["result"].
         IF report["result"] = "SKIP" {

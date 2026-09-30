@@ -38,7 +38,7 @@ FUNCTION aoso_matrix_cell {
 
 FUNCTION aoso_matrix_row {
     PARAMETER dest_name.
-    LOCAL report IS aoso_feas_evaluate(dest_name).
+    LOCAL report IS aoso_feas_cached(dest_name).
     LOCAL have IS report["mission_dv"].
     IF report:HASKEY("hop_budget") { SET have TO report["hop_budget"]. }
     LOCAL orbit_need IS report["transfer_dv"] + report["capture_dv"].
@@ -95,6 +95,12 @@ FUNCTION aoso_matrix_catalog {
 }
 
 FUNCTION aoso_matrix_build {
+    IF NOT aoso_ctx_heavy_ok() {
+        IF AOSO_MATRIX_LAST:HASKEY("rows") {
+            aoso_cache_log("feas", "hit", "matrix-shed").
+            RETURN AOSO_MATRIX_LAST.
+        }
+    }
     LOCAL catalog IS aoso_matrix_catalog().
     LOCAL rows IS LEXICON().
     LOCAL n_yes IS 0.

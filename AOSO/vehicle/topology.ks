@@ -19,14 +19,8 @@ FUNCTION aoso_topo_blank_hw {
 }
 
 FUNCTION aoso_topo_fp_now {
-    LOCAL plist IS aoso_parts_list().
-    LOCAL elist IS aoso_parts_engines().
-    LOCAL dlist IS aoso_parts_dockports().
-    LOCAL root_id IS "".
-    IF SHIP:ROOTPART:ISTYPE("Part") { SET root_id TO "" + SHIP:ROOTPART:UID. }
-    LOCAL control_id IS "".
-    IF SHIP:CONTROLPART:ISTYPE("Part") { SET control_id TO "" + SHIP:CONTROLPART:UID. }
-    RETURN plist:LENGTH + "|" + elist:LENGTH + "|" + STAGE:NUMBER + "|" + root_id + "|" + dlist:LENGTH + "|" + control_id.
+    // Same string as the parts-cache key. Cheap: part count, stage, root, control.
+    RETURN aoso_parts_cache_fp().
 }
 
 FUNCTION aoso_topo_fp {
@@ -69,7 +63,9 @@ FUNCTION aoso_topo_ensure_group {
             "wet_mass", 0,
             "dry_mass", 0,
             "lf", 0, "ox", 0, "sf", 0, "xe", 0, "mp", 0,
-            "lf_cap", 0, "ox_cap", 0
+            "lf_cap", 0, "ox_cap", 0,
+            "part_uids", LIST(),
+            "res_uids", LIST()
         ).
     }
     RETURN AOSO_TOPO_GROUPS[dkey].
@@ -85,6 +81,14 @@ FUNCTION aoso_topo_rebuild {
     SET AOSO_TOPO_GROUPS TO LEXICON().
     LOCAL hw IS aoso_topo_blank_hw().
     LOCAL max_depth IS 0.
+    LOCAL idx_tanks IS LIST().
+    LOCAL idx_solar IS LIST().
+    LOCAL idx_drills IS LIST().
+    LOCAL idx_converters IS LIST().
+    LOCAL idx_chutes IS LIST().
+    LOCAL idx_legs IS LIST().
+    LOCAL idx_seps IS LIST().
+    LOCAL idx_eng IS LEXICON().
 
     FOR p IN plist {
         LOCAL uid IS "" + p:UID.
@@ -103,8 +107,10 @@ FUNCTION aoso_topo_rebuild {
         SET g["parts"] TO g["parts"] + 1.
         SET g["wet_mass"] TO g["wet_mass"] + p:MASS.
         SET g["dry_mass"] TO g["dry_mass"] + p:DRYMASS.
+        g["part_uids"]:ADD(uid).
 
         LOCAL has_tank IS FALSE.
+        LOCAL has_res IS FALSE.
         FOR res_item IN p:RESOURCES {
             LOCAL rn IS res_item:NAME.
             LOCAL amt IS res_item:AMOUNT.
@@ -112,31 +118,34 @@ FUNCTION aoso_topo_rebuild {
             IF rn = "LiquidFuel" {
                 SET g["lf"] TO g["lf"] + amt.
                 SET g["lf_cap"] TO g["lf_cap"] + cap.
-                IF cap > 0 { SET has_tank TO TRUE. }
+                IF cap > 0 { SET has_tank TO TRUE. SET has_res TO TRUE. }
             }
             IF rn = "Oxidizer" {
                 SET g["ox"] TO g["ox"] + amt.
                 SET g["ox_cap"] TO g["ox_cap"] + cap.
-                IF cap > 0 { SET has_tank TO TRUE. }
+                IF cap > 0 { SET has_tank TO TRUE. SET has_res TO TRUE. }
             }
             IF rn = "SolidFuel" {
                 SET g["sf"] TO g["sf"] + amt.
-                IF cap > 0 { SET has_tank TO TRUE. }
+                IF cap > 0 { SET has_tank TO TRUE. SET has_res TO TRUE. }
             }
             IF rn = "XenonGas" {
                 SET g["xe"] TO g["xe"] + amt.
-                IF cap > 0 { SET has_tank TO TRUE. }
+                IF cap > 0 { SET has_tank TO TRUE. SET has_res TO TRUE. }
             }
             IF rn = "MonoPropellant" {
                 SET g["mp"] TO g["mp"] + amt.
+                IF cap > 0 { SET has_res TO TRUE. }
             }
         }
         IF has_tank {
             SET g["tanks"] TO g["tanks"] + 1.
             SET hw["tanks"] TO hw["tanks"] + 1.
+            idx_tanks:ADD(uid).
         }
+        IF has_res { g["res_uids"]:ADD(uid). }
 
-        IF p:HASMODULE("ModuleDeployableSolarPanel") { SET hw["solar"] TO hw["solar"] + 1. }
+        IF p:HASMODULE("ModuleDeployableSolarPanel") { SET hw["solar"] TO hw["solar"] + 1. idx_solar:ADD(uid). }
         IF p:HASMODULE("ModuleGenerator") { SET hw["generator"] TO hw["generator"] + 1. }
         IF p:HASMODULE("ModuleWheelBase") { SET hw["wheels"] TO hw["wheels"] + 1. }
         IF p:HASMODULE("ModuleAblator") { SET hw["heatshield"] TO hw["heatshield"] + 1. }
@@ -144,26 +153,29 @@ FUNCTION aoso_topo_rebuild {
         IF p:HASMODULE("kOSProcessor") { SET hw["kos"] TO hw["kos"] + 1. }
         IF p:HASMODULE("ModuleLiftingSurface") { SET hw["lifting"] TO hw["lifting"] + 1. }
         IF p:HASMODULE("ModuleControlSurface") { SET hw["lifting"] TO hw["lifting"] + 1. }
-        IF p:HASMODULE("ModuleParachute") { SET hw["chute"] TO hw["chute"] + 1. }
+        IF p:HASMODULE("ModuleParachute") { SET hw["chute"] TO hw["chute"] + 1. idx_chutes:ADD(uid). }
         IF p:HASMODULE("ModuleLandingLeg") {
             SET hw["legs"] TO hw["legs"] + 1.
             SET g["legs"] TO g["legs"] + 1.
+            idx_legs:ADD(uid).
         }
         IF p:HASMODULE("ModuleResourceHarvester") {
             SET hw["drill"] TO hw["drill"] + 1.
             SET g["drill"] TO g["drill"] + 1.
+            idx_drills:ADD(uid).
         }
         IF p:HASMODULE("ModuleResourceConverter") {
             SET hw["converter"] TO hw["converter"] + 1.
             SET g["converter"] TO g["converter"] + 1.
+            idx_converters:ADD(uid).
         }
         IF p:HASMODULE("ModuleDeployableRadiator") { SET hw["radiator"] TO hw["radiator"] + 1. }
         IF p:HASMODULE("ModuleDataTransmitter") { SET hw["antenna"] TO hw["antenna"] + 1. }
         IF p:HASMODULE("ModuleCargoBay") { SET hw["cargo"] TO hw["cargo"] + 1. }
         IF p:HASMODULE("ModuleProceduralFairing") { SET hw["fairing"] TO hw["fairing"] + 1. }
-        IF p:HASMODULE("ModuleDecouple") { SET hw["decoupler"] TO hw["decoupler"] + 1. }
-        IF p:HASMODULE("ModuleAnchoredDecoupler") { SET hw["decoupler"] TO hw["decoupler"] + 1. }
-        IF p:HASMODULE("LaunchClamp") { SET hw["decoupler"] TO hw["decoupler"] + 1. }
+        IF p:HASMODULE("ModuleDecouple") { SET hw["decoupler"] TO hw["decoupler"] + 1. idx_seps:ADD(uid). }
+        IF p:HASMODULE("ModuleAnchoredDecoupler") { SET hw["decoupler"] TO hw["decoupler"] + 1. idx_seps:ADD(uid). }
+        IF p:HASMODULE("LaunchClamp") { SET hw["decoupler"] TO hw["decoupler"] + 1. idx_seps:ADD(uid). }
         IF p:HASMODULE("ModuleRCS") {
             SET hw["rcs"] TO hw["rcs"] + 1.
             SET g["rcs"] TO g["rcs"] + 1.
@@ -184,6 +196,9 @@ FUNCTION aoso_topo_rebuild {
     FOR e IN elist {
         LOCAL g IS aoso_topo_ensure_group(e:DECOUPLEDIN).
         SET g["engines"] TO g["engines"] + 1.
+        LOCAL ekey IS aoso_topo_group_key(e:DECOUPLEDIN).
+        IF NOT idx_eng:HASKEY(ekey) { SET idx_eng[ekey] TO LIST(). }
+        idx_eng[ekey]:ADD("" + e:UID).
         IF e:VACUUMISP >= 2000 {
             SET hw["ion"] TO hw["ion"] + 1.
         } ELSE {
@@ -277,7 +292,17 @@ FUNCTION aoso_topo_rebuild {
         "next_stage", nxt,
         "mass", SHIP:MASS,
         "thrust", SHIP:AVAILABLETHRUST,
-        "scanned_at", TIME:SECONDS
+        "scanned_at", TIME:SECONDS,
+        "idx", LEXICON(
+            "tanks", idx_tanks,
+            "solar", idx_solar,
+            "drills", idx_drills,
+            "converters", idx_converters,
+            "chutes", idx_chutes,
+            "legs", idx_legs,
+            "seps", idx_seps,
+            "engines", idx_eng
+        )
     ).
     IF hw["drill"] > 0 {
         IF hw["converter"] > 0 { SET AOSO_TOPO["isru"]["can_mine"] TO TRUE. }
@@ -290,6 +315,14 @@ FUNCTION aoso_topo_rebuild {
         IF hw["rcs"] < 1 { SET lead TO 80. }
     }
     SET AOSO_TOPO["control"]["turn_lead_s"] TO lead.
+    SET AOSO_TOPO["dyn_mass"] TO SHIP:MASS.
+    IF DEFINED AOSO_RES_SNAP {
+        SET AOSO_TOPO["dyn_lf"] TO aoso_resource_amount("LiquidFuel").
+        SET AOSO_TOPO["dyn_ox"] TO aoso_resource_amount("Oxidizer").
+    } ELSE {
+        SET AOSO_TOPO["dyn_lf"] TO 0.
+        SET AOSO_TOPO["dyn_ox"] TO 0.
+    }
     aoso_log_info("TOPO", "Structure rev=" + AOSO_TOPO["rev"] + " parts=" + plist:LENGTH +
         " engines=" + elist:LENGTH + " layers=" + layers:LENGTH + " fp=" + fp + ".").
     IF DEFINED AOSO_CTX {
@@ -338,14 +371,51 @@ FUNCTION aoso_topo_predict_drop {
     ).
 }
 
+FUNCTION aoso_topo_note_dyn_snap {
+    SET AOSO_TOPO["dyn_mass"] TO SHIP:MASS.
+    IF DEFINED AOSO_RES_SNAP {
+        SET AOSO_TOPO["dyn_lf"] TO aoso_resource_amount("LiquidFuel").
+        SET AOSO_TOPO["dyn_ox"] TO aoso_resource_amount("Oxidizer").
+    }
+}
+
+// Fuel and mass only. Walks cached resource-part UIDs, not the whole vessel.
+// If the structural fingerprint moved, rebuild instead of trusting stale UIDs.
+// Unchanged mass and vessel LF/OX (resources.ks snap) bumps nothing.
 FUNCTION aoso_topo_refresh_dynamic {
+    PARAMETER force IS FALSE.
     IF NOT AOSO_TOPO:HASKEY("rev") { RETURN AOSO_TOPO. }
+    LOCAL fp_now IS aoso_parts_cache_fp().
+    IF AOSO_TOPO:HASKEY("fp") {
+        IF AOSO_TOPO["fp"] <> fp_now {
+            aoso_cache_log("topo_dyn", "miss", fp_now).
+            RETURN aoso_topo_rebuild().
+        }
+    }
+    IF NOT force {
+        IF AOSO_TOPO:HASKEY("dyn_mass") {
+            IF AOSO_TOPO:HASKEY("dyn_lf") {
+                LOCAL mass_now IS SHIP:MASS.
+                IF ABS(mass_now - AOSO_TOPO["dyn_mass"]) < 0.01 {
+                    LOCAL lf_now IS 0.
+                    LOCAL ox_now IS 0.
+                    IF DEFINED AOSO_RES_SNAP {
+                        SET lf_now TO aoso_resource_amount("LiquidFuel").
+                        SET ox_now TO aoso_resource_amount("Oxidizer").
+                    }
+                    IF ABS(lf_now - AOSO_TOPO["dyn_lf"]) < 0.2 {
+                        IF ABS(ox_now - AOSO_TOPO["dyn_ox"]) < 0.2 {
+                            aoso_cache_log("topo_dyn", "hit", fp_now).
+                            RETURN AOSO_TOPO.
+                        }
+                    }
+                }
+            }
+        }
+    }
     aoso_parts_cache_ensure().
-    LOCAL plist IS aoso_parts_list().
     FOR k IN AOSO_TOPO_GROUPS:KEYS {
         LOCAL g IS AOSO_TOPO_GROUPS[k].
-        SET g["wet_mass"] TO 0.
-        SET g["dry_mass"] TO 0.
         SET g["lf"] TO 0.
         SET g["ox"] TO 0.
         SET g["sf"] TO 0.
@@ -353,37 +423,48 @@ FUNCTION aoso_topo_refresh_dynamic {
         SET g["mp"] TO 0.
         SET g["lf_cap"] TO 0.
         SET g["ox_cap"] TO 0.
-    }
-    FOR p IN plist {
-        LOCAL dkey IS aoso_topo_group_key(p:DECOUPLEDIN).
-        IF AOSO_TOPO_GROUPS:HASKEY(dkey) {
-            LOCAL g IS AOSO_TOPO_GROUPS[dkey].
-            SET g["wet_mass"] TO g["wet_mass"] + p:MASS.
-            SET g["dry_mass"] TO g["dry_mass"] + p:DRYMASS.
-            FOR res_item IN p:RESOURCES {
-                LOCAL rn IS res_item:NAME.
-                LOCAL amt IS res_item:AMOUNT.
-                LOCAL cap IS res_item:CAPACITY.
-                IF rn = "LiquidFuel" {
-                    SET g["lf"] TO g["lf"] + amt.
-                    SET g["lf_cap"] TO g["lf_cap"] + cap.
+        IF g:HASKEY("dry_mass") {
+            SET g["wet_mass"] TO g["dry_mass"].
+        } ELSE {
+            SET g["wet_mass"] TO 0.
+        }
+        IF g:HASKEY("res_uids") {
+            FOR uid_s IN g["res_uids"] {
+                LOCAL prt IS 0.
+                IF AOSO_PART_BY_UID:HASKEY(uid_s) { SET prt TO AOSO_PART_BY_UID[uid_s]. }
+                IF prt:ISTYPE("Part") {
+                    SET g["wet_mass"] TO g["wet_mass"] + (prt:MASS - prt:DRYMASS).
+                    FOR res_item IN prt:RESOURCES {
+                        LOCAL rn IS res_item:NAME.
+                        LOCAL amt IS res_item:AMOUNT.
+                        LOCAL cap IS res_item:CAPACITY.
+                        IF rn = "LiquidFuel" {
+                            SET g["lf"] TO g["lf"] + amt.
+                            SET g["lf_cap"] TO g["lf_cap"] + cap.
+                        }
+                        IF rn = "Oxidizer" {
+                            SET g["ox"] TO g["ox"] + amt.
+                            SET g["ox_cap"] TO g["ox_cap"] + cap.
+                        }
+                        IF rn = "SolidFuel" { SET g["sf"] TO g["sf"] + amt. }
+                        IF rn = "XenonGas" { SET g["xe"] TO g["xe"] + amt. }
+                        IF rn = "MonoPropellant" { SET g["mp"] TO g["mp"] + amt. }
+                    }
+                } ELSE {
+                    aoso_cache_log("topo_dyn", "miss", fp_now + "|uid").
+                    RETURN aoso_topo_rebuild().
                 }
-                IF rn = "Oxidizer" {
-                    SET g["ox"] TO g["ox"] + amt.
-                    SET g["ox_cap"] TO g["ox_cap"] + cap.
-                }
-                IF rn = "SolidFuel" { SET g["sf"] TO g["sf"] + amt. }
-                IF rn = "XenonGas" { SET g["xe"] TO g["xe"] + amt. }
-                IF rn = "MonoPropellant" { SET g["mp"] TO g["mp"] + amt. }
             }
         }
     }
     SET AOSO_TOPO["mass"] TO SHIP:MASS.
     SET AOSO_TOPO["thrust"] TO SHIP:AVAILABLETHRUST.
     SET AOSO_TOPO["dyn_rev"] TO AOSO_TOPO["dyn_rev"] + 1.
+    aoso_topo_note_dyn_snap().
     IF AOSO_TOPO:HASKEY("layers") {
         SET AOSO_TOPO["next_stage"] TO aoso_topo_predict_drop(AOSO_TOPO["layers"]).
     }
+    aoso_cache_log("topo_dyn", "miss", fp_now).
     RETURN AOSO_TOPO.
 }
 

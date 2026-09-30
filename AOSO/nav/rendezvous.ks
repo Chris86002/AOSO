@@ -10,6 +10,8 @@
 // the same orbit, near the target" nav problem.
 
 GLOBAL AOSO_POLAR_MIDCOURSE_TUNING IS FALSE.
+GLOBAL AOSO_INTERCEPT_LAST IS LEXICON().
+GLOBAL AOSO_INTERCEPT_EPOCH IS 0.
 
 // Signed phase angle (deg) from ship to target around the body, positive
 // when the target is ahead of the ship in the direction of the ship's
@@ -715,6 +717,10 @@ FUNCTION aoso_rendezvous_porkchop_search {
         RETURN 0.
     }
 
+    IF DEFINED AOSO_LAMBERT_MEMO { SET AOSO_LAMBERT_MEMO TO LEXICON(). }
+    LOCAL reused IS aoso_intercept_reuse(hop).
+    IF reused:ISTYPE("Node") { RETURN reused. }
+
     LOCAL nd IS NODE(t_soon, 0, 0, 10).
     ADD nd.
 
@@ -927,8 +933,53 @@ FUNCTION aoso_rendezvous_porkchop_search {
     aoso_rendezvous_aim_prograde_departure(nd, hop).
     aoso_log_info("RENDEZVOUS", "Porkchop picked cheapest capture: PE " + ROUND(aoso_rendezvous_orbit_pe(nd:ORBIT, hop), 0) + "m dv=" + ROUND(nd:DELTAV:MAG, 1) +
         " m/s in " + ROUND(nd:ETA, 0) + "s (compared " + n_tried + ", capture " + n_cap + ").").
-
+    aoso_intercept_store(hop, nd, win_pe).
     RETURN nd.
+}
+
+// Last KS-fallback intercept. Reuse only for the same hop and epoch bucket,
+// and only if no SOI / maneuver-fail / vehicle event has bumped the epoch.
+// Finalize still owns the PE gate; a cache hit cannot approve a burn.
+FUNCTION aoso_intercept_reuse {
+    PARAMETER hop.
+    IF NOT AOSO_INTERCEPT_LAST:HASKEY("to") { RETURN 0. }
+    IF AOSO_INTERCEPT_LAST["to"] <> hop:NAME { RETURN 0. }
+    IF AOSO_INTERCEPT_LAST["from"] <> SHIP:BODY:NAME { RETURN 0. }
+    IF AOSO_INTERCEPT_LAST["epoch"] <> AOSO_INTERCEPT_EPOCH { RETURN 0. }
+    LOCAL bucket IS FLOOR(TIME:SECONDS / 120).
+    IF AOSO_INTERCEPT_LAST["epoch_bucket"] <> bucket { RETURN 0. }
+    LOCAL ut_re IS AOSO_INTERCEPT_LAST["ut"].
+    IF ut_re < TIME:SECONDS + 30 { RETURN 0. }
+    LOCAL nd_re IS NODE(ut_re, AOSO_INTERCEPT_LAST["rad"], AOSO_INTERCEPT_LAST["nml"], AOSO_INTERCEPT_LAST["pg"]).
+    ADD nd_re.
+    IF aoso_rendezvous_finalize_node(nd_re, hop) {
+        aoso_cache_log("lambert", "hit", hop:NAME + "|" + bucket).
+        RETURN nd_re.
+    }
+    REMOVE nd_re.
+    aoso_cache_log("lambert", "miss", hop:NAME + "|pe").
+    RETURN 0.
+}
+
+FUNCTION aoso_intercept_store {
+    PARAMETER hop.
+    PARAMETER nd_ok.
+    PARAMETER pe_ok.
+    LOCAL park_m IS PERIAPSIS.
+    IF park_m < 0 { SET park_m TO ALTITUDE. }
+    SET AOSO_INTERCEPT_LAST TO LEXICON(
+        "from", SHIP:BODY:NAME,
+        "to", hop:NAME,
+        "epoch_bucket", FLOOR(TIME:SECONDS / 120),
+        "epoch", AOSO_INTERCEPT_EPOCH,
+        "park_alt", park_m,
+        "pe", pe_ok,
+        "dv", nd_ok:DELTAV:MAG,
+        "ut", TIME:SECONDS + nd_ok:ETA,
+        "pg", nd_ok:PROGRADE,
+        "rad", nd_ok:RADIALOUT,
+        "nml", nd_ok:NORMAL
+    ).
 }
 
 FUNCTION aoso_rendezvous_porkchop_score {

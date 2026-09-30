@@ -34,14 +34,16 @@ FUNCTION aoso_profile_snapshot {
     LOCAL tank_n IS 0.
     LOCAL drill_n IS 0.
     LOCAL solar_n IS 0.
+    LOCAL topo_ready IS FALSE.
     IF DEFINED AOSO_TOPO {
-        IF AOSO_TOPO:HASKEY("hw") {
+        IF AOSO_TOPO:HASKEY("rev") {
             SET tank_n TO aoso_topo_hw_get("tanks", 0).
             SET drill_n TO aoso_topo_hw_get("drill", 0).
             SET solar_n TO aoso_topo_hw_get("solar", 0).
+            SET topo_ready TO TRUE.
         }
     }
-    IF tank_n + drill_n + solar_n = 0 {
+    IF NOT topo_ready {
         FOR p IN plist {
             IF p:HASMODULE("ModuleDeployableSolarPanel") { SET solar_n TO solar_n + 1. }
             IF p:HASMODULE("ModuleResourceHarvester") { SET drill_n TO drill_n + 1. }
@@ -105,9 +107,8 @@ FUNCTION aoso_profile_refresh {
     aoso_prof_start("profile_refresh").
     LOCAL prev_fp IS "".
     IF AOSO_PROFILE:HASKEY("fingerprint") { SET prev_fp TO AOSO_PROFILE["fingerprint"]. }
-    aoso_parts_cache_invalidate().
     IF DEFINED AOSO_TOPO {
-        aoso_topo_refresh(TRUE).
+        aoso_topo_refresh(FALSE).
     }
     aoso_vessel_scan().
     LOCAL persist_parts IS TRUE.
@@ -141,7 +142,7 @@ FUNCTION aoso_profile_refresh {
     LOCAL has_rcs IS FALSE.
     LOCAL used_topo IS FALSE.
     IF DEFINED AOSO_TOPO {
-        IF AOSO_TOPO:HASKEY("hw") {
+        IF AOSO_TOPO:HASKEY("rev") {
             LOCAL hw IS AOSO_TOPO["hw"].
             SET solar_count TO hw["solar"].
             SET generator_count TO hw["generator"].

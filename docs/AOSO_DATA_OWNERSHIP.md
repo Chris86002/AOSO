@@ -5,7 +5,9 @@ One writer per fact. Readers go through the owning accessor.
 | Fact | Owner | Readers |
 |---|---|---|
 | Part lists / engine list / docks | `parts.ks` cache | topology, staging, capabilities |
+| uid → live part | `parts.ks` `AOSO_PART_BY_UID` | `aoso_topo_refresh_dynamic` |
 | Structure, hw census, stage groups, prop roles | `topology.ks` | profile, vessel, classify, cert, surface, staging log |
+| Typed part-uid lists (`idx`) | `topology.ks` | dynamic fuel walk |
 | Dynamic group fuel / mass | `aoso_topo_refresh_dynamic` | capabilities stage dV |
 | Capability flags / live TWR / dV stack | `capabilities.ks` + `budget.ks` | planner, feas |
 | Future LANDER/CORE TWR | `aoso_caps_surface_twr_for_config` | feas, cert, depart |
@@ -13,6 +15,10 @@ One writer per fact. Readers go through the owning accessor.
 | Class label | `classify.ks` (`AOSO_CLASS_LAST`) | CTX, route |
 | World / body numbers | `bodydb.ks` + `world/body.ks` | feas, cert, matrix |
 | Sequential leftover / projected state | `project.ks` `AOSO_PROJECT_LAST` | feas, matrix leftover, score, cert, assure, surface fill |
+| Feasibility memo (RAM) | `feasibility.ks` `AOSO_FEAS_MEMO` | matrix, tour |
+| Window statics (RAM) | `windows.ks` | route, project time |
+| KS Lambert memo (RAM) | `lambert.ks` `AOSO_LAMBERT_MEMO` | porkchop KS fallback |
+| Last intercept candidate (RAM) | `rendezvous.ks` `AOSO_INTERCEPT_LAST` | KS porkchop reuse; PE gate still finalizes |
 | Experience models | `experience.ks` keyed `cfg_id\|body\|OP` | feas / project costs |
 | Ascent leftover-LF diary | `learn.ks` (demoted) | operator stats only |
 | Ascent start-speed search | `ascent_opt.ks` | pad trials |

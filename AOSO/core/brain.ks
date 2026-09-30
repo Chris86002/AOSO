@@ -94,18 +94,34 @@ FUNCTION aoso_brain_wait_think {
 FUNCTION aoso_brain_on_event {
     PARAMETER ev.
     LOCAL etype IS ev["type"].
-    IF etype = "STAGE_COMPLETE" { aoso_ctx_mark_vehicle(). aoso_ctx_mark_topo(). }
-    IF etype = "VEHICLE_CHANGED" { aoso_ctx_mark_vehicle(). aoso_ctx_mark_topo(). }
+    IF etype = "STAGE_COMPLETE" {
+        IF DEFINED AOSO_CACHE_VALID { SET AOSO_CACHE_VALID TO FALSE. }
+        aoso_ctx_mark_vehicle().
+        aoso_ctx_mark_topo().
+    }
+    IF etype = "VEHICLE_CHANGED" {
+        IF DEFINED AOSO_CACHE_VALID { SET AOSO_CACHE_VALID TO FALSE. }
+        IF DEFINED AOSO_INTERCEPT_EPOCH { SET AOSO_INTERCEPT_EPOCH TO AOSO_INTERCEPT_EPOCH + 1. }
+        aoso_ctx_mark_vehicle().
+        aoso_ctx_mark_topo().
+    }
     IF etype = "PROFILE_UPDATED" { aoso_ctx_mark_budget(). }
     IF etype = "CAPABILITY_CHANGED" { aoso_ctx_mark_vehicle(). }
-    IF etype = "SOI_CHANGED" { aoso_ctx_mark_world(). aoso_brain_consider_replan("soi"). }
+    IF etype = "SOI_CHANGED" {
+        IF DEFINED AOSO_INTERCEPT_EPOCH { SET AOSO_INTERCEPT_EPOCH TO AOSO_INTERCEPT_EPOCH + 1. }
+        aoso_ctx_mark_world().
+        aoso_brain_consider_replan("soi").
+    }
     IF etype = "ORBIT_ACHIEVED" { aoso_ctx_mark_budget(). aoso_brain_consider_replan("orbit"). }
     IF etype = "ASCENT_SUCCESS" { aoso_ctx_mark_budget(). aoso_brain_consider_replan("ascent"). }
     IF etype = "REFUEL_SUCCESS" { aoso_ctx_mark_budget(). aoso_brain_consider_replan("refuel"). }
     IF etype = "LANDING_SUCCESS" { aoso_ctx_mark_world(). }
     IF etype = "TAKEOFF_COMPLETE" { aoso_ctx_mark_budget(). aoso_brain_consider_replan("takeoff"). }
     IF etype = "ENGINE_ANOMALY" { aoso_ctx_mark_vehicle(). aoso_brain_consider_replan("engine"). }
-    IF etype = "MANEUVER_FAILED" { aoso_brain_consider_replan("maneuver_fail"). }
+    IF etype = "MANEUVER_FAILED" {
+        IF DEFINED AOSO_INTERCEPT_EPOCH { SET AOSO_INTERCEPT_EPOCH TO AOSO_INTERCEPT_EPOCH + 1. }
+        aoso_brain_consider_replan("maneuver_fail").
+    }
     IF etype = "MODEL_UPDATED" {
         aoso_ctx_dirty("dirty_feas").
         aoso_ctx_dirty("dirty_opp").

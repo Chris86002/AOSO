@@ -12,7 +12,7 @@ FUNCTION aoso_classify_engine_flags {
     LOCAL lifting_n IS 0.
     LOCAL intake_n IS 0.
     IF DEFINED AOSO_TOPO {
-        IF AOSO_TOPO:HASKEY("hw") {
+        IF AOSO_TOPO:HASKEY("rev") {
             LOCAL hw IS AOSO_TOPO["hw"].
             IF hw["nuke"] > 0 { SET has_nuke TO TRUE. }
             IF hw["ion"] > 0 { SET has_ion TO TRUE. }

@@ -9,6 +9,7 @@ GLOBAL AOSO_LOG_MIN_LEVEL IS 2.          // INFO by default
 GLOBAL AOSO_LOG_LAST_FLUSH IS 0.
 GLOBAL AOSO_LOG_LAST IS LEXICON().
 GLOBAL AOSO_LOG_QUIET_PRINT IS FALSE.
+GLOBAL AOSO_LOG_CACHE_AT IS LEXICON().
 
 FUNCTION aoso_log_set_level {
     PARAMETER level_name.
@@ -104,6 +105,24 @@ FUNCTION aoso_log_flush {
 
 FUNCTION aoso_log_debug { PARAMETER tag. PARAMETER msg. aoso_log("DEBUG", tag, msg). }
 FUNCTION aoso_log_info  { PARAMETER tag. PARAMETER msg. aoso_log("INFO", tag, msg). }
+
+// Hit/miss breadcrumb for RAM caches. Debug only, and hits are throttled
+// so a cruise tick that rechecks the parts fingerprint does not flood.
+FUNCTION aoso_cache_log {
+    PARAMETER cls.
+    PARAMETER how.
+    PARAMETER key_s.
+    LOCAL stamp IS cls + ":" + how.
+    LOCAL now_s IS 0.
+    IF DEFINED TIME { SET now_s TO TIME:SECONDS. }
+    IF how = "hit" {
+        IF AOSO_LOG_CACHE_AT:HASKEY(stamp) {
+            IF now_s - AOSO_LOG_CACHE_AT[stamp] < 8 { RETURN. }
+        }
+    }
+    SET AOSO_LOG_CACHE_AT[stamp] TO now_s.
+    aoso_log_debug("CACHE", how + " " + cls + " key=" + key_s).
+}
 
 // INFO that is preserved in the file log but intentionally not printed to
 // the terminal. Useful for long-coast breadcrumbs: the operator should see

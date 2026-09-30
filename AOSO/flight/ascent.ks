@@ -18,6 +18,7 @@ GLOBAL AOSO_FPA_UT IS -1.
 GLOBAL AOSO_FPA_V IS 90.
 GLOBAL AOSO_ATM_IN_UT IS -1.
 GLOBAL AOSO_ATM_IN_V IS FALSE.
+GLOBAL AOSO_ASCENT_LAYOUT IS LEXICON().
 
 FUNCTION aoso_ascent_flight_path_pitch {
     IF AOSO_FPA_UT = TIME:SECONDS { RETURN AOSO_FPA_V. }
@@ -44,7 +45,23 @@ FUNCTION aoso_ascent_in_atmosphere {
     RETURN in_air.
 }
 
+FUNCTION aoso_ascent_layout_rev {
+    IF DEFINED AOSO_TOPO {
+        IF AOSO_TOPO:HASKEY("rev") { RETURN AOSO_TOPO["rev"]. }
+    }
+    RETURN -1.
+}
+
 FUNCTION aoso_ascent_stack_layout {
+    LOCAL rev_now IS aoso_ascent_layout_rev().
+    IF AOSO_ASCENT_LAYOUT:HASKEY("rev") {
+        IF AOSO_ASCENT_LAYOUT["rev"] = rev_now {
+            IF rev_now >= 0 {
+                aoso_cache_log("parts", "hit", "stack|" + rev_now).
+                RETURN AOSO_ASCENT_LAYOUT.
+            }
+        }
+    }
     LOCAL plist IS aoso_parts_list().
     LOCAL axis IS SHIP:UP:VECTOR.
     LOCAL min_along IS 0.
@@ -61,20 +78,35 @@ FUNCTION aoso_ascent_stack_layout {
             IF along > max_along { SET max_along TO along. }
         }
     }
-    IF NOT seen { RETURN LEXICON("com_frac", 0.5, "length", 0). }
-    LOCAL span IS max_along - min_along.
-    IF span < 0.1 { RETURN LEXICON("com_frac", 0.5, "length", span). }
-    RETURN LEXICON("com_frac", (0 - min_along) / span, "length", span).
+    LOCAL layout IS LEXICON("com_frac", 0.5, "length", 0, "rev", rev_now).
+    IF seen {
+        LOCAL span IS max_along - min_along.
+        IF span >= 0.1 {
+            SET layout["com_frac"] TO (0 - min_along) / span.
+            SET layout["length"] TO span.
+        } ELSE {
+            SET layout["length"] TO span.
+        }
+    }
+    SET AOSO_ASCENT_LAYOUT TO layout.
+    aoso_cache_log("parts", "miss", "stack|" + rev_now).
+    RETURN layout.
 }
 
 FUNCTION aoso_ascent_cache_stack_layout {
     PARAMETER data.
-    IF data:HASKEY("com_frac") {
-        IF data["com_frac"] >= 0 { RETURN. }
+    LOCAL rev_now IS aoso_ascent_layout_rev().
+    IF data:HASKEY("layout_rev") {
+        IF data["layout_rev"] = rev_now {
+            IF data:HASKEY("com_frac") {
+                IF data["com_frac"] >= 0 { RETURN. }
+            }
+        }
     }
     LOCAL layout IS aoso_ascent_stack_layout().
     SET data["com_frac"] TO layout["com_frac"].
     SET data["stack_length"] TO layout["length"].
+    SET data["layout_rev"] TO rev_now.
     aoso_log_info("ASCENT", "Stack CoM frac=" + ROUND(data["com_frac"], 2) + " length=" + ROUND(data["stack_length"], 1) + " m (0.5=mid, >0.58=nose-heavy).").
 
     // Damp a long nose-control stack while we own steering. Restore on

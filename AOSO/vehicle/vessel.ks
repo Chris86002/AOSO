@@ -56,7 +56,7 @@ FUNCTION aoso_vessel_scan {
     LOCAL decoupler_count IS 0.
     LOCAL used_topo IS FALSE.
     IF DEFINED AOSO_TOPO {
-        IF AOSO_TOPO:HASKEY("hw") {
+        IF AOSO_TOPO:HASKEY("rev") {
             LOCAL hw IS AOSO_TOPO["hw"].
             IF hw["rcs"] > 0 { SET has_rcs TO TRUE. }
             IF hw["solar"] > 0 { SET has_solar TO TRUE. }

@@ -15,6 +15,31 @@
 // check. Every mission benefits from it, not just tour.ks.
 
 GLOBAL AOSO_FEAS_LAST IS LEXICON().
+GLOBAL AOSO_FEAS_MEMO IS LEXICON().
+
+FUNCTION aoso_feas_memo_key {
+    PARAMETER dest_name.
+    LOCAL rev_t IS 0.
+    LOCAL rev_b IS 0.
+    LOCAL rev_w IS 0.
+    LOCAL rev_x IS 0.
+    IF DEFINED AOSO_CTX {
+        SET rev_t TO aoso_ctx_get("rev_topo", 0).
+        SET rev_b TO aoso_ctx_get("rev_budget", 0).
+        SET rev_w TO aoso_ctx_get("rev_world", 0).
+        SET rev_x TO aoso_ctx_get("rev_xp", 0).
+    }
+    RETURN dest_name + "|" + rev_t + "|" + rev_b + "|" + rev_w + "|" + rev_x.
+}
+
+FUNCTION aoso_feas_memo_store {
+    PARAMETER dest_name.
+    PARAMETER report.
+    IF AOSO_FEAS_MEMO:LENGTH > 48 { SET AOSO_FEAS_MEMO TO LEXICON(). }
+    LOCAL key_s IS aoso_feas_memo_key(dest_name).
+    SET AOSO_FEAS_MEMO[key_s] TO report.
+    aoso_cache_log("feas", "miss", key_s).
+}
 
 FUNCTION aoso_feas_body_stat {
     PARAMETER body_name.
@@ -472,16 +497,21 @@ FUNCTION aoso_feas_evaluate {
         "at", TIME:SECONDS
     ).
     SET AOSO_FEAS_LAST TO report.
+    aoso_feas_memo_store(dest_name, report).
     RETURN report.
 }
 
 FUNCTION aoso_feas_cached {
     PARAMETER dest_name.
-    IF AOSO_FEAS_LAST:HASKEY("body") {
-        IF AOSO_FEAS_LAST["body"] = dest_name {
-            IF AOSO_FEAS_LAST:HASKEY("at") {
-                IF TIME:SECONDS - AOSO_FEAS_LAST["at"] < 10 { RETURN AOSO_FEAS_LAST. }
-            }
+    LOCAL key_s IS aoso_feas_memo_key(dest_name).
+    IF AOSO_FEAS_MEMO:HASKEY(key_s) {
+        aoso_cache_log("feas", "hit", key_s).
+        SET AOSO_FEAS_LAST TO AOSO_FEAS_MEMO[key_s].
+        RETURN AOSO_FEAS_LAST.
+    }
+    IF NOT aoso_ctx_heavy_ok() {
+        IF AOSO_FEAS_LAST:HASKEY("body") {
+            IF AOSO_FEAS_LAST["body"] = dest_name { RETURN AOSO_FEAS_LAST. }
         }
     }
     LOCAL report IS aoso_feas_evaluate(dest_name).

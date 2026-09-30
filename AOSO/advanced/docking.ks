@@ -208,6 +208,11 @@ FUNCTION aoso_docking_done_entry {
     PARAMETER data.
     aoso_docking_zero_translation().
     aoso_steer_release().
+    IF DEFINED AOSO_CACHE_VALID { SET AOSO_CACHE_VALID TO FALSE. }
+    IF DEFINED AOSO_TOPO { aoso_topo_refresh(FALSE). }
+    IF DEFINED AOSO_EVENTS {
+        aoso_event_publish("VEHICLE_CHANGED", "docking", "docked").
+    }
     aoso_log_info("DOCKING", "Docked.").
 }
 

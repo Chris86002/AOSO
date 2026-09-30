@@ -31,9 +31,12 @@ walks; consumers should use groups, not ad-hoc parent chasing.
 
 ## Fingerprint vs revisions
 
-- **Fingerprint** `fp`: `parts|engines|STAGE:NUMBER|rootUID|docks|controlUID`
+- **Fingerprint** `fp`: `partcount|STAGE:NUMBER|rootUID|controlUID`
+  (`aoso_parts_cache_fp`, also `aoso_topo_fp_now`). Part count, not
+  `STAGE:NUMBER` alone, so a fairing or undock refreshes parts and topology.
 - **`rev`**: increments on a structural rebuild
-- **`dyn_rev`**: increments when fuel/mass/thrust changed without a rebuild
+- **`dyn_rev`**: increments when fuel/mass/thrust changed without a rebuild.
+  Unchanged mass and vessel LF/OX leave `dyn_rev` alone.
 
 `aoso_topo_refresh()` rebuilds only when `fp` changes (or `force`).
 Fuel drain does **not** rebuild structure.
@@ -41,7 +44,7 @@ Fuel drain does **not** rebuild structure.
 | Call | What |
 |---|---|
 | `aoso_topo_refresh(FALSE)` | rebuild if fp moved, else `touch_dynamic` (mass/thrust only) |
-| `aoso_topo_refresh_dynamic()` | rewrite group fuel/mass in place, bump `dyn_rev` |
+| `aoso_topo_refresh_dynamic()` | rewrite group fuel from cached tank UIDs, bump `dyn_rev` only if mass or LF/OX moved |
 | `aoso_topo_touch_dynamic()` | mass/thrust only (cheap, every fp-stable refresh) |
 
 Capabilities refresh calls `refresh_dynamic` so stage dV is not stale.
@@ -119,7 +122,8 @@ with live mass.
 
 ## When to rebuild
 
-Full rebuild: boot, `profile_refresh`, fingerprint mismatch (stage,
-dock, part count, control point), manual `aoso_topo_refresh(TRUE)`.
+Full rebuild: boot, fingerprint mismatch (stage, part count, root, control
+point, dock), manual `aoso_topo_refresh(TRUE)`. Profile refresh calls
+`aoso_topo_refresh(FALSE)` and only rebuilds when that fingerprint moved.
 
 Never rebuild every physics tick.

@@ -222,6 +222,21 @@ FUNCTION aoso_ctx_mark_world {
     aoso_ctx_dirty("dirty_plan").
 }
 
+// Heavy strategy (matrix, project, window-static fill) may run when the
+// CPU is calm, or when it is only HIGH and the ship is actually quiet.
+// CRITICAL (level 3) is flight and safety only.
+FUNCTION aoso_ctx_heavy_ok {
+    LOCAL lvl IS 0.
+    IF DEFINED AOSO_CPU_LEVEL { SET lvl TO AOSO_CPU_LEVEL. }
+    IF lvl >= 3 { RETURN FALSE. }
+    IF lvl >= 2 {
+        IF DEFINED AOSO_BRAIN {
+            IF NOT aoso_brain_is_quiet() { RETURN FALSE. }
+        }
+    }
+    RETURN TRUE.
+}
+
 FUNCTION aoso_ctx_mark_plan {
     aoso_ctx_bump("rev_plan").
     aoso_ctx_dirty("dirty_plan").

@@ -389,14 +389,27 @@ FUNCTION aoso_selftest {
     IF DEFINED AOSO_TOPO {
         LOCAL fp_now IS aoso_topo_fp().
         SET fail TO aoso_selftest_check("topo fp string", fp_now:ISTYPE("String"), fail).
+        IF DEFINED AOSO_PARTS_FP {
+            LOCAL fp_live IS aoso_parts_cache_fp().
+            SET fail TO aoso_selftest_check("parts fp matches topo", fp_now = fp_live, fail).
+        }
         IF AOSO_TOPO:HASKEY("rev") {
             LOCAL rev0 IS AOSO_TOPO["rev"].
-            LOCAL dyn0 IS AOSO_TOPO["dyn_rev"].
             aoso_topo_refresh_dynamic().
             SET fail TO aoso_selftest_check("topo dyn fuel no struct rebuild", AOSO_TOPO["rev"] = rev0, fail).
-            SET fail TO aoso_selftest_check("topo dyn_rev increments", AOSO_TOPO["dyn_rev"] > dyn0, fail).
+            LOCAL dyn1 IS AOSO_TOPO["dyn_rev"].
+            aoso_topo_refresh_dynamic().
+            SET fail TO aoso_selftest_check("topo unchanged fuel keeps dyn_rev", AOSO_TOPO["dyn_rev"] = dyn1, fail).
+            aoso_topo_refresh_dynamic(TRUE).
+            SET fail TO aoso_selftest_check("topo forced dyn keeps rev", AOSO_TOPO["rev"] = rev0, fail).
+            SET fail TO aoso_selftest_check("topo dyn_rev increments", AOSO_TOPO["dyn_rev"] > dyn1, fail).
         }
     }
+    LOCAL feas_k1 IS aoso_feas_memo_key("Mun").
+    LOCAL feas_k2 IS aoso_feas_memo_key("Mun").
+    SET fail TO aoso_selftest_check("feas memo key stable", feas_k1 = feas_k2, fail).
+    LOCAL proj_k IS aoso_project_memo_key(LIST("Minmus", "Mun")).
+    SET fail TO aoso_selftest_check("project memo key has plan", proj_k:CONTAINS("Minmus"), fail).
     IF DEFINED AOSO_CERT_LAST {
         LOCAL cert IS aoso_cert_eval("grand_tour").
         SET fail TO aoso_selftest_check("cert has status", cert:HASKEY("status"), fail).

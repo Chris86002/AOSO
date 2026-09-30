@@ -5,6 +5,8 @@
 // intercept search. Not a copy of RSVP/PyKep; equations are textbook
 // (Vallado / Curtis). kOS SIN/COS are degrees.
 
+GLOBAL AOSO_LAMBERT_MEMO IS LEXICON().
+
 FUNCTION aoso_math_exp {
     PARAMETER x.
     IF x > 22 { RETURN 3.6e9. }
@@ -150,10 +152,51 @@ FUNCTION aoso_lambert_tof_tol {
     RETURN tol.
 }
 
+FUNCTION aoso_lambert_quant {
+    PARAMETER coord.
+    RETURN ROUND(coord / 1000, 0).
+}
+
+FUNCTION aoso_lambert_memo_key {
+    PARAMETER pos1.
+    PARAMETER pos2.
+    PARAMETER tof_s.
+    PARAMETER mu.
+    PARAMETER long_way.
+    LOCAL way_n IS 0.
+    IF long_way { SET way_n TO 1. }
+    RETURN aoso_lambert_quant(pos1:X) + "," + aoso_lambert_quant(pos1:Y) + "," + aoso_lambert_quant(pos1:Z) + "|" +
+        aoso_lambert_quant(pos2:X) + "," + aoso_lambert_quant(pos2:Y) + "," + aoso_lambert_quant(pos2:Z) + "|" +
+        ROUND(tof_s, 0) + "|" + ROUND(mu, 0) + "|" + way_n.
+}
+
+FUNCTION aoso_lambert_memo_clear {
+    SET AOSO_LAMBERT_MEMO TO LEXICON().
+}
+
 // Returns a lexicon: ok, vel1, vel2. vel1 is inertial velocity at pos1.
 // Pure KerboScript oracle / fallback. Native math goes through
-// aoso_lambert_solve.
+// aoso_lambert_solve. Repeated calls inside one search hit the memo.
 FUNCTION aoso_lambert_solve_ks {
+    PARAMETER pos1.
+    PARAMETER pos2.
+    PARAMETER tof_s.
+    PARAMETER mu.
+    PARAMETER long_way IS FALSE.
+
+    LOCAL memo_key IS aoso_lambert_memo_key(pos1, pos2, tof_s, mu, long_way).
+    IF AOSO_LAMBERT_MEMO:HASKEY(memo_key) {
+        aoso_cache_log("lambert", "hit", memo_key).
+        RETURN AOSO_LAMBERT_MEMO[memo_key].
+    }
+    LOCAL solved IS aoso_lambert_solve_ks_compute(pos1, pos2, tof_s, mu, long_way).
+    IF AOSO_LAMBERT_MEMO:LENGTH > 48 { SET AOSO_LAMBERT_MEMO TO LEXICON(). }
+    SET AOSO_LAMBERT_MEMO[memo_key] TO solved.
+    aoso_cache_log("lambert", "miss", memo_key).
+    RETURN solved.
+}
+
+FUNCTION aoso_lambert_solve_ks_compute {
     PARAMETER pos1.
     PARAMETER pos2.
     PARAMETER tof_s.
