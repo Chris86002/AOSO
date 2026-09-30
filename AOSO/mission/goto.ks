@@ -453,8 +453,17 @@ FUNCTION aoso_goto_plan_entry {
     }
     aoso_goto_ensure_transfer_action(data, action_hop).
 
-    LOCAL rel_incl IS aoso_orbit_relative_inclination_deg(SHIP, hop).
-    LOCAL match_plane IS TRUE.
+    // Match only orbits about the same primary. Parent escape and planetary
+    // ejection own their departure geometry; comparing a moon parking plane
+    // with its parent's solar plane can turn a survey orbit into an escape.
+    LOCAL match_plane IS aoso_planechange_same_primary(SHIP:BODY:NAME, hop:BODY:NAME).
+    LOCAL rel_incl IS 0.
+    IF match_plane {
+        SET rel_incl TO aoso_orbit_relative_inclination_deg(SHIP, hop).
+    } ELSE {
+        aoso_log_info("GOTO", "Skipping cross-body plane match " + SHIP:BODY:NAME +
+            " -> " + hop:NAME + "; using departure planner.").
+    }
     IF rel_incl > 2 {
         IF match_plane {
             LOCAL nd_pc IS aoso_planechange_add_node_for_target(hop).
@@ -538,6 +547,9 @@ FUNCTION aoso_goto_plan_entry {
     // Escape toward parent.
     IF SHIP:BODY:NAME <> SUN:NAME {
         IF hop:NAME = SHIP:BODY:BODY:NAME {
+            aoso_log_info("GOTO", "Planning intentional escape from " + SHIP:BODY:NAME +
+                " to " + hop:NAME + " (goal " + goal:NAME + ").").
+            PRINT "TOUR DEPART " + SHIP:BODY:NAME + " -> " + hop:NAME + " toward " + goal:NAME + ".".
             LOCAL nd_e IS aoso_moonescape_add_escape_node(aoso_goto_parking_alt(hop)).
             IF nd_e = 0 {
                 aoso_state_abort(AOSO_GOTO).

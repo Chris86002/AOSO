@@ -2,6 +2,50 @@
 
 Updated: 2026-09-30
 
+## Minmus unintended plane-match escape (033129 run)
+
+Capture succeeded: at UT 1531959.95 the vessel was bound at roughly
+17.3 km altitude, inclination 89.271 deg, eccentricity 0.001. POLAR added
+no burn. The survey/deorbit search then rejected two targets; the second
+best miss was 36,419 m against a 6,000 m limit. TOUR marked Minmus ORBITED
+and advanced toward Mun. This landing reachability limitation remains;
+the safety gate was not weakened.
+
+The faulty burn began at UT 1537436.76: GOTO selected the parent hop
+Minmus -> Kerbin and compared the Minmus parking plane with Kerbin's
+solar plane. It applied -243.48 m/s normal only, opening eccentricity
+from 0.0008 to 2.5952. This was neither capture nor survey polarization.
+
+Fixes:
+
+- GOTO computes relative inclination only when ship and target orbit the
+  same primary. Cross-body departures go to escape/ejection planning.
+- Both transfer-plane helpers also reject mismatched primaries so direct
+  mission calls cannot bypass the routing gate.
+- Dedicated target-plane turns use normal = speed*sin(angle) and
+  prograde = speed*(cos(angle)-1), rather than applying the total turn
+  magnitude entirely along normal. Trial signs must improve inclination,
+  remain elliptic, clear the safe PE floor/atmosphere, and keep AP inside
+  the current SOI. The final node is checked again and uses the selected
+  absolute UT rather than moving its epoch by the trial-search duration.
+- Terminal messages make landing skips and intentional parent departures
+  visible. A tour may still leave Minmus intentionally after rejecting
+  landing; this change removes the accidental plane-match escape.
+
+Validation: touched scripts passed delimiter, forbidden-name, IF NOT
+DEFINED, function/global collision and whitespace checks. A deterministic
+circular-orbit model reproduces escape from the logged normal burn and
+verifies speed conservation for turns from 0 through 180 deg. Added
+vessel-safe selftests for primary matching and large-turn components;
+these selftests and the navigation flow have not been run in KSP/kOS.
+
+Next-run signatures: no `Plane match first` for Minmus -> Kerbin. Expect
+`Skipping cross-body plane match ... using departure planner`, followed
+by `Planning intentional escape ... (goal Mun)` and MOONESCAPE if the
+tour still advances after LAND_TARGET_REJECT. Successful landing remains
+subject to finding a safe reachable site. For same-primary plane turns,
+expect both normal and prograde components and `bound orbit verified`.
+
 ## True suicide-burn controller (2026-09-30)
 
 The previous landing controller was a powered descent, not a suicide burn. It

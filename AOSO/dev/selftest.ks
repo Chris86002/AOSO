@@ -26,6 +26,7 @@ RUN ONCE "AOSO/surface/operations".
 RUN ONCE "AOSO/hardening/watchdog".
 RUN ONCE "AOSO/interplanetary/bodydb".
 RUN ONCE "AOSO/nav/orbit".
+RUN ONCE "AOSO/nav/planechange".
 RUN ONCE "AOSO/landing/impact".
 RUN ONCE "AOSO/nav/lambert".
 RUN ONCE "AOSO/interplanetary/transfer".
@@ -50,6 +51,23 @@ FUNCTION aoso_selftest {
     LOCAL fail IS 0.
 
     aoso_event_init().
+
+    SET fail TO aoso_selftest_check("plane match Kerbin ship to Minmus orbit allowed",
+        aoso_planechange_same_primary("Kerbin", "Kerbin"), fail).
+    SET fail TO aoso_selftest_check("plane match Minmus ship to Kerbin solar orbit refused",
+        NOT aoso_planechange_same_primary("Minmus", "Sun"), fail).
+    SET fail TO aoso_selftest_check("plane match Kerbin ship to Duna solar orbit refused",
+        NOT aoso_planechange_same_primary("Kerbin", "Sun"), fail).
+    SET fail TO aoso_selftest_check("plane match solar ship to planet orbit allowed",
+        aoso_planechange_same_primary("Sun", "Sun"), fail).
+    LOCAL turn90 IS aoso_planechange_turn_components(90, 151.5).
+    LOCAL turn107 IS aoso_planechange_turn_components(107.43, 151.5).
+    SET fail TO aoso_selftest_check("90 degree plane turn preserves speed",
+        ABS(SQRT((151.5 + turn90["prograde"])^2 + turn90["normal"]^2) - 151.5) < 0.001, fail).
+    SET fail TO aoso_selftest_check("107 degree plane turn preserves speed",
+        ABS(SQRT((151.5 + turn107["prograde"])^2 + turn107["normal"]^2) - 151.5) < 0.001, fail).
+    SET fail TO aoso_selftest_check("large plane turn includes retrograde",
+        turn107["prograde"] < -151.5, fail).
 
     SET fail TO aoso_selftest_check("landing longitude wrap +181",
         ABS(aoso_landing_wrap_lng(181) + 179) < 0.001, fail).

@@ -821,7 +821,8 @@ FUNCTION aoso_tour_scan_execute {
     }
     IF was_reselect {
         IF data["site_score"] < 0 {
-            aoso_log_error("LAND_TARGET_REJECT", "Live reselection found no safe site. Keeping the stable orbit and continuing the tour.").
+            aoso_log_error("LAND_TARGET_REJECT", "Live reselection found no safe site. No landing burn; advancing the tour from the stable orbit.").
+            PRINT "LAND SKIPPED: no safe live site. Tour will plan departure from " + SHIP:BODY:NAME + ".".
             aoso_tour_mark(data, aoso_tour_current_name(data), "ORBITED").
             aoso_tour_advance(data).
             RETURN.
@@ -924,7 +925,8 @@ FUNCTION aoso_tour_deorbit_execute {
                 }
                 aoso_log_error("LAND_TARGET_REJECT", "No reachable landing site after live reselection; best miss=" +
                     ROUND(found["miss"], 0) + "m, limit=" + ROUND(tol_m, 0) +
-                    "m. Keeping the stable orbit and continuing the tour.").
+                    "m. No landing burn; advancing the tour from the stable orbit.").
+                PRINT "LAND SKIPPED: no reachable site. Tour will plan departure from " + SHIP:BODY:NAME + ".".
                 aoso_tour_mark(data, aoso_tour_current_name(data), "ORBITED").
                 aoso_tour_advance(data).
                 RETURN.

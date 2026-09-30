@@ -1,5 +1,5 @@
 // AOSO/nav/planechange.ks
-// Inclination-matching maneuver. Builds a normal-only node at a relative
+// Inclination-matching maneuver. Builds a constant-speed turn at a relative
 // AN/DN crossing. Sign is chosen by adding a trial NODE and reading
 // nd:ORBIT inclination+LAN - not VCRS(r,v) - because kOS NODE:NORMAL
 // follows KSP's v cross r convention, the opposite of VCRS(r,v). Acacius's
@@ -9,6 +9,21 @@ FUNCTION aoso_planechange_dv_for_angle {
     PARAMETER angle_deg.
     PARAMETER speed_ms.
     RETURN 2 * speed_ms * SIN(angle_deg / 2).
+}
+
+// Relative inclination is a transfer objective only in one central-body
+// frame. A Minmus parking orbit cannot match Kerbin's solar orbit.
+FUNCTION aoso_planechange_same_primary {
+    PARAMETER primary_a.
+    PARAMETER primary_b.
+    RETURN primary_a = primary_b.
+}
+
+FUNCTION aoso_planechange_turn_components {
+    PARAMETER angle_deg.
+    PARAMETER speed_ms.
+    RETURN LEXICON("normal", speed_ms * SIN(angle_deg),
+        "prograde", speed_ms * (COS(angle_deg) - 1)).
 }
 
 FUNCTION aoso_planechange_merge_etas {
@@ -37,6 +52,10 @@ FUNCTION aoso_planechange_merge_etas {
 FUNCTION aoso_planechange_apply_to_node {
     PARAMETER nd.
     PARAMETER target_orbitable.
+    IF NOT aoso_planechange_same_primary(SHIP:BODY:NAME, target_orbitable:BODY:NAME) {
+        aoso_log_warn("PLANECHANGE", "Refusing transfer plane match across different central bodies.").
+        RETURN.
+    }
     LOCAL rel IS aoso_orbit_rel_inc_from_orbit(nd:ORBIT, target_orbitable).
     IF rel < 0.15 { RETURN. }
 
@@ -75,6 +94,16 @@ FUNCTION aoso_planechange_add_node_for_target {
     PARAMETER node_index IS 0.
     PARAMETER tolerance_deg IS 0.05.
 
+    IF NOT aoso_planechange_same_primary(SHIP:BODY:NAME, target_orbitable:BODY:NAME) {
+        aoso_log_warn("PLANECHANGE", "Refusing dedicated plane match across different central bodies.").
+        RETURN 0.
+    }
+    IF SHIP:ORBIT:ECCENTRICITY >= 1 { RETURN 0. }
+    LOCAL pe_min IS aoso_config_get("DESCENT_SAFE_PE_ALT", 8000).
+    IF SHIP:BODY:ATM:EXISTS {
+        SET pe_min TO MAX(pe_min, SHIP:BODY:ATM:HEIGHT + 5000).
+    }
+
     LOCAL rel_incl IS aoso_orbit_relative_inclination_deg(SHIP, target_orbitable).
     IF rel_incl < tolerance_deg {
         aoso_log_info("PLANECHANGE", "Already co-planar within " + tolerance_deg + " deg; no node added.").
@@ -88,8 +117,9 @@ FUNCTION aoso_planechange_add_node_for_target {
         RETURN 0.
     }
 
-    LOCAL best_eta IS 0.
+    LOCAL best_ut IS 0.
     LOCAL best_normal IS 0.
+    LOCAL best_prograde IS 0.
     LOCAL best_rel IS rel_incl.
     LOCAL found IS FALSE.
     LOCAL ei IS 0.
@@ -98,28 +128,55 @@ FUNCTION aoso_planechange_add_node_for_target {
         IF burn_eta > 25 {
             LOCAL t_ut IS TIME:SECONDS + burn_eta.
             LOCAL v_vec IS aoso_orbit_velocity_at(SHIP, t_ut).
-            LOCAL dv_mag IS aoso_planechange_dv_for_angle(rel_incl, v_vec:MAG).
+            LOCAL turn IS aoso_planechange_turn_components(rel_incl, v_vec:MAG).
+            LOCAL dv_mag IS turn["normal"].
+            LOCAL dv_pro IS turn["prograde"].
 
-            LOCAL nd_try IS NODE(t_ut, 0, 0, 0).
+            LOCAL nd_try IS NODE(t_ut, 0, 0, dv_pro).
             ADD nd_try.
             SET nd_try:NORMAL TO dv_mag.
             aoso_yield().
             LOCAL rel_p IS aoso_orbit_rel_inc_from_orbit(nd_try:ORBIT, target_orbitable).
+            LOCAL safe_p IS FALSE.
+            IF nd_try:ORBIT:ECCENTRICITY < 1 {
+                IF nd_try:ORBIT:PERIAPSIS >= pe_min {
+                    IF nd_try:ORBIT:APOAPSIS + SHIP:BODY:RADIUS < SHIP:BODY:SOIRADIUS {
+                        SET safe_p TO TRUE.
+                    }
+                }
+            }
             SET nd_try:NORMAL TO -dv_mag.
             aoso_yield().
             LOCAL rel_m IS aoso_orbit_rel_inc_from_orbit(nd_try:ORBIT, target_orbitable).
+            LOCAL safe_m IS FALSE.
+            IF nd_try:ORBIT:ECCENTRICITY < 1 {
+                IF nd_try:ORBIT:PERIAPSIS >= pe_min {
+                    IF nd_try:ORBIT:APOAPSIS + SHIP:BODY:RADIUS < SHIP:BODY:SOIRADIUS {
+                        SET safe_m TO TRUE.
+                    }
+                }
+            }
             REMOVE nd_try.
 
-            LOCAL use_n IS dv_mag.
-            LOCAL use_rel IS rel_p.
-            IF rel_m < rel_p {
-                SET use_n TO -dv_mag.
-                SET use_rel TO rel_m.
+            LOCAL use_n IS 0.
+            LOCAL use_rel IS best_rel.
+            IF safe_p {
+                IF rel_p < use_rel {
+                    SET use_n TO dv_mag.
+                    SET use_rel TO rel_p.
+                }
+            }
+            IF safe_m {
+                IF rel_m < use_rel {
+                    SET use_n TO -dv_mag.
+                    SET use_rel TO rel_m.
+                }
             }
             IF use_rel < best_rel {
                 SET best_rel TO use_rel.
-                SET best_eta TO burn_eta.
+                SET best_ut TO t_ut.
                 SET best_normal TO use_n.
+                SET best_prograde TO dv_pro.
                 SET found TO TRUE.
             }
         }
@@ -127,14 +184,32 @@ FUNCTION aoso_planechange_add_node_for_target {
     }
 
     IF NOT found {
-        aoso_log_warn("PLANECHANGE", "No AN/DN reduced relative inclination (now " + ROUND(rel_incl, 2) + " deg) - will fold into the transfer.").
+        aoso_log_warn("PLANECHANGE", "No safe bound AN/DN reduced relative inclination (now " + ROUND(rel_incl, 2) + " deg) - deferring to transfer planning.").
         RETURN 0.
     }
 
-    LOCAL nd IS NODE(TIME:SECONDS + best_eta, 0, best_normal, 0).
+    IF best_ut <= TIME:SECONDS + 25 { RETURN 0. }
+    LOCAL nd IS NODE(best_ut, 0, best_normal, best_prograde).
     ADD nd.
+    aoso_yield().
+    LOCAL final_safe IS FALSE.
+    IF nd:ORBIT:ECCENTRICITY < 1 {
+        IF nd:ORBIT:PERIAPSIS >= pe_min {
+            IF nd:ORBIT:APOAPSIS + SHIP:BODY:RADIUS < SHIP:BODY:SOIRADIUS {
+                IF aoso_orbit_rel_inc_from_orbit(nd:ORBIT, target_orbitable) < rel_incl {
+                    SET final_safe TO TRUE.
+                }
+            }
+        }
+    }
+    IF NOT final_safe {
+        REMOVE nd.
+        aoso_log_warn("PLANECHANGE", "Final plane-match node failed bound-orbit verification; deferring to transfer planning.").
+        RETURN 0.
+    }
     aoso_log_info("PLANECHANGE", "Plane-change node added: dv=" + ROUND(best_normal, 1) +
-        " m/s normal, closing " + ROUND(rel_incl, 2) + " -> " + ROUND(best_rel, 2) + " deg relative inclination.").
+        " m/s normal, prograde=" + ROUND(best_prograde, 1) +
+        " m/s, closing " + ROUND(rel_incl, 2) + " -> " + ROUND(best_rel, 2) + " deg relative inclination; bound orbit verified.").
     RETURN nd.
 }
 
