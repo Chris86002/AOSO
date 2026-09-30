@@ -30,6 +30,35 @@ GLOBAL AOSO_WORLD_KNOWN IS LEXICON(
 
 GLOBAL AOSO_WORLD_BODY_CACHE IS LEXICON().
 
+// Thin live-fact view. Mission readers use these wrappers rather than
+// reaching into interplanetary/bodydb.ks's storage directly.
+FUNCTION aoso_world_body_live {
+    PARAMETER body_name.
+    RETURN aoso_body_database_get(body_name).
+}
+
+FUNCTION aoso_world_body_exists {
+    PARAMETER body_name.
+    LOCAL live_row IS aoso_world_body_live(body_name).
+    IF NOT live_row:ISTYPE("Lexicon") { RETURN FALSE. }
+    IF NOT live_row:HASKEY("NAME") { RETURN FALSE. }
+    RETURN live_row["NAME"] = body_name.
+}
+
+FUNCTION aoso_world_body_parent {
+    PARAMETER body_name.
+    LOCAL live_row IS aoso_world_body_live(body_name).
+    IF live_row:HASKEY("PARENT") { RETURN live_row["PARENT"]. }
+    RETURN "".
+}
+
+FUNCTION aoso_world_body_sma {
+    PARAMETER body_name.
+    LOCAL live_row IS aoso_world_body_live(body_name).
+    IF live_row:HASKEY("SMA") { RETURN live_row["SMA"]. }
+    RETURN 0.
+}
+
 FUNCTION aoso_world_body_stat {
     PARAMETER body_name.
     PARAMETER key_name.
@@ -61,7 +90,7 @@ FUNCTION aoso_world_body_describe {
     LOCAL parent_name IS "".
     IF body_name <> SUN:NAME { SET parent_name TO body_ref:ORBIT:BODY:NAME. }
 
-    LOCAL db IS aoso_body_database_get(body_name).
+    LOCAL db IS aoso_world_body_live(body_name).
     LOCAL sma_val IS 0.
     LOCAL period_val IS 0.
     LOCAL ecc_val IS 0.

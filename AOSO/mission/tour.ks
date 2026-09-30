@@ -28,45 +28,44 @@ FUNCTION aoso_tour_default_targets {
     LOCAL names IS LIST("Mun", "Minmus", "Eve", "Gilly", "Moho", "Duna", "Ike", "Dres", "Jool", "Laythe", "Vall", "Tylo", "Bop", "Pol", "Eeloo").
     LOCAL out IS LIST().
     FOR n IN names {
-        LOCAL e IS aoso_body_database_get(n).
-        IF e:ISTYPE("Lexicon") {
-            IF e:HASKEY("NAME") {
-                IF e["NAME"] = n { out:ADD(n). }
-            }
-        }
+        IF aoso_world_body_exists(n) { out:ADD(n). }
     }
     RETURN out.
 }
 
+FUNCTION aoso_tour_plan_list_has {
+    PARAMETER key_name.
+    PARAMETER body_name.
+    IF NOT AOSO_PLAN_LAST:HASKEY(key_name) { RETURN FALSE. }
+    FOR listed_name IN AOSO_PLAN_LAST[key_name] {
+        IF listed_name = body_name { RETURN TRUE. }
+    }
+    RETURN FALSE.
+}
+
+FUNCTION aoso_tour_plan_result {
+    PARAMETER body_name.
+    IF aoso_tour_plan_list_has("skipped", body_name) { RETURN "SKIP". }
+    IF aoso_tour_plan_list_has("orbit_only", body_name) { RETURN "ORBIT_ONLY". }
+    RETURN "FEASIBLE".
+}
+
 FUNCTION aoso_tour_landable {
     PARAMETER body_name.
-    IF body_name = "Jool" OR body_name = "Sun" { RETURN FALSE. }
-    LOCAL report IS aoso_feas_cached(body_name).
-    IF report["result"] = "FEASIBLE" { RETURN TRUE. }
-    aoso_log_info("TOUR", "Skipping landing on " + body_name + " (" + report["reason"] + ").").
-    RETURN FALSE.
+    IF NOT aoso_world_body_stat(body_name, "has_surface", TRUE) { RETURN FALSE. }
+    RETURN aoso_tour_plan_result(body_name) = "FEASIBLE".
 }
 
 FUNCTION aoso_tour_should_refuel {
     PARAMETER body_name.
     LOCAL report IS aoso_feas_cached(body_name).
-    IF report["result"] <> "FEASIBLE" { RETURN FALSE. }
+    IF aoso_tour_plan_result(body_name) <> "FEASIBLE" { RETURN FALSE. }
     IF NOT report["can_refuel"] { RETURN FALSE. }
     LOCAL fuel_pct IS aoso_resource_pct("LiquidFuel").
     LOCAL need IS aoso_config_get("TOUR_REFUEL_BELOW_PCT", 60).
     IF fuel_pct >= need {
         aoso_log_info("TOUR", "Fuel at " + ROUND(fuel_pct, 0) + "% - orbiting " + body_name + " without landing.").
         RETURN FALSE.
-    }
-    RETURN TRUE.
-}
-
-FUNCTION aoso_tour_orbit_is_stable {
-    IF SHIP:STATUS = "LANDED" OR SHIP:STATUS = "PRELAUNCH" { RETURN FALSE. }
-    IF SHIP:ORBIT:ECCENTRICITY >= 1 { RETURN FALSE. }
-    IF PERIAPSIS < 2000 { RETURN FALSE. }
-    IF SHIP:BODY:ATM:EXISTS {
-        IF PERIAPSIS < SHIP:BODY:ATM:HEIGHT + 5000 { RETURN FALSE. }
     }
     RETURN TRUE.
 }
@@ -347,7 +346,7 @@ FUNCTION aoso_tour_replan_remaining {
     aoso_profile_refresh("tour_replan").
     aoso_plan_build().
     LOCAL next_targets IS aoso_plan_targets().
-    IF next_targets:LENGTH > 0 {
+    IF AOSO_PLAN_LAST:HASKEY("targets") {
         SET data["targets"] TO next_targets.
         SET data["index"] TO 0.
     }
@@ -426,17 +425,20 @@ FUNCTION aoso_tour_goto_entry {
         }
         LOCAL report IS aoso_feas_cached(name).
         aoso_feas_log_report(report).
-        SET data["feas_result"] TO report["result"].
-        IF report["result"] = "SKIP" {
-            aoso_log_warn("TOUR", "Skipping " + name + " - " + report["reason"] + ".").
+        LOCAL plan_result IS aoso_tour_plan_result(name).
+        SET data["feas_result"] TO plan_result.
+        IF report["result"] <> plan_result {
+            aoso_log_warn("TOUR", "Feasibility now says " + report["result"] + " for " + name +
+                ", but itinerary says " + plan_result + "; trusting the planned matrix result.").
+        }
+        IF plan_result = "SKIP" {
+            aoso_log_warn("TOUR", "Skipping " + name + " per mission plan.").
             aoso_tour_mark(data, name, "SKIPPED").
             SET data["index"] TO data["index"] + 1.
         } ELSE {
             SET AOSO_WANT_POLAR TO FALSE.
-            IF report["can_land"] {
-                IF report["result"] <> "ORBIT_ONLY" {
-                    SET AOSO_WANT_POLAR TO TRUE.
-                }
+            IF plan_result <> "ORBIT_ONLY" {
+                SET AOSO_WANT_POLAR TO aoso_world_body_stat(name, "has_surface", TRUE).
             }
             aoso_goto_start(name).
             RETURN.
@@ -453,7 +455,7 @@ FUNCTION aoso_tour_goto_execute {
     IF aoso_goto_is_done() {
         LOCAL name IS aoso_tour_current_name(data).
 
-        // A grand-tour stop means LAND when the live feasibility model says
+        // A grand-tour stop means LAND when the planned matrix result says
         // this vessel can land and leave again. Fuel percentage decides
         // whether surface ISRU runs after touchdown; it must not decide
         // whether the body is visited only from orbit.
@@ -512,7 +514,7 @@ FUNCTION aoso_tour_polar_entry {
         RETURN.
     }
 
-    IF NOT aoso_tour_orbit_is_stable() {
+    IF NOT aoso_world_orbit_is_stable() {
         LOCAL park IS aoso_goto_parking_alt(SHIP:BODY).
         IF PERIAPSIS < park {
             aoso_log_info("TOUR", "Raising periapsis to " + ROUND(park, 0) + "m before polar capture.").
@@ -1217,7 +1219,9 @@ FUNCTION aoso_tour_start {
     PARAMETER targets IS LIST().
     IF targets:LENGTH = 0 {
         SET targets TO aoso_plan_targets().
-        IF targets:LENGTH = 0 { SET targets TO aoso_tour_default_targets(). }
+        IF targets:LENGTH = 0 {
+            IF NOT AOSO_PLAN_LAST:HASKEY("targets") { SET targets TO aoso_tour_default_targets(). }
+        }
     }
 
     aoso_tour_define_states().

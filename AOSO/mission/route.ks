@@ -68,9 +68,7 @@ FUNCTION aoso_route_intersect {
 
 FUNCTION aoso_route_sma {
     PARAMETER dest_name.
-    LOCAL entry IS aoso_body_database_get(dest_name).
-    IF entry:HASKEY("SMA") { RETURN entry["SMA"]. }
-    RETURN 0.
+    RETURN aoso_world_body_sma(dest_name).
 }
 
 FUNCTION aoso_route_pick_min_sma {

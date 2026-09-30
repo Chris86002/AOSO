@@ -51,9 +51,7 @@ FUNCTION aoso_feas_body_stat {
 FUNCTION aoso_feas_planet_of {
     PARAMETER body_name.
     IF body_name = "Sun" { RETURN "Sun". }
-    LOCAL entry IS aoso_body_database_get(body_name).
-    IF NOT entry:HASKEY("PARENT") { RETURN body_name. }
-    LOCAL parent_name IS entry["PARENT"].
+    LOCAL parent_name IS aoso_world_body_parent(body_name).
     IF parent_name = "" { RETURN body_name. }
     IF parent_name = "Sun" { RETURN body_name. }
     RETURN parent_name.

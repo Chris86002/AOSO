@@ -17,6 +17,7 @@ GLOBAL AOSO_CAPS IS LEXICON().
 GLOBAL AOSO_CAPS_EVENT_TWR IS -1.
 GLOBAL AOSO_CAPS_EVENT_DV IS -1.
 GLOBAL AOSO_CAPS_EVENT_ENG IS -1.
+GLOBAL AOSO_CAPS_FALLBACK_LOGGED IS FALSE.
 
 FUNCTION aoso_capabilities_is_propellant {
     PARAMETER res_name.
@@ -176,9 +177,9 @@ FUNCTION aoso_capabilities_stage_breakdown {
                 LOCAL prop_mass IS (tg["lf"] + tg["ox"]) * 0.005 + tg["sf"] * 0.0075 + tg["xe"] * 0.0001 + tg["mp"] * 0.004.
                 SET groups[k] TO LEXICON(
                     "decoupled_in", tg["decoupled_in"],
-                    "engines", 0,
-                    "thrust_vac", 0,
-                    "isp_vac_weighted", 0,
+                    "engines", tg["engines"],
+                    "thrust_vac", tg["thrust_vac"],
+                    "isp_vac_weighted", tg["isp_vac_weighted"],
                     "prop_mass", prop_mass,
                     "dry_mass", tg["dry_mass"],
                     "wet_mass", tg["wet_mass"]
@@ -202,6 +203,10 @@ FUNCTION aoso_capabilities_stage_breakdown {
     }
 
     IF NOT used_topo {
+        IF NOT AOSO_CAPS_FALLBACK_LOGGED {
+            SET AOSO_CAPS_FALLBACK_LOGGED TO TRUE.
+            aoso_log_warn("VEHICLE", "Topology groups empty; capabilities using cached part-walk fallback.").
+        }
         FOR p IN plist {
             LOCAL dkey IS "" + p:DECOUPLEDIN.
             IF NOT groups:HASKEY(dkey) {
@@ -232,24 +237,26 @@ FUNCTION aoso_capabilities_stage_breakdown {
         }
     }
 
-    FOR e IN elist {
-        LOCAL dkey IS "" + e:DECOUPLEDIN.
-        IF NOT groups:HASKEY(dkey) {
-            SET groups[dkey] TO LEXICON(
-                "decoupled_in", e:DECOUPLEDIN,
-                "engines", 0,
-                "thrust_vac", 0,
-                "isp_vac_weighted", 0,
-                "prop_mass", 0,
-                "dry_mass", 0,
-                "wet_mass", 0
-            ).
+    IF NOT used_topo {
+        FOR e IN elist {
+            LOCAL dkey IS "" + e:DECOUPLEDIN.
+            IF NOT groups:HASKEY(dkey) {
+                SET groups[dkey] TO LEXICON(
+                    "decoupled_in", e:DECOUPLEDIN,
+                    "engines", 0,
+                    "thrust_vac", 0,
+                    "isp_vac_weighted", 0,
+                    "prop_mass", 0,
+                    "dry_mass", 0,
+                    "wet_mass", 0
+                ).
+            }
+            LOCAL thrust_vac IS aoso_capabilities_engine_thrust(e, 0).
+            LOCAL isp_here IS e:VACUUMISP.
+            SET groups[dkey]["engines"] TO groups[dkey]["engines"] + 1.
+            SET groups[dkey]["thrust_vac"] TO groups[dkey]["thrust_vac"] + thrust_vac.
+            SET groups[dkey]["isp_vac_weighted"] TO groups[dkey]["isp_vac_weighted"] + (isp_here * thrust_vac).
         }
-        LOCAL thrust_vac IS aoso_capabilities_engine_thrust(e, 0).
-        LOCAL isp_here IS e:VACUUMISP.
-        SET groups[dkey]["engines"] TO groups[dkey]["engines"] + 1.
-        SET groups[dkey]["thrust_vac"] TO groups[dkey]["thrust_vac"] + thrust_vac.
-        SET groups[dkey]["isp_vac_weighted"] TO groups[dkey]["isp_vac_weighted"] + (isp_here * thrust_vac).
     }
 
     LOCAL unsorted IS LIST().

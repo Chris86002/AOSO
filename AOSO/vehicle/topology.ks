@@ -62,6 +62,8 @@ FUNCTION aoso_topo_ensure_group {
             "rcs", 0,
             "wet_mass", 0,
             "dry_mass", 0,
+            "thrust_vac", 0,
+            "isp_vac_weighted", 0,
             "lf", 0, "ox", 0, "sf", 0, "xe", 0, "mp", 0,
             "lf_cap", 0, "ox_cap", 0,
             "part_uids", LIST(),
@@ -198,6 +200,10 @@ FUNCTION aoso_topo_rebuild {
     FOR e IN elist {
         LOCAL g IS aoso_topo_ensure_group(e:DECOUPLEDIN).
         SET g["engines"] TO g["engines"] + 1.
+        LOCAL thrust_vac IS e:POSSIBLETHRUSTAT(0).
+        IF thrust_vac <= 0 { SET thrust_vac TO e:MAXTHRUSTAT(0). }
+        SET g["thrust_vac"] TO g["thrust_vac"] + thrust_vac.
+        SET g["isp_vac_weighted"] TO g["isp_vac_weighted"] + e:VACUUMISP * thrust_vac.
         LOCAL ekey IS aoso_topo_group_key(e:DECOUPLEDIN).
         IF NOT idx_eng:HASKEY(ekey) { SET idx_eng[ekey] TO LIST(). }
         idx_eng[ekey]:ADD("" + e:UID).

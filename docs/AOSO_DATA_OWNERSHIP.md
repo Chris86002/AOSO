@@ -13,7 +13,8 @@ One writer per fact. Readers go through the owning accessor.
 | Future LANDER/CORE TWR | `aoso_caps_surface_twr_for_config` | feas, cert, depart |
 | Human/planner summary | `profile.ks` (view over topology) | classify, cert |
 | Class label | `classify.ks` (`AOSO_CLASS_LAST`) | CTX, route |
-| World / body numbers | `bodydb.ks` + `world/body.ks` | feas, cert, matrix |
+| Stock dV/difficulty/ore facts | `world/body.ks` | feas, cert, matrix |
+| Live SMA/period/SOI facts | `bodydb.ks`, exposed through `world/body.ks` | route, project, feas |
 | Sequential leftover / projected state | `project.ks` `AOSO_PROJECT_LAST` | feas, matrix leftover, score, cert, assure, surface fill |
 | Feasibility memo (RAM) | `feasibility.ks` `AOSO_FEAS_MEMO` | matrix, tour |
 | Window statics (RAM) | `windows.ks` | route, project time |
@@ -22,7 +23,7 @@ One writer per fact. Readers go through the owning accessor.
 | Experience models | `experience.ks` keyed `cfg_id\|body\|OP` | feas / project costs |
 | Ascent leftover-LF diary | `learn.ks` (demoted) | operator stats only |
 | Ascent start-speed search | `ascent_opt.ks` | pad trials |
-| Plan / targets | `planner.ks` `AOSO_PLAN_LAST` | tour, assure |
+| Plan / targets / skip / orbit-only | `planner.ks` `AOSO_PLAN_LAST` | tour, assure |
 | Events | `events.ks` queue | brain drain only |
 | Open action / result identity | `result.ks` `AOSO_ACTION_CUR` | XP, watchdog |
 | Authority | `authority.ks` | steering wrappers, `aoso_staging_do` |
