@@ -59,6 +59,8 @@ does **not** also `advance`, which would skip the next body.
 
 `aoso_plan_build` stamps `rev_topo/cap/budget/world/xp` and calls
 `aoso_ctx_mark_plan`. `aoso_plan_stale` is topo/budget/world drift.
+When quiet, the brain evaluates `aoso_plan_stale`; context selects
+`plan_next` with the live grand-tour index rather than always using target 0.
 
 HIGH CPU while not quiet: request stays queued.
 

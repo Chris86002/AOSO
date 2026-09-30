@@ -97,6 +97,13 @@ FUNCTION aoso_checkpoints_data {
     RETURN AOSO_CHECKPOINT["data"].
 }
 
+FUNCTION aoso_checkpoints_grand_tour_index {
+    IF AOSO_CHECKPOINT["step_name"] <> "GRAND_TOUR" { RETURN -1. }
+    IF NOT AOSO_CHECKPOINT["data"]:ISTYPE("Lexicon") { RETURN -1. }
+    IF NOT AOSO_CHECKPOINT["data"]:HASKEY("tour_index") { RETURN -1. }
+    RETURN AOSO_CHECKPOINT["data"]["tour_index"].
+}
+
 FUNCTION aoso_checkpoints_clear {
     SET AOSO_CHECKPOINT TO LEXICON("step_index", -1, "step_name", "", "data", LEXICON(), "saved_at", 0).
     IF EXISTS(AOSO_CONST["CHECKPOINT_FILE"]) {

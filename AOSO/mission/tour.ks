@@ -1220,6 +1220,15 @@ FUNCTION aoso_tour_start {
 
     aoso_tour_define_states().
     SET AOSO_TOUR["data"] TO LEXICON("targets", targets, "index", 0, "site_lat", 0, "site_lng", 0, "site_alt", 0, "site_score", -1, "site_verified", FALSE, "deorbit_wait_since", 0, "polar_warp_logged", FALSE, "scan_until", 0, "scan_next_sample", 0, "scan_orbits", 1, "accomplished", LEXICON(), "depart_ok", FALSE).
+    LOCAL saved_tour_idx IS aoso_checkpoints_grand_tour_index().
+    IF saved_tour_idx >= 0 {
+        IF saved_tour_idx < targets:LENGTH {
+            SET AOSO_TOUR["data"]["index"] TO saved_tour_idx.
+            aoso_log_info("TOUR", "Restored grand-tour index " + saved_tour_idx + " from checkpoint after rebuilding the live plan.").
+        }
+    }
+    aoso_ctx_refresh_control().
+    aoso_ctx_refresh_plan().
     aoso_log_info("TOUR", "Grand tour armed: " + targets:LENGTH + " bodies (" + aoso_classify_name() + "), then KSC return.").
     aoso_decide("TOUR", "arm", "" + targets:LENGTH, aoso_classify_name(), "n=" + targets:LENGTH).
     aoso_state_transition(AOSO_TOUR, "BOOT").

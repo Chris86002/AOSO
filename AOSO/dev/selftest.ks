@@ -334,6 +334,9 @@ FUNCTION aoso_selftest {
     SET fail TO aoso_selftest_check("ctx dirty_topo key", AOSO_CTX:HASKEY("dirty_topo"), fail).
     aoso_ctx_bump("rev_topo").
     SET fail TO aoso_selftest_check("ctx rev_topo bumps", AOSO_CTX["rev_topo"] = 1, fail).
+    LOCAL ctx_targets IS LIST("Mun", "Minmus", "Duna").
+    SET fail TO aoso_selftest_check("ctx plan_next follows tour index",
+        aoso_ctx_plan_next_at(ctx_targets, 1) = "Minmus", fail).
 
     aoso_warp_deadline_set("selftest", TIME:SECONDS + 90).
     LOCAL nxt IS aoso_warp_next_deadline().

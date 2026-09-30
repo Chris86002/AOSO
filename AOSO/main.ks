@@ -163,7 +163,7 @@ FUNCTION aoso_main {
         IF aoso_launch_blocked() {
             aoso_log_info("MAIN", "Prelaunch hold. Waiting until the systems board is green.").
         } ELSE {
-            aoso_mission_start().
+            aoso_mission_start(aoso_checkpoints_grand_tour_index() >= 0).
         }
     }
 

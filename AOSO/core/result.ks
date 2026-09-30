@@ -145,7 +145,6 @@ FUNCTION aoso_hb_set {
     IF DEFINED AOSO_CTX {
         SET AOSO_CTX["controller"] TO controller.
         SET AOSO_CTX["progress"] TO progress.
-        SET AOSO_CTX["action"] TO state_name.
         SET AOSO_CTX["progress_at"] TO at.
     }
 }

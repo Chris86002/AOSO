@@ -86,6 +86,7 @@ mission_dv, total_dv, goal, target, action, controller,
 progress, progress_at, quiet, confidence,
 rev_vehicle, rev_cap, rev_budget, rev_world, rev_plan, rev_xp, rev_topo,
 plan_n, plan_next, plan_from, plan_provisional,
+tour_index,
 dirty_vehicle, dirty_cap, dirty_budget, dirty_feas,
 dirty_opp, dirty_route, dirty_plan, dirty_topo
 ```

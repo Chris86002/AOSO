@@ -11,7 +11,8 @@ GLOBAL AOSO_BRAIN IS LEXICON(
     "last_think", 0,
     "last_body", "",
     "last_cert", 0,
-    "hold", FALSE
+    "hold", FALSE,
+    "last_tour_index", -1
 ).
 GLOBAL AOSO_BRAIN_EVENTS IS LEXICON(
     "STAGE_COMPLETE", TRUE,
@@ -46,6 +47,7 @@ FUNCTION aoso_brain_init {
     SET AOSO_BRAIN["last_body"] TO SHIP:BODY:NAME.
     SET AOSO_BRAIN["last_cert"] TO 0.
     SET AOSO_BRAIN["hold"] TO FALSE.
+    SET AOSO_BRAIN["last_tour_index"] TO -1.
     aoso_ctx_init().
     aoso_event_init().
 }
@@ -176,7 +178,7 @@ FUNCTION aoso_brain_on_event {
     }
     IF etype = "CPU_LOAD_HIGH" { aoso_log_warn("BRAIN", "CPU high: " + ev["data"]). }
     IF etype = "CPU_LOAD_CRITICAL" { aoso_log_warn("BRAIN", "CPU critical: " + ev["data"]). }
-    IF etype = "PLAN_UPDATED" { aoso_ctx_mark_plan(). }
+    IF etype = "PLAN_UPDATED" { aoso_ctx_refresh_plan(). }
 }
 
 // Route correction events into the existing GOTO/rendezvous mid-course path.
@@ -294,6 +296,11 @@ FUNCTION aoso_brain_tick {
         SET AOSO_BRAIN["last_body"] TO AOSO_CTX["body"].
     }
     aoso_event_process(4).
+    LOCAL tour_idx IS aoso_ctx_get("tour_index", -1).
+    IF aoso_ctx_is_dirty("dirty_plan") OR tour_idx <> AOSO_BRAIN["last_tour_index"] {
+        aoso_ctx_refresh_plan().
+        SET AOSO_BRAIN["last_tour_index"] TO tour_idx.
+    }
     aoso_brain_refresh_dirty().
     IF AOSO_BRAIN["pending_replan"] <> "" {
         LOCAL debounce IS aoso_config_get("BRAIN_REPLAN_DEBOUNCE_S", 45).
@@ -302,6 +309,9 @@ FUNCTION aoso_brain_tick {
         }
     }
     IF aoso_brain_is_quiet() {
+        IF NOT AOSO_BRAIN["hold"] {
+            IF aoso_plan_stale() { aoso_brain_consider_replan("plan stale"). }
+        }
         IF TIME:SECONDS - AOSO_BRAIN["last_cert"] >= 30 {
             aoso_cert_eval("grand_tour").
             aoso_assure_eval().

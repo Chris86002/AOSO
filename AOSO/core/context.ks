@@ -5,6 +5,7 @@
 GLOBAL AOSO_CTX IS LEXICON().
 GLOBAL AOSO_CFG_IDENT IS "".
 GLOBAL AOSO_CFG_LOCKED IS FALSE.
+GLOBAL AOSO_CTX_LOG_SIG IS "".
 
 FUNCTION aoso_ctx_init {
     SET AOSO_CTX TO LEXICON(
@@ -36,6 +37,7 @@ FUNCTION aoso_ctx_init {
         "plan_next", "",
         "plan_from", "",
         "plan_provisional", FALSE,
+        "tour_index", -1,
         "dirty_vehicle", TRUE,
         "dirty_cap", TRUE,
         "dirty_budget", TRUE,
@@ -184,6 +186,55 @@ FUNCTION aoso_ctx_refresh_env {
     IF AOSO_CFG_IDENT <> "" { SET AOSO_CTX["cfg_id"] TO AOSO_CFG_IDENT. }
     SET AOSO_CTX["fuel_pct"] TO aoso_resource_pct("LiquidFuel").
     SET AOSO_CTX["ec_pct"] TO aoso_resource_pct("ElectricCharge").
+    aoso_ctx_refresh_control().
+}
+
+// Publish controller-owned mission state into the shared snapshot. The
+// current action owns action/target identity; the active tour/GOTO owns the
+// strategic goal and current itinerary index; heartbeats own controller and
+// progress.
+FUNCTION aoso_ctx_refresh_control {
+    LOCAL tour_idx IS -1.
+    LOCAL goal_name IS "".
+    LOCAL target_name IS "".
+    IF DEFINED AOSO_TOUR {
+        IF AOSO_TOUR:HASKEY("data") {
+            IF AOSO_TOUR["data"]:HASKEY("index") { SET tour_idx TO AOSO_TOUR["data"]["index"]. }
+            IF AOSO_TOUR["data"]:HASKEY("targets") {
+                LOCAL tour_targets IS AOSO_TOUR["data"]["targets"].
+                IF tour_idx >= 0 {
+                    IF tour_idx < tour_targets:LENGTH { SET target_name TO tour_targets[tour_idx]. }
+                }
+            }
+        }
+    }
+    IF DEFINED AOSO_GOTO {
+        LOCAL goto_active IS FALSE.
+        IF AOSO_GOTO["current"] <> "" {
+            IF AOSO_GOTO["current"] <> "DONE" {
+                IF AOSO_GOTO["current"] <> "ABORTED" { SET goto_active TO TRUE. }
+            }
+        }
+        IF goto_active {
+            IF AOSO_GOTO:HASKEY("data") {
+                IF AOSO_GOTO["data"]:HASKEY("goal") { SET goal_name TO AOSO_GOTO["data"]["goal"]. }
+                IF AOSO_GOTO["data"]:HASKEY("hop") {
+                    IF AOSO_GOTO["data"]["hop"] <> "" { SET target_name TO AOSO_GOTO["data"]["hop"]. }
+                }
+            }
+        }
+    }
+    IF goal_name = "" { SET goal_name TO target_name. }
+    SET AOSO_CTX["tour_index"] TO tour_idx.
+    SET AOSO_CTX["goal"] TO goal_name.
+    SET AOSO_CTX["target"] TO target_name.
+    SET AOSO_CTX["action"] TO "".
+    IF AOSO_ACTION_CUR:ISTYPE("Lexicon") {
+        IF AOSO_ACTION_CUR:HASKEY("type") { SET AOSO_CTX["action"] TO AOSO_ACTION_CUR["type"]. }
+        IF AOSO_ACTION_CUR:HASKEY("target") {
+            IF AOSO_ACTION_CUR["target"] <> "" { SET AOSO_CTX["target"] TO AOSO_ACTION_CUR["target"]. }
+        }
+    }
 }
 
 FUNCTION aoso_ctx_mark_vehicle {
@@ -237,20 +288,38 @@ FUNCTION aoso_ctx_heavy_ok {
     RETURN TRUE.
 }
 
-FUNCTION aoso_ctx_mark_plan {
-    aoso_ctx_bump("rev_plan").
-    aoso_ctx_dirty("dirty_plan").
+FUNCTION aoso_ctx_plan_next_at {
+    PARAMETER target_list.
+    PARAMETER tour_idx.
+    IF tour_idx < 0 { SET tour_idx TO 0. }
+    IF tour_idx >= target_list:LENGTH { RETURN "". }
+    RETURN target_list[tour_idx].
+}
+
+FUNCTION aoso_ctx_refresh_plan {
     IF DEFINED AOSO_PLAN_LAST {
         LOCAL next_n IS "".
         LOCAL n IS 0.
+        LOCAL live_idx IS aoso_ctx_get("tour_index", -1).
         IF AOSO_PLAN_LAST:HASKEY("targets") {
             SET n TO AOSO_PLAN_LAST["targets"]:LENGTH.
-            IF n > 0 { SET next_n TO AOSO_PLAN_LAST["targets"][0]. }
+            SET next_n TO aoso_ctx_plan_next_at(AOSO_PLAN_LAST["targets"], live_idx).
         }
         SET AOSO_CTX["plan_n"] TO n.
         SET AOSO_CTX["plan_next"] TO next_n.
         IF AOSO_PLAN_LAST:HASKEY("from") { SET AOSO_CTX["plan_from"] TO AOSO_PLAN_LAST["from"]. }
         IF AOSO_PLAN_LAST:HASKEY("provisional") { SET AOSO_CTX["plan_provisional"] TO AOSO_PLAN_LAST["provisional"]. }
         IF AOSO_PLAN_LAST:HASKEY("mission_dv") { SET AOSO_CTX["mission_dv"] TO AOSO_PLAN_LAST["mission_dv"]. }
+        LOCAL sig IS next_n + "|" + live_idx + "|" + AOSO_CTX["goal"].
+        IF sig <> AOSO_CTX_LOG_SIG {
+            SET AOSO_CTX_LOG_SIG TO sig.
+            aoso_log_info("CTX", "plan_next=" + next_n + " tour_index=" + live_idx + " goal=" + AOSO_CTX["goal"]).
+        }
     }
+}
+
+FUNCTION aoso_ctx_mark_plan {
+    aoso_ctx_bump("rev_plan").
+    aoso_ctx_refresh_plan().
+    aoso_ctx_clear_dirty("dirty_plan").
 }

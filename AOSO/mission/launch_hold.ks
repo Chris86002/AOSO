@@ -271,7 +271,7 @@ FUNCTION aoso_launch_prep_tick {
             SET AOSO_LAUNCH_STARTED TO TRUE.
             IF AOSO_MISSION["current"] = "" {
                 aoso_log_info("LAUNCH", "Commit accepted. Starting the mission.").
-                aoso_mission_start().
+                aoso_mission_start(aoso_checkpoints_grand_tour_index() >= 0).
             } ELSE {
                 aoso_log_info("LAUNCH", "Commit accepted. Pad hold released.").
             }
