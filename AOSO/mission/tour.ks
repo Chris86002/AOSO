@@ -302,7 +302,7 @@ FUNCTION aoso_tour_deorbit_find {
 
 FUNCTION aoso_tour_on_abort {
     PARAMETER data.
-    SET WARP TO 0.
+    aoso_warp_hard_stop().
     aoso_throttle_set(0).
     aoso_steer_release().
     aoso_state_transition(AOSO_TOUR, "ABORTED").
@@ -612,7 +612,7 @@ FUNCTION aoso_tour_polar_execute {
 
 FUNCTION aoso_tour_scan_entry {
     PARAMETER data.
-    SET WARP TO 0.
+    aoso_warp_hard_stop().
     aoso_throttle_set(0).
     aoso_steer_release().
 
@@ -790,7 +790,7 @@ FUNCTION aoso_tour_scan_execute {
             LOCAL left IS data["scan_until"] - now.
             IF left > 0 {
                 aoso_steer_release().
-                aoso_warp_approach(left, 15, 8).
+                aoso_warp_request(left, 15, 8).
                 RETURN.
             }
         }
@@ -830,7 +830,7 @@ FUNCTION aoso_tour_scan_execute {
 
 FUNCTION aoso_tour_deorbit_entry {
     PARAMETER data.
-    SET WARP TO 0.
+    aoso_warp_hard_stop().
     aoso_throttle_set(0).
     IF SHIP:STATUS = "LANDED" {
         aoso_state_transition(AOSO_TOUR, "REFUEL").
@@ -948,7 +948,7 @@ FUNCTION aoso_tour_deorbit_execute {
                 data:REMOVE("deorbit_eta_ut").
                 aoso_log_warn("TOUR", "Deorbit window passed (eta " + ROUND(eta_burn, 0) +
                     "s). Searching the next pass.").
-                SET WARP TO 0.
+                aoso_warp_hard_stop().
                 RETURN.
             }
             SET data["deorbit_force"] TO TRUE.
@@ -972,7 +972,7 @@ FUNCTION aoso_tour_deorbit_execute {
                 ROUND(data["site_lat"], 1) + "/" + ROUND(data["site_lng"], 1) + " waited=" + ROUND(waited, 0) +
                 "s period=" + ROUND(period, 0) + "s " + aoso_warp_diag_txt() + ".").
             aoso_steer_release().
-            aoso_warp_approach(until_place, 20, 10).
+            aoso_warp_request(until_place, 20, 10).
             RETURN.
         }
 
@@ -992,7 +992,7 @@ FUNCTION aoso_tour_deorbit_execute {
     IF WARP > 0 {
         aoso_log_every(8, "TOUR", "Deorbit settling " + aoso_warp_diag_txt() + " aim=" + opp_txt + " eta=" + ROUND(eta_s, 0) + "s before placing node.").
         SET data["deorbit_settle_ut"] TO TIME:SECONDS.
-        SET WARP TO 0.
+        aoso_warp_hard_stop().
         RETURN.
     }
     IF data:HASKEY("deorbit_settle_ut") {
@@ -1000,7 +1000,7 @@ FUNCTION aoso_tour_deorbit_execute {
         SET data["deorbit_settle_ut"] TO TIME:SECONDS.
         IF jumped > 3 {
             aoso_log_every(8, "TOUR", "Deorbit waiting out rails flush (" + ROUND(jumped, 0) + "s) before placing node. aim=" + opp_txt + " " + aoso_warp_diag_txt() + ".").
-            SET WARP TO 0.
+            aoso_warp_hard_stop().
             RETURN.
         }
         data:REMOVE("deorbit_settle_ut").
@@ -1145,7 +1145,7 @@ FUNCTION aoso_tour_return_execute {
 
 FUNCTION aoso_tour_ksc_entry {
     PARAMETER data.
-    SET WARP TO 0.
+    aoso_warp_hard_stop().
     IF SHIP:STATUS = "ORBITING" {
         aoso_kscreturn_start().
     } ELSE {
@@ -1182,16 +1182,18 @@ FUNCTION aoso_tour_ksc_execute {
 
 FUNCTION aoso_tour_done_entry {
     PARAMETER data.
-    SET WARP TO 0.
+    aoso_warp_hard_stop().
     aoso_throttle_set(0).
     aoso_steer_release().
+    aoso_auth_release_all("tour").
     aoso_log_info("TOUR", "Grand tour complete.").
 }
 
 FUNCTION aoso_tour_aborted_entry {
     PARAMETER data.
-    SET WARP TO 0.
+    aoso_warp_hard_stop().
     aoso_throttle_set(0).
+    aoso_auth_release_all("tour").
     aoso_log_error("TOUR", "Grand tour aborted at body index " + data["index"] + ".").
 }
 
@@ -1235,6 +1237,11 @@ FUNCTION aoso_tour_start {
 }
 
 FUNCTION aoso_tour_update {
+    LOCAL owner_state IS AOSO_TOUR["current"].
+    IF owner_state = "POLAR" OR owner_state = "SCAN" OR owner_state = "DEORBIT" OR owner_state = "RETURN" OR owner_state = "KSC" {
+        aoso_auth_use("tour").
+        IF aoso_auth_owner("WARP") = "" { aoso_auth_acquire("tour", "WARP", 2). }
+    }
     aoso_state_update(AOSO_TOUR).
     LOCAL st IS AOSO_TOUR["current"].
     IF st = "SCAN" OR st = "POLAR" OR st = "DEORBIT" {

@@ -612,7 +612,7 @@ FUNCTION aoso_goto_wait_execute {
     }
     LOCAL align_s IS aoso_maneuver_align_s().
     IF TIME:SECONDS >= data["window_ut"] - align_s {
-        SET WARP TO 0.
+        aoso_warp_hard_stop().
         LOCAL hop IS BODY(data["hop"]).
         LOCAL nd IS aoso_interplanetary_add_ejection_node(hop).
         IF nd = 0 {
@@ -623,7 +623,7 @@ FUNCTION aoso_goto_wait_execute {
         RETURN.
     }
     LOCAL wait_eta IS data["window_ut"] - TIME:SECONDS.
-    LOCAL wst IS aoso_warp_approach(wait_eta, align_s, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
+    LOCAL wst IS aoso_warp_request(wait_eta, align_s, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
 }
 
 FUNCTION aoso_goto_launch_execute {
@@ -744,7 +744,7 @@ FUNCTION aoso_goto_coast_execute {
     IF NOT data:HASKEY("depart_body") { SET data["depart_body"] TO SHIP:BODY:NAME. }
 
     IF SHIP:BODY:NAME = goal_name {
-        SET WARP TO 0.
+        aoso_warp_hard_stop().
         IF aoso_goto_should_capture(data) {
             aoso_state_transition(AOSO_GOTO, "CAPTURE").
         } ELSE {
@@ -766,9 +766,9 @@ FUNCTION aoso_goto_coast_execute {
             IF eta_out > 30 {
                 aoso_steer_release().
                 LOCAL lead_out IS MAX(aoso_maneuver_align_s(), cutoff_out).
-                aoso_warp_approach(eta_out, lead_out, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
+                aoso_warp_request(eta_out, lead_out, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
             } ELSE {
-                SET WARP TO 0.
+                aoso_warp_hard_stop().
             }
             RETURN.
         }
@@ -841,7 +841,7 @@ FUNCTION aoso_goto_coast_execute {
             aoso_goto_arm_recovery(data, SHIP:BODY:NAME).
             SET data["intruder"] TO SHIP:BODY:NAME.
             SET data["via"] TO SHIP:BODY:NAME.
-            SET WARP TO 0.
+            aoso_warp_hard_stop().
             aoso_log_warn("GOTO", "UNEXPECTED SOI: entered " + SHIP:BODY:NAME +
                 " while routing to " + hop_name + " / goal " + goal_name +
                 ". Coasting through. The intercept is rebuilt after exit.").
@@ -857,7 +857,7 @@ FUNCTION aoso_goto_coast_execute {
             }
             RETURN.
         }
-        SET WARP TO 0.
+        aoso_warp_hard_stop().
         SET data["corrected"] TO FALSE.
         SET data["correct_count"] TO 0.
         SET data["last_patch_ut"] TO 0.
@@ -962,7 +962,7 @@ FUNCTION aoso_goto_coast_execute {
                 RETURN.
             }
             LOCAL lead_bad IS MAX(900, aoso_config_get("WARP_SOI_RAILS_CUTOFF_S", 45)).
-            aoso_warp_approach(eta_bad, lead_bad, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
+            aoso_warp_request(eta_bad, lead_bad, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
             RETURN.
         }
 
@@ -1055,10 +1055,10 @@ FUNCTION aoso_goto_coast_execute {
             LOCAL align_s IS aoso_maneuver_align_s().
             LOCAL coast_lead IS MAX(align_s, soi_cutoff).
             aoso_steer_release().
-            LOCAL wst IS aoso_warp_approach(eta_p, coast_lead, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
+            LOCAL wst IS aoso_warp_request(eta_p, coast_lead, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
 
         } ELSE {
-            SET WARP TO 0.
+            aoso_warp_hard_stop().
         }
         RETURN.
     }
@@ -1101,7 +1101,7 @@ FUNCTION aoso_goto_coast_execute {
             // A hidden conic is not a burn. Polar aiming from the saved
             // encounter clock was a chain of unverified mid-course nodes.
             IF geometry["inside"] {
-                SET WARP TO 0.
+                aoso_warp_hard_stop().
                 aoso_log_warn_every(60, "SOI_HANDOFF", expect_body + " is geometrically inside its SOI but KSP still reports " + SHIP:BODY:NAME + "; waiting at 1x for the body handoff.").
 
                 RETURN.
@@ -1121,7 +1121,7 @@ FUNCTION aoso_goto_coast_execute {
             IF eta_nav > 30 {
                 aoso_steer_release().
                 LOCAL soi_lead_saved IS MAX(aoso_maneuver_align_s(), aoso_config_get("WARP_SOI_RAILS_CUTOFF_S", 45)).
-                aoso_warp_approach(eta_nav, soi_lead_saved, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
+                aoso_warp_request(eta_nav, soi_lead_saved, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
                 IF geometry["valid"] {
                     aoso_log_every(60, "GOTO", "No live " + expect_body + " patch; " + clock + " SOI ETA=" + ROUND(eta_est, 0) + "s next-check=" + ROUND(eta_nav, 0) + "s saved=" + ROUND(eta_saved, 0) + "s range=" + ROUND(geometry["range"] / 1000, 0) + "km SOI=" + ROUND(geometry["soi"] / 1000, 0) + "km closing=" + ROUND(geometry["closing"], 0) + "m/s " + aoso_warp_diag_txt() + ".").
                 } ELSE {
@@ -1129,7 +1129,7 @@ FUNCTION aoso_goto_coast_execute {
                 }
 
             } ELSE {
-                SET WARP TO 0.
+                aoso_warp_hard_stop().
 
             }
             RETURN.
@@ -1140,20 +1140,20 @@ FUNCTION aoso_goto_coast_execute {
         IF data["retry_ut"] > 0 {
             LOCAL retry_left IS data["retry_ut"] - TIME:SECONDS.
             IF retry_left <= 8 {
-                SET WARP TO 0.
+                aoso_warp_hard_stop().
                 SET data["retry_ut"] TO 0.
                 aoso_log_info("GOTO", "Retry window reached - re-planning intercept.").
                 aoso_state_transition(AOSO_GOTO, "PLAN").
                 RETURN.
             }
-            LOCAL wst2 IS aoso_warp_approach(retry_left, 20, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
+            LOCAL wst2 IS aoso_warp_request(retry_left, 20, aoso_config_get("MANEUVER_PHYSICS_UNTIL_S", 10)).
             RETURN.
         }
     }
 
     LOCAL coasted IS TIME:SECONDS - data["coast_since"].
     IF coasted > 120 {
-        SET WARP TO 0.
+        aoso_warp_hard_stop().
         aoso_log_warn("GOTO", "No encounter after burn - re-planning.").
         aoso_state_transition(AOSO_GOTO, "PLAN").
         RETURN.
@@ -1352,9 +1352,10 @@ FUNCTION aoso_goto_capture_execute {
 
 FUNCTION aoso_goto_done_entry {
     PARAMETER data.
-    SET WARP TO 0.
+    aoso_warp_hard_stop().
     aoso_throttle_set(0).
     aoso_steer_release().
+    aoso_auth_release_all("goto").
 
     IF SHIP:BODY:NAME = data["goal"] {
         IF SHIP:STATUS <> "LANDED" AND SHIP:STATUS <> "SPLASHED" {
@@ -1386,8 +1387,9 @@ FUNCTION aoso_goto_done_entry {
 
 FUNCTION aoso_goto_aborted_entry {
     PARAMETER data.
-    SET WARP TO 0.
+    aoso_warp_hard_stop().
     aoso_throttle_set(0).
+    aoso_auth_release_all("goto").
     IF AOSO_ACTION_CUR:ISTYPE("Lexicon") {
         LOCAL typ IS AOSO_ACTION_CUR["type"].
         IF typ = "TRANSFER" OR typ = "CAPTURE" {
@@ -1413,6 +1415,8 @@ FUNCTION aoso_goto_start {
     PARAMETER body_name.
     PARAMETER correction_only IS FALSE.
     aoso_goto_define_states().
+    aoso_auth_use("goto").
+    aoso_auth_acquire("goto", "WARP", 2).
     SET AOSO_WANT_POLAR_BODY TO "".
     IF AOSO_WANT_POLAR { SET AOSO_WANT_POLAR_BODY TO body_name. }
     SET AOSO_GOTO["data"] TO LEXICON("goal", body_name, "hop", "", "burn_kind", "", "depart_body", SHIP:BODY:NAME, "window_ut", 0, "coast_since", 0, "retry_ut", 0, "corrected", FALSE, "correct_count", 0, "correct_requested", correction_only, "correction_only", correction_only, "last_patch_ut", 0, "expect_body", "", "expect_ut", 0, "patch_lost_ut", 0, "capture_fails", 0, "skip_capture", FALSE, "recover_hop", "", "recover_from", "", "intruder", "", "transit_logged", "").
@@ -1454,6 +1458,8 @@ FUNCTION aoso_goto_update {
             RETURN.
         }
     }
+    aoso_auth_use("goto").
+    IF aoso_auth_owner("WARP") = "" { aoso_auth_acquire("goto", "WARP", 2). }
     aoso_state_update(AOSO_GOTO).
     SET cur TO AOSO_GOTO["current"].
     LOCAL p_g IS 0.2.

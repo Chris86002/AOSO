@@ -32,6 +32,13 @@
 
 GLOBAL AOSO_PRECISION IS aoso_state_new_machine().
 
+FUNCTION aoso_kscreturn_claim_authority {
+    aoso_auth_use("kscreturn").
+    IF aoso_auth_owner("WARP") = "" { aoso_auth_acquire("kscreturn", "WARP", 2). }
+    IF aoso_auth_owner("STEERING") = "" { aoso_auth_acquire("kscreturn", "STEERING", 2). }
+    IF aoso_auth_owner("THROTTLE") = "" { aoso_auth_acquire("kscreturn", "THROTTLE", 2). }
+}
+
 // Angle (deg, 0-90) between the ship's orbital plane and HOME_BODY's
 // equator: 0 for either a prograde or retrograde equatorial orbit, 90 for a
 // polar one. SHIP:ORBIT:INCLINATION alone can't distinguish "equatorial" at
@@ -302,12 +309,14 @@ FUNCTION aoso_kscreturn_handoff_entry {
 
 FUNCTION aoso_kscreturn_done_entry {
     PARAMETER data.
+    aoso_auth_release_all("kscreturn").
     aoso_log_info("KSCRETURN", "Precision return handed off to landing/descent.ks.").
 }
 
 FUNCTION aoso_kscreturn_aborted_entry {
     PARAMETER data.
     aoso_throttle_set(0).
+    aoso_auth_release_all("kscreturn").
     aoso_log_error("KSCRETURN", "Precision KSC return aborted.").
 }
 
@@ -325,11 +334,13 @@ FUNCTION aoso_kscreturn_define_states {
 // return, then drive it every tick with aoso_kscreturn_update().
 FUNCTION aoso_kscreturn_start {
     aoso_kscreturn_define_states().
+    aoso_kscreturn_claim_authority().
     SET AOSO_PRECISION["data"] TO LEXICON().
     aoso_state_transition(AOSO_PRECISION, "PLAN").
 }
 
 FUNCTION aoso_kscreturn_update {
+    aoso_kscreturn_claim_authority().
     aoso_state_update(AOSO_PRECISION).
 }
 

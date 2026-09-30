@@ -155,6 +155,16 @@ FUNCTION aoso_staging_burn_guard_active {
 
 FUNCTION aoso_staging_do {
     IF DEFINED AOSO_AUTH {
+        IF AOSO_AUTH_WHO = "" {
+            aoso_auth_use("auto_staging").
+        }
+        IF aoso_auth_owner("STAGING") = "" {
+            LOCAL stg_prio IS 1.
+            IF AOSO_AUTH_WHO = "goto" { SET stg_prio TO 2. }
+            IF AOSO_AUTH_WHO = "ascent" OR AOSO_AUTH_WHO = "maneuver" { SET stg_prio TO 3. }
+            IF AOSO_AUTH_WHO = "descent" { SET stg_prio TO 4. }
+            aoso_auth_acquire(AOSO_AUTH_WHO, "STAGING", stg_prio).
+        }
         IF NOT aoso_auth_can_cmd("STAGING") {
             LOCAL owner IS aoso_auth_owner("STAGING").
             IF owner <> "ascent" {
@@ -953,7 +963,13 @@ FUNCTION aoso_staging_auto_check {
 
 FUNCTION aoso_staging_register_task {
     PARAMETER interval_s IS 0.1.
-    aoso_sched_add("auto_staging", interval_s, aoso_staging_auto_check@).
+    aoso_sched_add("auto_staging", interval_s, aoso_staging_task_tick@).
+}
+
+FUNCTION aoso_staging_task_tick {
+    aoso_auth_use("auto_staging").
+    IF aoso_auth_owner("STAGING") = "" { aoso_auth_acquire("auto_staging", "STAGING", 1). }
+    aoso_staging_auto_check().
 }
 
 // Light the next engine group even with throttle closed (coast / pre-burn).

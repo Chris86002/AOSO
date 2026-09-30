@@ -14,6 +14,20 @@ GLOBAL AOSO_WARP_DEMOTE_UNTIL_RT IS 0.
 GLOBAL AOSO_WARP_DEMOTE_CAP IS 0.
 GLOBAL AOSO_WARP_CMD_RT IS -1.
 
+// The only raw warp-rate command site. Callers identify/acquire through
+// authority, then use the higher-level request/stop helpers.
+FUNCTION aoso_warp_set_index {
+    PARAMETER warp_idx.
+    IF DEFINED AOSO_AUTH {
+        IF NOT aoso_auth_can_cmd("WARP") {
+            aoso_log_warn_every(8, "AUTH", AOSO_AUTH_WHO + " denied WARP command (held by " + aoso_auth_owner("WARP") + ").").
+            RETURN FALSE.
+        }
+    }
+    SET WARP TO warp_idx.
+    RETURN TRUE.
+}
+
 FUNCTION aoso_warp_deadline_set {
     PARAMETER name.
     PARAMETER ut.

@@ -28,6 +28,13 @@
 
 GLOBAL AOSO_RETURN IS aoso_state_new_machine().
 
+FUNCTION aoso_return_claim_authority {
+    aoso_auth_use("return").
+    IF aoso_auth_owner("WARP") = "" { aoso_auth_acquire("return", "WARP", 2). }
+    IF aoso_auth_owner("STEERING") = "" { aoso_auth_acquire("return", "STEERING", 2). }
+    IF aoso_auth_owner("THROTTLE") = "" { aoso_auth_acquire("return", "THROTTLE", 2). }
+}
+
 FUNCTION aoso_return_home_body {
     RETURN BODY(aoso_config_get("HOME_BODY", "Kerbin")).
 }
@@ -159,12 +166,14 @@ FUNCTION aoso_return_done_entry {
     PARAMETER data.
     aoso_throttle_set(0).
     aoso_steer_release().
+    aoso_auth_release_all("return").
     aoso_log_info("RETURN", "Home body " + aoso_return_home_body():NAME + " reached.").
 }
 
 FUNCTION aoso_return_aborted_entry {
     PARAMETER data.
     aoso_throttle_set(0).
+    aoso_auth_release_all("return").
     aoso_log_error("RETURN", "Return sequence aborted.").
 }
 
@@ -183,11 +192,13 @@ FUNCTION aoso_return_define_states {
 // job with little or no further burn needed).
 FUNCTION aoso_return_start {
     aoso_return_define_states().
+    aoso_return_claim_authority().
     SET AOSO_RETURN["data"] TO LEXICON().
     aoso_state_transition(AOSO_RETURN, "PLAN").
 }
 
 FUNCTION aoso_return_update {
+    aoso_return_claim_authority().
     aoso_state_update(AOSO_RETURN).
 }
 

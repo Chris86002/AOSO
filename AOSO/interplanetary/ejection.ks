@@ -303,6 +303,7 @@ FUNCTION aoso_interplanetary_add_candidate_ejection_node {
 
 FUNCTION aoso_interplanetary_add_native_ejection_node {
     PARAMETER arr_body.
+    IF NOT aoso_warp_ensure_physics_idle() { RETURN 0. }
     LOCAL res IS aoso_interplanetary_native_search(arr_body).
     IF NOT res:ISTYPE("Lexicon") { RETURN 0. }
     IF NOT res["ok"] { RETURN 0. }

@@ -1,7 +1,8 @@
 // AOSO/core/authority.ks
 // Explicit ownership of flight-control resources. Steering/throttle still
 // lock-once in flight/steering.ks. Authority decides WHO may command them.
-// Empty owner = anyone (backward compatible). Named owner = exclusive.
+// Empty owner = anyone only when the resource is also unowned. Named
+// controllers must acquire before command wrappers will act.
 
 GLOBAL AOSO_AUTH IS LEXICON(
     "STEERING", "",
@@ -84,17 +85,24 @@ FUNCTION aoso_auth_can_cmd {
     PARAMETER res_name.
     LOCAL owner IS aoso_auth_owner(res_name).
     IF owner = "" { RETURN TRUE. }
-    IF AOSO_AUTH_WHO = "" { RETURN TRUE. }
+    IF AOSO_AUTH_WHO = "" {
+        aoso_log_warn_every(8, "AUTH", "empty controller denied " + res_name + " (held by " + owner + ").").
+        RETURN FALSE.
+    }
     RETURN owner = AOSO_AUTH_WHO.
 }
 
 FUNCTION aoso_safe_hold {
     PARAMETER reason.
+    LOCAL prior_who IS AOSO_AUTH_WHO.
+    aoso_auth_use("watchdog").
+    aoso_auth_acquire("watchdog", "WARP", 5).
     aoso_throttle_set(0).
     aoso_steer_release().
-    SET WARP TO 0.
-    aoso_auth_release_all(AOSO_AUTH_WHO).
-    SET AOSO_AUTH_WHO TO "".
+    aoso_warp_hard_stop().
+    aoso_auth_release_all("watchdog").
+    aoso_auth_release_all(prior_who).
+    aoso_auth_use("").
     aoso_log_warn("HOLD", reason).
     IF DEFINED AOSO_EVENTS { aoso_event_publish("HOLD", "safe", reason). }
 

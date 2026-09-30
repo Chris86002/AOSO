@@ -373,6 +373,12 @@ FUNCTION aoso_selftest {
     aoso_auth_release("selftestB", "STEERING").
     SET fail TO aoso_selftest_check("auth released empty", aoso_auth_owner("STEERING") = "", fail).
 
+    aoso_auth_acquire("selftestA", "STEERING", 1).
+    aoso_auth_use("").
+    SET fail TO aoso_selftest_check("auth empty who denied owned resource",
+        aoso_auth_can_cmd("STEERING") = FALSE, fail).
+    aoso_auth_release("selftestA", "STEERING").
+
     aoso_auth_acquire("ascent", "STEERING", 3).
     aoso_auth_acquire("ascent", "THROTTLE", 3).
     LOCAL same_prio IS aoso_auth_acquire("maneuver", "STEERING", 3).

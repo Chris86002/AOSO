@@ -208,6 +208,7 @@ FUNCTION aoso_docking_done_entry {
     PARAMETER data.
     aoso_docking_zero_translation().
     aoso_steer_release().
+    aoso_auth_release_all("docking").
     IF DEFINED AOSO_CACHE_VALID { SET AOSO_CACHE_VALID TO FALSE. }
     IF DEFINED AOSO_TOPO { aoso_topo_refresh(FALSE). }
     IF DEFINED AOSO_EVENTS {
@@ -220,6 +221,7 @@ FUNCTION aoso_docking_aborted_entry {
     PARAMETER data.
     aoso_docking_zero_translation().
     aoso_steer_release().
+    aoso_auth_release_all("docking").
     aoso_log_error("DOCKING", "Docking aborted.").
 }
 
@@ -235,6 +237,10 @@ FUNCTION aoso_docking_define_states {
 // calling. Drive the machine every tick with aoso_docking_update().
 FUNCTION aoso_docking_start {
     aoso_docking_define_states().
+    aoso_auth_use("docking").
+    aoso_auth_acquire("docking", "STEERING", 2).
+    aoso_auth_acquire("docking", "RCS", 2).
+    aoso_auth_acquire("docking", "TARGETING", 2).
 
     LOCAL own_port IS aoso_docking_own_port().
     IF own_port = 0 OR NOT aoso_docking_target_ok() {

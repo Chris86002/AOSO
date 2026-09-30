@@ -171,6 +171,7 @@ FUNCTION aoso_interplanetary_time_cost_day {
 
 FUNCTION aoso_interplanetary_native_search {
     PARAMETER target_body.
+    IF NOT aoso_warp_ensure_physics_idle() { RETURN 0. }
     IF NOT aoso_addon_native_interplanetary_available() { RETURN 0. }
     IF NOT aoso_interplanetary_share_parent(SHIP:BODY, target_body) { RETURN 0. }
 
@@ -280,4 +281,3 @@ FUNCTION aoso_interplanetary_candidate_vinf {
         "long_way", cand["long_way"]
     ).
 }
-

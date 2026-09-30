@@ -84,16 +84,18 @@ Resources: `STEERING`, `THROTTLE`, `STAGING`, `WARP`, `RCS`, `SAS`,
 `TARGETING`.
 
 A named controller calls `aoso_auth_use(who)` then
-`aoso_auth_acquire(who, resource, prio)`. Empty owner = anyone
-(backward compatible). Higher prio preempts; equal prio is denied.
+`aoso_auth_acquire(who, resource, prio)`. An unowned resource remains
+backward-compatible, but an empty current controller cannot command a
+resource once a named controller owns it. Higher priority preempts; equal
+priority is denied.
 
 Ascent (prio 3), maneuver (3), descent (4) acquire on start and
 `aoso_auth_release_all` on done/abort. Equal prio is denied, so
 ascent **yields** STEERING/THROTTLE/WARP/STAGING before the
 circularization `aoso_maneuver_execute_next` or the 60 m/s node
-lights at throttle 0. `aoso_staging_do` allows
-ascent / maneuver / descent / goto / auto_staging (WHO-empty still
-bypasses until callers all set identity).
+lights at throttle 0. `aoso_staging_do` allows ascent / maneuver / descent /
+goto / auto_staging by name; an empty controller no longer bypasses an owned
+staging resource.
 
 `aoso_steer_release` stays ungated so HOLD can always drop the lock.
 
@@ -101,11 +103,10 @@ bypasses until callers all set identity).
 
 Existing FSMs fly the ship. The brain never steers.
 
-Warp: controllers should `aoso_warp_deadline_set` then
-`aoso_warp_request`. Actual `SET WARP` / `WARPTO` still live in
-`aoso_warp_approach`. Many controllers still `SET WARP TO 0` as a
-hard stop (proven, not aesthetic purity). Maneuver registers the
-node UT so a long rails coast cannot skip ignition.
+Warp: controllers call `aoso_warp_deadline_set` then `aoso_warp_request`,
+or the non-blocking `aoso_warp_hard_stop`. The only raw warp-rate write is
+the authority-gated helper in `core/warp.ks`. Maneuver registers the node UT
+so a long rails coast cannot skip ignition.
 
 ## Postconditions — `core/verify.ks`
 

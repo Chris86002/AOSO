@@ -693,7 +693,7 @@ FUNCTION aoso_descent_freefall_execute {
             "s " + aoso_warp_diag_txt() + ".").
         IF pe_eta > 25 {
             aoso_steer_release().
-            aoso_warp_approach(pe_eta, 25, 12).
+            aoso_warp_request(pe_eta, 25, 12).
         }
         RETURN.
     }
@@ -747,7 +747,7 @@ FUNCTION aoso_descent_freefall_execute {
     IF clear > align_h {
         IF data:HASKEY("align_since") { data:REMOVE("align_since"). }
         aoso_steer_release().
-        aoso_warp_approach(coast_eta, 25, 12).
+        aoso_warp_request(coast_eta, 25, 12).
         RETURN.
     }
 
@@ -756,7 +756,7 @@ FUNCTION aoso_descent_freefall_execute {
     // the engine on that same tick unless the ground is already inside the
     // no-margin stop distance.
     IF WARP > 0 OR KUNIVERSE:TIMEWARP:RATE > 1.01 OR NOT SHIP:UNPACKED {
-        SET WARP TO 0.
+        aoso_warp_hard_stop().
         aoso_steer_release().
         IF data:HASKEY("align_since") { data:REMOVE("align_since"). }
         RETURN.
@@ -880,7 +880,7 @@ FUNCTION aoso_descent_operator_status {
 
 FUNCTION aoso_descent_burn_entry {
     PARAMETER data.
-    SET WARP TO 0.
+    aoso_warp_hard_stop().
     SET AOSO_DESCENT_PRED_AT TO -1.
     IF data:HASKEY("burn_rearm") { data:REMOVE("burn_rearm"). }
     aoso_descent_maintain_legs(aoso_descent_true_radar(), TRUE).
@@ -893,7 +893,7 @@ FUNCTION aoso_descent_burn_execute {
     PARAMETER data.
     aoso_descent_measure_dv(data).
     aoso_parachute_auto_check().
-    SET WARP TO 0.
+    aoso_warp_hard_stop().
 
     aoso_staging_auto_check().
     IF aoso_fuel_abort_check() {
@@ -1074,6 +1074,8 @@ FUNCTION aoso_descent_start {
     aoso_sched_add("descent", 0, aoso_descent_tick@).
     aoso_auth_acquire("descent", "STEERING", 4).
     aoso_auth_acquire("descent", "THROTTLE", 4).
+    aoso_auth_acquire("descent", "WARP", 4).
+    aoso_auth_acquire("descent", "STAGING", 4).
     aoso_auth_use("descent").
     LOCAL pred_l IS aoso_feas_land_cost(SHIP:BODY:NAME).
     LOCAL did_l IS aoso_decide("DESCENT", "start", SHIP:BODY:NAME, "landing", "pred=" + ROUND(pred_l, 0), pred_l).

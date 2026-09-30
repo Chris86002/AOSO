@@ -96,8 +96,6 @@ FUNCTION aoso_brain_wait_think {
     // wait can advance ~4900-49000 seconds of UT at high rails warp.
     // Drive the transition non-blockingly and let the owning FSM call again.
     IF WARP > 0 OR WARPMODE <> "PHYSICS" OR NOT KUNIVERSE:TIMEWARP:ISSETTLED {
-        aoso_warp_ensure_physics_idle().
-
         RETURN FALSE.
     }
 

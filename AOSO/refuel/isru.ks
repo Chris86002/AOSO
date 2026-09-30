@@ -91,6 +91,7 @@ FUNCTION aoso_refuel_on_abort {
     SET ISRU TO FALSE.
     IF aoso_vessel_get("has_radiators", FALSE) { SET RADIATORS TO FALSE. }
     SET DEPLOYDRILLS TO FALSE.
+    aoso_auth_release_all("isru").
     LOCAL res_a IS aoso_result_make("REFUEL", "ABORTED", "safety interruption").
     IF data:HASKEY("start_fuel_pct") { SET res_a["predicted_fuel"] TO data["target_pct"] - data["start_fuel_pct"]. }
     SET res_a["actual_fuel"] TO aoso_resource_pct("LiquidFuel").
@@ -179,6 +180,7 @@ FUNCTION aoso_refuel_stow_entry {
     SET ISRU TO FALSE.
     IF aoso_vessel_get("has_radiators", FALSE) { SET RADIATORS TO FALSE. }
     SET DEPLOYDRILLS TO FALSE.
+    aoso_auth_release_all("isru").
     LOCAL start_pct IS 0.
     LOCAL target_pct IS aoso_config_get("REFUEL_TARGET_PCT", 95).
     IF data:HASKEY("start_fuel_pct") { SET start_pct TO data["start_fuel_pct"]. }
@@ -221,6 +223,9 @@ FUNCTION aoso_refuel_start {
         RETURN FALSE.
     }
 
+    aoso_auth_use("isru").
+    aoso_auth_acquire("isru", "WARP", 1).
+
     aoso_state_define(AOSO_REFUEL, "DEPLOY", aoso_refuel_deploy_entry@, aoso_refuel_deploy_execute@, 0, 15, aoso_refuel_deploy_on_timeout@, aoso_refuel_on_abort@).
     aoso_state_define(AOSO_REFUEL, "HARVEST", aoso_refuel_harvest_entry@, aoso_refuel_harvest_execute@, 0, 0, 0, aoso_refuel_on_abort@).
     aoso_state_define(AOSO_REFUEL, "STOW", aoso_refuel_stow_entry@, 0, 0).
@@ -250,5 +255,7 @@ FUNCTION aoso_refuel_start {
 }
 
 FUNCTION aoso_refuel_tick {
+    aoso_auth_use("isru").
+    IF aoso_auth_owner("WARP") = "" { aoso_auth_acquire("isru", "WARP", 1). }
     aoso_state_update(AOSO_REFUEL).
 }

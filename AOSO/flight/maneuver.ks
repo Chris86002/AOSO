@@ -120,7 +120,7 @@ FUNCTION aoso_maneuver_peri_unsafe {
 // in physics warp. Drop to 0, wait a tick, then set the mode.
 FUNCTION aoso_warp_force_rails {
     IF WARPMODE = "RAILS" { RETURN. }
-    SET WARP TO 0.
+    aoso_warp_set_index(0).
     aoso_yield().
     SET WARPMODE TO "RAILS".
     aoso_yield().
@@ -141,7 +141,7 @@ FUNCTION aoso_warp_ensure_physics_idle {
         // tick packed Acacius, then FlightIntegrator spent the unpack
         // applying analytic temperature until the game froze.
         LOCAL idle_idx IS aoso_warp_step_target(0).
-        IF idle_idx <> WARP { SET WARP TO idle_idx. }
+        IF idle_idx <> WARP { aoso_warp_set_index(idle_idx). }
         SET AOSO_WARP_IDLE_SINCE TO 0.
         RETURN FALSE.
     }
@@ -173,7 +173,7 @@ FUNCTION aoso_warp_physics_index {
 
 FUNCTION aoso_warp_set_physics_cruise {
     IF SHIP:STATUS = "PRELAUNCH" {
-        SET WARP TO 0.
+        aoso_warp_set_index(0).
         RETURN FALSE.
     }
 
@@ -184,7 +184,7 @@ FUNCTION aoso_warp_set_physics_cruise {
     IF WARPMODE <> "PHYSICS" {
         IF WARP > 0 {
             LOCAL phys_idx IS aoso_warp_step_target(0).
-            IF phys_idx <> WARP { SET WARP TO phys_idx. }
+            IF phys_idx <> WARP { aoso_warp_set_index(phys_idx). }
             RETURN FALSE.
         }
         SET WARPMODE TO "PHYSICS".
@@ -196,7 +196,7 @@ FUNCTION aoso_warp_set_physics_cruise {
     // wait for the rate change itself to settle before attitude control.
     LOCAL widx IS aoso_warp_physics_index().
     IF WARP <> widx {
-        SET WARP TO widx.
+        aoso_warp_set_index(widx).
         RETURN FALSE.
     }
     IF NOT KUNIVERSE:TIMEWARP:ISSETTLED { RETURN FALSE. }
@@ -204,7 +204,7 @@ FUNCTION aoso_warp_set_physics_cruise {
 }
 
 FUNCTION aoso_warp_stop {
-    IF WARP > 0 { SET WARP TO 0. }
+    IF WARP > 0 { aoso_warp_set_index(0). }
 }
 
 // Emergency/ownership stop request. Never WAIT here: a WAIT 0 issued while
@@ -212,7 +212,7 @@ FUNCTION aoso_warp_stop {
 // the rate change is applied. Callers that need unpacked physics must use
 // aoso_warp_ensure_physics_idle() across scheduler ticks.
 FUNCTION aoso_warp_hard_stop {
-    IF WARP > 0 { SET WARP TO 0. }
+    IF WARP > 0 { aoso_warp_set_index(0). }
 }
 
 // Emergency rails drop. One index every 0.2 s cannot reach 1x after a hitch
@@ -223,7 +223,7 @@ FUNCTION aoso_warp_apply_urgent {
     PARAMETER eta_s.
     LOCAL urg IS aoso_warp_urgent_index(target_idx, eta_s).
     IF urg < 0 { RETURN -1. }
-    SET WARP TO urg.
+    aoso_warp_set_index(urg).
     LOCAL now_rt IS KUNIVERSE:REALTIME.
     SET AOSO_WARP_CMD_RT TO now_rt.
     SET AOSO_WARP_DEMOTE_CAP TO urg.
@@ -325,7 +325,7 @@ FUNCTION aoso_warp_approach {
     }
     IF NOT aoso_maneuver_can_warp() {
         IF SHIP:STATUS = "PRELAUNCH" {
-            SET WARP TO 0.
+            aoso_warp_set_index(0).
             aoso_warp_report("HOLD", eta_s, "pad").
             RETURN "hold".
         }
@@ -370,7 +370,7 @@ FUNCTION aoso_warp_approach {
         // rails command that can age the maneuver before KSP applies 1x.
         IF WARP > 0 {
             LOCAL mode_idx IS aoso_warp_step_target(0).
-            IF mode_idx <> WARP { SET WARP TO mode_idx. }
+            IF mode_idx <> WARP { aoso_warp_set_index(mode_idx). }
             aoso_warp_report("TRANSITION", eta_s, "settling to 1x before rails mode").
             RETURN "transition".
         }
@@ -392,7 +392,7 @@ FUNCTION aoso_warp_approach {
                 IF WARP > 0 { RETURN "transition". }
             }
             LOCAL down_now IS aoso_warp_step_target(want).
-            IF down_now <> WARP { SET WARP TO down_now. }
+            IF down_now <> WARP { aoso_warp_set_index(down_now). }
         }
         RETURN "transition".
     }
@@ -408,7 +408,7 @@ FUNCTION aoso_warp_approach {
             }
         }
         LOCAL step_now IS aoso_warp_step_target(want).
-        IF step_now <> WARP { SET WARP TO step_now. }
+        IF step_now <> WARP { aoso_warp_set_index(step_now). }
     }
     aoso_warp_report("COAST", eta_s, "precision lead T-" + ROUND(rails_lead_s, 0) + "s").
     RETURN "rails".
@@ -600,7 +600,7 @@ FUNCTION aoso_maneuver_finish_node {
         IF parent_type = "MANEUVER" { SET owns_action TO TRUE. }
     }
 
-    SET WARP TO 0.
+    aoso_warp_set_index(0).
     aoso_yield().
     SET WARPMODE TO "RAILS".
     aoso_throttle_set(0).
@@ -797,7 +797,8 @@ FUNCTION aoso_maneuver_execute_next {
         }
         aoso_auth_acquire("maneuver", "STEERING", 3).
         aoso_auth_acquire("maneuver", "THROTTLE", 3).
-        aoso_auth_acquire("maneuver", "WARP", 2).
+        aoso_auth_acquire("maneuver", "WARP", 3).
+        aoso_auth_acquire("maneuver", "STAGING", 3).
         aoso_auth_use("maneuver").
         // Equal prio cannot preempt. Ascent circularize must
         // aoso_ascent_yield_burn() before calling us or throttle stays 0.
@@ -807,7 +808,7 @@ FUNCTION aoso_maneuver_execute_next {
         // prograde in physics and do not advance UT.
         IF aoso_maneuver_peri_unsafe(0) {
             IF nd:ETA > ETA:PERIAPSIS {
-                SET WARP TO 0.
+                aoso_warp_set_index(0).
                 aoso_throttle_set(0).
                 IF WARPMODE = "PHYSICS" {
                     aoso_steer_prepare_for_burn().
@@ -857,7 +858,7 @@ FUNCTION aoso_maneuver_execute_next {
             aoso_throttle_set(0).
             RETURN FALSE.
         }
-        SET WARP TO 0.
+        aoso_warp_set_index(0).
 
         aoso_staging_auto_check().
         IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
@@ -901,7 +902,7 @@ FUNCTION aoso_maneuver_execute_next {
 
         IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
 
-        SET WARP TO 0.
+        aoso_warp_set_index(0).
         SET AOSO_MANEUVER_LOCK TO remaining_vec.
         // A new burn must never inherit a pre-cut/recovery latch from an
         // earlier maneuver or a transient staging check.

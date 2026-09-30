@@ -220,9 +220,10 @@ FUNCTION aoso_rendezvous_burn_is_long {
 // Extra physics ticks after a node edit so KSP rebuilt NEXTPATCH before we
 // score PE. Rushing this is how a 503 km Minmus graze got burned.
 FUNCTION aoso_rendezvous_settle {
+    IF NOT aoso_warp_ensure_physics_idle() { RETURN FALSE. }
     WAIT 0.
     WAIT 0.
-
+    RETURN TRUE.
 }
 
 // Do not burn a guess. Hill-climb patched PE (B-plane / aiming radius)
@@ -399,10 +400,11 @@ FUNCTION aoso_rendezvous_porkchop_best_txt {
 }
 
 FUNCTION aoso_rendezvous_settle_long {
+    IF NOT aoso_warp_ensure_physics_idle() { RETURN FALSE. }
     WAIT 0.
     WAIT 0.
     WAIT 0.
-
+    RETURN TRUE.
 }
 
 FUNCTION aoso_rendezvous_native_candidates_to_node {
@@ -518,6 +520,7 @@ FUNCTION aoso_rendezvous_try_native_porkchop {
     PARAMETER p_ship.
     PARAMETER desired.
 
+    IF NOT aoso_warp_ensure_physics_idle() { RETURN 0. }
     IF NOT aoso_addon_native_porkchop_available() { RETURN 0. }
 
     // Native Phase 2 is already chunked into bounded main-thread slices and

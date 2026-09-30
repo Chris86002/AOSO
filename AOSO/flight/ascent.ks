@@ -726,7 +726,7 @@ FUNCTION aoso_ascent_turn_execute {
 
 FUNCTION aoso_ascent_coast_entry {
     PARAMETER data.
-    SET WARP TO 0.
+    aoso_warp_hard_stop().
     aoso_throttle_set(0).
     aoso_ascent_restore_steering(data).
     aoso_steer_prepare_for_burn().
@@ -739,7 +739,7 @@ FUNCTION aoso_ascent_coast_execute {
         aoso_staging_auto_check().
         IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
         IF APOAPSIS < data["target_apo"] {
-            SET WARP TO 0.
+            aoso_warp_hard_stop().
             aoso_throttle_set(0.12).
         } ELSE {
             aoso_throttle_set(0).
@@ -766,7 +766,7 @@ FUNCTION aoso_ascent_coast_execute {
     // (launch heading, pitch 0) ran on the same ticks as rails unpack
     // and physics 2x, yawed through east, and the node was missed.
     IF APOAPSIS < data["target_apo"] {
-        SET WARP TO 0.
+        aoso_warp_hard_stop().
         aoso_throttle_set(0.12).
         aoso_steer_heading_pitch_noroll(data["heading"], 0).
         IF aoso_fuel_abort_check() {
@@ -832,7 +832,7 @@ FUNCTION aoso_ascent_circ_fix_far_node {
 
 FUNCTION aoso_ascent_circularize_entry {
     PARAMETER data.
-    SET WARP TO 0.
+    aoso_warp_hard_stop().
     aoso_throttle_set(0).
     // Do not unlock here. Rails exit leaves the nose ~40 deg off prograde,
     // and unlocking left a 0.19 deg/s pitch rate through apoapsis.
@@ -979,7 +979,7 @@ FUNCTION aoso_ascent_measure_dv {
 
 FUNCTION aoso_ascent_done_entry {
     PARAMETER data.
-    SET WARP TO 0.
+    aoso_warp_hard_stop().
     aoso_ascent_reclaim().
     aoso_throttle_set(0).
     aoso_ascent_restore_steering(data).
@@ -1008,7 +1008,7 @@ FUNCTION aoso_ascent_done_entry {
 
 FUNCTION aoso_ascent_aborted_entry {
     PARAMETER data.
-    SET WARP TO 0.
+    aoso_warp_hard_stop().
     aoso_ascent_reclaim().
     aoso_throttle_set(0).
     aoso_ascent_restore_steering(data).
@@ -1122,6 +1122,7 @@ FUNCTION aoso_ascent_start {
     aoso_auth_acquire("ascent", "STEERING", 3).
     aoso_auth_acquire("ascent", "THROTTLE", 3).
     aoso_auth_acquire("ascent", "STAGING", 3).
+    aoso_auth_acquire("ascent", "WARP", 3).
     aoso_auth_use("ascent").
     LOCAL shape_now IS aoso_ascent_turn_shape().
     LOCAL start_a IS aoso_config_get("ASCENT_TURN_START_ALT", 1000).
@@ -1147,6 +1148,7 @@ FUNCTION aoso_ascent_start {
 
 FUNCTION aoso_ascent_update {
     aoso_auth_use("ascent").
+    IF aoso_auth_owner("WARP") = "" { aoso_auth_acquire("ascent", "WARP", 3). }
     LOCAL st IS AOSO_ASCENT["current"].
     IF st <> "" {
         IF st <> "DONE" {
