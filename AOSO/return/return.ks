@@ -35,6 +35,51 @@ FUNCTION aoso_return_claim_authority {
     IF aoso_auth_owner("THROTTLE") = "" { aoso_auth_acquire("return", "THROTTLE", 2). }
 }
 
+FUNCTION aoso_return_begin_action {
+    PARAMETER data.
+    SET data["owns_action"] TO FALSE.
+    SET data["clear_action"] TO FALSE.
+    LOCAL parent_active IS AOSO_ACTION_CUR:ISTYPE("Lexicon").
+    IF AOSO_ACTION_CUR:ISTYPE("Lexicon") {
+        IF AOSO_ACTION_CUR["type"] = "RETURN" {
+            SET data["return_action"] TO AOSO_ACTION_CUR.
+            SET data["owns_action"] TO TRUE.
+            SET data["clear_action"] TO TRUE.
+            RETURN.
+        }
+        aoso_log_info("RETURN", "Keeping parent action " + AOSO_ACTION_CUR["type"] + ".").
+    }
+    LOCAL projected IS aoso_project_return(aoso_project_state_current()).
+    LOCAL pred_dv IS projected["last_cost"].
+    LOCAL pred_time IS projected["last_duration"].
+    LOCAL home_name IS aoso_return_home_body():NAME.
+    LOCAL did IS aoso_decide("RETURN", "route home", home_name, "return controller", SHIP:BODY:NAME + "->" + home_name, pred_dv).
+    LOCAL act_r IS aoso_action_create(did, "RETURN", home_name, pred_dv).
+    SET act_r["predicted_duration"] TO pred_time.
+    IF parent_active {
+        aoso_action_begin_detached(act_r).
+    } ELSE {
+        aoso_action_begin(act_r).
+        aoso_action_set_predicted_duration(pred_time).
+        SET data["clear_action"] TO TRUE.
+    }
+    SET data["return_action"] TO act_r.
+    SET data["owns_action"] TO TRUE.
+}
+
+FUNCTION aoso_return_emit_result {
+    PARAMETER data.
+    PARAMETER result_status.
+    PARAMETER reason.
+    IF NOT data:HASKEY("owns_action") { RETURN. }
+    IF NOT data["owns_action"] { RETURN. }
+    IF NOT data:HASKEY("return_action") { RETURN. }
+    LOCAL act_r IS data["return_action"].
+    LOCAL res_r IS aoso_result_from_action(act_r, result_status, reason).
+    aoso_result_emit(res_r, data["clear_action"]).
+    SET data["owns_action"] TO FALSE.
+}
+
 FUNCTION aoso_return_home_body {
     RETURN BODY(aoso_config_get("HOME_BODY", "Kerbin")).
 }
@@ -166,6 +211,8 @@ FUNCTION aoso_return_done_entry {
     PARAMETER data.
     aoso_throttle_set(0).
     aoso_steer_release().
+    LOCAL ver_r IS aoso_verify_return(aoso_return_home_body():NAME).
+    aoso_return_emit_result(data, ver_r["status"], ver_r["reason"]).
     aoso_auth_release_all("return").
     aoso_log_info("RETURN", "Home body " + aoso_return_home_body():NAME + " reached.").
 }
@@ -173,6 +220,7 @@ FUNCTION aoso_return_done_entry {
 FUNCTION aoso_return_aborted_entry {
     PARAMETER data.
     aoso_throttle_set(0).
+    aoso_return_emit_result(data, "ABORTED", "return sequence aborted").
     aoso_auth_release_all("return").
     aoso_log_error("RETURN", "Return sequence aborted.").
 }
@@ -194,6 +242,7 @@ FUNCTION aoso_return_start {
     aoso_return_define_states().
     aoso_return_claim_authority().
     SET AOSO_RETURN["data"] TO LEXICON().
+    aoso_return_begin_action(AOSO_RETURN["data"]).
     aoso_state_transition(AOSO_RETURN, "PLAN").
 }
 

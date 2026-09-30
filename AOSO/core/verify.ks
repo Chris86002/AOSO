@@ -115,6 +115,22 @@ FUNCTION aoso_verify_takeoff {
     RETURN aoso_verify_ascent().
 }
 
+FUNCTION aoso_verify_return {
+    PARAMETER home_name.
+    PARAMETER require_entry IS FALSE.
+    IF SHIP:BODY:NAME <> home_name {
+        RETURN LEXICON("ok", FALSE, "reason", "body " + SHIP:BODY:NAME + " not " + home_name, "status", "FAILED").
+    }
+    IF require_entry {
+        LOCAL entry_ceiling IS 0.
+        IF SHIP:BODY:ATM:EXISTS { SET entry_ceiling TO SHIP:BODY:ATM:HEIGHT. }
+        IF PERIAPSIS > entry_ceiling {
+            RETURN LEXICON("ok", FALSE, "reason", "home reached but entry not committed", "status", "PARTIAL").
+        }
+    }
+    RETURN LEXICON("ok", TRUE, "reason", "returned to " + home_name, "status", "SUCCESS").
+}
+
 FUNCTION aoso_verify_apply_result {
     PARAMETER res.
     PARAMETER ver.

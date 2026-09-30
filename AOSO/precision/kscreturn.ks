@@ -39,6 +39,47 @@ FUNCTION aoso_kscreturn_claim_authority {
     IF aoso_auth_owner("THROTTLE") = "" { aoso_auth_acquire("kscreturn", "THROTTLE", 2). }
 }
 
+FUNCTION aoso_kscreturn_begin_action {
+    PARAMETER data.
+    SET data["owns_action"] TO FALSE.
+    SET data["clear_action"] TO FALSE.
+    LOCAL parent_active IS AOSO_ACTION_CUR:ISTYPE("Lexicon").
+    IF AOSO_ACTION_CUR:ISTYPE("Lexicon") {
+        IF AOSO_ACTION_CUR["type"] = "RETURN" {
+            SET data["return_action"] TO AOSO_ACTION_CUR.
+            SET data["owns_action"] TO TRUE.
+            SET data["clear_action"] TO TRUE.
+            RETURN.
+        }
+        aoso_log_info("KSCRETURN", "Keeping parent action " + AOSO_ACTION_CUR["type"] + ".").
+    }
+    LOCAL home_name IS aoso_config_get("HOME_BODY", "Kerbin").
+    LOCAL pred_dv IS ABS(aoso_hohmann_dv_at_apoapsis_for_periapsis(aoso_deorbit_target_periapsis_alt())).
+    LOCAL did IS aoso_decide("RETURN", "precision entry", home_name, "target home landing corridor", "pe=" + ROUND(aoso_deorbit_target_periapsis_alt(), 0), pred_dv).
+    LOCAL act_r IS aoso_action_create(did, "RETURN", home_name, pred_dv).
+    IF parent_active {
+        aoso_action_begin_detached(act_r).
+    } ELSE {
+        aoso_action_begin(act_r).
+        SET data["clear_action"] TO TRUE.
+    }
+    SET data["return_action"] TO act_r.
+    SET data["owns_action"] TO TRUE.
+}
+
+FUNCTION aoso_kscreturn_emit_result {
+    PARAMETER data.
+    PARAMETER result_status.
+    PARAMETER reason.
+    IF NOT data:HASKEY("owns_action") { RETURN. }
+    IF NOT data["owns_action"] { RETURN. }
+    IF NOT data:HASKEY("return_action") { RETURN. }
+    LOCAL act_r IS data["return_action"].
+    LOCAL res_r IS aoso_result_from_action(act_r, result_status, reason).
+    aoso_result_emit(res_r, data["clear_action"]).
+    SET data["owns_action"] TO FALSE.
+}
+
 // Angle (deg, 0-90) between the ship's orbital plane and HOME_BODY's
 // equator: 0 for either a prograde or retrograde equatorial orbit, 90 for a
 // polar one. SHIP:ORBIT:INCLINATION alone can't distinguish "equatorial" at
@@ -303,6 +344,8 @@ FUNCTION aoso_kscreturn_handoff_entry {
     } ELSE {
         aoso_log_warn("KSCRETURN", "Predicted entry-interface miss=" + ROUND(miss, 0) + "m -- outside PRECISION_LANDING_RADIUS.").
     }
+    LOCAL ver_r IS aoso_verify_return(aoso_config_get("HOME_BODY", "Kerbin"), TRUE).
+    aoso_kscreturn_emit_result(data, ver_r["status"], ver_r["reason"]).
     aoso_descent_start().
     aoso_state_transition(AOSO_PRECISION, "DONE").
 }
@@ -316,6 +359,7 @@ FUNCTION aoso_kscreturn_done_entry {
 FUNCTION aoso_kscreturn_aborted_entry {
     PARAMETER data.
     aoso_throttle_set(0).
+    aoso_kscreturn_emit_result(data, "ABORTED", "precision return aborted").
     aoso_auth_release_all("kscreturn").
     aoso_log_error("KSCRETURN", "Precision KSC return aborted.").
 }
@@ -336,6 +380,7 @@ FUNCTION aoso_kscreturn_start {
     aoso_kscreturn_define_states().
     aoso_kscreturn_claim_authority().
     SET AOSO_PRECISION["data"] TO LEXICON().
+    aoso_kscreturn_begin_action(AOSO_PRECISION["data"]).
     aoso_state_transition(AOSO_PRECISION, "PLAN").
 }
 

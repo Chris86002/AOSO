@@ -99,6 +99,13 @@ FUNCTION aoso_selftest {
     SET fail TO aoso_selftest_check("result action_type", res["action_type"] = "ASCENT", fail).
     SET fail TO aoso_selftest_check("result status", res["status"] = "SUCCESS", fail).
 
+    aoso_event_init().
+    LOCAL emit_res IS aoso_result_make("TAKEOFF", "SUCCESS", "selftest").
+    aoso_result_emit(emit_res, FALSE).
+    LOCAL emit_event IS aoso_event_next().
+    SET fail TO aoso_selftest_check("result emits TYPE_STATUS", emit_event["type"] = "TAKEOFF_SUCCESS", fail).
+    aoso_event_init().
+
     aoso_hb_set("selftest", "A", 0.1).
     LOCAL t1 IS AOSO_HB["selftest"]["progress_at"].
     aoso_hb_set("selftest", "A", 0.1).

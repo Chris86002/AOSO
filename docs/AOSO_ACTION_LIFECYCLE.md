@@ -66,6 +66,11 @@ Types used as XP ops: `ASCENT`, `CIRCULARIZATION`, `MANEUVER`,
 | LANDING | `descent_start`; touchdown verifies srf/vs/tilt |
 | REFUEL | `refuel_start`; stow classifies SUCCESS/PARTIAL/FAILED |
 | STAGING | `aoso_staging_emit` after `aoso_staging_do` (pred mass vs actual) |
+| RETURN | `return_start` for the route home and `kscreturn_start` for entry commitment |
+
+Docking is not an XP cost operation, but it still creates a correlated
+decision/result pair. If another mission action is active, the docking result
+is detached and leaves that parent action intact.
 
 ## Preconditions
 
@@ -118,6 +123,7 @@ so a long rails coast cannot skip ignition.
 | Capture | `aoso_verify_capture(expect_body)` | Correct body, bound, PE safe |
 | Landing | `aoso_verify_landing` | LANDED/SPLASHED, not sliding, not falling, tilt ≤ 55° |
 | Refuel | classify start/end/target | SUCCESS / PARTIAL / FAILED / ABORTED |
+| Return | `aoso_verify_return(home, require_entry)` | In the home SOI; precision handoff also has an entry-intersecting periapsis |
 
 Statuses: `SUCCESS` / `PARTIAL` / `FAILED` / `ABORTED`.
 

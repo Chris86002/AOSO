@@ -284,8 +284,8 @@ FUNCTION aoso_goto_ensure_transfer_action {
     IF DEFINED AOSO_XP {
         SET pred_time_g TO aoso_xp_metric_apply("TRANSFER", target_name, "TIME", pred_time_g).
     }
-    SET act_g["predicted_duration"] TO pred_time_g.
     aoso_action_begin(act_g).
+    aoso_action_set_predicted_duration(pred_time_g).
     SET data["action_id"] TO did_g.
 }
 
@@ -1271,8 +1271,8 @@ FUNCTION aoso_goto_capture_entry {
         IF DEFINED AOSO_XP {
             SET cap_time TO aoso_xp_metric_apply("CAPTURE", SHIP:BODY:NAME, "TIME", cap_time).
         }
-        SET act_c["predicted_duration"] TO cap_time.
         aoso_action_begin(act_c).
+        aoso_action_set_predicted_duration(cap_time).
     }
 }
 

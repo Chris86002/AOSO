@@ -214,6 +214,11 @@ FUNCTION aoso_docking_done_entry {
     IF DEFINED AOSO_EVENTS {
         aoso_event_publish("VEHICLE_CHANGED", "docking", "docked").
     }
+    IF data:HASKEY("dock_action") {
+        LOCAL act_d IS data["dock_action"].
+        LOCAL res_d IS aoso_result_from_action(act_d, "SUCCESS", "ports docked").
+        aoso_result_emit(res_d, data["owns_action"]).
+    }
     aoso_log_info("DOCKING", "Docked.").
 }
 
@@ -222,6 +227,11 @@ FUNCTION aoso_docking_aborted_entry {
     aoso_docking_zero_translation().
     aoso_steer_release().
     aoso_auth_release_all("docking").
+    IF data:HASKEY("dock_action") {
+        LOCAL act_d IS data["dock_action"].
+        LOCAL res_d IS aoso_result_from_action(act_d, "ABORTED", "docking aborted").
+        aoso_result_emit(res_d, data["owns_action"]).
+    }
     aoso_log_error("DOCKING", "Docking aborted.").
 }
 
@@ -242,15 +252,24 @@ FUNCTION aoso_docking_start {
     aoso_auth_acquire("docking", "RCS", 2).
     aoso_auth_acquire("docking", "TARGETING", 2).
 
+    LOCAL parent_active IS AOSO_ACTION_CUR:ISTYPE("Lexicon").
+    LOCAL did IS aoso_decide("DOCKING", "dock", "target port", "final approach", "rcs", 0).
+    LOCAL act_d IS aoso_action_create(did, "DOCKING", "target port", 0).
+    IF parent_active {
+        aoso_action_begin_detached(act_d).
+    } ELSE {
+        aoso_action_begin(act_d).
+    }
+
     LOCAL own_port IS aoso_docking_own_port().
     IF own_port = 0 OR NOT aoso_docking_target_ok() {
         aoso_log_error("DOCKING", "No free own docking port or no target docking port set.").
-        SET AOSO_DOCKING["data"] TO LEXICON("own_port", 0).
+        SET AOSO_DOCKING["data"] TO LEXICON("own_port", 0, "dock_action", act_d, "owns_action", NOT parent_active).
         aoso_state_transition(AOSO_DOCKING, "ABORTED").
         RETURN.
     }
 
-    SET AOSO_DOCKING["data"] TO LEXICON("own_port", own_port).
+    SET AOSO_DOCKING["data"] TO LEXICON("own_port", own_port, "dock_action", act_d, "owns_action", NOT parent_active).
     aoso_state_transition(AOSO_DOCKING, "APPROACH").
 }
 

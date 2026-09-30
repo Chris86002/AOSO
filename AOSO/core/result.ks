@@ -101,6 +101,8 @@ FUNCTION aoso_result_emit {
     IF res:HASKEY("action_id") {
         aoso_decide_close(res["action_id"], res).
     }
+    aoso_log_info("ACTION", "id=" + res["action_id"] + " type=" + res["action_type"] +
+        " COMPLETE status=" + res["status"] + ".").
     IF clear_current { SET AOSO_ACTION_CUR TO 0. }
     aoso_event_publish(res["action_type"] + "_" + res["status"], "result", res["reason"]).
 }
@@ -250,6 +252,15 @@ FUNCTION aoso_action_begin {
     SET AOSO_ACTION_CUR TO act.
     aoso_log_info("ACTION", "START id=" + act["action_id"] + " " + act["type"] + " " + act["target"] +
         " pred=" + ROUND(act["predicted_dv"], 1) + ".").
+    aoso_log_info("ACTION", "id=" + act["action_id"] + " type=" + act["type"] + " START.").
+    RETURN act["action_id"].
+}
+
+FUNCTION aoso_action_begin_detached {
+    PARAMETER act.
+    aoso_log_info("ACTION", "START id=" + act["action_id"] + " " + act["type"] + " " + act["target"] +
+        " pred=" + ROUND(act["predicted_dv"], 1) + " detached.").
+    aoso_log_info("ACTION", "id=" + act["action_id"] + " type=" + act["type"] + " START.").
     RETURN act["action_id"].
 }
 
