@@ -30,6 +30,8 @@
 // same physics tick so ascent 0.1s + auto_staging 0.1s do not double-work.
 // Spool is a timestamp, not WAIT, so the main loop keeps steering.
 
+GLOBAL AOSO_STAGING_RECORDS IS LIST().
+
 GLOBAL AOSO_STAGING_RELIGHT_ATTEMPTS IS 0.
 GLOBAL AOSO_STAGING_DEAD_SINCE IS 0.
 GLOBAL AOSO_STAGING_LAST_REASON IS "".
@@ -240,7 +242,9 @@ FUNCTION aoso_staging_emit {
     SET res_s["actual_dv"] TO SHIP:MASS.
     SET res_s["predicted_fuel"] TO pred["twr_next"].
     SET res_s["actual_fuel"] TO actual_twr.
-    aoso_result_emit(res_s, FALSE).
+    // Keep the flight tick free of XP ingestion/serialization. The small
+    // result snapshot is consumed in a quiet, settled window.
+    AOSO_STAGING_RECORDS:ADD(res_s).
     // THRUST_MISMATCH and TWR learning are judged after spool in aoso_staging_judge_mismatch.
     // Measuring AVAILABLETHRUST in the same tick as STAGE() is always ~0.
 }
@@ -964,6 +968,16 @@ FUNCTION aoso_staging_auto_check {
 FUNCTION aoso_staging_register_task {
     PARAMETER interval_s IS 0.1.
     aoso_sched_add("auto_staging", interval_s, aoso_staging_task_tick@).
+    aoso_sched_add("staging_records", 2, aoso_staging_records_tick@).
+    aoso_sched_add("xp_flush", 8, aoso_xp_flush_tick@).
+}
+
+FUNCTION aoso_staging_records_tick {
+    IF AOSO_STAGING_RECORDS:LENGTH = 0 { RETURN. }
+    IF NOT aoso_xp_persist_allowed() { RETURN. }
+    LOCAL queued_result IS AOSO_STAGING_RECORDS[0].
+    AOSO_STAGING_RECORDS:REMOVE(0).
+    aoso_result_emit(queued_result, FALSE).
 }
 
 FUNCTION aoso_staging_task_tick {

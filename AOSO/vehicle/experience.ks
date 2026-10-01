@@ -5,6 +5,8 @@
 // best, and worst stay clamped so ignition timing does not chase one outlier.
 // Keys: configuration_id | body | operation. Survives Archive reverts.
 
+GLOBAL AOSO_XP_DIRTY IS FALSE.
+
 GLOBAL AOSO_XP IS LEXICON("loaded", FALSE, "store", LEXICON(), "save_at", 0).
 
 FUNCTION aoso_xp_ops {
@@ -33,13 +35,41 @@ FUNCTION aoso_xp_load {
     RETURN loaded.
 }
 
+// File serialization/Archive writes are quiet-window work, never part of
+// an ascent, maneuver, or landing control tick.
+FUNCTION aoso_xp_persist_allowed {
+    IF NOT SHIP:UNPACKED { RETURN FALSE. }
+    IF WARP > 0 OR KUNIVERSE:TIMEWARP:RATE > 1.01 { RETURN FALSE. }
+    IF THROTTLE > 0.01 { RETURN FALSE. }
+    IF SHIP:STATUS = "PRELAUNCH" OR SHIP:STATUS = "LANDED" OR SHIP:STATUS = "SPLASHED" { RETURN TRUE. }
+    IF DEFINED AOSO_OBS_PHASE {
+        IF AOSO_OBS_PHASE = "ASCENT" OR AOSO_OBS_PHASE = "BURN" OR
+            AOSO_OBS_PHASE = "DESCENT" OR AOSO_OBS_PHASE = "LANDING" { RETURN FALSE. }
+    }
+    IF SHIP:ORBIT:ECCENTRICITY >= 1 { RETURN FALSE. }
+    IF PERIAPSIS < aoso_config_get("DESCENT_SAFE_PE_ALT", 8000) { RETURN FALSE. }
+    IF SHIP:BODY:ATM:EXISTS {
+        IF PERIAPSIS < SHIP:BODY:ATM:HEIGHT { RETURN FALSE. }
+    }
+    RETURN TRUE.
+}
+
+FUNCTION aoso_xp_flush_tick {
+    IF AOSO_XP_DIRTY {
+        IF aoso_xp_persist_allowed() { aoso_xp_save(). }
+    }
+}
+
 FUNCTION aoso_xp_save {
+    SET AOSO_XP_DIRTY TO TRUE.
+    IF NOT aoso_xp_persist_allowed() { RETURN. }
     aoso_json_write_persistent(
         AOSO_CONST["XP_FILE"],
         AOSO_CONST["XP_ARCHIVE_FILE"],
         AOSO_XP["store"]
     ).
     SET AOSO_XP["save_at"] TO TIME:SECONDS.
+    SET AOSO_XP_DIRTY TO FALSE.
 }
 
 FUNCTION aoso_xp_migrate_learn {
@@ -125,6 +155,7 @@ FUNCTION aoso_xp_record {
 
     IF predicted <= 0.01 { RETURN aoso_xp_model(op_name, body_name). }
     IF actual < 0 { RETURN aoso_xp_model(op_name, body_name). }
+    SET AOSO_XP_DIRTY TO TRUE.
     LOCAL store IS aoso_xp_load().
     LOCAL mk IS aoso_xp_key(op_name, body_name).
     IF NOT store["models"]:HASKEY(mk) { SET store["models"][mk] TO aoso_xp_blank(). }
@@ -247,6 +278,7 @@ FUNCTION aoso_xp_record_metric {
     PARAMETER failed IS FALSE.
     IF predicted <= 0.01 { RETURN aoso_xp_metric_model(op_name, body_name, metric_name). }
     IF actual < 0 { RETURN aoso_xp_metric_model(op_name, body_name, metric_name). }
+    SET AOSO_XP_DIRTY TO TRUE.
     LOCAL store IS aoso_xp_load().
     LOCAL mk IS aoso_xp_metric_key(op_name, body_name, metric_name).
     IF NOT store["models"]:HASKEY(mk) { SET store["models"][mk] TO aoso_xp_blank(). }

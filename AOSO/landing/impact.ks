@@ -38,11 +38,24 @@ FUNCTION aoso_landing_future_lng {
     RETURN aoso_landing_wrap_lng(future_lng).
 }
 
+// kOS/KSP holds the CURRENT reference body's centre fixed when propagating
+// a vessel within that body's patch. Subtracting POSITIONAT(body, ut) here
+// subtracts the moon's parent-orbit travel a second time. This was the source
+// of changing 70-160 km misses/no_intersection on the 2026-10-01 Minmus run.
+// Restrict this landing helper to the same SOI; nav's cross-SOI helper keeps
+// its own semantics. POSITIONAT includes any planned maneuver nodes.
+FUNCTION aoso_landing_position_at {
+    PARAMETER sample_ut.
+    LOCAL future_patch IS ORBITAT(SHIP, sample_ut).
+    IF future_patch:BODY:NAME <> SHIP:BODY:NAME { RETURN V(0, 0, 0). }
+    RETURN POSITIONAT(SHIP, sample_ut) - SHIP:BODY:POSITION.
+}
+
 FUNCTION aoso_landing_impact_geo_at {
     PARAMETER impact_ut.
     LOCAL body_ref IS SHIP:BODY.
     LOCAL dt_s IS impact_ut - TIME:SECONDS.
-    LOCAL rel_pos IS aoso_orbit_position_at(SHIP, impact_ut).
+    LOCAL rel_pos IS aoso_landing_position_at(impact_ut).
     IF rel_pos:MAG < 1 { RETURN 0. }
     LOCAL current_frame_geo IS body_ref:GEOPOSITIONOF(rel_pos + body_ref:POSITION).
     LOCAL rotation_s IS body_ref:ROTATIONPERIOD.
@@ -55,7 +68,7 @@ FUNCTION aoso_landing_impact_geo_at {
 FUNCTION aoso_landing_impact_sample {
     PARAMETER impact_ut.
     LOCAL body_ref IS SHIP:BODY.
-    LOCAL rel_pos IS aoso_orbit_position_at(SHIP, impact_ut).
+    LOCAL rel_pos IS aoso_landing_position_at(impact_ut).
     IF rel_pos:MAG < 1 { RETURN 0. }
     LOCAL geo IS aoso_landing_impact_geo_at(impact_ut).
     IF NOT geo:ISTYPE("GeoCoordinates") { RETURN 0. }
@@ -83,6 +96,7 @@ FUNCTION aoso_landing_impact_predict {
     PARAMETER target_lat IS 0.
     PARAMETER target_lng IS 0.
     PARAMETER max_horizon_s IS 0.
+    PARAMETER start_ut IS 0.
 
     LOCAL now_ut IS TIME:SECONDS.
     IF SHIP:STATUS = "LANDED" OR SHIP:STATUS = "SPLASHED" {
@@ -92,6 +106,9 @@ FUNCTION aoso_landing_impact_predict {
         RETURN LEXICON("ok", FALSE, "reason", "atmosphere_not_modeled").
     }
 
+    // start_ut is the proposed burn epoch for pre-ignition validation.
+    // The result's tImpact remains relative to the live current UT.
+    LOCAL search_ut IS MAX(now_ut, start_ut).
     LOCAL period_s IS aoso_orbit_period_s().
     IF max_horizon_s <= 0 {
         IF period_s > 30 {
@@ -106,7 +123,7 @@ FUNCTION aoso_landing_impact_predict {
     LOCAL samples_n IS 96.
     LOCAL step_s IS max_horizon_s / samples_n.
     LOCAL prev_t IS 0.
-    LOCAL prev IS aoso_landing_impact_sample(now_ut).
+    LOCAL prev IS aoso_landing_impact_sample(search_ut).
     IF NOT prev:ISTYPE("Lexicon") {
         RETURN LEXICON("ok", FALSE, "reason", "invalid_initial_state").
     }
@@ -118,7 +135,7 @@ FUNCTION aoso_landing_impact_predict {
     LOCAL i IS 1.
     UNTIL i > samples_n {
         LOCAL t_s IS i * step_s.
-        LOCAL cur IS aoso_landing_impact_sample(now_ut + t_s).
+        LOCAL cur IS aoso_landing_impact_sample(search_ut + t_s).
         IF cur:ISTYPE("Lexicon") {
             // Require a descending crossing. A terrain query that briefly
             // reports an unloaded zero-height sentinel must not count as an
@@ -144,7 +161,7 @@ FUNCTION aoso_landing_impact_predict {
     LOCAL iter IS 0.
     UNTIL iter >= 18 {
         LOCAL mid_s IS (lo_s + hi_s) / 2.
-        LOCAL mid IS aoso_landing_impact_sample(now_ut + mid_s).
+        LOCAL mid IS aoso_landing_impact_sample(search_ut + mid_s).
         IF NOT mid:ISTYPE("Lexicon") {
             SET lo_s TO mid_s.
         } ELSE {
@@ -159,7 +176,8 @@ FUNCTION aoso_landing_impact_predict {
     }
 
     LOCAL impact_dt IS (lo_s + hi_s) / 2.
-    LOCAL impact_ut IS now_ut + impact_dt.
+    LOCAL impact_ut IS search_ut + impact_dt.
+    SET impact_dt TO impact_ut - now_ut.
     SET best TO aoso_landing_impact_sample(impact_ut).
     LOCAL miss_m IS -1.
     IF target_lat >= -90 AND target_lat <= 90 {

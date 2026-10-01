@@ -40,28 +40,152 @@ FUNCTION aoso_tour_landable {
 
 // Tour completion is landing + a verified full ISRU cycle + takeoff.
 // Feasibility is a hold reason, never permission to silently skip a stop.
+FUNCTION aoso_tour_landing_budget_begin {
+    PARAMETER data.
+    LOCAL same_body IS FALSE.
+    IF data:HASKEY("landing_budget_body") {
+        SET same_body TO data["landing_budget_body"] = SHIP:BODY:NAME.
+    }
+    IF same_body { RETURN. }
+    IF data:HASKEY("emergency_descent_used") { data:REMOVE("emergency_descent_used"). }
+    SET data["landing_budget_body"] TO SHIP:BODY:NAME.
+    SET data["landing_retries"] TO 0.
+    SET data["site_reselect_count"] TO 0.
+    LOCAL span_s IS MIN(aoso_config_get("LANDING_PLAN_MAX_S", 24000),
+        MAX(600, aoso_orbit_period_s()) * aoso_config_get("LANDING_PLAN_MAX_ORBITS", 6)).
+    SET data["landing_deadline_ut"] TO TIME:SECONDS + MAX(600, span_s).
+}
+
+FUNCTION aoso_tour_landing_budget_exhausted {
+    PARAMETER data.
+    IF data:HASKEY("landing_retries") {
+        IF data["landing_retries"] >= aoso_config_get("LANDING_MAX_RETRIES", 3) { RETURN TRUE. }
+    }
+    IF data:HASKEY("landing_deadline_ut") {
+        IF TIME:SECONDS >= data["landing_deadline_ut"] { RETURN TRUE. }
+    }
+    RETURN FALSE.
+}
+
+FUNCTION aoso_tour_landing_hold {
+    PARAMETER data.
+    PARAMETER reason.
+    SET data["landing_hold_reason"] TO reason.
+    aoso_state_transition(AOSO_TOUR, "LAND_HOLD").
+}
+
 FUNCTION aoso_tour_retry_landing {
     PARAMETER data.
     PARAMETER reason.
     aoso_warp_hard_stop().
-    aoso_throttle_set(0).
-    aoso_log_warn("LAND_RETRY", reason + "; staying at " + SHIP:BODY:NAME + " and surveying again.").
-    PRINT "LAND RETRY: " + reason + ". Staying at " + SHIP:BODY:NAME + ".".
+    aoso_tour_landing_budget_begin(data).
+    SET data["landing_retries"] TO data["landing_retries"] + 1.
     SET data["site_reselect_body"] TO SHIP:BODY:NAME.
-    SET data["site_reselect_count"] TO 1.
-    FOR key_name IN LIST("deorbit_eta_ut", "deorbit_best_miss", "deorbit_pe_lat", "deorbit_pe_lng") {
+    IF NOT data:HASKEY("site_reselect_count") { SET data["site_reselect_count"] TO 0. }
+    SET data["site_reselect_count"] TO data["site_reselect_count"] + 1.
+    FOR key_name IN LIST("deorbit_eta_ut", "deorbit_best_miss", "deorbit_pe_lat", "deorbit_pe_lng",
+        "deorbit_force", "deorbit_overshoot", "deorbit_warp_logged", "deorbit_settle_ut", "validated_node_ut") {
         IF data:HASKEY(key_name) { data:REMOVE(key_name). }
     }
-    IF aoso_orbit_is_hyperbolic() {
-        aoso_state_transition(AOSO_TOUR, "GOTO").
+    aoso_log_warn("LAND_RETRY", reason + "; retry=" + data["landing_retries"] +
+        " at " + SHIP:BODY:NAME + ". Mandatory stop retained.").
+    // A bounced/ascending suborbital craft is still unsafe. Never feed it
+    // back to an orbital survey, regardless of the ordering of AP/PE ETAs.
+    IF NOT aoso_world_orbit_is_stable() {
+        IF aoso_parts_thrust_recoverable() {
+            IF NOT data:HASKEY("emergency_descent_used") {
+                SET data["emergency_descent_used"] TO TRUE.
+                aoso_descent_start().
+                aoso_state_queue(AOSO_DESCENT, "BURN").
+                aoso_state_transition(AOSO_TOUR, "DESCEND").
+                RETURN.
+            }
+        }
+        aoso_tour_landing_hold(data, "Descent interrupted on an unsafe trajectory; no safe repeat recovery. " + reason).
         RETURN.
     }
-    IF aoso_tour_is_impacting() {
-        aoso_descent_start().
-        aoso_state_transition(AOSO_TOUR, "DESCEND").
+    aoso_throttle_set(0).
+    IF aoso_tour_landing_budget_exhausted(data) {
+        aoso_tour_landing_hold(data, "Landing planning budget exhausted: " + reason).
         RETURN.
     }
+    SET data["scan_good_samples"] TO 0.
     aoso_state_transition(AOSO_TOUR, "SCAN").
+}
+
+FUNCTION aoso_tour_land_hold_entry {
+    PARAMETER data.
+    aoso_safe_hold(data["landing_hold_reason"] + "; landing/refuel still required at " + SHIP:BODY:NAME).
+    PRINT "LAND HOLD: " + data["landing_hold_reason"] + ". Review/restart this stop; departure blocked.".
+}
+
+FUNCTION aoso_tour_land_hold_execute {
+    PARAMETER data.
+    IF SHIP:STATUS = "LANDED" {
+        aoso_state_transition(AOSO_TOUR, "REFUEL").
+    }
+}
+
+// Validate the actual KSP conic, either with an unexecuted deorbit node or
+// immediately after its burn. Geometry is authoritative; an unloaded terrain
+// query is explicitly logged and is not a certificate of surface safety.
+FUNCTION aoso_tour_validate_impact {
+    PARAMETER data.
+    PARAMETER start_ut IS 0.
+    IF SHIP:BODY:ATM:EXISTS { RETURN TRUE. }
+    LOCAL pred IS aoso_landing_impact_predict(data["site_lat"], data["site_lng"], 0, start_ut).
+    IF NOT pred["ok"] {
+        aoso_log_warn("LAND_TRAJECTORY_REJECT", "No validated surface crossing: " + pred["reason"] + ".").
+        RETURN FALSE.
+    }
+    LOCAL tol_m IS aoso_config_get("DEORBIT_SITE_TOL_M", 6000).
+    LOCAL accepted IS pred["miss_distance"] >= 0 AND pred["miss_distance"] <= tol_m.
+    aoso_log_info("LAND_TRAJECTORY_CHECK", "accepted=" + accepted + " miss=" + ROUND(pred["miss_distance"], 0) +
+        "m tImpact=" + ROUND(pred["time_to_impact"], 1) + "s confidence=" + pred["confidence"] +
+        " proposed=" + (start_ut > TIME:SECONDS) + ".").
+    IF accepted {
+        SET data["validated_impact_ut"] TO pred["impact_ut"].
+        RETURN TRUE.
+    }
+    RETURN FALSE.
+}
+
+// A bad LIVE deorbit cannot be handled by a throttle-off orbital hold.
+// Restore a bound orbit near apoapsis while there is still plenty of time;
+// otherwise prioritize the existing descent controller over site accuracy.
+FUNCTION aoso_tour_recover_entry {
+    PARAMETER data.
+    aoso_warp_hard_stop().
+    SET data["recover_node_added"] TO FALSE.
+}
+
+FUNCTION aoso_tour_recover_execute {
+    PARAMETER data.
+    IF NOT data["recover_node_added"] {
+        IF NOT aoso_warp_ensure_physics_idle() { RETURN. }
+        LOCAL safe_alt IS aoso_world_parking_alt().
+        LOCAL tti_s IS aoso_descent_ballistic_tti().
+        LOCAL enough_time IS ALTITUDE > safe_alt + 2000 AND tti_s > 180 AND SHIP:AVAILABLETHRUST > 0.
+        IF NOT enough_time {
+            aoso_log_warn("LAND_SURVIVAL", "Cannot safely repark; prioritizing local descent over rejected target.").
+            aoso_descent_start().
+            aoso_state_transition(AOSO_TOUR, "DESCEND").
+            RETURN.
+        }
+        aoso_maneuver_add_circularize_here().
+        SET data["recover_node_added"] TO TRUE.
+        aoso_log_warn("LAND_RECOVER", "Restoring orbit after live trajectory rejection; mandatory stop retained.").
+        RETURN.
+    }
+    IF aoso_maneuver_execute_next() {
+        IF aoso_world_orbit_is_stable() {
+            aoso_tour_retry_landing(data, "Live deorbit rejected; orbit restored").
+        } ELSE {
+            aoso_log_warn("LAND_SURVIVAL", "Repark did not establish a stable orbit; local descent now.").
+            aoso_descent_start().
+            aoso_state_transition(AOSO_TOUR, "DESCEND").
+        }
+    }
 }
 
 FUNCTION aoso_tour_fuel_targets {
@@ -182,53 +306,59 @@ FUNCTION aoso_tour_geo_miss_m {
     RETURN VANG(p1, p2) * AOSO_CONST["DEG2RAD"] * body_ref:RADIUS.
 }
 
-// Seconds from a retrograde deorbit burn to the new periapsis. The burn
-// point becomes apoapsis. On Minmus that half-period is ~230 s shorter
-// than the survey orbit; using the old half-period walks the ground
-// point about 2 km off the site.
-FUNCTION aoso_tour_deorbit_coast_s {
-    LOCAL r_pe IS SHIP:BODY:RADIUS + aoso_deorbit_target_periapsis_alt().
-    LOCAL r_ap IS SHIP:BODY:RADIUS + ALTITUDE.
-    IF SHIP:ORBIT:ECCENTRICITY >= 0.25 {
-        SET r_ap TO SHIP:BODY:RADIUS + APOAPSIS.
+// Elliptical arc from a tangential apoapsis burn to the FIRST descending
+// crossing of the selected site's altitude. A periapsis is already below
+// that surface: aiming its antipode is not aiming the actual impact point.
+// Pure helper shared with the regression self-test (kOS angles are degrees).
+FUNCTION aoso_tour_deorbit_arc {
+    PARAMETER apo_radius.
+    PARAMETER pe_radius.
+    PARAMETER surface_radius.
+    PARAMETER gravity_mu.
+    IF pe_radius <= 0 OR apo_radius <= surface_radius OR gravity_mu <= 0 {
+        RETURN LEXICON("ok", FALSE, "angle", 0, "coast", 0).
     }
-    IF r_ap < r_pe + 1 { SET r_ap TO r_pe + 1. }
-    LOCAL sma IS (r_ap + r_pe) / 2.
-    LOCAL mu IS SHIP:BODY:MU.
-    IF mu < 1 { RETURN 0. }
-    RETURN CONSTANT:PI * SQRT((sma * sma * sma) / mu).
+    LOCAL sma IS (apo_radius + pe_radius) / 2.
+    LOCAL ecc IS (apo_radius - pe_radius) / (apo_radius + pe_radius).
+    IF ecc <= 0.000001 { RETURN LEXICON("ok", FALSE, "angle", 0, "coast", 0). }
+    LOCAL semilatus IS sma * (1 - ecc ^ 2).
+    LOCAL cos_nu IS (semilatus / surface_radius - 1) / ecc.
+    IF cos_nu < -1 OR cos_nu > 1 { RETURN LEXICON("ok", FALSE, "angle", 0, "coast", 0). }
+    LOCAL nu IS ARCCOS(cos_nu).
+    LOCAL cos_e IS (ecc + cos_nu) / (1 + ecc * cos_nu).
+    SET cos_e TO MAX(-1, MIN(1, cos_e)).
+    LOCAL eccentric_deg IS ARCCOS(cos_e).
+    LOCAL mean_rad IS eccentric_deg * AOSO_CONST["DEG2RAD"] - ecc * SIN(eccentric_deg).
+    LOCAL coast_s IS (CONSTANT:PI - mean_rad) * SQRT(sma ^ 3 / gravity_mu).
+    RETURN LEXICON("ok", TRUE, "angle", 180 - nu, "coast", coast_s).
 }
 
-// Where the new periapsis meets the ground if we burn retrograde `eta_burn`
-// seconds from now.
-// The inertial direction is the body-centred POSITIONAT at half the current
-// period (the antipode). GEOPOSITIONOF uses the body's CURRENT centre and
-// CURRENT rotation, so pass that relative vector shifted onto the current
-// centre — raw POSITIONAT still contains the moon's travel around its parent
-// and walks the aim off Minmus entirely over a multi-orbit wait.
-// Longitude of an inertial point then unwinds by the rotation that happens
-// before arrival: true_lng = geo:LNG - 360*dt/ROTATIONPERIOD.
-// Latitude does not change. Sign checked against the failed Minmus pass:
-// site locked at lng -39.56, half an orbit later the ship was at 126.6,
-// which is -39.56 + 180 - 13.87. Do not flip the sign.
-// dt for the unwind is eta_burn + the NEW half-period, not the survey
-// period/2. The deorbit shortens the coast by ~230 s on Minmus (~2 km).
+FUNCTION aoso_tour_deorbit_coast_s {
+    LOCAL arc IS aoso_tour_deorbit_arc(SHIP:BODY:RADIUS + APOAPSIS,
+        SHIP:BODY:RADIUS + aoso_deorbit_target_periapsis_alt(),
+        SHIP:BODY:RADIUS + aoso_deorbit_site_alt(), SHIP:BODY:MU).
+    RETURN arc["coast"].
+}
+
+// Public legacy name retained, but this is a first-surface-crossing proxy.
+// Actual node and live post-burn conics must also pass impact validation.
 FUNCTION aoso_tour_pe_ground {
     PARAMETER eta_burn.
-    IF eta_burn < 0 { SET eta_burn TO 0. }
-    LOCAL period IS aoso_orbit_period_s().
-    IF period < 30 { SET period TO 30. }
-    LOCAL coast IS aoso_tour_deorbit_coast_s().
-    IF coast < 30 { SET coast TO period / 2. }
-    LOCAL dt_pos IS eta_burn + (period / 2).
-    LOCAL rel IS aoso_orbit_position_at(SHIP, TIME:SECONDS + dt_pos).
-    LOCAL geo IS SHIP:BODY:GEOPOSITIONOF(rel + SHIP:BODY:POSITION).
-    LOCAL lng IS geo:LNG.
-    LOCAL rot IS SHIP:BODY:ROTATIONPERIOD.
-    IF rot > 1 {
-        SET lng TO lng - 360 * (eta_burn + coast) / rot.
-    }
-    SET lng TO aoso_tour_lng_wrap(lng).
+    SET eta_burn TO MAX(0, eta_burn).
+    LOCAL burn_ut IS TIME:SECONDS + eta_burn.
+    LOCAL burn_pos IS aoso_landing_position_at(burn_ut).
+    IF burn_pos:MAG < 1 { RETURN 0. }
+    LOCAL arc IS aoso_tour_deorbit_arc(burn_pos:MAG,
+        SHIP:BODY:RADIUS + aoso_deorbit_target_periapsis_alt(),
+        SHIP:BODY:RADIUS + aoso_deorbit_site_alt(), SHIP:BODY:MU).
+    IF NOT arc["ok"] { RETURN 0. }
+    LOCAL burn_vel IS aoso_orbit_velocity_at(SHIP, burn_ut).
+    LOCAL tangent IS VXCL(burn_pos, burn_vel).
+    IF tangent:MAG < 0.01 { RETURN 0. }
+    LOCAL travel_deg IS arc["angle"].
+    LOCAL crossing_vec IS burn_pos:NORMALIZED * COS(travel_deg) + tangent:NORMALIZED * SIN(travel_deg).
+    LOCAL geo IS SHIP:BODY:GEOPOSITIONOF(crossing_vec * burn_pos:MAG + SHIP:BODY:POSITION).
+    LOCAL lng IS aoso_landing_future_lng(geo:LNG, eta_burn + arc["coast"], SHIP:BODY:ROTATIONPERIOD).
     RETURN LEXICON("lat", geo:LAT, "lng", lng).
 }
 
@@ -690,6 +820,20 @@ FUNCTION aoso_tour_polar_execute {
 
 FUNCTION aoso_tour_scan_entry {
     PARAMETER data.
+    IF SHIP:STATUS = "LANDED" {
+        aoso_state_transition(AOSO_TOUR, "REFUEL").
+        RETURN.
+    }
+    IF NOT aoso_world_orbit_is_stable() {
+        aoso_tour_retry_landing(data, "Orbital survey refused on unsafe live orbit").
+        RETURN.
+    }
+    aoso_tour_landing_budget_begin(data).
+    IF aoso_tour_landing_budget_exhausted(data) {
+        aoso_tour_landing_hold(data, "Landing survey budget exhausted").
+        RETURN.
+    }
+    SET data["scan_good_samples"] TO 0.
     aoso_warp_hard_stop().
     aoso_throttle_set(0).
     aoso_steer_release().
@@ -753,7 +897,7 @@ FUNCTION aoso_tour_scan_entry {
     IF scan_cap > 0 {
         IF scan_span > scan_cap { SET scan_span TO scan_cap. }
     }
-    SET data["scan_until"] TO TIME:SECONDS + scan_span.
+    SET data["scan_until"] TO MIN(TIME:SECONDS + scan_span, data["landing_deadline_ut"]).
     SET data["scan_next_sample"] TO TIME:SECONDS.
     SET data["scan_orbits"] TO orbits.
     aoso_log_info("TOUR", "Surveying up to " + ROUND(scan_span, 0) +
@@ -763,6 +907,10 @@ FUNCTION aoso_tour_scan_entry {
 
 FUNCTION aoso_tour_scan_execute {
     PARAMETER data.
+    IF aoso_tour_landing_budget_exhausted(data) {
+        aoso_tour_landing_hold(data, "Total landing survey/planning time exhausted").
+        RETURN.
+    }
     LOCAL now IS TIME:SECONDS.
     IF data:HASKEY("scan_until") {
         IF now < data["scan_until"] {
@@ -888,18 +1036,9 @@ FUNCTION aoso_tour_scan_execute {
         ROUND(final_rough, 0) + "m verified=" + ver_txt + " AP=" + ROUND(APOAPSIS, 0) +
         " PE=" + ROUND(PERIAPSIS, 0) + " inc=" +
         ROUND(SHIP:ORBIT:INCLINATION, 1) + " - timing deorbit/descent next.").
-    IF NOT data["site_verified"] {
-        aoso_log_warn("TOUR", "Survey ended on an unverified site. Deorbit will use the prediction anyway.").
-    }
-    LOCAL was_reselect IS FALSE.
-    IF data:HASKEY("site_reselect_count") {
-        IF data["site_reselect_count"] > 0 { SET was_reselect TO TRUE. }
-    }
-    IF was_reselect {
-        IF data["site_score"] < 0 {
-            aoso_tour_retry_landing(data, "Live reselection found no safe site").
-            RETURN.
-        }
+    IF NOT data["site_verified"] OR data["site_score"] < 0 {
+        aoso_tour_retry_landing(data, "Survey ended without a verified safe site").
+        RETURN.
     }
     aoso_state_transition(AOSO_TOUR, "DEORBIT").
 }
@@ -919,22 +1058,49 @@ FUNCTION aoso_tour_deorbit_entry {
 
 FUNCTION aoso_tour_deorbit_execute {
     PARAMETER data.
+    IF aoso_tour_landing_budget_exhausted(data) {
+        IF NOT HASNODE {
+            aoso_tour_landing_hold(data, "Deorbit planning budget exhausted").
+            RETURN.
+        }
+    }
     IF SHIP:STATUS = "LANDED" {
         aoso_state_transition(AOSO_TOUR, "REFUEL").
         RETURN.
     }
 
     IF HASNODE {
+        LOCAL node_ut IS TIME:SECONDS + NEXTNODE:ETA.
+        LOCAL already_validated IS FALSE.
+        IF data:HASKEY("validated_node_ut") {
+            SET already_validated TO ABS(data["validated_node_ut"] - node_ut) < 0.1.
+        }
+        IF NOT already_validated {
+            IF NOT aoso_warp_ensure_physics_idle() { RETURN. }
+            IF NOT aoso_tour_validate_impact(data, node_ut + 0.01) {
+                aoso_maneuver_clear_all().
+                aoso_tour_retry_landing(data, "Proposed deorbit failed actual impact validation").
+                RETURN.
+            }
+            SET data["validated_node_ut"] TO node_ut.
+        }
 
         IF aoso_maneuver_execute_next() {
             LOCAL burn_res IS aoso_maneuver_last_result().
             IF burn_res = "missed" OR burn_res = "incomplete" {
-                aoso_log_warn("TOUR", "Deorbit " + burn_res + " - retrying. AP=" + ROUND(APOAPSIS, 0) + " PE=" + ROUND(PERIAPSIS, 0) +
-                    " alt=" + ROUND(ALTITUDE, 0) + " " + aoso_warp_diag_txt() + ".").
+                IF aoso_world_orbit_is_stable() {
+                    aoso_tour_retry_landing(data, "Deorbit " + burn_res).
+                } ELSE {
+                    aoso_state_transition(AOSO_TOUR, "LAND_RECOVER").
+                }
                 RETURN.
             }
             aoso_log_info("TOUR", "Deorbit complete. AP=" + ROUND(APOAPSIS, 0) + " PE=" + ROUND(PERIAPSIS, 0) +
                 " alt=" + ROUND(ALTITUDE, 0) + " vs=" + ROUND(VERTICALSPEED, 1) + " - handing to descent.").
+            IF NOT aoso_tour_validate_impact(data) {
+                aoso_state_transition(AOSO_TOUR, "LAND_RECOVER").
+                RETURN.
+            }
             aoso_descent_start().
             aoso_state_transition(AOSO_TOUR, "DESCEND").
         }
@@ -961,7 +1127,8 @@ FUNCTION aoso_tour_deorbit_execute {
     IF have_site {
         SET site_ang TO aoso_tour_site_vang(data["site_lat"], data["site_lng"]).
         IF NOT data:HASKEY("deorbit_eta_ut") {
-            aoso_log_info("TOUR", "Predicting the closest periapsis-proxy candidate (rotation unwound, at most " +
+            IF NOT aoso_warp_ensure_physics_idle() { RETURN. }
+            aoso_log_info("TOUR", "Predicting the closest first-surface-crossing candidate (rotation unwound, at most " +
                 max_orb + " orbits). site lat=" + ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) + ".").
             LOCAL found IS aoso_tour_deorbit_find(data["site_lat"], data["site_lng"]).
             SET data["deorbit_eta_ut"] TO TIME:SECONDS + found["eta"].
@@ -975,28 +1142,8 @@ FUNCTION aoso_tour_deorbit_execute {
                 " site=" + ROUND(data["site_lat"], 2) + "/" + ROUND(data["site_lng"], 2) +
                 " tol=" + ROUND(tol_m, 0) + "m align=" + ROUND(align_s, 0) + "s.").
 
-            // Never turn a clearly unreachable site into a deorbit burn.
-            // One fresh live survey is allowed; a second failure preserves
-            // the orbit and records the body as orbited instead of gambling
-            // the lander on tens of kilometres of powered crossrange.
             IF found["miss"] < 0 OR found["miss"] > tol_m {
-                LOCAL reselect_n IS 0.
-                IF data:HASKEY("site_reselect_count") { SET reselect_n TO data["site_reselect_count"]. }
-                SET reselect_n TO reselect_n + 1.
-                SET data["site_reselect_count"] TO reselect_n.
-                SET data["site_reselect_body"] TO SHIP:BODY:NAME.
-                data:REMOVE("deorbit_eta_ut").
-                data:REMOVE("deorbit_best_miss").
-                data:REMOVE("deorbit_pe_lat").
-                data:REMOVE("deorbit_pe_lng").
-                IF reselect_n <= 1 {
-                    aoso_log_warn("LAND_TARGET_REJECT", "Best deorbit proxy misses the selected site by " +
-                        ROUND(found["miss"], 0) + "m (limit " + ROUND(tol_m, 0) +
-                        "m). Refusing the burn and surveying a new live site.").
-                    aoso_state_transition(AOSO_TOUR, "SCAN").
-                    RETURN.
-                }
-                aoso_tour_retry_landing(data, "No reachable landing site; best miss=" +
+                aoso_tour_retry_landing(data, "No reachable surface crossing; best miss=" +
                     ROUND(found["miss"], 0) + "m, limit=" + ROUND(tol_m, 0) + "m").
                 RETURN.
             }
@@ -1010,8 +1157,8 @@ FUNCTION aoso_tour_deorbit_execute {
         }
 
         // A rails flush can jump the whole window. Search again unless we
-        // have already used the orbit budget — then burn the closest pass
-        // rather than wait another Minmus day.
+        // have already used the orbit budget — then retry/hold, never force
+        // a late burn against geometry computed for a different epoch.
         IF eta_burn < align_s - 8 AND NOT force {
             LOCAL n_over IS 0.
             IF data:HASKEY("deorbit_overshoot") { SET n_over TO data["deorbit_overshoot"]. }
@@ -1024,17 +1171,15 @@ FUNCTION aoso_tour_deorbit_execute {
                 aoso_warp_hard_stop().
                 RETURN.
             }
-            SET data["deorbit_force"] TO TRUE.
-            SET force TO TRUE.
-            SET eta_burn TO align_s.
-            aoso_log_warn("TOUR", "Deorbit wait hit " + max_orb + " orbits without a clean window. Burning the closest predicted pass.").
+            aoso_tour_retry_landing(data, "Deorbit window missed repeatedly; no forced late burn").
+            RETURN.
         }
 
         IF eta_burn > align_s + 30 AND NOT force {
             LOCAL until_place IS eta_burn - align_s.
             IF until_place < 20 { SET until_place TO 20. }
             IF NOT data:HASKEY("deorbit_warp_logged") {
-                aoso_log_info("TOUR", "Rails-warping to the burn that puts periapsis on the site (in " +
+                aoso_log_info("TOUR", "Rails-warping to the burn that puts the surface crossing on the site (in " +
                     ROUND(eta_burn, 0) + "s, miss " + ROUND(miss_m, 0) + "m). site lat=" +
                     ROUND(data["site_lat"], 2) + " lng=" + ROUND(data["site_lng"], 2) + ".").
                 SET data["deorbit_warp_logged"] TO TRUE.
@@ -1051,7 +1196,6 @@ FUNCTION aoso_tour_deorbit_execute {
 
         SET eta_s TO eta_burn.
         IF eta_s < align_s { SET eta_s TO align_s. }
-        SET miss_m TO aoso_tour_pe_miss_m(eta_s, data["site_lat"], data["site_lng"]).
         SET opp_txt TO "ONTRACK".
         IF miss_m < 0 OR miss_m > tol_m { SET opp_txt TO "BEST". }
         IF force { SET opp_txt TO "LATE". }
@@ -1079,6 +1223,15 @@ FUNCTION aoso_tour_deorbit_execute {
         data:REMOVE("deorbit_settle_ut").
     }
 
+    IF NOT aoso_warp_ensure_physics_idle() { RETURN. }
+    IF have_site {
+        SET miss_m TO aoso_tour_pe_miss_m(eta_s, data["site_lat"], data["site_lng"]).
+        IF miss_m < 0 OR miss_m > tol_m {
+            aoso_tour_retry_landing(data, "Settled burn window no longer reaches selected surface site").
+            RETURN.
+        }
+    }
+
     // eta_s > 0 is the predicted burn. eta_s < 0 (no site) still means
     // "at apoapsis" inside landing/deorbit.ks. Fat ellipses already had
     // their apoapsis delay applied in aoso_tour_deorbit_find.
@@ -1096,11 +1249,11 @@ FUNCTION aoso_tour_deorbit_execute {
                 "/" + ROUND(data["site_lng"], 3) + " burnUT=" +
                 ROUND(TIME:SECONDS + eta_s, 1) + " burnETA=" + ROUND(eta_s, 1) +
                 "s orbitPeriod=" + ROUND(period, 1) + "s rotationPeriod=" +
-                ROUND(rot_period, 1) + "s PEproxy=" + ROUND(data["deorbit_pe_lat"], 3) +
+                ROUND(rot_period, 1) + "s surfaceProxy=" + ROUND(data["deorbit_pe_lat"], 3) +
                 "/" + ROUND(data["deorbit_pe_lng"], 3) + " proxyMiss=" +
                 ROUND(miss_m, 0) + "m deltaV=" + ROUND(burn_dv, 2) +
                 "m/s AP=" + ROUND(APOAPSIS, 0) + "m PE=" + ROUND(PERIAPSIS, 0) +
-                "m impactPrediction=after-burn.").
+                "m impactPrediction=before-and-after-burn.").
         } ELSE {
             aoso_log_info("LAND_TARGET_PLAN", "site=none burnETA=apoapsis orbitPeriod=" +
                 ROUND(period, 1) + "s deltaV=" + ROUND(nd:DELTAV:MAG, 2) +
@@ -1108,6 +1261,10 @@ FUNCTION aoso_tour_deorbit_execute {
         }
     }
     IF nd = 0 {
+        IF NOT aoso_tour_validate_impact(data) {
+            aoso_state_transition(AOSO_TOUR, "LAND_RECOVER").
+            RETURN.
+        }
         aoso_log_info("TOUR", "No deorbit burn needed (PE already " + ROUND(PERIAPSIS, 0) + "m) - descent now.").
         aoso_descent_start().
         aoso_state_transition(AOSO_TOUR, "DESCEND").
@@ -1314,6 +1471,8 @@ FUNCTION aoso_tour_define_states {
     aoso_state_define(AOSO_TOUR, "POLAR", aoso_tour_polar_entry@, aoso_tour_polar_execute@, 0, 0, 0, aoso_tour_on_abort@).
     aoso_state_define(AOSO_TOUR, "SCAN", aoso_tour_scan_entry@, aoso_tour_scan_execute@, 0, 0, 0, aoso_tour_on_abort@).
     aoso_state_define(AOSO_TOUR, "DEORBIT", aoso_tour_deorbit_entry@, aoso_tour_deorbit_execute@, 0, 0, 0, aoso_tour_on_abort@).
+    aoso_state_define(AOSO_TOUR, "LAND_HOLD", aoso_tour_land_hold_entry@, aoso_tour_land_hold_execute@, 0, 0, 0, aoso_tour_on_abort@).
+    aoso_state_define(AOSO_TOUR, "LAND_RECOVER", aoso_tour_recover_entry@, aoso_tour_recover_execute@, 0, 0, 0, aoso_tour_on_abort@).
     aoso_state_define(AOSO_TOUR, "DESCEND", 0, aoso_tour_descend_execute@, 0, 0, 0, aoso_tour_on_abort@).
     aoso_state_define(AOSO_TOUR, "REFUEL", aoso_tour_refuel_entry@, aoso_tour_refuel_execute@, 0, 0, 0, aoso_tour_on_abort@).
     aoso_state_define(AOSO_TOUR, "LAUNCH", aoso_tour_launch_entry@, aoso_tour_launch_execute@, 0, 0, 0, aoso_tour_on_abort@).

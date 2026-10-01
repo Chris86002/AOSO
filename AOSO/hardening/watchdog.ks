@@ -105,6 +105,8 @@ FUNCTION aoso_watchdog_deliberate_wait {
     }
     IF DEFINED AOSO_TOUR {
         LOCAL tst IS AOSO_TOUR["current"].
+        IF tst = "LAND_HOLD" { RETURN TRUE. }
+        IF tst = "LAND_RECOVER" { RETURN TRUE. }
         IF tst = "SCAN" { RETURN TRUE. }
         IF tst = "POLAR" { RETURN TRUE. }
         IF tst = "DEORBIT" { RETURN TRUE. }

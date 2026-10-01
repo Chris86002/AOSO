@@ -26,6 +26,7 @@ FUNCTION aoso_sched_prio_of {
     IF name = "auto_power" { RETURN 1. }
     IF name = "brain" { RETURN 2. }
     IF name = "telemetry" { RETURN 2. }
+    IF name = "staging_records" OR name = "xp_flush" { RETURN 3. }
     IF name = "vehicle_profile" { RETURN 3. }
     IF name = "checkpoint_autosave" { RETURN 3. }
     RETURN 1.
@@ -76,9 +77,9 @@ FUNCTION aoso_sched_rebuild_snap {
         "mission",
         "watchdog",
         "launch_hold",
+        "telemetry",
         "auto_power",
         "brain",
-        "telemetry",
         "vehicle_profile",
         "checkpoint_autosave"
     ).
@@ -187,12 +188,19 @@ FUNCTION aoso_sched_run {
         }
     }
     FOR t IN snap {
-        IF t["prio"] > 0 {
+        LOCAL effective_prio IS t["prio"].
+        // Priority-0 flight work can consume a whole physics slice on every
+        // pass. A hot 1 Hz telemetry sample must not starve indefinitely
+        // behind the clock-change return used for background tasks.
+        IF t["name"] = "telemetry" {
+            IF aoso_telemetry_hot() { SET effective_prio TO 0. }
+        }
+        IF effective_prio > 0 {
             IF TIME:SECONDS <> start_ut { RETURN. }
         }
         LOCAL left0 IS OPCODESLEFT.
         IF ran > 0 {
-            IF t["prio"] > 0 {
+            IF effective_prio > 0 {
                 IF aoso_cpu_should_yield() { RETURN. }
             }
         } ELSE {
@@ -205,13 +213,13 @@ FUNCTION aoso_sched_run {
                 LOCAL run_it IS keep_it.
                 IF run_it {
                     LOCAL floor_n IS t["floor"].
-                    IF t["prio"] > 0 {
+                    IF effective_prio > 0 {
                         IF aoso_cpu_should_yield() { SET floor_n TO left0 + 1. }
                     }
                     IF left0 < floor_n {
                         SET t["skip_n"] TO t["skip_n"] + 1.
                         IF t:HASKEY("deferred_n") { SET t["deferred_n"] TO t["deferred_n"] + 1. }
-                        IF t["prio"] > 0 {
+                        IF effective_prio > 0 {
                             SET run_it TO FALSE.
                             IF t["skip_n"] >= 10 {
                                 IF left0 >= 80 { SET run_it TO TRUE. }

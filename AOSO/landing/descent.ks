@@ -5,12 +5,12 @@
 //   1. lower periapsis below the selected terrain (an impact trajectory),
 //   2. numerically simulate a full-thrust surface-retrograde burn,
 //   3. coast until that burn's predicted vertical drop equals clearance,
-//   4. commit to 100% throttle until terminal velocity is reached near ground.
+//   4. commit to 100% throttle until velocity arrest; never burn through it.
 // A scalar v^2/2a is distance along the velocity vector and is not a radar
 // altitude on a shallow orbital approach. The local integrator below tracks
 // horizontal and vertical velocity separately, so the burn does not ignite
 // kilometres early and settle into a high-altitude hover. Throttle modulation
-// is reserved for the final touchdown flare only.
+// also handles an early velocity arrest caused by terrain look-ahead.
 
 GLOBAL AOSO_DESCENT IS aoso_state_new_machine().
 GLOBAL AOSO_DESCENT_RADAR_OFFSET IS 8.
@@ -483,10 +483,9 @@ FUNCTION aoso_descent_clearance {
     RETURN clear.
 }
 
-// Throttle modulation is deliberately confined to the last few metres. The
-// actual suicide burn is always full throttle and surface-retrograde; this
-// controller merely holds a soft sink and damps the small residual lateral
-// velocity after the max-thrust burn has reached its predicted terminal state.
+// Upright terminal guidance after velocity arrest. If terrain look-ahead
+// arrested the vessel high, allow a recovery coast instead of hovering or
+// forcing the max-thrust burn through a velocity reversal.
 FUNCTION aoso_descent_terminal_guidance {
     PARAMETER data.
     LOCAL clear_m IS aoso_descent_true_radar().
@@ -503,13 +502,23 @@ FUNCTION aoso_descent_terminal_guidance {
     }
 
     LOCAL g_loc IS aoso_descent_local_gravity().
+    LOCAL terminal_h IS MAX(3, aoso_config_get("DESCENT_TERMINAL_ALT", 12)).
+    IF clear_m > terminal_h + 25 {
+        // Early terrain braking must not create a 500 m hover. Cut thrust
+        // and regain a bounded sink, then brake again at stopping clearance.
+        LOCAL net_accel IS MAX(0.05, max_accel - g_loc).
+        LOCAL recovery_sink IS MIN(aoso_config_get("DESCENT_RECOVERY_SINK_MAX", 30),
+            0.65 * SQRT(2 * net_accel * MAX(0, clear_m - terminal_h))).
+        SET target_vs TO 0 - MAX(ABS(target_vs), recovery_sink).
+    }
     LOCAL up_accel IS g_loc + 0.8 * (target_vs - VERTICALSPEED).
     IF up_accel < 0 { SET up_accel TO 0. }
     IF up_accel > max_accel { SET up_accel TO max_accel. }
     LOCAL up_vec IS SHIP:UP:VECTOR.
     LOCAL horizontal_vel IS VXCL(up_vec, SHIP:VELOCITY:SURFACE).
     LOCAL horizontal_accel IS horizontal_vel * -0.6.
-    LOCAL horizontal_cap IS up_accel.
+    // Always point above the horizon; cap terminal tilt at 35 degrees.
+    LOCAL horizontal_cap IS up_accel * TAN(35).
     IF horizontal_cap > max_accel * 0.5 { SET horizontal_cap TO max_accel * 0.5. }
     IF horizontal_accel:MAG > horizontal_cap {
         SET horizontal_accel TO horizontal_accel:NORMALIZED * horizontal_cap.
@@ -525,17 +534,34 @@ FUNCTION aoso_descent_terminal_guidance {
         "clearance", clear_m, "stop", 0, "miss", miss_m).
 }
 
+// Velocity, not altitude, ends the max-thrust phase. Terrain look-ahead can
+// deliberately arrest a shallow approach above the ground; continuing to
+// chase retrograde after that arrest flips the ship and burns all its fuel.
+FUNCTION aoso_descent_terminal_ready {
+    PARAMETER vertical_ms.
+    PARAMETER horizontal_ms.
+    PARAMETER max_accel.
+    PARAMETER gravity_ms2.
+    LOCAL target_vs IS MIN(-0.2, aoso_config_get("DESCENT_FINAL_SPEED", -2)).
+    LOCAL speed_ms IS SQRT(vertical_ms ^ 2 + horizontal_ms ^ 2).
+    IF vertical_ms >= 0 { RETURN TRUE. }
+    IF speed_ms <= aoso_config_get("DESCENT_FINAL_SPEED_MAX", 25) {
+        IF vertical_ms >= target_vs - 2 { RETURN TRUE. }
+    }
+    LOCAL upward_accel IS max_accel * (0 - vertical_ms) / MAX(0.1, speed_ms) - gravity_ms2.
+    // Account for the response/slew interval before velocity reverses.
+    IF upward_accel > 0 {
+        IF vertical_ms + upward_accel * 0.8 >= target_vs {
+            IF speed_ms <= aoso_config_get("DESCENT_FINAL_SPEED_MAX", 25) { RETURN TRUE. }
+        }
+    }
+    RETURN FALSE.
+}
+
 FUNCTION aoso_descent_should_terminal {
-    LOCAL terminal_h IS aoso_config_get("DESCENT_TERMINAL_ALT", 12).
-    LOCAL flare_ceiling IS terminal_h + 25.
-    IF aoso_descent_true_radar() > flare_ceiling { RETURN FALSE. }
-    LOCAL max_speed IS aoso_config_get("DESCENT_FINAL_SPEED_MAX", 25).
-    IF SHIP:VELOCITY:SURFACE:MAG > max_speed { RETURN FALSE. }
-    LOCAL target_hs IS aoso_config_get("DESCENT_TERMINAL_HS", 1.5).
-    IF GROUNDSPEED > MAX(3, target_hs * 2) { RETURN FALSE. }
-    LOCAL target_vs IS aoso_config_get("DESCENT_FINAL_SPEED", -2).
-    IF VERTICALSPEED < target_vs - 2 { RETURN FALSE. }
-    RETURN TRUE.
+    LOCAL max_accel IS SHIP:AVAILABLETHRUST / MAX(0.1, SHIP:MASS).
+    RETURN aoso_descent_terminal_ready(VERTICALSPEED, GROUNDSPEED,
+        max_accel, aoso_descent_local_gravity()).
 }
 
 FUNCTION aoso_descent_on_abort {
@@ -838,10 +864,16 @@ FUNCTION aoso_descent_suicide_command {
     LOCAL burn_pred IS aoso_descent_full_burn_prediction().
     LOCAL miss_m IS -1.
     IF data:HASKEY("impact_miss") { SET miss_m TO data["impact_miss"]. }
-    aoso_steer_srf_retrograde().
-    aoso_throttle_set(1).
-    RETURN LEXICON("mode", "SUICIDE", "direction", SHIP:SRFRETROGRADE:VECTOR,
-        "throttle", 1, "target_sink", aoso_config_get("DESCENT_FINAL_SPEED", -2),
+    LOCAL up_vec IS SHIP:UP:VECTOR.
+    LOCAL horizontal_vel IS VXCL(up_vec, SHIP:VELOCITY:SURFACE).
+    LOCAL brake_vec IS horizontal_vel * -1 + up_vec * MAX(0.05, 0 - VERTICALSPEED).
+    aoso_steer_to_vector(brake_vec).
+    LOCAL burn_throttle IS 1.
+    // Never thrust toward the ground while recovering from an attitude upset.
+    IF VDOT(SHIP:FACING:VECTOR, up_vec) <= 0 { SET burn_throttle TO 0. }
+    aoso_throttle_set(burn_throttle).
+    RETURN LEXICON("mode", "SUICIDE", "direction", brake_vec,
+        "throttle", burn_throttle, "target_sink", aoso_config_get("DESCENT_FINAL_SPEED", -2),
         "clearance", aoso_descent_clearance(), "stop", burn_pred["trigger"],
         "miss", miss_m).
 }
@@ -850,6 +882,11 @@ FUNCTION aoso_descent_terminal_command {
     PARAMETER data.
     LOCAL cmd IS aoso_descent_terminal_guidance(data).
     aoso_steer_to_vector(cmd["direction"]).
+    IF VDOT(SHIP:FACING:VECTOR, SHIP:UP:VECTOR) <= 0 {
+        SET cmd["throttle"] TO 0.
+    } ELSE IF VANG(SHIP:FACING:VECTOR, cmd["direction"]) > 45 {
+        SET cmd["throttle"] TO 0.
+    }
     aoso_throttle_set(cmd["throttle"]).
     RETURN cmd.
 }
@@ -866,7 +903,10 @@ FUNCTION aoso_descent_operator_status {
     SET data["status_next_ut"] TO now_ut + gap_s.
     LOCAL cpu_txt IS "?".
     IF DEFINED AOSO_CPU_LEVEL { SET cpu_txt TO AOSO_CPU_LEVEL. }
-    LOCAL fuel_pct IS aoso_stage_propellant_pct().
+    LOCAL fuel_pct IS aoso_resource_pct("LiquidFuel").
+    IF aoso_resource_capacity("Oxidizer") > 0 {
+        SET fuel_pct TO MIN(fuel_pct, aoso_resource_pct("Oxidizer")).
+    }
     aoso_log_operator("LAND", cmd["mode"] +
         " r=" + ROUND(aoso_descent_true_radar(), 0) +
         " vs=" + ROUND(VERTICALSPEED, 1) +
@@ -885,6 +925,11 @@ FUNCTION aoso_descent_burn_entry {
     IF data:HASKEY("burn_rearm") { data:REMOVE("burn_rearm"). }
     aoso_descent_maintain_legs(aoso_descent_true_radar(), TRUE).
     IF SHIP:AVAILABLETHRUST <= 0 { aoso_staging_ensure_thrust(). }
+    IF aoso_descent_should_terminal() {
+        aoso_throttle_set(0).
+        aoso_state_transition(AOSO_DESCENT, "FINAL_APPROACH").
+        RETURN.
+    }
     LOCAL cmd IS aoso_descent_suicide_command(data).
     aoso_descent_operator_status(data, cmd).
 }
@@ -909,16 +954,16 @@ FUNCTION aoso_descent_burn_execute {
         RETURN.
     }
 
-    // Nominal path: stay at 100% throttle and surface retrograde for the
-    // entire suicide burn. The only planned handoff is the low terminal flare.
-    LOCAL cmd IS aoso_descent_suicide_command(data).
-    aoso_descent_operator_status(data, cmd).
-
+    // Evaluate BEFORE issuing this tick's full-thrust command.
     IF aoso_descent_should_terminal() {
-        aoso_log_info("DESCENT", "Full-thrust suicide burn complete; terminal flare at radar=" + ROUND(radar, 1) +
+        aoso_throttle_set(0).
+        aoso_log_info("LAND_BRAKE_COMPLETE", "Velocity arrest; upright terminal/recoast at radar=" + ROUND(radar, 1) +
             "m vs=" + ROUND(VERTICALSPEED, 1) + "m/s hs=" + ROUND(GROUNDSPEED, 1) + "m/s.").
         aoso_state_transition(AOSO_DESCENT, "FINAL_APPROACH").
+        RETURN.
     }
+    LOCAL cmd IS aoso_descent_suicide_command(data).
+    aoso_descent_operator_status(data, cmd).
 }
 
 FUNCTION aoso_descent_final_approach_entry {
@@ -931,38 +976,34 @@ FUNCTION aoso_descent_final_approach_entry {
 FUNCTION aoso_descent_final_approach_execute {
     PARAMETER data.
     aoso_descent_measure_dv(data).
-    aoso_descent_maintain_legs(aoso_descent_true_radar()).
-    // A disturbance above the terminal envelope re-enters maximum-thrust
-    // braking. This is a safety recovery, not a scheduled powered descent.
-    LOCAL resume_speed IS aoso_config_get("DESCENT_FINAL_SPEED_MAX", 25) * 1.4.
-    LOCAL target_hs IS aoso_config_get("DESCENT_TERMINAL_HS", 1.5).
-    IF SHIP:STATUS <> "LANDED" {
-        IF GROUNDSPEED > MAX(6, target_hs * 4) OR SHIP:VELOCITY:SURFACE:MAG > resume_speed {
-            aoso_log_warn("DESCENT", "Terminal flare disturbed (vSrf=" + ROUND(SHIP:VELOCITY:SURFACE:MAG, 1) +
-                "m/s hs=" + ROUND(GROUNDSPEED, 1) + "m/s) - resuming full-thrust braking.").
-            aoso_observe_event("LAND", "WARN", "BOUNCE",
-                "radar=" + ROUND(aoso_descent_true_radar(), 1) +
-                " vs=" + ROUND(VERTICALSPEED, 2) +
-                " hs=" + ROUND(GROUNDSPEED, 2) +
-                " thr=" + ROUND(THROTTLE, 3) +
-                " spd=" + ROUND(SHIP:VELOCITY:SURFACE:MAG, 1)).
-            aoso_state_transition(AOSO_DESCENT, "BURN").
-            RETURN.
-        }
-    }
-
-    LOCAL cmd IS aoso_descent_terminal_command(data).
-    aoso_descent_operator_status(data, cmd).
-
-    aoso_staging_auto_check().
-
-    IF SHIP:STATUS = "LANDED" {
+    IF SHIP:STATUS = "LANDED" OR SHIP:STATUS = "SPLASHED" {
         aoso_state_transition(AOSO_DESCENT, "TOUCHDOWN").
         RETURN.
     }
-    IF aoso_descent_true_radar() <= aoso_config_get("DESCENT_TOUCHDOWN_ALT", 0.5) {
-        aoso_state_transition(AOSO_DESCENT, "TOUCHDOWN").
+    aoso_staging_auto_check().
+    IF aoso_fuel_abort_check() {
+        aoso_state_abort(AOSO_DESCENT).
+        RETURN.
     }
+    aoso_descent_maintain_legs(aoso_descent_true_radar()).
+    // Re-arm only while falling and braking clearance is actually due.
+    // Residual lateral speed alone must not oscillate FINAL_APPROACH/BURN.
+    IF SHIP:STATUS <> "LANDED" {
+        IF VERTICALSPEED < -4 {
+            LOCAL burn_pred IS aoso_descent_full_burn_prediction().
+            IF aoso_descent_true_radar() <= burn_pred["trigger"] {
+                IF SHIP:VELOCITY:SURFACE:MAG > aoso_config_get("DESCENT_FINAL_SPEED_MAX", 25) {
+                    aoso_log_info("LAND_REARM", "Recovery coast reached braking clearance; resuming max-thrust descent.").
+                    aoso_state_transition(AOSO_DESCENT, "BURN").
+                    RETURN.
+                }
+            }
+        }
+    }
+    LOCAL cmd IS aoso_descent_terminal_command(data).
+    aoso_descent_operator_status(data, cmd).
+    // Bounds/radar proximity is not a LANDED postcondition. Keep controlling
+    // the final metres until KSP reports real contact, then verify stability.
 }
 
 FUNCTION aoso_descent_touchdown_entry {
@@ -1054,7 +1095,9 @@ FUNCTION aoso_descent_poll {
 }
 
 FUNCTION aoso_descent_is_landed {
-    RETURN AOSO_DESCENT["current"] = "TOUCHDOWN".
+    IF AOSO_DESCENT["current"] <> "TOUCHDOWN" { RETURN FALSE. }
+    LOCAL checked IS aoso_verify_landing().
+    RETURN checked["ok"].
 }
 
 FUNCTION aoso_descent_is_aborted {

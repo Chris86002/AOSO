@@ -116,6 +116,9 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "PLANNER_MIN_SHOULD_SCORE", 30,     // 0-100, CAN destinations below this are not SHOULD
     "LANDING_SCAN_SAMPLES", 36,         // ground-track samples scored before picking a landing site
     "LANDING_SCAN_ORBITS", 1,           // one polar orbit is enough to confirm/improve the predicted site
+    "LANDING_MAX_RETRIES", 3,           // same-body failures share a monotonic retry budget
+    "LANDING_PLAN_MAX_ORBITS", 6,       // total survey/deorbit planning budget, not per scan
+    "LANDING_PLAN_MAX_S", 24000,        // hard total cap before a mandatory-stop hold
     "LANDING_SCAN_MAX_S", 7200,          // hard cap on survey duration; scan must hand off to deorbit
     "LANDING_SCAN_GOOD_ENOUGH_SCORE", 5, // lower-is-better site score for a safe early survey exit
     "LANDING_SCAN_EARLY_EXIT_SAMPLES", 3, // independent safe overflight samples required for early exit
@@ -126,7 +129,7 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "LANDING_RIM_WEIGHT", 0.015,         // score penalty per metre of that rim (lower total score is better)
     "DEORBIT_ALIGN_CAP_DEG", 40,         // max orbit angle the align lead may eat before ignition
     "DEORBIT_OPPOSITE_MIN_DEG", 150,     // legacy floor; deorbit commit is now predicted PE miss, not this angle
-    "DEORBIT_SITE_TOL_M", 6000,          // m, legacy periapsis-proxy tolerance for the selected burn candidate
+    "DEORBIT_SITE_TOL_M", 6000,          // m, surface-crossing tolerance; actual node and live conic both checked
     "DEORBIT_SITE_MAX_ORBITS", 2,        // bounded candidate horizon; do not spend many body orbits waiting for periapsis alignment
     "MAX_Q_LIMIT_MULT", 1.0,            // extra throttle cap near this-flight peak Q (1.0=off; ASCENT_MAX_Q is the real limiter)
     "ASCENT_MAX_Q", 0.30,               // atm (SHIP:Q). Throttle down while Q is still rising above this. 0=off. 0.30≈30 kPa.
@@ -140,7 +143,8 @@ GLOBAL AOSO_CONFIG IS LEXICON(
     "DESCENT_SUICIDE_MARGIN", 1.02,     // small multiplier on predicted vertical clearance consumed by the full-thrust burn
     "DESCENT_IGNITION_MARGIN_S", 0.15,  // s of vertical-motion allowance for scheduler/engine response
     "DESCENT_PREDICT_STEPS", 36,        // integration steps for the full-thrust surface-retrograde burn predictor
-    "DESCENT_TERMINAL_ALT", 12,         // m, only here may full-thrust suicide guidance hand off to touchdown control
+    "DESCENT_TERMINAL_ALT", 12,         // m, final flare height; velocity arrest can hand off above this
+    "DESCENT_RECOVERY_SINK_MAX", 30,     // m/s bounded sink after an early terrain-induced velocity arrest
     "DESCENT_TERMINAL_HS", 1.5,         // m/s horizontal-speed target at the end of the full-thrust burn
     "DESCENT_STATUS_S", 2,              // s between operator-visible powered-descent status lines
     "DESCENT_TOUCHDOWN_ALT", 0.5,       // m, radar altitude below which touchdown is declared

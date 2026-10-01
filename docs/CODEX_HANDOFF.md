@@ -2,6 +2,92 @@
 
 Updated: 2026-09-30
 
+## Latest Minmus control/trajectory fix — 2026-10-01 UTC
+
+Evidence: `aoso_log/events/flightrec(20261001-010919)` and accompanying
+telemetry/CPU/checkpoint/XP files. The vessel successfully braked from
+HS 182 m/s to 13.2 m/s at radar 564 m, but stayed in BURN at full throttle
+through positive VS and nose-down thrust. Flameout was followed by a 7.44 s
+control gap, stage walking, and a 1.004 t/no-propellant remainder. The record
+cannot distinguish the exact part destruction/separation sequence.
+
+Implemented directly on main:
+
+- BURN checks velocity arrest **before** issuing full throttle. It hands off
+  regardless of radar altitude and anticipates the response interval. Braking
+  steering cannot request a nose-down vector, and thrust is inhibited while
+  the actual nose points below the horizon.
+- FINAL_APPROACH uses an upright command with a 35-degree tilt limit and
+  attitude gating. An early terrain arrest regains a bounded descending sink
+  rather than hovering high or thrusting through velocity reversal. Re-arming
+  needs a descending, fast vessel at braking clearance; HS alone cannot bounce
+  the FSM between BURN and FINAL_APPROACH. Radar proximity alone cannot declare
+  TOUCHDOWN; real contact and the existing stability verifier gate refueling.
+- STAGING queues result/XP ingestion to a quiet scheduler task. XP persistence
+  is dirty-buffered and refuses ascent, burn, descent, landing, packed/warping,
+  or thrusting states. Deferred data flushes when unpacked and safely idle.
+  This removes the synchronous XP serialization/Archive-write path present
+  in the recorded flameout tick; runtime latency still needs a flight test.
+- Landing-only future positions subtract the **current** SOI-body position,
+  not POSITIONAT(body, ut). kOS's VesselTarget.GetPositionAtUT uses the current
+  patch reference-body centre; subtracting the future parent-orbit position
+  was double-counting Minmus travel. Cross-SOI navigation helpers are unchanged.
+  Source checked: KSP-KOS/KOS develop `src/kOS/Suffixed/VesselTarget.cs` and
+  https://ksp-kos.github.io/KOS/commands/prediction.html.
+- The deorbit timing proxy now uses the first descending surface crossing of
+  the proposed ellipse, before periapsis, including body rotation. The actual
+  planned node and live post-burn conic both need an impact miss within
+  DEORBIT_SITE_TOL_M. No crossing/unacceptable miss rejects the plan. A live
+  post-burn rejection reparks near apoapsis when altitude/time/thrust permit;
+  otherwise descent survival takes precedence over target accuracy.
+- One shared same-body retry/time budget replaces the 376-rejection / 39 h
+  survey loop. Defaults: three rejected/recovery plans, six orbital periods,
+  and 24000 s total maximum. Independent-sample count resets on each survey.
+  A missed window never forces a burn against stale geometry. Exhaustion
+  enters LAND_HOLD on this mandatory stop; restarting the tour explicitly
+  renews its budget. No stop is marked complete or silently skipped.
+- Unsafe suborbital recovery never goes into SCAN. A single propulsion-backed
+  emergency descent is permitted; unrecoverable repeated failure holds.
+- Hot telemetry runs before lower-priority clock-return gates, preserving the
+  existing 1 Hz sampling at high CPU load. Signed pitch is retained, and LAND
+  status reports vessel LF/OX fill instead of the empty-stage 100% sentinel.
+
+Validation performed:
+
+- `python tools/check-landing-regressions.py` evaluates selected production
+  KerboScript helpers in a limited scalar/vector evaluator. Logged initial
+  braking stays active; the -3 VS / 13.2 HS arrest hands off. A constant-gravity
+  local recovery from 564 m reaches ground in 48.8 s at VS -2.06 / HS 0.16 m/s
+  using 26.9 m/s ideal thrust dV. This omits attitude slew, changing terrain,
+  engine spool, staging, and KSP physics and is **not** in-game validation.
+- The surface-crossing helper independently satisfies the ellipse equation:
+  Minmus 29260 m AP / -500 m PE crosses sea level after 161.81 degrees and
+  1415.9 s, before the 1516.6 s periapsis. Budget/frame/coordination checks pass.
+- Changed-script delimiter/identifier/IF NOT DEFINED gates and git diff --check
+  pass. Added vessel-safe self-tests for arrest/crossing/budget predicates.
+  The actual kOS compiler/selftest and KSP flight were not run here.
+- Native addon source/DLL is unchanged.
+
+Next-run acceptance:
+
+- LAND_TRAJECTORY_CHECK accepted=True before ignition and after deorbit, with
+  consistent impact coordinates/miss. No unexplained 70-160 km drift.
+- LAND_BRAKE_COMPLETE before positive VS; no repeated full-throttle
+  TURNAROUND/nose-down oscillations. LAND_REARM only after a recovery coast
+  reaches braking clearance. Then a real LANDED / LAND_TOUCHDOWN and ISRU.
+- No multi-second staging/XP control gap near terrain; LF/OX status decreases
+  and hot telemetry covers the burn rather than losing 23 minutes.
+- Planning terminates within the shared budget with a viable deorbit or an
+  explicit LAND_HOLD. No hundreds of SCAN/DEORBIT cycles and no orbital survey
+  from the near-ground, powerless remainder.
+
+Limits: impact validation is an unpowered-conic geometry gate, not a powered
+precision-landing solution. Distant terrain queries remain unverified; the
+live radar/look-ahead safety controller still owns collision avoidance.
+Atmospheric trajectories retain their existing drag/chute behavior and do not
+use this airless impact gate. User policy of landing/full ISRU before departure
+remains in force.
+
 ## Mandatory landing and full ISRU (user policy correction)
 
 This supersedes the preceding policy that a failed Minmus landing could

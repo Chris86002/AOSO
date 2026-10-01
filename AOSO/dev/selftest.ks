@@ -29,6 +29,7 @@ RUN ONCE "AOSO/nav/orbit".
 RUN ONCE "AOSO/nav/planechange".
 RUN ONCE "AOSO/mission/tour".
 RUN ONCE "AOSO/landing/impact".
+RUN ONCE "AOSO/landing/descent".
 RUN ONCE "AOSO/nav/lambert".
 RUN ONCE "AOSO/interplanetary/transfer".
 RUN ONCE "AOSO/mission/windows".
@@ -94,6 +95,20 @@ FUNCTION aoso_selftest {
         ABS(aoso_landing_target_miss_m(0, 12, 0, 12)) < 0.01, fail).
     SET fail TO aoso_selftest_check("landing dateline error wraps",
         aoso_landing_target_miss_m(0, 179.9, 0, -179.9) < SHIP:BODY:RADIUS * 0.005, fail).
+
+    SET fail TO aoso_selftest_check("landing arrest above flare altitude hands off",
+        aoso_descent_terminal_ready(-3, 13.2, 10.5, 0.462), fail).
+    SET fail TO aoso_selftest_check("landing rising vessel cannot keep full retrograde burn",
+        aoso_descent_terminal_ready(15.2, 16.4, 10.5, 0.462), fail).
+    SET fail TO aoso_selftest_check("landing initial 182 m/s braking stays active",
+        NOT aoso_descent_terminal_ready(-19.5, 182, 10.08, 0.462), fail).
+    SET fail TO aoso_selftest_check("landing low TWR fall must keep braking",
+        NOT aoso_descent_terminal_ready(-40, 0, 1, 0.462), fail).
+    LOCAL crossing_arc IS aoso_tour_deorbit_arc(89260, 59500, 60000, 1765800000).
+    SET fail TO aoso_selftest_check("landing crossing precedes the periapsis antipode",
+        crossing_arc["ok"] AND crossing_arc["angle"] < 180 AND crossing_arc["coast"] < 1517, fail).
+    SET fail TO aoso_selftest_check("landing attempts have a shared bounded budget",
+        aoso_tour_landing_budget_exhausted(LEXICON("landing_retries", 100000)), fail).
 
     LOCAL selftest_res_pct IS aoso_resource_pct("ElectricCharge").
     SET fail TO aoso_selftest_check("resource helper loaded",

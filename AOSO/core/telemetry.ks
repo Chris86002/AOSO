@@ -67,14 +67,14 @@ FUNCTION aoso_telemetry_row {
     LOCAL mp_amt IS aoso_resource_amount("MonoPropellant").
 
     LOCAL pitch IS 90 - VANG(SHIP:UP:VECTOR, SHIP:FACING:FOREVECTOR).
-    IF pitch < 0 { SET pitch TO 0. }
+    IF pitch < -90 { SET pitch TO -90. }
     IF pitch > 90 { SET pitch TO 90. }
     LOCAL fpa IS 90.
     LOCAL srfvel IS SHIP:VELOCITY:SURFACE.
     LOCAL srf IS srfvel:MAG.
     IF srf >= 1 {
         SET fpa TO 90 - VANG(SHIP:UP:VECTOR, srfvel).
-        IF fpa < 0 { SET fpa TO 0. }
+        IF fpa < -90 { SET fpa TO -90. }
         IF fpa > 90 { SET fpa TO 90. }
     }
     LOCAL aoa IS pitch - fpa.
